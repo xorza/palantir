@@ -7,6 +7,7 @@ use std::error;
 use std::rc::Rc;
 
 use glam::{UVec2, Vec2};
+use half::f16;
 use std::time::Duration;
 
 use crate::animation::motion_role::MotionRole;
@@ -68,7 +69,7 @@ const fn spec(kind: KindId, params: ParamsLayout, image_slots: u8) -> ContractSp
 
 /// The id of the app's load `n`, from 0, past the stock effects every registry holds first.
 fn app(n: u32) -> EffectId {
-    let count = stock::sources().press.len() + 3;
+    let count = stock::sources().press.len() + 2;
     EffectId(u32::try_from(count).unwrap() + n)
 }
 
@@ -492,7 +493,7 @@ fn the_stock_ripples_hold_their_reserved_names() {
         registry.load(ripple, EffectSource::new("fn effect(")),
         Err(EffectError::ReservedName)
     ));
-    assert_eq!(registry.epoch(), 5, "the five stock loads alone");
+    assert_eq!(registry.epoch(), 4, "the four stock loads alone");
 }
 
 /// An app's press effect: its press color, over.
@@ -608,9 +609,13 @@ fn a_theme_names_only_loaded_effects() {
         Rc::ptr_eq(h.ui().scheme_theme(scheme), &held),
         "the theme before stays"
     );
-    h.ui_mut()
-        .set_theme(scheme, wearing("palantir.blur"))
-        .unwrap();
+    let mut glassy = Theme::stock(scheme);
+    glassy.tooltip.panel = glassy
+        .tooltip
+        .panel
+        .clone()
+        .with_material(Material::glass(Lens::WINDOW_GLASS));
+    h.ui_mut().set_theme(scheme, glassy).unwrap();
 
     h.ui_mut()
         .set_theme(scheme, naming("palantir.sparkle"))
@@ -2021,7 +2026,12 @@ fn a_material_effect_is_a_backdrop_effect_over_lanes() {
     registry
         .load(
             pictured,
-            EffectSource::new(include_str!("stock/blur.wgsl")).image_slots(1),
+            EffectSource::new(
+                "fn effect(input: EffectInput) -> EffectOutput {
+                    return effect_over(effect_backdrop(input.pos));
+                }",
+            )
+            .image_slots(1),
         )
         .unwrap();
     let ours = EffectName::<FrostedInput, BackdropEffect>::named("ours").unwrap();
@@ -2044,10 +2054,6 @@ fn a_material_effect_is_a_backdrop_effect_over_lanes() {
             MaterialFit::Unloaded,
         ),
         (
-            MaterialEffect::new(EffectName::BLUR, ()),
-            MaterialFit::Lanes(0),
-        ),
-        (
             MaterialEffect::new(EffectName::FROSTED, FrostedInput::DEFAULT),
             MaterialFit::Lanes(2),
         ),
@@ -2065,21 +2071,34 @@ fn a_material_effect_is_a_backdrop_effect_over_lanes() {
 }
 
 /// A backdrop effect blurs what it reads by its σ through the capture and blur a material
-/// takes, and reads the result as the stock blur does: over a black and white edge at x 16 in a
-/// 32 × 16 window, an effect that shows what it reads, blurred by σ 3, paints row 8 exactly as a
-/// rect of `Material::blur(3.0)` over the same edge, and unlike the sharp edge.
+/// takes, and reads the result as `Material::blur` does: over a black and white edge at x 16 in a
+/// 32 × 16 half-float window, with a strip at x 4 to 12 a color effect paints red −0.25, an effect
+/// that shows what it reads, blurred by σ 3, paints row 8 to the bit as a rect of
+/// `Material::blur(3.0)` over the same ground, but for the strip's negative red, which the
+/// material floors at +0, and unlike the sharp ground.
 #[test]
 fn a_backdrop_effect_blurs_as_a_material() {
+    const NEGATIVE: EffectName<()> = EffectName::named("negative").expect("the name fits");
     let gpu = headless_test_gpu();
     let row = |backdrop: &dyn Fn(&mut Ui)| {
         let mut h = Harness::builder(UVec2::new(32, 16))
             .mono()
-            .depth(Depth::gpu(gpu.handles()))
+            .depth(Depth::gpu_float(gpu.handles()))
             .build();
         h.ui()
             .load_effect(SHIFT, EffectSource::new(SHIFT_WGSL))
             .unwrap();
-        h.prime(2, |ui| {
+        h.ui()
+            .load_effect(
+                NEGATIVE,
+                EffectSource::new(
+                    "fn effect(input: EffectInput) -> EffectOutput {
+                        return effect_over(vec4<f32>(-0.25, 0.5, 1.0, 1.0));
+                    }",
+                ),
+            )
+            .unwrap();
+        let mut record = |ui: &mut Ui| {
             ui.add_shape(
                 Shape::rect().at(Rect::new(0.0, 0.0, 16.0, 16.0)),
                 RgbaF32::BLACK,
@@ -2088,10 +2107,21 @@ fn a_backdrop_effect_blurs_as_a_material() {
                 Shape::rect().at(Rect::new(16.0, 0.0, 16.0, 16.0)),
                 RgbaF32::WHITE,
             );
+            ui.add_shape(
+                Shape::rect().at(Rect::new(4.0, 0.0, 8.0, 16.0)),
+                EffectPaint::new(NEGATIVE, ()),
+            );
             backdrop(ui);
-        });
-        let image = h.read_back();
-        (0..32).map(|x| image.get_pixel(x, 8).0).collect::<Vec<_>>()
+        };
+        h.prime(2, &mut record);
+        let mut pixels = Vec::new();
+        h.capture(&mut record, &mut pixels).unwrap();
+        pixels[8 * 32 * 8..9 * 32 * 8]
+            .as_chunks::<8>()
+            .0
+            .iter()
+            .map(|&texel| bytemuck::cast::<[u8; 8], [u16; 4]>(texel))
+            .collect::<Vec<_>>()
     };
     let effect = row(&|ui| {
         ui.add_shape(Shape::rect(), EffectPaint::new(SHIFT, SHARP).blur(3.0));
@@ -2100,8 +2130,20 @@ fn a_backdrop_effect_blurs_as_a_material() {
         ui.add_shape(Shape::rect(), Material::blur(3.0));
     });
     let sharp = row(&|_| {});
-    assert_eq!(effect, filter);
-    assert_ne!(effect, sharp, "σ 3 blurs the edge");
+    let floored: Vec<[u16; 4]> = effect
+        .iter()
+        .map(|&[red, green, blue, alpha]| {
+            let red = if f16::from_bits(red).to_f32() < 0.0 {
+                0
+            } else {
+                red
+            };
+            [red, green, blue, alpha]
+        })
+        .collect();
+    assert_ne!(floored, effect, "the strip's negative red reaches the blur");
+    assert_eq!(filter, floored);
+    assert_ne!(effect, sharp, "σ 3 blurs the ground");
 }
 
 /// Each preference picks its own alternative, motion's over power's: an effect whose source names

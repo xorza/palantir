@@ -7,12 +7,11 @@
 //!   [`MaterialEffect`], so an app's backdrop effect dresses a chrome as a stock one does, as
 //!   Flutter's `BackdropFilter` takes `ImageFilter.blur` or `ImageFilter.shader`, Android's
 //!   `RenderEffect` a blur or a runtime shader, and Skia's `SkImageFilters` `Blur` or
-//!   `RuntimeShader`. Blur, frosted and glass are palantir's stock effects
-//!   ([`EffectName::BLUR`](crate::EffectName::BLUR), `FROSTED`, `GLASS`), each with its own
-//!   parameter type. Refused: one input type every material effect reads, which fit the stock
-//!   effects alone; a shared allocation of the parameters, which every material built in a frame
-//!   would pay; a built-in filter type beside app effects; a closed enum of looks, whose looks
-//!   are no effects.
+//!   `RuntimeShader`. Frosted and glass are palantir's stock effects
+//!   ([`EffectName::FROSTED`](crate::EffectName::FROSTED), `GLASS`), each with its own parameter
+//!   type. Refused: one input type every material effect reads, which fit the stock effects alone;
+//!   a shared allocation of the parameters, which every material built in a frame would pay; a
+//!   built-in filter type beside app effects; a closed enum of looks, whose looks are no effects.
 //! - **It is named `Material`**, the platform term: Apple's materials, Fluent's Acrylic and Mica
 //!   materials. Refused: `BackdropFilter`, as it names an effect and no filter; `Pane`, a dock's
 //!   region; `Backdrop`, the pixels under a shape.
@@ -26,11 +25,13 @@
 //! - **The capture blurs, the effect looks.** `backdrop_blur` is the σ of the capture's one
 //!   downsampled blur, a Gaussian σ in logical px as [`Shadow::blur`](crate::Shadow) and CSS
 //!   `blur()` take it, of the pixels under the box before the effect reads them, whatever the
-//!   effect; the stock blur is then the effect that shows what it reads. One effect is worn at
-//!   many σ, so σ is the material's, as Android chains a blur `RenderEffect` into a runtime
-//!   shader's and Flutter composes `ImageFilter.blur` inside `ImageFilter.shader`. Refused: a blur
-//!   inside each effect, a full-resolution loop per pixel; σ among the effect's parameters, which
-//!   palantir must read to plan the capture before any effect runs.
+//!   effect; [`Material::blur`] is then the frost at saturation 1 and no grain, which shows what
+//!   it reads as it is, each channel floored at 0. One effect is worn at many σ, so σ is the material's, as Android chains a
+//!   blur `RenderEffect` into a runtime shader's and Flutter composes `ImageFilter.blur` inside
+//!   `ImageFilter.shader`. Refused: a blur inside each effect, a full-resolution loop per pixel; σ
+//!   among the effect's parameters, which palantir must read to plan the capture before any effect
+//!   runs; a stock effect for the blur alone, a program and its pipelines for what the frost at
+//!   those parameters paints, and which a tween to a frost could not blend.
 //! - **A material reads past its edge.** The blur is the exact convolution of what is painted
 //!   around the box, so content glows in before it slides under a bar, and the effect reads as
 //!   far past the box as its source declares ([`EffectSource::reach`](crate::EffectSource::reach)),
@@ -180,10 +181,17 @@ impl Material {
         }
     }
 
-    /// The pixels behind blurred by σ `sigma` logical px, as CSS `backdrop-filter: blur()`:
-    /// [`EffectName::BLUR`].
+    /// The pixels behind blurred by σ `sigma` logical px, as they are, each channel floored at 0,
+    /// as CSS `backdrop-filter: blur()`: [`EffectName::FROSTED`] at saturation 1 and no grain.
     pub const fn blur(sigma: f32) -> Self {
-        Self::new(EffectName::BLUR, ()).with_backdrop_blur(sigma)
+        Self::new(
+            EffectName::FROSTED,
+            FrostedInput {
+                saturation: 1.0,
+                noise: 0.0,
+            },
+        )
+        .with_backdrop_blur(sigma)
     }
 
     /// Frosted glass: the pixels behind blurred by σ `sigma` logical px, read through

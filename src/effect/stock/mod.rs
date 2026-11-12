@@ -1,4 +1,4 @@
-//! Palantir's stock effects: the two press ripples and the three materials, which every registry
+//! Palantir's stock effects: the two press ripples and the two materials, which every registry
 //! holds from its start under names in palantir's reserved prefix, so a theme names them as it
 //! names an app's.
 
@@ -30,12 +30,6 @@ impl EffectName<PressInput> {
     /// 0.375 s to exit. Under the power saver it paints [`Self::RIPPLE`], whose disc costs a
     /// fraction of the sparkles' noise.
     pub const SPARKLE: Self = reserved("palantir.sparkle");
-}
-
-impl EffectName<(), BackdropEffect> {
-    /// What the material reads, blurred by its capture's σ, as it is, as CSS
-    /// `backdrop-filter: blur()` shows it.
-    pub const BLUR: Self = reserved("palantir.blur");
 }
 
 impl EffectName<FrostedInput, BackdropEffect> {
@@ -79,10 +73,6 @@ pub(crate) fn sources() -> StockSources {
                 .power_saver(ReducedPaint::Effect(EffectName::RIPPLE)),
             ),
         ],
-        blur: (
-            EffectName::BLUR,
-            EffectSource::new(include_str!("blur.wgsl")),
-        ),
         frosted: (
             EffectName::FROSTED,
             EffectSource::new(concat!(
@@ -101,7 +91,6 @@ pub(crate) fn sources() -> StockSources {
 #[derive(Debug)]
 pub(crate) struct StockSources {
     pub(crate) press: [(EffectName<PressInput>, EffectSource<PressInput>); 2],
-    pub(crate) blur: Stock<()>,
     pub(crate) frosted: Stock<FrostedInput>,
     pub(crate) glass: Stock<GlassInput>,
 }

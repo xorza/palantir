@@ -750,8 +750,6 @@ EffectName
         impl EffectName<PressInput>
             pub const RIPPLE: Self
             pub const SPARKLE: Self
-        impl EffectName<(), BackdropEffect>
-            pub const BLUR: Self
         impl EffectName<FrostedInput, BackdropEffect>
             pub const FROSTED: Self
         impl EffectName<GlassInput, BackdropEffect>

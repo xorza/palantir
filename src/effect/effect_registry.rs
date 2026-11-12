@@ -188,15 +188,7 @@ impl EffectRegistry {
                 .insert(name, source)
                 .expect("a stock effect meets the contract");
         }
-        let StockSources {
-            blur,
-            frosted,
-            glass,
-            ..
-        } = stock;
-        registry
-            .insert(blur.0, blur.1)
-            .expect("a stock effect meets the contract");
+        let StockSources { frosted, glass, .. } = stock;
         registry
             .insert(frosted.0, frosted.1)
             .expect("a stock effect meets the contract");

@@ -123,7 +123,9 @@ fn widget_look_serde_roundtrip() {
 #[test]
 fn materials_load_by_their_kinds() {
     let blur = |rest: &str| {
-        format!("(effect: (name: \"palantir.blur\"), fallback: Brush(Solid(\"#000000\")){rest})")
+        format!(
+            "(effect: (name: \"palantir.frosted\", params: [1.0, 0.0]), fallback: Brush(Solid(\"#000000\")){rest})"
+        )
     };
     for (label, ron, want) in [
         (
@@ -153,12 +155,12 @@ fn materials_load_by_their_kinds() {
         ),
         (
             "the theme's fallback",
-            "(effect: (name: \"palantir.blur\"), backdrop_blur: 8.0)".to_owned(),
+            "(effect: (name: \"palantir.frosted\", params: [1.0, 0.0]), backdrop_blur: 8.0)".to_owned(),
             Some(Material::blur(8.0)),
         ),
         (
             "named the theme's",
-            "(effect: (name: \"palantir.blur\"), fallback: ThemeSurface)".to_owned(),
+            "(effect: (name: \"palantir.frosted\", params: [1.0, 0.0]), fallback: ThemeSurface)".to_owned(),
             Some(Material::blur(0.0)),
         ),
         (
@@ -167,11 +169,11 @@ fn materials_load_by_their_kinds() {
             None,
         ),
         ("negative blur", blur(", backdrop_blur: -1.0"), None),
-        ("a NaN parameter", "(effect: (name: \"palantir.blur\", params: [NaN]))".to_owned(), None),
-        ("an infinite parameter", "(effect: (name: \"palantir.blur\", params: [inf]))".to_owned(), None),
+        ("a NaN parameter", "(effect: (name: \"palantir.frosted\", params: [NaN]))".to_owned(), None),
+        ("an infinite parameter", "(effect: (name: \"palantir.frosted\", params: [inf]))".to_owned(), None),
         (
             "nine parameters",
-            "(effect: (name: \"palantir.blur\", params: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]))"
+            "(effect: (name: \"palantir.frosted\", params: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]))"
                 .to_owned(),
             None,
         ),

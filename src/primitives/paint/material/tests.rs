@@ -51,7 +51,13 @@ fn the_constructors_and_setters_set_their_own_fields() {
     assert_eq!(
         Material::blur(6.0),
         Material {
-            effect: MaterialEffect::new(EffectName::BLUR, ()),
+            effect: MaterialEffect::new(
+                EffectName::FROSTED,
+                FrostedInput {
+                    saturation: 1.0,
+                    noise: 0.0,
+                },
+            ),
             backdrop_blur: 6.0,
             max_luminance: None,
             min_luminance: None,
@@ -135,8 +141,8 @@ fn a_material_out_of_its_kinds_panics_where_it_enters() {
 }
 
 /// What a material reads follows the reductions: its effect over what is under it while
-/// transparency runs whole, its effect resolved through the registry, where the stock blur is
-/// effect 2, past the two ripples, and the glass effect 4, reading as far as its lens bends; and
+/// transparency runs whole, its effect resolved through the registry, where the frost a blur wears
+/// is effect 2, past the two ripples, and the glass effect 3, reading as far as its lens bends; and
 /// its fallback while transparency is reduced, with the theme's surface at hand for one that names
 /// none. A material that cannot paint panics in every mode: over a name nothing loaded, over a
 /// color effect, and with another count of lanes than its effect takes.
@@ -170,7 +176,7 @@ fn a_material_reads_its_fallback_while_transparency_is_reduced() {
             resolve(Reduction::Full)
         ),
         Some(MaterialRead::Capture(ResolvedMaterial {
-            id: EffectId(4),
+            id: EffectId(3),
             reach: MaterialReach::Lens(Lens::WINDOW_GLASS),
         }))
     );
@@ -233,8 +239,8 @@ fn an_effects_source_declares_its_materials_reach() {
     assert_eq!(reach(plain, 6.0), Some(MaterialReach::NONE));
 
     // While power is reduced, a material paints its effect's alternative, at that alternative's
-    // id and reach: ids follow load order past the five stock effects, so `reaching` is 5 and
-    // `saving`, which gives way to it, 7; `vanishing` gives way to nothing.
+    // id and reach: ids follow load order past the four stock effects, so `reaching` is 4 and
+    // `saving`, which gives way to it, 6; `vanishing` gives way to nothing.
     let saving = EffectName::<Shift, BackdropEffect>::named("saving").unwrap();
     let vanishing = EffectName::<Shift, BackdropEffect>::named("vanishing").unwrap();
     effects
@@ -259,14 +265,14 @@ fn an_effects_source_declares_its_materials_reach() {
     assert_eq!(
         resolve(saving, Reduction::Full),
         Some(ResolvedMaterial {
-            id: EffectId(7),
+            id: EffectId(6),
             reach: MaterialReach::NONE,
         })
     );
     assert_eq!(
         resolve(saving, Reduction::Reduced),
         Some(ResolvedMaterial {
-            id: EffectId(5),
+            id: EffectId(4),
             reach: MaterialReach::Px(6.0),
         })
     );
@@ -369,10 +375,10 @@ fn a_material_coerces_into_its_kinds_where_it_paints() {
 /// The blur, the fallback, an absent floor and the parameters of one effect blend, the floor
 /// through 0, the parameters lane by lane, while the effect and the ceiling switch at `t = 0.5`,
 /// the parameters with the effect where the ends name two. Halfway from a floor of 0.4 to none is
-/// `0.4 · 0.5 = 0.2`; halfway from the frost at saturation 1.8 and grain 0.04 to one at 1.0 and 0
-/// is `(1.4, 0.02)`; from frosted at σ 4 to blur at σ 2 is σ 3, and from a black fallback to a
-/// white one the grey two colors blend to, while the theme's fallback and a brush switch at
-/// `t = 0.5`. An absent material blends through the other end at rest, its parameters kept: a
+/// `0.4 · 0.5 = 0.2`; halfway from the frost at saturation 1.8 and grain 0.04 to a plain blur, the
+/// frost at 1.0 and 0, is `(1.4, 0.02)`; from frosted at σ 4 to glass at σ 2 is σ 3, the glass
+/// from `t = 0.5` with its own lanes, and from a black fallback to a white one the grey two colors
+/// blend to, while the theme's fallback and a brush switch at `t = 0.5`. An absent material blends through the other end at rest, its parameters kept: a
 /// quarter of the way to the frost at σ 8 is σ 2, at the frost's own lanes. The ends stay exact.
 #[test]
 fn a_material_blends_its_numbers_and_snaps_its_effect() {
@@ -384,22 +390,17 @@ fn a_material_blends_its_numbers_and_snaps_its_effect() {
     );
     assert_eq!(Material::lerp(&floored, &plain, 0.0), floored);
     assert_eq!(Material::lerp(&floored, &plain, 1.0), plain);
-    let flat = Material::new(
-        EffectName::FROSTED,
-        FrostedInput {
-            saturation: 1.0,
-            noise: 0.0,
-        },
-    );
     assert_eq!(
-        Material::lerp(&Material::frosted(0.0), &flat, 0.5)
+        Material::lerp(&Material::frosted(0.0), &Material::blur(0.0), 0.5)
             .effect
             .params(),
         [1.4, 0.02]
     );
     let frosted = Material::frosted(4.0).with_fallback(RgbaF32::BLACK);
-    let blur = Material::blur(2.0).with_fallback(RgbaF32::WHITE);
-    let half = Material::lerp(&frosted, &blur, 0.5);
+    let glass = Material::glass(Lens::WINDOW_GLASS)
+        .with_backdrop_blur(2.0)
+        .with_fallback(RgbaF32::WHITE);
+    let half = Material::lerp(&frosted, &glass, 0.5);
     assert_eq!(
         half.fallback,
         MaterialFallback::Brush(Brush::Solid(RgbaF32::lerp(
@@ -410,16 +411,18 @@ fn a_material_blends_its_numbers_and_snaps_its_effect() {
     );
     let themed = Material::blur(2.0);
     assert_eq!(
-        Material::lerp(&themed, &blur, 0.49).fallback,
+        Material::lerp(&themed, &glass, 0.49).fallback,
         MaterialFallback::ThemeSurface
     );
-    assert_eq!(Material::lerp(&themed, &blur, 0.5).fallback, blur.fallback);
     assert_eq!(
-        half.effect,
-        MaterialEffect::new(EffectName::BLUR, ()),
-        "the blur, with its parameters"
+        Material::lerp(&themed, &glass, 0.5).fallback,
+        glass.fallback
     );
-    assert_eq!(Material::lerp(&frosted, &blur, 0.49).effect, frosted.effect);
+    assert_eq!(half.effect, glass.effect, "the glass, with its parameters");
+    assert_eq!(
+        Material::lerp(&frosted, &glass, 0.49).effect,
+        frosted.effect
+    );
     assert_eq!(half.backdrop_blur, 3.0);
     let appearing =
         Option::<Material>::lerp(&None, &Some(Material::frosted(8.0)), 0.25).expect("a material");

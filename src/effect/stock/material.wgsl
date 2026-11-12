@@ -4,9 +4,13 @@
 const MATERIAL_LUMA: vec3<f32> = vec3<f32>(0.2126, 0.7152, 0.0722);
 
 // `c` saturated as CSS `saturate()` scales it, and grained, so frosted glass does not read as a
-// flat color.
+// flat color, each channel floored at 0, below which the glass's spectrum and a saturation past 1
+// reach. The saturation is `c + (c − luma)·(s − 1)`, not `mix(luma, c, s)`, so `s = 1` returns a
+// channel at or above 0 to the bit, in whatever form a driver evaluates `mix`: `Material::blur`
+// shows the capture through it.
 fn material_frost(c: vec3<f32>, input: EffectInput, saturation: f32, noise: f32) -> vec3<f32> {
-    var out = max(mix(vec3<f32>(dot(c, MATERIAL_LUMA)), c, saturation), vec3<f32>(0.0));
+    let luma = vec3<f32>(dot(c, MATERIAL_LUMA));
+    var out = max(c + (c - luma) * (saturation - 1.0), vec3<f32>(0.0));
     if (noise > 0.0) {
         out = mix(out, vec3<f32>(material_grain(input.pos * input.scale)), noise);
     }

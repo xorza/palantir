@@ -332,6 +332,7 @@ mod tests {
     use crate::primitives::paint::chrome::Chrome;
     use crate::primitives::paint::color::RgbaF32;
     use crate::primitives::paint::material::Material;
+    use crate::primitives::paint::material::lens::Lens;
     use crate::renderer::render_buffer::shape_form::ShapeForm;
     use crate::shape::Shape;
     use crate::shape::effect_paint::EffectPaint;
@@ -370,13 +371,13 @@ mod tests {
     }
 
     /// An effect builds where a use first wants it, and stays built: the stock ripples (ids 0
-    /// and 1), the blur and the glass (2 and 4) and `OnUse` blue (5) build nothing over a frame
-    /// that draws none of them, `Now` red (6) builds at that frame, and so does the frost (3), which
-    /// the stock themes' floats wear; blue builds at the frame that draws it, red staying built. A
-    /// reload of blue as green builds again, so the next frame paints green. A material builds at
-    /// the frame that draws it, through the one stage its effect draws every use with: the blur
-    /// for a blurred box. A triangle of blue builds blue's triangle form alone, at the frame that
-    /// draws it, beside its box.
+    /// and 1), the glass (3) and `OnUse` blue (4) build nothing over a frame that draws none of
+    /// them, `Now` red (5) builds at that frame, and so does the frost (2), which the stock themes'
+    /// floats wear; blue builds at the frame that draws it, red staying built. A reload of blue as
+    /// green builds again, so the next frame paints green. A material builds at the frame that
+    /// draws it, through the one stage its effect draws every use with: the glass for a glass box,
+    /// while a blurred box draws through the frost, built already. A triangle of blue builds
+    /// blue's triangle form alone, at the frame that draws it, beside its box.
     #[test]
     fn an_effect_builds_where_a_use_wants_it() {
         let (mut host, target) = host();
@@ -396,16 +397,13 @@ mod tests {
             host.effect_store()
                 .built_effects(ShapeForm::Box, Clipping::Off)
         };
-        assert_eq!(
-            store(&host),
-            [false, false, false, true, false, false, true]
-        );
+        assert_eq!(store(&host), [false, false, true, false, false, true]);
 
         let mut blue = |ui: &mut Ui| {
             ui.add_shape(Shape::rect(), EffectPaint::new(BLUE, ()));
         };
         host.frame(target.as_target(), &mut blue);
-        assert_eq!(store(&host), [false, false, false, true, false, true, true]);
+        assert_eq!(store(&host), [false, false, true, false, true, true]);
         assert_eq!(target.read_back().get_pixel(4, 4).0, [0, 0, 255, 255]);
 
         host.ui()
@@ -418,30 +416,32 @@ mod tests {
             ui.add_shape(Shape::rect(), RgbaF32::WHITE);
             ui.add_shape(Shape::rect(), Material::blur(3.0));
         });
-        assert_eq!(store(&host), [false, false, true, true, false, true, true]);
+        assert_eq!(store(&host), [false, false, true, false, true, true]);
+        host.frame(target.as_target(), &mut |ui: &mut Ui| {
+            ui.add_shape(Shape::rect(), RgbaF32::WHITE);
+            ui.add_shape(Shape::rect(), Material::glass(Lens::WINDOW_GLASS));
+        });
+        assert_eq!(store(&host), [false, false, true, true, true, true]);
 
         let triangles = |host: &OffscreenHost| {
             host.effect_store()
                 .built_effects(ShapeForm::Triangle, Clipping::Off)
         };
-        assert_eq!(triangles(&host), [false; 7]);
+        assert_eq!(triangles(&host), [false; 6]);
         host.frame(target.as_target(), &mut |ui: &mut Ui| {
             ui.add_shape(
                 Shape::triangle(Vec2::ZERO, Vec2::new(8.0, 0.0), Vec2::new(0.0, 8.0)),
                 EffectPaint::new(BLUE, ()),
             );
         });
-        assert_eq!(
-            triangles(&host),
-            [false, false, false, false, false, true, false]
-        );
-        assert_eq!(store(&host), [false, false, true, true, false, true, true]);
+        assert_eq!(triangles(&host), [false, false, false, false, true, false]);
+        assert_eq!(store(&host), [false, false, true, true, true, true]);
         assert_eq!(target.read_back().get_pixel(1, 1).0, [0, 255, 0, 255]);
     }
 
     /// A want builds a form's clipless half alone; the clipped half waits for the first frame
-    /// whose draws name a rounded clip, then builds for every wanted form at once: blue (id 5),
-    /// which that frame draws inside the clip and paints, and the frost (3) and `Now` red (6), which
+    /// whose draws name a rounded clip, then builds for every wanted form at once: blue (id 4),
+    /// which that frame draws inside the clip and paints, and the frost (2) and `Now` red (5), which
     /// a theme and a load wanted and no frame draws.
     #[test]
     fn the_clipped_half_waits_for_a_frame_with_a_rounded_clip() {
@@ -458,12 +458,12 @@ mod tests {
         let built = |host: &OffscreenHost, clipping| {
             host.effect_store().built_effects(ShapeForm::Box, clipping)
         };
-        let wanted = [false, false, false, true, false, true, true];
+        let wanted = [false, false, true, false, true, true];
         host.frame(target.as_target(), &mut |ui: &mut Ui| {
             ui.add_shape(Shape::rect(), EffectPaint::new(BLUE, ()));
         });
         assert_eq!(built(&host, Clipping::Off), wanted);
-        assert_eq!(built(&host, Clipping::On), [false; 7]);
+        assert_eq!(built(&host, Clipping::On), [false; 6]);
 
         host.frame(target.as_target(), &mut |ui: &mut Ui| {
             Panel::canvas()

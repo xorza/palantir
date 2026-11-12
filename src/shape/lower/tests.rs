@@ -129,12 +129,11 @@ fn the_three_gradient_kinds_and_a_ramp_hash_apart_on_identical_stops() {
     assert_eq!(distinct.len(), 4, "{hashes:?}");
 }
 
-/// A sane chrome reaches the row unchanged and every field reaches the hash.
 /// A chrome's material lowers as it reads this record: through its effect over what is under it,
 /// a backdrop, its fill as authored; as a plain box, its fallback in place of its fill and no
 /// material, while transparency is reduced, the theme's surface for one that names none; or not
 /// at all, where its effect's alternative paints nothing, its fill as authored. A rect shape
-/// lowers the same way, its read resolved in the registry, where the stock frost is effect 3. A
+/// lowers the same way, its read resolved in the registry, where the stock frost is effect 2. A
 /// fallback reaches the row's hash as its fill, and a capture's row hashes by none of it.
 #[test]
 fn a_material_lowers_as_it_reads() {
@@ -147,7 +146,7 @@ fn a_material_lowers_as_it_reads() {
         LoweredBrush::Solid(color) => color,
         LoweredBrush::Gradient { .. } => panic!("a solid fill lowers to a solid brush"),
     };
-    let id = EffectId(3);
+    let id = EffectId(2);
     let mut store = RecordStore::default();
     let fallback = MaterialRead::Fallback { theme };
     for (chrome_, read, material, fill) in [
