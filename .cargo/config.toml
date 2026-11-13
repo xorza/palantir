@@ -6,10 +6,12 @@ rustflags = ["-C", "target-cpu=x86-64-v3"]
 [alias]
 # The nowinit lanes leave the showcase out: it needs winit, which would turn the feature on for
 # palantir too.
-gate-lint = "clippy --workspace --all-targets --all-features --keep-going -- -D warnings"
-gate-lint-nowinit = "clippy --workspace --exclude palantir-showcase --all-targets --no-default-features --keep-going -- -D warnings"
-gate-ship = "clippy --workspace --release --keep-going -- -D warnings"
-gate-ship-nowinit = "clippy --workspace --exclude palantir-showcase --release --no-default-features --keep-going -- -D warnings"
+# `build.warnings` denies cargo's own lints, as `unused_dependencies`, which clippy's `-D warnings`
+# leaves out.
+gate-lint = "clippy --workspace --all-targets --all-features --keep-going --config build.warnings=\"deny\" -- -D warnings"
+gate-lint-nowinit = "clippy --workspace --exclude palantir-showcase --all-targets --no-default-features --keep-going --config build.warnings=\"deny\" -- -D warnings"
+gate-ship = "clippy --workspace --release --keep-going --config build.warnings=\"deny\" -- -D warnings"
+gate-ship-nowinit = "clippy --workspace --exclude palantir-showcase --release --no-default-features --keep-going --config build.warnings=\"deny\" -- -D warnings"
 gate-test = "test --workspace --lib --test alloc --example reel --no-fail-fast --features golden,gpu-debug-markers"
 gate-test-nowinit = "test --workspace --exclude palantir-showcase --lib --no-default-features --no-fail-fast"
 # `-D warnings` through a `cfg(all())` entry, as an env `RUSTDOCFLAGS` would replace the one Darkroom's

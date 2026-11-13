@@ -262,7 +262,7 @@ impl<'a> Splitter<'a> {
         if bar_fill.is_some() {
             ui.request_cursor(CursorIcon::resize_along(axis));
         }
-        let bar_chrome = bar_fill.map(Chrome::new).unwrap_or_default();
+        let bar_chrome = bar_fill.map_or_default(Chrome::new);
         let rule_chrome = Chrome::new(rule_color);
 
         let main_tracks = [
