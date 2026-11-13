@@ -2,9 +2,9 @@
 
 The full plan, with each commit's scope and source, is on the `atlas-review` branch:
 `git show atlas-review:.notes/atlas-review-split.md`. Each change is applied on master, reviewed,
-gated, then committed and pushed on request. 43 commits (the order test is either 14 or K); 8
-are applied and 35 are left, fewer where a Phase 2 split cannot build alone and merges with its
-neighbor.
+gated, then committed and pushed on request. 10–14 landed as one commit, and the order test
+passed there, so K drops: 39 commits, 10 applied and 29 left, fewer where a Phase 2 split cannot
+build alone and merges with its neighbor.
 
 ## Done
 
@@ -17,21 +17,11 @@ neighbor.
 | 5 | `961feb6db` | Move `TargetSpec`/`TargetFormat` into `texel`, `FrameTiming` into `gpu_timings` |
 | 6 | `6700319d2` | Move the backdrop group types to the effect pipeline (no `CompositeBound` yet: it comes with I) |
 | 7 | `da06a5308` | Move `AtlasSlots` to `pipeline::atlas_binding`, `AtlasSlots::of(&pool)` |
-| 8 | uncommitted | Name the texture binding's layouts and groups alike |
+| 8 | `9390184b3` | Name the texture binding's layouts and groups alike |
+| 9 | `df48dc781` | Name the shelf packer's side its edge |
+| 10–14 | uncommitted | The memory report's columns, one seeded RNG, `PerFormat<T>` and `Tenant::ALL`, views handed down, the gpu module-order test |
 
 ## Left
-
-Phase 1, moves and renames:
-
-- 9. Name the shelf packer's side its edge
-
-Phase 1b, preparation with no behavior change:
-
-- 10. Line the memory report's rows up under its heading
-- 11. Draw the atlas tests' randomness from one seeded RNG
-- 12. `PerFormat<T>`, `AtlasFormat::COUNT`, `Tenant::ALL`
-- 13. Hand a lower gpu layer a view, not its owner's type
-- 14. The gpu module-order test, if it passes this early (else K)
 
 Phase 2, behavior:
 
@@ -45,7 +35,6 @@ Phase 2, behavior:
 - H. Build the spun raster pipelines only for a frame that turns a raster
 - I1–I2. One shared page read and one sampler
 - J. Keep a glyph's template as its offset and its raster's handle
-- K. The order test, if 14 could not go early
 - L. The review document
 
 Then Darkroom's `palantir` pointer moves to the new tip in Darkroom's own commit.
