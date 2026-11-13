@@ -6,7 +6,6 @@ pub(crate) mod atlas_format;
 pub(crate) mod atlas_handle;
 pub(crate) mod atlas_textures;
 pub(crate) mod error;
-mod eviction_clock;
 pub(crate) mod page_group;
 pub(crate) mod page_list;
 pub(crate) mod page_slots;

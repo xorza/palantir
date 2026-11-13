@@ -1,12 +1,12 @@
 //! [`PageList`]: the pages of one texel format, the items packed on them, and the textures of
 //! their own it hands items too large for a page.
 
+use crate::common::eviction_clock::{ClockSweep, Verdict};
 use crate::common::expiry_window::EXPIRY_FRAMES;
 use crate::gpu::atlas::Evictions;
 use crate::gpu::atlas::atlas_format::AtlasFormat;
 use crate::gpu::atlas::atlas_handle::{AtlasHandle, Placement};
 use crate::gpu::atlas::error::AtlasError;
-use crate::gpu::atlas::eviction_clock::{ClockSweep, Verdict};
 use crate::gpu::atlas::page_slots::PageSlots;
 use crate::gpu::atlas::scratch_cache::{ScratchCache, ScratchId};
 use crate::gpu::atlas::tenant::Tenant;

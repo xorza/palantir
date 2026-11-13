@@ -1,12 +1,13 @@
-//! [`ClockSweep`]: one turn of a list's eviction clock, judged by its caller, so the walk is
-//! testable with no slab.
+//! [`ClockSweep`]: one turn of an eviction clock, judged by its caller, so the walk is testable with
+//! no slab.
 
 /// What the clock makes of one slot.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum Verdict {
+pub(crate) enum Verdict {
     /// Not a candidate: free or exempt.
     Skip,
-    /// Evictable, but freeing it makes no room for the item: on a shelf that does not take it.
+    /// Evictable, but freeing it makes no room for the item, as an atlas slot on a shelf that does
+    /// not take it.
     Refuse,
     /// The victim.
     Take,
@@ -15,19 +16,19 @@ pub(super) enum Verdict {
 /// One turn of the clock: the victim it found, whether it passed an evictable slot it refused,
 /// and where the hand stopped.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) struct ClockSweep {
-    pub(super) victim: Option<u32>,
+pub(crate) struct ClockSweep {
+    pub(crate) victim: Option<u32>,
     /// With no victim, whether the turn passed a slot [`Verdict::Refuse`]d: a list with none is
     /// dry, and learning it costs no second turn.
-    pub(super) refused: bool,
+    pub(crate) refused: bool,
     /// Where the next turn resumes: past the victim, whose slot is about to be refilled.
-    pub(super) hand: u32,
+    pub(crate) hand: u32,
 }
 
 impl ClockSweep {
     /// Walk `len` slots from `hand`, wrapping once, to the first `judge` takes: an approximately
     /// oldest victim without the per-eviction scan of exact LRU.
-    pub(super) fn over(len: usize, hand: u32, judge: impl Fn(usize) -> Verdict) -> Self {
+    pub(crate) fn over(len: usize, hand: u32, judge: impl Fn(usize) -> Verdict) -> Self {
         if len == 0 {
             return Self {
                 victim: None,
@@ -62,7 +63,7 @@ impl ClockSweep {
 
 #[cfg(test)]
 mod tests {
-    use crate::gpu::atlas::eviction_clock::{ClockSweep, Verdict};
+    use crate::common::eviction_clock::{ClockSweep, Verdict};
 
     /// The walk resumes at the hand and wraps once: over `[Skip, Take, Refuse, Take]` from 2 it
     /// refuses 2, takes 3 and parks at 0; from 0 it skips 0, takes 1 and parks at 2.
