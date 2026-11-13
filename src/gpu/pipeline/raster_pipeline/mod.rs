@@ -95,7 +95,7 @@ impl RasterPipeline {
         let pipeline_layout = pipeline_recipe::pipeline_layout(
             gpu,
             "palantir.raster.pl",
-            &[Some(textures.frame()), Some(&layout)],
+            &[Some(textures.frame_layout()), Some(&layout)],
         );
         Self {
             shader: Self::SHADER.module(gpu),

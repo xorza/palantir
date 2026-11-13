@@ -64,7 +64,7 @@ impl Backbuffer {
             },
         );
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let bind_group = binding.bind_group(gpu, &view, "palantir.renderer.backbuffer.bg");
+        let bind_group = binding.texture_group(gpu, &view, "palantir.renderer.backbuffer.bg");
         Self {
             texture,
             view,

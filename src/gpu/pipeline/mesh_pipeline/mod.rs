@@ -63,7 +63,7 @@ impl MeshPipeline {
                     shader: Self::SHADER,
                     layout: "palantir.mesh.pl",
                     // The frame group, as every pipeline of the main pass takes it.
-                    groups: &[Some(textures.frame())],
+                    groups: &[Some(textures.frame_layout())],
                     instances: "palantir.mesh.instances",
                     capacity: 64,
                 },

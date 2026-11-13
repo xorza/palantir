@@ -73,7 +73,12 @@ impl EffectDevice {
             pipeline_recipe::pipeline_layout(
                 gpu,
                 "palantir.effect.pl",
-                &[Some(binding.frame()), images(slots), None, Some(&group)],
+                &[
+                    Some(binding.frame_layout()),
+                    images(slots),
+                    None,
+                    Some(&group),
+                ],
             )
         });
         let backdrop = array::from_fn(|slots| {
@@ -81,9 +86,9 @@ impl EffectDevice {
                 gpu,
                 "palantir.effect.backdrop.pl",
                 &[
-                    Some(binding.frame()),
+                    Some(binding.frame_layout()),
                     images(slots),
-                    Some(binding.backdrops()),
+                    Some(binding.backdrop_layout()),
                     Some(&group),
                 ],
             )

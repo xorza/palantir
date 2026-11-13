@@ -229,7 +229,7 @@ pub(crate) struct Backdrops {
     /// The handles the pool evicted, as [`Self::end_frame`] drains them.
     drained: Vec<AtlasHandle>,
     /// The layout of the group a backdrop's composite reads its result through
-    /// ([`TextureBinding::backdrops`]); the group itself waits for a backdrop.
+    /// ([`TextureBinding::backdrop_layout`]); the group itself waits for a backdrop.
     layout: wgpu::BindGroupLayout,
     /// What the backdrops hold on the device, from the first frame with a backdrop.
     resources: Option<BackdropResources>,
@@ -344,7 +344,7 @@ impl Backdrops {
             slots: Vec::new(),
             slot_reads: Vec::new(),
             drained: Vec::new(),
-            layout: binding.backdrops().clone(),
+            layout: binding.backdrop_layout().clone(),
             resources: None,
         }
     }

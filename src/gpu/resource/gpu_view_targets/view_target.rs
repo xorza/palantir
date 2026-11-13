@@ -42,7 +42,7 @@ impl AllocatedTarget {
             },
         );
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let bind_group = binding.bind_group(gpu, &view, "palantir.gpu_view.tex.bg");
+        let bind_group = binding.texture_group(gpu, &view, "palantir.gpu_view.tex.bg");
         Self { view, bind_group }
     }
 }

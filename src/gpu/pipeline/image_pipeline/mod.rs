@@ -89,7 +89,10 @@ impl ImagePipeline {
                     shader: Self::SHADER,
                     layout: "palantir.image.pl",
                     // The frame group, then the image's texture.
-                    groups: &[Some(textures.frame()), Some(textures.layout())],
+                    groups: &[
+                        Some(textures.frame_layout()),
+                        Some(textures.texture_layout()),
+                    ],
                     instances: "palantir.image.instances",
                     capacity: 16,
                 },

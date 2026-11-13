@@ -158,7 +158,8 @@ impl Capture {
                     wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
                 );
                 let cut_view = cut.create_view(&wgpu::TextureViewDescriptor::default());
-                let bind_group = binding.bind_group(gpu, &cut_view, "palantir.capture.region.bg");
+                let bind_group =
+                    binding.texture_group(gpu, &cut_view, "palantir.capture.region.bg");
                 let encoded_view = encoded.create_view(&wgpu::TextureViewDescriptor::default());
                 blit_pipeline::draw(&mut encoder, &bind_group, &encoded_view, pipeline);
                 encoder.copy_texture_to_buffer(encoded.as_image_copy(), into_buffer, extent);

@@ -153,7 +153,7 @@ fn create(gpu: &Gpu, binding: &TextureBinding, id: TextureId, size: UVec2) -> Im
         },
     );
     let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-    let bind_group = binding.bind_group(gpu, &view, &bind_group_label);
+    let bind_group = binding.texture_group(gpu, &view, &bind_group_label);
     ImageTexture {
         texture,
         view,

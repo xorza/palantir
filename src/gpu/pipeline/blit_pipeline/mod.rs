@@ -37,7 +37,7 @@ impl BlitPipeline {
             pipeline_layout: pipeline_recipe::pipeline_layout(
                 gpu,
                 "palantir.blit.pl",
-                &[Some(textures.layout())],
+                &[Some(textures.texture_layout())],
             ),
             pipelines: FxHashMap::default(),
         }

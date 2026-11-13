@@ -82,7 +82,7 @@ impl CurvePipeline {
                     layout: "palantir.curve.pl",
                     // The frame group, which holds the gradient rows; the viewport rides the
                     // shared immediate region.
-                    groups: &[Some(textures.frame())],
+                    groups: &[Some(textures.frame_layout())],
                     instances: "palantir.curve.instances",
                     capacity: 64,
                 },

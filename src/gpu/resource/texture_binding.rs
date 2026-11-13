@@ -101,7 +101,7 @@ impl TextureBinding {
     }
 
     /// The layout of the frame group.
-    pub(crate) const fn frame(&self) -> &wgpu::BindGroupLayout {
+    pub(crate) const fn frame_layout(&self) -> &wgpu::BindGroupLayout {
         &self.frame
     }
 
@@ -133,11 +133,12 @@ impl TextureBinding {
     }
 
     /// The layout of the group a backdrop's composite reads its result through.
-    pub(crate) const fn backdrops(&self) -> &wgpu::BindGroupLayout {
+    pub(crate) const fn backdrop_layout(&self) -> &wgpu::BindGroupLayout {
         &self.backdrops
     }
 
-    pub(crate) const fn layout(&self) -> &wgpu::BindGroupLayout {
+    /// The layout of one sampled texture's group.
+    pub(crate) const fn texture_layout(&self) -> &wgpu::BindGroupLayout {
         &self.layout
     }
 
@@ -175,8 +176,8 @@ impl TextureBinding {
         })
     }
 
-    /// The group binding `view` through this layout and sampler.
-    pub(crate) fn bind_group(
+    /// The group binding `view` through the texture layout and this sampler.
+    pub(crate) fn texture_group(
         &self,
         gpu: &Gpu,
         view: &wgpu::TextureView,

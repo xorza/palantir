@@ -306,12 +306,12 @@ impl QuadPipeline {
             pipeline_layout: pipeline_recipe::pipeline_layout(
                 gpu,
                 "palantir.quad.pl",
-                &[Some(textures.frame())],
+                &[Some(textures.frame_layout())],
             ),
             shadow_layout: pipeline_recipe::pipeline_layout(
                 gpu,
                 "palantir.quad.shadow.pl",
-                &[Some(textures.frame()), Some(cutouts.layout())],
+                &[Some(textures.frame_layout()), Some(cutouts.layout())],
             ),
             cutouts,
             shadow_cells: ShapeCells::Template,
