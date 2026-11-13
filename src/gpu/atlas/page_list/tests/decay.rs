@@ -4,10 +4,10 @@
 use super::{at, list, square};
 use crate::gpu::atlas::Evictions;
 use crate::gpu::atlas::atlas_handle::{AtlasHandle, Placement};
-use crate::gpu::atlas::page_list::{DrainCount, Move, MoveBudget, PageList};
+use crate::gpu::atlas::page_list::{Move, MoveBudget, PageList};
 use crate::gpu::atlas::page_slots::PageSlots;
 use crate::gpu::atlas::tenant::Tenant;
-use glam::U16Vec2;
+use glam::{U16Vec2, UVec2};
 
 /// A frame's budget past anything these lists move.
 const ROOMY: MoveBudget = MoveBudget {
@@ -16,12 +16,13 @@ const ROOMY: MoveBudget = MoveBudget {
 };
 
 /// `n` items of `side`² for glyphs, at frame 0.
-fn insert(list: &mut PageList, n: usize, side: u16) -> Vec<AtlasHandle> {
+fn insert(list: &mut PageList, n: usize, side: u32) -> Vec<AtlasHandle> {
     let mut evictions = Evictions::default();
     (0..n)
         .map(|_| {
             list.allocate(Tenant::Glyphs, square(side), 0, &mut evictions)
                 .unwrap()
+                .handle
         })
         .collect()
 }
@@ -75,7 +76,7 @@ fn the_age_out_follows_the_pressure() {
     assert!(list.page(1).is_none(), "the emptied page closed");
     assert_eq!(evicted(&mut list, 102), 0);
     assert!(list.page(0).is_none(), "the first page drained");
-    assert_eq!(list.pages.iter().flatten().count(), 1, "one page left");
+    assert_eq!(list.only_page(), Some(2), "one page left");
     assert_eq!(list.live_page_bytes(), 8 * 8 * 8);
     assert_eq!(evicted(&mut list, 10_000), 0);
     assert!(list.placement(items[0]).is_some(), "pinned");
@@ -103,7 +104,7 @@ fn a_list_on_one_page_under_its_budget_ages_nothing_out() {
     assert_eq!(decay(&mut list, 10_000, ROOMY).evicted.len(), 0);
     let _ = insert(&mut list, 1, 16);
     assert_eq!(list.page(0).unwrap().edge(), 64, "grown in place");
-    assert_eq!(list.pages.iter().flatten().count(), 1);
+    assert_eq!(list.only_page(), Some(0));
     assert_eq!(decay(&mut list, 20_000, ROOMY).evicted.len(), 0);
 
     let mut at_budget = super::list(32, 64, 1024);
@@ -241,44 +242,51 @@ fn a_sparse_page_shrinks_to_twice_its_items_after_a_window() {
     assert_eq!(full.page(0).unwrap().edge(), 128);
 }
 
-/// A drain whose item fits the others' free texels but no shape of them stalls, and is not tried
-/// again while what it counts holds. Four 32² items fill a 64² page in two 32-texel shelves; an 8 ×
-/// 48 item opens a second page; three of the first page's go, leaving 3072 free texels in shelves
-/// 32 high. The second page, 384 texels, is the emptiest and drains, but its item finds no shelf
-/// 48 high: the drain stalls and the page takes allocations again. The next frame, under a budget
-/// of no copy, a drain begun would leave the page draining; none is. Once the first page's
-/// last item goes, the count moves and the planning runs again: the emptied first page drains,
-/// with nothing to move, and closes.
+/// A drain whose item fits the others' free texels but no shape of them stalls, and its page is
+/// not planned again while what it counts holds, though the next page by its items is. Four 32²
+/// items fill a 64² page in two 32-texel shelves; an 8 × 48 item opens a second page; three of the
+/// first page's go, leaving 3072 free texels in shelves 32 high. The second page, 384 texels, is
+/// the emptiest and drains, but its item finds no shelf 48 high: the drain stalls, spending none of
+/// a budget of one move, and the page takes allocations again. The next frame passes it for the first page, whose one item's 1024
+/// texels fit half the second's 3712 free: it drains, under a budget of no move moving nothing.
+/// The frame after, its item finds no row either, under the second page's 48-row shelf, 16 rows
+/// left: both pages stall, and the next frame plans nothing. Once the first page's item goes its
+/// count moves: the emptied page drains, with nothing to move, and closes.
 #[test]
 fn a_drain_that_finds_no_room_stalls_until_its_count_moves() {
     let mut list = list(64, 64, 1 << 20);
     let first = insert(&mut list, 4, 32);
     let mut evictions = Evictions::default();
     let thin = list
-        .allocate(Tenant::Glyphs, U16Vec2::new(8, 48), 0, &mut evictions)
-        .unwrap();
+        .allocate(Tenant::Glyphs, UVec2::new(8, 48), 0, &mut evictions)
+        .unwrap()
+        .handle;
     assert_eq!(at(&list, thin).0, 1);
     for &handle in &first[1..] {
         list.release(handle);
     }
-    assert!(decay(&mut list, 1, ROOMY).moves.is_empty());
+    let mut one = MoveBudget {
+        texels: u64::MAX,
+        moves: 1,
+    };
+    list.decay(1, &mut one, &mut evictions);
+    assert!(list.moves().is_empty());
+    assert_eq!(one.moves, 1, "a stall spends no move");
     assert_eq!(list.draining(), None, "cancelled");
-    assert_eq!(
-        list.stalled,
-        Some(DrainCount {
-            epoch: 1,
-            live_texels: 8 * 48,
-            others_free: 64 * 64 - 32 * 32,
-        })
-    );
+    assert!(list.is_stalled(1));
     let none = MoveBudget {
         texels: u64::MAX,
         moves: 0,
     };
     let _ = decay(&mut list, 2, none);
-    assert_eq!(list.draining(), None, "not tried again");
+    assert_eq!(list.draining(), Some(0), "the stalled page passed");
+    assert!(decay(&mut list, 3, ROOMY).moves.is_empty());
+    assert_eq!(list.draining(), None);
+    assert!(list.is_stalled(0) && list.is_stalled(1));
+    let _ = decay(&mut list, 4, none);
+    assert_eq!(list.draining(), None, "neither planned again");
     list.release(first[0]);
-    let _ = decay(&mut list, 3, none);
+    let _ = decay(&mut list, 5, none);
     assert!(
         list.page(0).is_none(),
         "the emptied first page drained and closed"
@@ -327,9 +335,10 @@ fn no_drain_starts_while_moves_wait_for_the_commit() {
 #[test]
 fn a_shrink_opens_the_smallest_page_its_items_pack_into() {
     let mut evictions = Evictions::default();
-    let mut insert = |list: &mut PageList, w: u16, h: u16| {
-        list.allocate(Tenant::Glyphs, U16Vec2::new(w, h), 0, &mut evictions)
+    let mut insert = |list: &mut PageList, w: u32, h: u32| {
+        list.allocate(Tenant::Glyphs, UVec2::new(w, h), 0, &mut evictions)
             .unwrap()
+            .handle
     };
     let mut list = list(64, 512, 1 << 30);
     let filler = insert(&mut list, 400, 400);
@@ -356,14 +365,7 @@ fn a_shrink_opens_the_smallest_page_its_items_pack_into() {
         assert!(decay(&mut list, frame, ROOMY).moves.is_empty(), "{frame}");
         assert!(list.page(1).is_none(), "{frame}: no page opened");
     }
-    assert_eq!(
-        list.stalled,
-        Some(DrainCount {
-            epoch: 0,
-            live_texels: 2 * 200 * 40 + 4 * 200,
-            others_free: 0,
-        })
-    );
+    assert!(list.is_stalled(0), "no page packs the three");
     list.release(tall);
     for frame in 361..480 {
         assert!(decay(&mut list, frame, ROOMY).moves.is_empty(), "{frame}");
@@ -371,4 +373,80 @@ fn a_shrink_opens_the_smallest_page_its_items_pack_into() {
     assert_eq!(decay(&mut list, 480, ROOMY).moves.len(), 2);
     assert_eq!(list.page(1).unwrap().edge(), 256);
     assert_eq!((at(&list, first).0, at(&list, second).0), (1, 1));
+}
+
+/// An empty list closes its last page an expiry window after it emptied, and a purge closes it at
+/// once, so a list a frame once drew holds no page for good. Two 16² items on a 32² page go at
+/// frame 0: the page stays through frame 118 and closes at 119, the window's last frame. Another
+/// list's page, emptied the same way, closes at the purge that follows.
+#[test]
+fn an_empty_list_closes_its_last_page() {
+    let mut list = list(32, 32, 1 << 20);
+    for handle in insert(&mut list, 2, 16) {
+        list.release(handle);
+    }
+    for frame in 0..119 {
+        let _ = decay(&mut list, frame, ROOMY);
+        assert!(list.page(0).is_some(), "{frame}");
+    }
+    let _ = decay(&mut list, 119, ROOMY);
+    assert!(list.page(0).is_none(), "closed at the window's end");
+    assert_eq!(list.bytes(), 0);
+    assert_eq!(list.slots(), PageSlots::FIRST, "a draw reads the stand-in");
+
+    let mut purged = super::list(32, 32, 1 << 20);
+    for handle in insert(&mut purged, 2, 16) {
+        purged.release(handle);
+    }
+    assert!(!purged.purge(1, &mut Evictions::default()), "no move waits");
+    assert!(purged.page(0).is_none(), "closed at once");
+}
+
+/// A shrink whose target an insert fills stalls, and the list ends on one page: the walk passes the
+/// stalled large page and drains the small one back into it. Two 32² items on a 128² page, an
+/// eighth, shrink at the window's end into a 64² page under a budget of one move, the first item
+/// moving. Three inserts fill the small page while the large one drains; the next frame the second
+/// item finds no room, and the large page stalls. The frame after, the small page's four items,
+/// 4096 texels, fit half the large page's free 15 360: they drain back, the small page closes, and
+/// the five items sit on the large page.
+#[test]
+fn a_shrink_whose_target_fills_ends_on_one_page() {
+    let mut list = list(32, 128, 1 << 20);
+    let items = insert(&mut list, 5, 32);
+    for &handle in &items[2..] {
+        list.release(handle);
+    }
+    let one = MoveBudget {
+        texels: u64::MAX,
+        moves: 1,
+    };
+    for frame in 1..120 {
+        assert!(decay(&mut list, frame, one).moves.is_empty(), "{frame}");
+    }
+    assert_eq!(decay(&mut list, 120, one).moves.len(), 1);
+    assert_eq!(list.page(1).unwrap().edge(), 64, "the shrink's page");
+    let filler = insert(&mut list, 3, 32);
+    assert!(filler.iter().all(|&handle| at(&list, handle).0 == 1));
+    assert!(decay(&mut list, 121, ROOMY).moves.is_empty());
+    assert!(list.is_stalled(0));
+    let back = decay(&mut list, 122, ROOMY).moves;
+    assert_eq!(back.len(), 4);
+    assert!(back.iter().all(|m| m.from.page == 1 && m.to.page == 0));
+    assert!(list.page(1).is_none(), "the small page drained back");
+    assert_eq!(list.page(0).unwrap().live_texels(), 5 * 32 * 32);
+}
+
+/// The age-out caps its evictions at 32 a frame up to four times the soft budget, and lifts the cap
+/// past it. 40 idle 8² items fill 2560 bytes on three 32² pages. Under a budget of 640 they are
+/// exactly four times it, a pressure of 4 and an age of 25: at frame 26, 32 go. Under 639 they are
+/// past four times: all 40 go.
+#[test]
+fn the_age_out_cap_holds_to_four_times_the_budget() {
+    for (soft, gone) in [(640, 32), (639, 40)] {
+        let mut list = list(32, 32, soft);
+        let _ = insert(&mut list, 40, 8);
+        assert_eq!(list.live_page_bytes(), 4 * 640);
+        assert_eq!(decay(&mut list, 25, ROOMY).evicted.len(), 0, "{soft}");
+        assert_eq!(decay(&mut list, 26, ROOMY).evicted.len(), gone, "{soft}");
+    }
 }

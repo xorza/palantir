@@ -1,12 +1,12 @@
 //! The off-screen color target the backbuffer-copy path renders into.
 
+use crate::gpu::device::backbuffer_out::BackbufferOut;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::pipeline::blit_pipeline;
 use crate::gpu::resource::texture_binding::TextureBinding;
-use crate::gpu::surface::backbuffer_out::BackbufferOut;
-use crate::gpu::surface::owned_target::TargetSpec;
 use crate::gpu::surface::render_target::RenderTarget;
 use crate::gpu::texel;
+use crate::gpu::texel::TargetSpec;
 use glam::UVec2;
 
 /// Persistent off-screen color target for the backbuffer-copy path; keeping
@@ -64,7 +64,7 @@ impl Backbuffer {
             },
         );
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let bind_group = binding.bind_group(gpu, &view, "palantir.renderer.backbuffer.bg");
+        let bind_group = binding.texture_group(gpu, &view, "palantir.renderer.backbuffer.bg");
         Self {
             texture,
             view,

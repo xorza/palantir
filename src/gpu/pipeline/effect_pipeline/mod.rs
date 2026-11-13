@@ -2,6 +2,9 @@
 //! of one effect and form through that pair's pipeline. The pipelines live in the
 //! [`WgpuEffectStore`], which builds them where a use wants them.
 
+pub(crate) mod backdrop_groups;
+pub(crate) mod wgpu_effect_store;
+
 use std::array;
 use std::mem::offset_of;
 
@@ -11,18 +14,18 @@ use crate::effect::contract::{
     BACKDROPS_GROUP, HALO_OVERRIDE, IMAGES_GROUP, TRIANGLE_OVERRIDE, WORDS_GROUP,
 };
 use crate::effect::effect_store::EffectModule;
-use crate::gpu::backdrop::backdrops::BackdropGroups;
 use crate::gpu::device::gpu::Gpu;
-use crate::gpu::frame::gpu_ctx::GpuCtx;
 use crate::gpu::pipeline::clip_variant::{ClipVariant, Clipping};
+use crate::gpu::pipeline::effect_pipeline::backdrop_groups::BackdropGroups;
+use crate::gpu::pipeline::effect_pipeline::wgpu_effect_store::WgpuEffectStore;
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
-use crate::gpu::pipeline::pipeline_recipe::{self, Pipeline, PipelineRecipe, vertex_attr};
 use crate::gpu::pipeline::runs::Runs;
 use crate::gpu::pipeline::shape_template::{self, TemplateIndices};
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use crate::gpu::resource::effect_image_groups::{EffectImageGroups, EffectImages};
-use crate::gpu::resource::texture_binding::TextureBinding;
-use crate::gpu::resource::wgpu_effect_store::WgpuEffectStore;
+use crate::gpu::resource::gpu_ctx::GpuCtx;
+use crate::gpu::resource::pipeline_recipe::{self, Pipeline, PipelineRecipe, vertex_attr};
+use crate::gpu::resource::texture_binding::{self, TextureBinding};
 use crate::gpu::resource::wgpu_image_store::WgpuImageStore;
 use crate::primitives::effect::effect_kind::KindId;
 use crate::primitives::identity::texture_id::TextureId;
@@ -30,13 +33,12 @@ use crate::renderer::render_buffer::effect_draw_row::{EffectInstance, EffectKey}
 use crate::renderer::render_buffer::shape_form::ShapeForm;
 use crate::renderer::render_buffer::template_cover::TemplateCover;
 
-/// The device effects build on, and the layouts every effect's pipeline builds over: the frame
-/// group, which holds the gradient atlas a material's box reads, the images at [`IMAGES_GROUP`]
+/// The layouts every effect's pipeline builds over: the frame
+/// group, which holds the gradient rows a material's box reads, the images at [`IMAGES_GROUP`]
 /// for an effect that binds any, a backdrop effect's backdrop results at [`BACKDROPS_GROUP`], the
 /// parameter words at [`WORDS_GROUP`], and the immediates every pipeline declares.
 #[derive(Debug)]
 pub(crate) struct EffectDevice {
-    gpu: Gpu,
     /// The parameter words' group layout.
     pub(crate) group: wgpu::BindGroupLayout,
     /// A color effect's, at each count of image slots from 0.
@@ -51,16 +53,7 @@ impl EffectDevice {
             .device
             .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("palantir.effect.bgl"),
-                entries: &[wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: true },
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                }],
+                entries: &[texture_binding::storage_entry(0)],
             });
         let images = |slots: usize| match u8::try_from(slots).unwrap() {
             0 => None,
@@ -70,7 +63,12 @@ impl EffectDevice {
             pipeline_recipe::pipeline_layout(
                 gpu,
                 "palantir.effect.pl",
-                &[Some(binding.frame()), images(slots), None, Some(&group)],
+                &[
+                    Some(binding.frame_layout()),
+                    images(slots),
+                    None,
+                    Some(&group),
+                ],
             )
         });
         let backdrop = array::from_fn(|slots| {
@@ -78,15 +76,14 @@ impl EffectDevice {
                 gpu,
                 "palantir.effect.backdrop.pl",
                 &[
-                    Some(binding.frame()),
+                    Some(binding.frame_layout()),
                     images(slots),
-                    Some(binding.backdrops()),
+                    Some(binding.backdrop_layout()),
                     Some(&group),
                 ],
             )
         });
         Self {
-            gpu: gpu.clone(),
             group,
             color,
             backdrop,
@@ -201,7 +198,7 @@ impl EffectDevice {
     /// # Panics
     ///
     /// For a [`ShapeForm::Rect`], as an effect draws its shape's template.
-    pub(crate) fn ensure(&self, variant: &mut ClipVariant, target: EffectTarget<'_>) {
+    pub(crate) fn ensure(&self, gpu: &Gpu, variant: &mut ClipVariant, target: EffectTarget<'_>) {
         let EffectTarget {
             module,
             key:
@@ -243,8 +240,7 @@ impl EffectDevice {
             KindId::Backdrop => &backdrop,
         };
         let label = format!("palantir.effect.{}.{form:?}.{cover:?}", effect.0);
-        let shader = self
-            .gpu
+        let shader = gpu
             .device
             .create_shader_module(wgpu::ShaderModuleDescriptor {
                 label: Some(&label),
@@ -260,7 +256,7 @@ impl EffectDevice {
             ..PipelineRecipe::color(&label, &shader, self.pipeline(module), format)
         };
         for &clipping in halves {
-            variant.ensure(&self.gpu, clipping, &recipe);
+            variant.ensure(gpu, clipping, &recipe);
         }
     }
 }
@@ -276,7 +272,8 @@ pub(crate) struct EffectPipeline {
     images: Vec<EffectImages>,
     /// Bound over `words`; made again when the buffer grows or shrinks.
     group: Option<wgpu::BindGroup>,
-    group_capacity: usize,
+    /// The `words` capacity `group` binds.
+    bound: usize,
     /// The shape template's triangles, which every effect draws over its shape.
     indices: TemplateIndices,
 }
@@ -312,7 +309,7 @@ impl EffectPipeline {
             words: DynamicBuffer::storage(gpu, "palantir.effect.words", 64),
             images: Vec::new(),
             group: None,
-            group_capacity: 0,
+            bound: 0,
             indices: TemplateIndices::new(gpu),
         }
     }
@@ -342,7 +339,7 @@ impl EffectPipeline {
                 .filter(|set| !set.ids().is_empty()),
             ctx.frame,
         );
-        if self.group.is_none() || self.words.capacity() != self.group_capacity {
+        if self.group.is_none() || self.words.capacity() != self.bound {
             let read = stores.effects.read();
             self.group = Some(
                 ctx.gpu
@@ -356,7 +353,7 @@ impl EffectPipeline {
                         }],
                     }),
             );
-            self.group_capacity = self.words.capacity();
+            self.bound = self.words.capacity();
         }
     }
 
@@ -477,26 +474,30 @@ mod tests {
             let target = |form, halves| covered(form, TemplateCover::Whole, halves);
             for form in [ShapeForm::Box, ShapeForm::Triangle] {
                 let mut variant = ClipVariant::NONE;
-                device.ensure(&mut variant, target(form, &[Clipping::Off]));
+                device.ensure(&gpu, &mut variant, target(form, &[Clipping::Off]));
                 assert!(variant.is_built(Clipping::Off), "{kind:?} {form:?}");
                 assert!(!variant.is_built(Clipping::On), "{kind:?} {form:?}");
-                device.ensure(&mut variant, target(form, &[Clipping::Off, Clipping::On]));
+                device.ensure(
+                    &gpu,
+                    &mut variant,
+                    target(form, &[Clipping::Off, Clipping::On]),
+                );
                 assert!(variant.is_built(Clipping::On), "{kind:?} {form:?}");
             }
             panic_probe::assert_panics_with("an effect draws its shape's template", || {
                 let mut rect = ClipVariant::NONE;
-                device.ensure(&mut rect, target(ShapeForm::Rect, &[Clipping::Off]));
+                device.ensure(&gpu, &mut rect, target(ShapeForm::Rect, &[Clipping::Off]));
             });
             let mut halo = ClipVariant::NONE;
             let rim = covered(ShapeForm::Box, TemplateCover::Rim, &[Clipping::Off]);
             match kind {
                 KindId::Color => {
-                    device.ensure(&mut halo, rim);
+                    device.ensure(&gpu, &mut halo, rim);
                     assert!(halo.is_built(Clipping::Off), "a color effect's halo");
                 }
                 KindId::Backdrop => {
                     panic_probe::assert_panics_with("a halo is a color effect's", || {
-                        device.ensure(&mut halo, rim);
+                        device.ensure(&gpu, &mut halo, rim);
                     });
                 }
             }

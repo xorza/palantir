@@ -2,18 +2,18 @@
 //! level, then the residual Gaussian across and down into the job's slot of the destination.
 
 use crate::common::expiry_window::ExpiryWindow;
-use crate::gpu::atlas::scratch_cache::ScratchId;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::tiler_family::TilerFamily;
-use crate::gpu::frame::gpu_ctx::GpuCtx;
-use crate::gpu::pipeline::pipeline_recipe::{self, PipelineRecipe};
-use crate::gpu::pipeline::shader_body::{ShaderBody, ShaderConstant};
+use crate::gpu::pipeline::effect_pipeline::backdrop_groups::ResultTexture;
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
+use crate::gpu::resource::gpu_ctx::GpuCtx;
+use crate::gpu::resource::pipeline_recipe::{self, PipelineRecipe};
+use crate::gpu::resource::shader_body::{ShaderBody, ShaderConstant};
 use crate::gpu::resource::shelf_packer::ShelfPacker;
 use crate::gpu::resource::texture_binding::{self, Filtering};
-use crate::gpu::surface::owned_target::TargetSpec;
-use crate::gpu::surface::render_target::TargetFormat;
 use crate::gpu::texel;
+use crate::gpu::texel::TargetFormat;
+use crate::gpu::texel::TargetSpec;
 use crate::primitives::geometry::urect::URect;
 use crate::shape::paint::blur_plan::BlurPlan;
 use glam::{IVec2, UVec2};
@@ -93,14 +93,6 @@ pub(crate) struct BlurJob {
     pub(crate) dest_origin: UVec2,
     /// Where the job lies in the textures it shares, which [`BackdropBlur::prepare`] writes.
     pub(crate) layout: JobLayout,
-}
-
-/// The texture of the pool's half-float list a backdrop's result lives in: a page it shares, or a
-/// scratch texture of its own.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub(crate) enum ResultTexture {
-    Page(u8),
-    Scratch(ScratchId),
 }
 
 /// Where [`BackdropBlur::prepare`] lays a job out: its parameters, the origins of the capture
@@ -249,6 +241,9 @@ pub(crate) struct BackdropBlur {
     filtered: SourcePasses,
     loaded: SourcePasses,
     vertical: wgpu::RenderPipeline,
+    /// The backend's one sampler ([`TextureBinding::sampler`]), which the filtered passes bind.
+    ///
+    /// [`TextureBinding::sampler`]: crate::gpu::resource::texture_binding::TextureBinding::sampler
     sampler: wgpu::Sampler,
     params_layout: wgpu::BindGroupLayout,
     params: DynamicBuffer<ParamsSlot>,
@@ -293,12 +288,13 @@ impl BackdropBlur {
         constants: SHADER_CONSTANTS,
     };
 
-    pub(crate) fn new(gpu: &Gpu) -> Self {
-        Self::with_loop(gpu, ResidualLoop::of(&gpu.device.adapter_info()))
+    /// The blur on `gpu`, its filtered passes binding `sampler`, the backend's one.
+    pub(crate) fn new(gpu: &Gpu, sampler: &wgpu::Sampler) -> Self {
+        Self::with_loop(gpu, sampler, ResidualLoop::of(&gpu.device.adapter_info()))
     }
 
     /// The blur on `gpu`, its residual's loop shaped `residual`.
-    pub(crate) fn with_loop(gpu: &Gpu, residual: ResidualLoop) -> Self {
+    pub(crate) fn with_loop(gpu: &Gpu, sampler: &wgpu::Sampler, residual: ResidualLoop) -> Self {
         let one_loop = [(
             "ONE_LOOP",
             f64::from(u8::from(residual == ResidualLoop::One)),
@@ -379,7 +375,6 @@ impl BackdropBlur {
         }
         .build(gpu)
         .pipeline;
-        let sampler = texture_binding::sampler(gpu, "palantir.backdrop.blur.sampler");
         let params = DynamicBuffer::uniform(gpu, "palantir.backdrop.blur.params", 16);
         let params_group = params_group(gpu, &params_layout, &params.buffer);
         let ceiling = gpu.max_texture_dim().get();
@@ -387,7 +382,7 @@ impl BackdropBlur {
             filtered,
             loaded,
             vertical,
-            sampler,
+            sampler: sampler.clone(),
             params_layout,
             params_bound: params.capacity(),
             params,
@@ -1121,10 +1116,10 @@ pub(crate) mod internals {
     use crate::gpu::atlas_memory::AtlasUse;
     use crate::gpu::backdrop::backdrop_blur::{BackdropBlur, BlurJob};
     use crate::gpu::device::gpu::Gpu;
-    use crate::gpu::frame::gpu_ctx::GpuCtx;
+    use crate::gpu::resource::gpu_ctx::GpuCtx;
     #[cfg(test)]
     use crate::gpu::resource::shelf_packer::ShelfPacker;
-    use crate::gpu::surface::render_target::TargetFormat;
+    use crate::gpu::texel::TargetFormat;
     use glam::UVec2;
     use std::iter;
 

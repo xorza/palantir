@@ -1,12 +1,12 @@
 //! [`InstancedPipeline`]: what the mesh, image and curve families share.
 
-use crate::gpu::atlas::page_slots::AtlasSlots;
 use crate::gpu::device::gpu::Gpu;
-use crate::gpu::frame::gpu_ctx::GpuCtx;
+use crate::gpu::pipeline::atlas_binding::AtlasSlots;
 use crate::gpu::pipeline::clip_variant::Clipping;
-use crate::gpu::pipeline::pipeline_recipe::{self, PipelineRecipe};
-use crate::gpu::pipeline::shader_body::ShaderBody;
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
+use crate::gpu::resource::gpu_ctx::GpuCtx;
+use crate::gpu::resource::pipeline_recipe::{self, PipelineRecipe};
+use crate::gpu::resource::shader_body::ShaderBody;
 
 /// A drawing family that draws one frame's instances of `I`: their buffer, uploaded each frame,
 /// and the shader and pipeline layout every format's pipelines build over.
@@ -38,6 +38,26 @@ pub(crate) struct VariantTarget {
     pub(crate) format: wgpu::TextureFormat,
     pub(crate) clipping: Clipping,
     pub(crate) slots: AtlasSlots,
+}
+
+/// What picks a frame's pipelines of every format, made once a submit after the pool's commit:
+/// whether its draws name rounded clips, and the open page slots of the lists its raster and
+/// shadow draws read.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct FrameVariant {
+    pub(crate) clipping: Clipping,
+    pub(crate) slots: AtlasSlots,
+}
+
+impl FrameVariant {
+    /// What a frame of this variant builds its pipelines of `format` for.
+    pub(crate) const fn target(self, format: wgpu::TextureFormat) -> VariantTarget {
+        VariantTarget {
+            format,
+            clipping: self.clipping,
+            slots: self.slots,
+        }
+    }
 }
 
 impl<I: bytemuck::Pod> InstancedPipeline<I> {

@@ -1,22 +1,24 @@
 //! [`FormatPipelines`]: every format-dependent `wgpu::RenderPipeline` for one swapchain format, so shaders, buffers and atlases stay format-independent and shared (an sRGB and an HDR window differ only in which set they bind).
 
-use crate::gpu::atlas::page_slots::AtlasSlots;
 use crate::gpu::device::gpu::Gpu;
+use crate::gpu::pipeline::atlas_binding::AtlasSlots;
 use crate::gpu::pipeline::clip_variant::{ClipVariant, Clipping};
 use crate::gpu::pipeline::curve_pipeline::CurvePipeline;
 use crate::gpu::pipeline::effect_pipeline::EffectPipeline;
 use crate::gpu::pipeline::image_pipeline::ImagePipeline;
-use crate::gpu::pipeline::instanced_pipeline::VariantTarget;
+use crate::gpu::pipeline::instanced_pipeline::FrameVariant;
 use crate::gpu::pipeline::mesh_pipeline::MeshPipeline;
-use crate::gpu::pipeline::pipeline_recipe::Pipeline;
 use crate::gpu::pipeline::quad_pipeline::quad_draw::{QuadDraw, QuadDraws};
 use crate::gpu::pipeline::quad_pipeline::{QuadPipeline, QuadVariants};
-use crate::gpu::pipeline::raster_pipeline::{RasterPipeline, RasterPipelinePair, RasterVariants};
+use crate::gpu::pipeline::raster_pipeline::{
+    RasterDraws, RasterPipeline, RasterPipelinePair, RasterVariants,
+};
+use crate::gpu::resource::pipeline_recipe::Pipeline;
 use crate::renderer::render_buffer::effect_draw_row::EffectKey;
 use crate::renderer::render_buffer::fill_form::{FillBrush, FillForm};
 use crate::renderer::render_buffer::shape_form::ShapeForm;
 
-/// All render pipelines for one swapchain format, keyed in the backend by [`TargetFormat`](crate::gpu::surface::render_target::TargetFormat).
+/// All render pipelines for one swapchain format, keyed in the backend by [`TargetFormat`](crate::gpu::texel::TargetFormat).
 ///
 /// Each is built on the first frame whose census asks for it ([`Self::ensure`]), before the
 /// frame's passes borrow the set; [`Self::new`] builds what nearly every frame draws, the solid,
@@ -50,27 +52,28 @@ pub(crate) struct Programs {
     pub(crate) effect: EffectPipeline,
 }
 
-/// What a frame draws through, which its pipelines are built for: whether its draws name rounded
-/// clips, the quad draws it takes, and the families it draws.
+/// What a frame draws through, which its pipelines are built for: its variant, the quad draws it
+/// takes, and the families it draws.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct PipelineCensus {
-    pub(crate) clipping: Clipping,
+    pub(crate) variant: FrameVariant,
     pub(crate) quads: QuadDraws,
     pub(crate) meshes: bool,
     /// Images of each [`ShapeForm`], indexed by it.
     pub(crate) images: [bool; ShapeForm::ALL.len()],
     pub(crate) curves: bool,
-    /// Text or icons, which draw through the raster pipelines.
-    pub(crate) rasters: bool,
-    /// The open page slots its raster and shadow draws read.
-    pub(crate) slots: AtlasSlots,
+    /// The raster pipelines its text and icons draw through.
+    pub(crate) rasters: RasterDraws,
 }
 
 impl PipelineCensus {
     /// What nearly every frame draws, which a format's set is built with.
     fn common() -> Self {
         Self {
-            clipping: Clipping::Off,
+            variant: FrameVariant {
+                clipping: Clipping::Off,
+                slots: AtlasSlots::FIRST,
+            },
             quads: QuadDraws::from([
                 QuadDraw::Fill(FillForm::BOX_SOLID),
                 QuadDraw::Fill(FillForm::new(ShapeForm::Box, FillBrush::Gradient)),
@@ -79,8 +82,10 @@ impl PipelineCensus {
             meshes: true,
             images: [true, false, false],
             curves: true,
-            rasters: true,
-            slots: AtlasSlots::FIRST,
+            rasters: RasterDraws {
+                flat: true,
+                spun: false,
+            },
         }
     }
 }
@@ -101,11 +106,7 @@ impl FormatPipelines {
 
     /// Build what `census` draws through and the set lacks, before the frame's passes borrow it.
     pub(crate) fn ensure(&mut self, gpu: &Gpu, programs: &Programs, census: PipelineCensus) {
-        let target = VariantTarget {
-            format: self.format,
-            clipping: census.clipping,
-            slots: census.slots,
-        };
+        let target = census.variant.target(self.format);
         for draw in census.quads.iter() {
             programs.quad.ensure_draw(&mut self.quad, gpu, target, draw);
         }
@@ -122,24 +123,25 @@ impl FormatPipelines {
         if census.curves {
             programs.curve.ensure(&mut self.curve, gpu, target);
         }
-        if census.rasters {
-            programs.raster.ensure(&mut self.raster, gpu, target);
-        }
+        programs
+            .raster
+            .ensure(&mut self.raster, gpu, target, census.rasters);
     }
 
-    /// These pipelines as a frame of `clipping` over `slots` binds them, with `effects`, the
-    /// format's effect pipelines the effect store built at each key's [`EffectKey::slot`].
+    /// These pipelines as a frame of `variant` binds them, with `effects`, the format's effect
+    /// pipelines the effect store built at each key's [`EffectKey::slot`], and `atlas`, the atlas
+    /// group its raster and shadow draws read the pages through.
     pub(crate) const fn for_frame<'a>(
         &'a self,
-        clipping: Clipping,
-        slots: AtlasSlots,
+        variant: FrameVariant,
         effects: &'a [ClipVariant],
+        atlas: &'a wgpu::BindGroup,
     ) -> PassPipelines<'a> {
         PassPipelines {
             fmt: self,
             effects,
-            clipping,
-            slots,
+            variant,
+            atlas,
         }
     }
 }
@@ -153,37 +155,48 @@ pub(crate) struct PassPipelines<'a> {
     fmt: &'a FormatPipelines,
     /// The format's effect pipelines, at each key's [`EffectKey::slot`].
     effects: &'a [ClipVariant],
-    clipping: Clipping,
-    slots: AtlasSlots,
+    variant: FrameVariant,
+    /// The [`AtlasGroup`](crate::gpu::pipeline::atlas_binding::AtlasGroup)'s group.
+    atlas: &'a wgpu::BindGroup,
 }
 
 impl<'a> PassPipelines<'a> {
     /// The pipeline a quad of `draw` draws through.
     pub(crate) const fn quad(self, draw: QuadDraw) -> &'a Pipeline {
-        self.fmt.quad.get(draw, self.clipping, self.slots.mask)
+        self.fmt
+            .quad
+            .get(draw, self.variant.clipping, self.variant.slots.mask)
     }
 
     pub(crate) const fn mesh(self) -> &'a Pipeline {
-        self.fmt.mesh.get(self.clipping)
+        self.fmt.mesh.get(self.variant.clipping)
     }
 
     /// The pipeline an image of `form` draws through.
     pub(crate) const fn image(self, form: ShapeForm) -> &'a Pipeline {
-        self.fmt.image[form as usize].get(self.clipping)
+        self.fmt.image[form as usize].get(self.variant.clipping)
     }
 
     pub(crate) const fn curve(self) -> &'a Pipeline {
-        self.fmt.curve.get(self.clipping)
+        self.fmt.curve.get(self.variant.clipping)
     }
 
     /// The pipeline an effect draw of `key` draws through, which the store built before the
     /// frame's passes.
     pub(crate) const fn effect(self, key: EffectKey) -> &'a Pipeline {
-        self.effects[key.slot()].get(self.clipping)
+        self.effects[key.slot()].get(self.variant.clipping)
     }
 
-    /// Both raster tenants' pipelines, drawing through `atlas`, the pool's atlas group.
-    pub(crate) const fn raster(self, atlas: &'a wgpu::BindGroup) -> RasterPipelinePair<'a> {
-        self.fmt.raster.pair(self.clipping, self.slots, atlas)
+    /// Both raster tenants' pipelines, drawing through the atlas group.
+    pub(crate) const fn raster(self) -> RasterPipelinePair<'a> {
+        self.fmt
+            .raster
+            .pair(self.variant.clipping, self.variant.slots, self.atlas)
+    }
+
+    /// The atlas group a draw that reads the pages binds at
+    /// [`ATLAS_GROUP`](crate::gpu::pipeline::atlas_binding::ATLAS_GROUP).
+    pub(crate) const fn atlas(self) -> &'a wgpu::BindGroup {
+        self.atlas
     }
 }

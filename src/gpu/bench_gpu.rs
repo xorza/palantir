@@ -10,7 +10,7 @@ use crate::gpu::device::requested_gpu::GpuRequest;
 use crate::gpu::device::requested_gpu::RequestedGpu;
 use crate::gpu::frame::gpu_timings::{GpuTimings, Mark};
 use crate::gpu::surface::owned_target::OwnedTarget;
-use crate::gpu::surface::render_target::TargetFormat;
+use crate::gpu::texel::TargetFormat;
 use glam::UVec2;
 use std::iter;
 use std::time::Duration;

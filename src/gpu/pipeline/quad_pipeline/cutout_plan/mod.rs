@@ -8,10 +8,9 @@
 //!
 //! A shadow whose shown corners all read tables draws through the cheaper `fs_shadow_tables` ([`ShadowEntry`]), else `fs_shadow`.
 
-use crate::gpu::atlas::LIST_CONFIGS;
 use crate::gpu::atlas::atlas_format::AtlasFormat;
 use crate::gpu::atlas::atlas_handle::Placement;
-use crate::gpu::atlas::page_list::MAX_PAGES;
+use crate::gpu::atlas::page_list::{MAX_PAGES, PageListConfig};
 use crate::gpu::pipeline::quad_pipeline::cutout_placements::CutoutPlacing;
 use crate::primitives::geometry::corners;
 use crate::primitives::geometry::rect::Rect;
@@ -42,27 +41,6 @@ impl BakeTable {
     /// The key whose table this is.
     pub(crate) const fn key(self) -> CutoutKey {
         CutoutKey::new(self.r, self.sigma)
-    }
-
-    /// Whether `other` is the same table at the same place: its code, radius and σ alike.
-    pub(crate) const fn is_at(self, other: Self) -> bool {
-        self.table == other.table
-            && self.r.to_bits() == other.r.to_bits()
-            && self.sigma.to_bits() == other.sigma.to_bits()
-    }
-
-    /// Whether this span holds `other`'s, a table [at](Self::is_at) this one's place.
-    pub(crate) fn holds(self, other: Self) -> bool {
-        self.lo.cmple(other.lo).all() && other.hi.cmple(self.hi).all()
-    }
-
-    /// This table with the least span that holds its own and `other`'s.
-    pub(crate) fn joined(self, other: Self) -> Self {
-        Self {
-            lo: self.lo.min(other.lo),
-            hi: self.hi.max(other.hi),
-            ..self
-        }
     }
 }
 
@@ -460,10 +438,11 @@ impl CutoutPlan {
         &self.entries
     }
 
-    /// The code of a table of `side` texels at `placement` in the mask pages, as `vs_shadow`
-    /// carries it: the origin's `x` and `y` in [`Self::COORD_BITS`] each, then `side − 1`, then
-    /// the page.
-    pub(crate) fn code(placement: Placement, side: u32) -> u32 {
+    /// The code of the square table at `placement` in the mask pages, as `vs_shadow` carries it:
+    /// the origin's `x` and `y` in [`Self::COORD_BITS`] each, then its side less one, then the page.
+    pub(crate) fn code(placement: Placement) -> u32 {
+        debug_assert_eq!(placement.size.x, placement.size.y, "a table is square");
+        let side = u32::from(placement.size.x);
         let origin = placement.origin.as_uvec2();
         debug_assert!(
             origin.max_element() < 1 << Self::COORD_BITS,
@@ -662,7 +641,7 @@ impl ShadowBox {
 }
 
 const _: () = {
-    let edge = LIST_CONFIGS[AtlasFormat::R8 as usize].page_edge;
+    let edge = PageListConfig::of(AtlasFormat::R8).page_edge;
     assert!(
         edge <= 1 << CutoutPlan::COORD_BITS,
         "a mask page's origins fit a code"

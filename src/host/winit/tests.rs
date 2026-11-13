@@ -1,10 +1,10 @@
 use crate::gpu::device::power_preference::PowerPreference;
 use crate::gpu::error::GpuRequestError;
+use crate::gpu::frame::gpu_timings::FrameTiming;
 use crate::gpu::surface::surface_manager::{
     FirstWindow, HostGpuConfig, SurfaceManager, SurfaceStartup,
 };
 use crate::gpu::surface::window_surface::{Acquired, Prepared};
-use crate::gpu::wgpu_backend::FrameTiming;
 use crate::host::winit::error::WinitHostError;
 use crate::host::winit::platform;
 use crate::host::winit::{WinitHost, finish_run};

@@ -54,44 +54,13 @@ const FLAG_COLOR: u32 = /*{FLAG_COLOR}*/;            // sample color, not mask
 // just above the carried ones.
 const FLAG_RESAMPLE: u32 = FLAG_MASK + 1u;
 
-// The atlas pages, past the frame group: four of each kind, a closed page bound
-// as a 1 × 1 stand-in. Every read is a `textureLoad` by texel, so there is no
-// sampler, and a chain of branches on a flat page picks the texture, as Skia
-// picks among its glyph pages (`GrAtlasedShaderHelpers`). The pipeline pins the
-// open slots of each kind, `PageSlots`, so the compiler drops every branch it
-// can decide (`palantir_reads_slot`): over one open page, a load and no branch,
-// where V3D compiles every arm of a choice among four.
-override MASK_SLOTS: u32 = 15u;
-override COLOR_SLOTS: u32 = 15u;
-const ATLAS_GROUP: u32 = /*{ATLAS_GROUP}*/;
-@group(ATLAS_GROUP) @binding(0) var mask_page0: texture_2d<f32>;
-@group(ATLAS_GROUP) @binding(1) var mask_page1: texture_2d<f32>;
-@group(ATLAS_GROUP) @binding(2) var mask_page2: texture_2d<f32>;
-@group(ATLAS_GROUP) @binding(3) var mask_page3: texture_2d<f32>;
-@group(ATLAS_GROUP) @binding(4) var color_page0: texture_2d<f32>;
-@group(ATLAS_GROUP) @binding(5) var color_page1: texture_2d<f32>;
-@group(ATLAS_GROUP) @binding(6) var color_page2: texture_2d<f32>;
-@group(ATLAS_GROUP) @binding(7) var color_page3: texture_2d<f32>;
-
-// The coverage at `at` of mask page `page`, one of the `MASK_SLOTS`.
-fn mask_load(page: u32, at: vec2<i32>) -> f32 {
-    if (palantir_reads_slot(MASK_SLOTS, 0u, page)) { return textureLoad(mask_page0, at, 0).x; }
-    if (palantir_reads_slot(MASK_SLOTS, 1u, page)) { return textureLoad(mask_page1, at, 0).x; }
-    if (palantir_reads_slot(MASK_SLOTS, 2u, page)) { return textureLoad(mask_page2, at, 0).x; }
-    return textureLoad(mask_page3, at, 0).x;
-}
-
-// The texel at `at` of color page `page`, one of the `COLOR_SLOTS`, as stored.
-fn color_texel(page: u32, at: vec2<i32>) -> vec4<f32> {
-    if (palantir_reads_slot(COLOR_SLOTS, 0u, page)) { return textureLoad(color_page0, at, 0); }
-    if (palantir_reads_slot(COLOR_SLOTS, 1u, page)) { return textureLoad(color_page1, at, 0); }
-    if (palantir_reads_slot(COLOR_SLOTS, 2u, page)) { return textureLoad(color_page2, at, 0); }
-    return textureLoad(color_page3, at, 0);
-}
-
 // The straight linear RGBA at `at` of color page `page`, its sRGB bytes decoded.
 fn color_load(page: u32, at: vec2<i32>) -> vec4<f32> {
-    let s = color_texel(page, at);
+    return decoded(palantir_color_texel(page, at));
+}
+
+// A color page's texel as stored, its sRGB bytes decoded to straight linear RGBA.
+fn decoded(s: vec4<f32>) -> vec4<f32> {
     return vec4<f32>(palantir_srgb_to_linear(s.rgb), s.a);
 }
 
@@ -205,7 +174,7 @@ fn texel_color(in: VertexOut) -> vec4<f32> {
     }
     if ((in.flags & FLAG_COLOR) == 0u) {
         // Mask: vertex color modulated by R-channel coverage.
-        let cov = mask_load(in.flags & FLAG_PAGE, vec2<i32>(in.texel));
+        let cov = palantir_mask_texel(in.flags & FLAG_PAGE, vec2<i32>(in.texel));
         return premultiply(in.color.rgb, in.color.a * cov);
     }
     // Color emoji or color icon: the load decodes the page's sRGB bytes to
@@ -238,18 +207,16 @@ fn resampled(in: VertexOut) -> vec4<f32> {
     let t = taps(in.texel, in.texel_rect);
     let page = in.flags & FLAG_PAGE;
     if ((in.flags & FLAG_COLOR) == 0u) {
-        let a = mask_load(page, vec2<i32>(t.lo.x, t.lo.y));
-        let b = mask_load(page, vec2<i32>(t.hi.x, t.lo.y));
-        let c = mask_load(page, vec2<i32>(t.lo.x, t.hi.y));
-        let d = mask_load(page, vec2<i32>(t.hi.x, t.hi.y));
-        let cov = mix(mix(a, b, t.f.x), mix(c, d, t.f.x), t.f.y);
+        let m = palantir_mask_taps(page, vec2<i32>(t.lo), vec2<i32>(t.hi));
+        let cov = mix(mix(m.x, m.y, t.f.x), mix(m.z, m.w, t.f.x), t.f.y);
         return premultiply(in.color.rgb, in.color.a * cov);
     }
-    let a = premultiplied_texel(page, vec2<i32>(t.lo.x, t.lo.y));
-    let b = premultiplied_texel(page, vec2<i32>(t.hi.x, t.lo.y));
-    let c = premultiplied_texel(page, vec2<i32>(t.lo.x, t.hi.y));
-    let d = premultiplied_texel(page, vec2<i32>(t.hi.x, t.hi.y));
-    let s = mix(mix(a, b, t.f.x), mix(c, d, t.f.x), t.f.y);
+    let c = palantir_color_taps(page, vec2<i32>(t.lo), vec2<i32>(t.hi));
+    let s = mix(
+        mix(premultiplied(c[0]), premultiplied(c[1]), t.f.x),
+        mix(premultiplied(c[2]), premultiplied(c[3]), t.f.x),
+        t.f.y,
+    );
     // Luminance is linear, so the premultiplied gray is the gray of the
     // straight color times its alpha — the same look as `fs`'s.
     let gray = vec3<f32>(dot(s.rgb, PALANTIR_LUMA));
@@ -257,7 +224,8 @@ fn resampled(in: VertexOut) -> vec4<f32> {
     return vec4<f32>(rgb, s.a) * in.color.a;
 }
 
-fn premultiplied_texel(page: u32, at: vec2<i32>) -> vec4<f32> {
-    let s = color_load(page, at);
+// A color page's texel as stored, decoded and premultiplied.
+fn premultiplied(stored: vec4<f32>) -> vec4<f32> {
+    let s = decoded(stored);
     return premultiply(s.rgb, s.a);
 }

@@ -6,9 +6,9 @@
 use crate::damage::Damage;
 use crate::damage::region::DAMAGE_RECT_CAP;
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
-use crate::gpu::pipeline::pipeline_recipe::Pipeline;
 use crate::gpu::pipeline::quad_pipeline::QuadPipeline;
 use crate::gpu::pipeline::viewport_push::ViewportPush;
+use crate::gpu::resource::pipeline_recipe::Pipeline;
 use crate::primitives::geometry::rect::{EdgeRounding, Rect};
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;

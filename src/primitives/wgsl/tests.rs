@@ -1,7 +1,7 @@
 //! The shared WGSL, run on the GPU through the prelude every pipeline takes.
 
-use crate::gpu::pipeline::shader_body::ShaderBody;
 use crate::gpu::pipeline::shape_template;
+use crate::gpu::resource::shader_body::ShaderBody;
 use crate::primitives::wgsl::SHAPE_TEMPLATE;
 
 const COMPOSITE_PROBE: &str = "

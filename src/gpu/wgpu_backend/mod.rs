@@ -53,49 +53,52 @@
 use crate::common::tracy;
 use crate::diagnostics::gpu_pass_stats::{BatchKind, PassCounts};
 use crate::effect::effect_store::EffectModule;
-use crate::gpu::atlas::AtlasPool;
 use crate::gpu::atlas::atlas_textures::AtlasTextures;
-use crate::gpu::atlas::page_group::PageGroup;
-use crate::gpu::atlas::page_slots::AtlasSlots;
-use crate::gpu::atlas::row_table::RowTable;
+use crate::gpu::atlas::page_list::MAX_PAGES;
+use crate::gpu::atlas::row_texture::RowTexture;
+use crate::gpu::atlas::{AtlasPool, PoolConfig};
 use crate::gpu::backdrop::backdrops::{BackdropFrame, Backdrops};
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::pass_traffic::PassTraffic;
 use crate::gpu::frame::debug_overlay::{self, DebugOverlay, OverlayDraw};
 use crate::gpu::frame::frame_passes::{ColorLoad, FramePasses, FrameShape, PassStep, TargetKind};
-use crate::gpu::frame::gpu_ctx::GpuCtx;
+use crate::gpu::frame::gpu_timings::FrameTiming;
 use crate::gpu::frame::gpu_timings::{BackdropPhase, GpuTimings, Mark};
 use crate::gpu::frame::main_segment::MainSegment;
 use crate::gpu::frame::schedule::{GroupSpan, RenderStep, Schedule};
 use crate::gpu::frame::submission::{Route, Submission};
+use crate::gpu::pipeline::atlas_binding::{AtlasGroup, AtlasSlots};
 use crate::gpu::pipeline::blit_pipeline::BlitPipeline;
 use crate::gpu::pipeline::clip_variant::{ClipVariant, Clipping};
 use crate::gpu::pipeline::curve_pipeline::CurvePipeline;
+use crate::gpu::pipeline::effect_pipeline::wgpu_effect_store::WgpuEffectStore;
 use crate::gpu::pipeline::effect_pipeline::{
     EffectBatch, EffectPipeline, EffectStores, EffectUpload,
 };
 use crate::gpu::pipeline::format_pipelines::{FormatPipelines, PipelineCensus, Programs};
 use crate::gpu::pipeline::image_pipeline::{ImageBatch, ImagePipeline, ImageTextures};
+use crate::gpu::pipeline::instanced_pipeline::FrameVariant;
 use crate::gpu::pipeline::mesh_pipeline::{MeshBatch, MeshPipeline, MeshUpload};
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
-use crate::gpu::pipeline::quad_pipeline::cutout_placements::CutoutPlacing;
+use crate::gpu::pipeline::quad_pipeline::cutout_placements::{CutoutPlacements, CutoutPlacing};
 use crate::gpu::pipeline::quad_pipeline::quad_draw::QuadDraw;
 use crate::gpu::pipeline::quad_pipeline::{self, QuadExtras, QuadPipeline, QuadRun};
-use crate::gpu::pipeline::raster_pipeline::{RASTER_FORMATS, RasterPipeline};
+use crate::gpu::pipeline::raster_pipeline::{RasterDraws, RasterPipeline};
 use crate::gpu::pipeline::viewport_push::ViewportPush;
 use crate::gpu::raster::icon_backend::IconBackend;
 use crate::gpu::raster::text_backend::{TextBackend, TextBatchInput};
 use crate::gpu::render_owner_id::RenderOwnerId;
 use crate::gpu::resource::frame_group::FrameGroup;
+use crate::gpu::resource::gpu_ctx::GpuCtx;
 use crate::gpu::resource::gpu_view_targets::{GpuViewTargets, ViewSubmitter};
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::resource::upload_staging::UploadStaging;
-use crate::gpu::resource::wgpu_effect_store::WgpuEffectStore;
 use crate::gpu::resource::wgpu_image_store::WgpuImageStore;
 use crate::gpu::surface::backbuffer::Backbuffer;
 use crate::gpu::surface::capture::{Capture, CaptureBlit, CaptureSource, TexelOrder};
 use crate::gpu::surface::damage_canvas::DamageCanvas;
-use crate::gpu::surface::render_target::{RenderTarget, TargetFormat};
+use crate::gpu::surface::render_target::RenderTarget;
+use crate::gpu::texel::TargetFormat;
 use crate::gpu::wgpu_backend::backend_resources::BackendResources;
 use crate::gpu::wgpu_backend::display_frames::DisplayFrames;
 use crate::gpu::wgpu_backend::render_stream::{RenderStream, StreamPasses};
@@ -130,14 +133,18 @@ pub(crate) struct WgpuBackend {
     staging: UploadStaging,
     /// The display frame every submit's per-frame scratch ages against.
     frames: DisplayFrames,
-    /// Shared gradient LUT atlas, whose group is the frame group every color pipeline reads.
-    gradient: RowTable,
-    /// The atlas pool's page lists, which glyphs and icons allocate from, and the textures behind
-    /// them (`src/gpu/AGENTS.md`, Atlases).
+    /// The texture of the pool's gradient rows, which the frame group every color pipeline reads
+    /// binds.
+    gradient: RowTexture,
+    /// The atlas pool's page lists, which glyphs and icons allocate from, and its gradient rows, and
+    /// the textures behind them (`src/gpu/AGENTS.md`, Atlases).
     atlas: AtlasPool,
     atlas_textures: AtlasTextures,
-    /// The group both raster tenants draw the pool's mask and color pages through.
-    raster_group: PageGroup<2>,
+    /// Where the mask pages hold each shadow cutout key's table, lent with the pool to each
+    /// window's plan for the frame it plans.
+    cutout_placements: CutoutPlacements,
+    /// The group the rasters and the shadows read the pool's mask and color pages through.
+    atlas_group: AtlasGroup,
     programs: Programs,
     /// The frame's backdrops: their captures, blurs and results.
     backdrops: Backdrops,
@@ -154,7 +161,7 @@ pub(crate) struct WgpuBackend {
     /// The layouts and sampler every sampled texture binds through, so a group built for one binds
     /// in every pipeline that samples any.
     texture_binding: TextureBinding,
-    /// The frame group the main pass binds once: the gradient atlas and the frame's rounded
+    /// The frame group the main pass binds once: the gradient rows and the frame's rounded
     /// clips.
     frame_group: FrameGroup,
     /// The passes of the frame being submitted, planned before any is recorded.
@@ -165,35 +172,6 @@ pub(crate) struct WgpuBackend {
     /// What timing this device can do; `Some` when the host opted in, and a device without
     /// timestamps then times frames on the CPU clock ([`GpuTimings`]).
     timing: Option<TimingSupport>,
-}
-
-/// Whether `buffer`'s draws name rounded clips, which picks the half of each pipeline its passes
-/// bind ([`ClipVariant`]).
-const fn clipping(buffer: &RenderBuffer) -> Clipping {
-    if buffer.clips_drawn {
-        Clipping::On
-    } else {
-        Clipping::Off
-    }
-}
-
-/// Whether the backend times the frames it submits, which a host opts into.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum FrameTiming {
-    #[default]
-    Off,
-    On,
-}
-
-impl FrameTiming {
-    /// [`Self::On`] when a host's builder asks it to collect GPU stats.
-    pub(crate) const fn new(collect_gpu_stats: bool) -> Self {
-        if collect_gpu_stats {
-            Self::On
-        } else {
-            Self::Off
-        }
-    }
 }
 
 /// The device's timestamp tick and the timing features it offers.
@@ -214,8 +192,8 @@ struct FrameDraw<'a> {
     /// The blit into the target's format, which presents the backbuffer.
     blit: &'a wgpu::RenderPipeline,
     buffer: &'a RenderBuffer,
-    /// The open page slots its raster and shadow draws read, which their pipelines are built for.
-    slots: AtlasSlots,
+    /// What picks the frame's pipelines.
+    variant: FrameVariant,
     /// The surface's, which every pass but a main pass on a damage canvas pushes as it is.
     viewport: ViewportPush,
     /// The surface pixel the main pass's target pixel 0 is: zero, but on a damage canvas, where
@@ -371,6 +349,8 @@ struct FrameUpload<'s, 'a> {
     format: TargetFormat,
     /// The display frame the submit belongs to ([`DisplayFrames`]).
     frame: u64,
+    /// Whether the frame's draws name rounded clips.
+    clipping: Clipping,
 }
 
 impl WgpuBackend {
@@ -380,28 +360,25 @@ impl WgpuBackend {
         let image_store = Rc::clone(resources.image_store);
         let effect_store = Rc::clone(resources.effect_store);
         let texture_binding = resources.texture_binding;
-        let gradient = RowTable::new(&gpu, resources.gradient_rows);
-        let frame_group = FrameGroup::new(&gpu, texture_binding.clone(), &gradient);
+        let atlas = AtlasPool::new(PoolConfig::of_device(
+            gpu.max_texture_dim().get(),
+            gpu.pass_traffic(),
+        ));
+        let gradient = RowTexture::new(&gpu, atlas.rows().capacity());
+        let frame_group = FrameGroup::new(&gpu, texture_binding.clone(), gradient.row_view());
         let backdrops = Backdrops::new(&texture_binding);
         let atlas_textures = AtlasTextures::new(&gpu);
-        let quad = QuadPipeline::new(&gpu, &texture_binding, &atlas_textures);
+        let atlas_group = AtlasGroup::new(&gpu, &atlas_textures);
+        let quad = QuadPipeline::new(&gpu, &texture_binding, atlas_group.layout());
         let mesh = MeshPipeline::new(&gpu, &texture_binding);
         let image = ImagePipeline::new(&gpu, &texture_binding);
         let gpu_view_targets = GpuViewTargets::new(texture_binding.clone());
         let curve = CurvePipeline::new(&gpu, &texture_binding);
-        let raster = RasterPipeline::new(&gpu, &texture_binding);
+        let raster = RasterPipeline::new(&gpu, &texture_binding, atlas_group.layout());
         let effect = EffectPipeline::new(&gpu);
         let blit = BlitPipeline::new(&gpu, &texture_binding);
         let text = TextBackend::new(&gpu, resources.text.clone());
         let icon = IconBackend::new(&gpu, resources.icons.clone());
-        let atlas = AtlasPool::new(gpu.max_texture_dim().get());
-        let raster_group = PageGroup::new(
-            &gpu,
-            raster.layout(),
-            "palantir.raster.atlas",
-            RASTER_FORMATS,
-            &atlas_textures,
-        );
         let debug = DebugOverlay::default();
         // 1 MiB chunks, above the resize-drag upload peak, so steady state uses 1-2 chunks.
         let staging = UploadStaging::new(&gpu.device, 1 << 20);
@@ -422,7 +399,8 @@ impl WgpuBackend {
             gradient,
             atlas,
             atlas_textures,
-            raster_group,
+            cutout_placements: CutoutPlacements::default(),
+            atlas_group,
             programs: Programs {
                 quad,
                 mesh,
@@ -484,7 +462,7 @@ impl WgpuBackend {
             self.pipelines.insert(format, built);
         }
         self.blit.ensure(&self.gpu, format.get());
-        self.effect_store.ensure_format(format.get());
+        self.effect_store.ensure_format(&self.gpu, format.get());
     }
 
     /// Render one frame of `stream` into `target`. Skip frames never reach this method.
@@ -520,6 +498,11 @@ impl WgpuBackend {
         stream.mark_painted(route);
         let frame = self.frames.advance(stream.owner());
         self.atlas.advance_to(frame);
+        let clipping = if buffer.clips_drawn {
+            Clipping::On
+        } else {
+            Clipping::Off
+        };
         tracing::trace!(
             quads = buffer.quads.len(),
             texts = buffer.texts.len(),
@@ -547,6 +530,7 @@ impl WgpuBackend {
                 stream: &mut *stream,
                 format,
                 frame,
+                clipping,
             },
         );
 
@@ -603,8 +587,11 @@ impl WgpuBackend {
             "a view of the target exactly where a pass writes it"
         );
         // After the upload, whose inserts open the pages this frame's draws read.
-        let slots = self.atlas.slots();
-        self.ensure_pipelines(format, buffer, slots);
+        let variant = FrameVariant {
+            clipping,
+            slots: AtlasSlots::of(&self.atlas),
+        };
+        self.ensure_pipelines(format, buffer, variant);
         let effects = self.effect_store.read();
         let main_pass = self.run_steps(
             FrameSteps {
@@ -618,7 +605,7 @@ impl WgpuBackend {
                     effect_modules: &effects.modules,
                     blit: self.blit.get(format.get()),
                     buffer,
-                    slots,
+                    variant,
                     viewport: ViewportPush::for_buffer(buffer),
                     origin: frame_target.origin(),
                 },
@@ -642,6 +629,7 @@ impl WgpuBackend {
         }
         self.staging.finish_and_recall_on_submit(&encoder);
         self.gpu.queue.submit(iter::once(encoder.finish()));
+        drop(effects);
         // Every frame, timing on or off, as it costs two `Instant::now()` calls.
         let stats = submission.stats;
         stats.record_main_pass_cpu(main_pass.cpu);
@@ -652,11 +640,20 @@ impl WgpuBackend {
 
         // After the frame's draws, before the tenants drain, so they learn of the decay's
         // evictions this submit.
-        self.atlas.end_submit(self.atlas_textures.move_budget());
-        let frame = self.text.end_frame(&mut self.atlas);
-        self.icon.end_frame(&mut self.atlas, frame);
-        self.programs.quad.end_frame(&mut self.atlas);
-        self.backdrops.end_frame(&mut self.atlas);
+        self.atlas.end_submit();
+        self.drop_evicted();
+        self.text.end_frame(&self.atlas);
+        self.icon.end_frame(&mut self.atlas);
+    }
+
+    /// Hand every tenant the items the pool evicted since the last drain, each dropping the keys
+    /// it held them under: at the end of each submit, after the decay, and after a purge, so no
+    /// tenant's next lookup or frame decides on an item gone.
+    fn drop_evicted(&mut self) {
+        self.text.drop_evicted(&mut self.atlas);
+        self.icon.drop_evicted(&mut self.atlas);
+        self.cutout_placements.drop_evicted(&mut self.atlas);
+        self.backdrops.drop_evicted(&mut self.atlas);
     }
 
     /// Where a pass loads and stores its whole target, the canvas a partial frame paints the size
@@ -684,7 +681,12 @@ impl WgpuBackend {
 
     /// The pipelines this frame draws through and the set of `format` lacks, built before its
     /// passes borrow it: the pre-clear and the overlays draw solid quads.
-    fn ensure_pipelines(&mut self, format: TargetFormat, buffer: &RenderBuffer, slots: AtlasSlots) {
+    fn ensure_pipelines(
+        &mut self,
+        format: TargetFormat,
+        buffer: &RenderBuffer,
+        variant: FrameVariant,
+    ) {
         self.pipelines
             .get_mut(&format)
             .expect("a window notes its target's format before it records")
@@ -692,7 +694,7 @@ impl WgpuBackend {
                 &self.gpu,
                 &self.programs,
                 PipelineCensus {
-                    clipping: clipping(buffer),
+                    variant,
                     quads: self
                         .programs
                         .quad
@@ -707,8 +709,10 @@ impl WgpuBackend {
                         forms
                     },
                     curves: !buffer.curves.is_empty(),
-                    rasters: !buffer.texts.is_empty() || !buffer.icons.is_empty(),
-                    slots,
+                    rasters: RasterDraws {
+                        flat: !buffer.texts.is_empty() || !buffer.icons.is_empty(),
+                        spun: self.text.turns_rasters() || self.icon.turns_rasters(),
+                    },
                 },
             );
     }
@@ -821,11 +825,11 @@ impl WgpuBackend {
             stream,
             format,
             frame,
+            clipping,
         } = upload;
         let Submission {
             store,
             buffer,
-            gradients,
             gpu_views,
             clear,
             scissors,
@@ -836,11 +840,10 @@ impl WgpuBackend {
         let owner = stream.owner();
         let mut ctx = GpuCtx::new(&self.gpu, &mut self.staging, encoder, frame);
 
-        if let Some(rows) = gradients {
-            self.gradient.upload(&mut ctx, rows);
-        }
+        self.gradient
+            .upload(&mut ctx, self.atlas.rows_mut().flush());
         self.frame_group
-            .upload(&mut ctx, &self.gradient, &buffer.rounded_clips);
+            .upload(&mut ctx, self.gradient.row_view(), &buffer.rounded_clips);
 
         // Damage-rect overlay quads (debug): uploaded now, drawn last after the backbuffer copy.
         if let Some(damage) = overlay.damage {
@@ -890,7 +893,7 @@ impl WgpuBackend {
         );
         self.programs.curve.upload(&mut ctx, &buffer.curves);
         self.effect_store
-            .prepare(buffer.effects.key(), clipping(buffer));
+            .prepare(ctx.gpu, buffer.effects.key(), clipping);
         self.programs.effect.upload(
             &mut ctx,
             EffectStores {
@@ -952,15 +955,18 @@ impl WgpuBackend {
         }
 
         // Both tenants' inserts are in, so the pages take their final size: the textures follow,
-        // a grow's copy first, then the group over them, then each tenant's quads and the rasters
+        // a grow's copy first, then the groups over them, then each tenant's quads and the rasters
         // it queued, staged through the belt.
         self.atlas_textures
             .commit(ctx.gpu, ctx.encoder, &mut self.atlas);
-        self.raster_group.follow(ctx.gpu, &self.atlas_textures);
+        self.atlas_group.follow(ctx.gpu, &self.atlas_textures);
         self.backdrops.follow(ctx.gpu, &self.atlas_textures);
-        self.programs
-            .quad
-            .prepare_cutouts(&mut ctx, stream.cutouts(), &self.atlas_textures);
+        self.programs.quad.prepare_cutouts(
+            &mut ctx,
+            stream.cutouts(),
+            &mut self.cutout_placements,
+            &self.atlas_textures,
+        );
         self.text.flush(&mut ctx, &self.atlas_textures);
         self.icon.flush(&mut ctx, &self.atlas_textures);
     }
@@ -984,7 +990,14 @@ impl WgpuBackend {
             quad: &self.programs.quad,
             pipeline: draw
                 .fmt
-                .for_frame(Clipping::Off, draw.slots, draw.effects)
+                .for_frame(
+                    FrameVariant {
+                        clipping: Clipping::Off,
+                        ..draw.variant
+                    },
+                    draw.effects,
+                    self.atlas_group.group(),
+                )
                 .quad(QuadDraw::Fill(FillForm::BOX_SOLID)),
             frame_group: self.frame_group.group(),
             viewport: draw.viewport,
@@ -1100,9 +1113,8 @@ impl WgpuBackend {
         // Read at a raster draw, as a frame that draws none builds no raster pipeline.
         let pipelines = draw
             .fmt
-            .for_frame(clipping(buffer), draw.slots, draw.effects);
-        let raster_group = self.raster_group.group();
-        let raster = move || pipelines.raster(raster_group);
+            .for_frame(draw.variant, draw.effects, self.atlas_group.group());
+        let raster = move || pipelines.raster();
         schedule.for_each_step(&mut |step| match step {
             RenderStep::PreClear => ctx.batch(BatchKind::PreClear, |ctx| {
                 // Through the recorder, so the viewport is pushed before the draw; else the clear
@@ -1286,34 +1298,54 @@ impl WgpuBackend {
 
     /// Give back all the atlas pool can at once, as the system runs short of memory, between two
     /// frames: the pool purges, and its textures follow at once on an encoder of their own, the
-    /// purge's moves first, so the textures it freed leave every group that binds them and their
-    /// memory returns at the device's next maintain, with no frame to wait for. The backdrops it
-    /// took reach their windows' ledgers now, as a window's next frame decides what it holds
-    /// before any submit; the rasters and tables it took read as stale at their next lookup.
+    /// purge's moves first and the row texture last, so the textures it freed leave every group that binds them and their
+    /// memory returns at the device's next maintain, with no frame to wait for. A purge whose
+    /// drain moved items commits them and purges again, a submission a round, as the move draw
+    /// writes each commit's rectangles from the start of one buffer. Every tenant drops what it
+    /// took at once, as a window's next frame decides what its backdrops hold before any submit.
     pub(crate) fn purge_atlases(&mut self) {
-        self.atlas.purge();
-        self.backdrops.end_frame(&mut self.atlas);
-        let mut encoder = self
-            .gpu
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("palantir.atlas.purge"),
-            });
-        self.atlas_textures
-            .commit(&self.gpu, &mut encoder, &mut self.atlas);
-        self.raster_group.follow(&self.gpu, &self.atlas_textures);
-        self.programs
-            .quad
-            .follow_cutouts(&self.gpu, &self.atlas_textures);
+        for _ in 0..=MAX_PAGES {
+            let more = self.atlas.purge();
+            let mut encoder =
+                self.gpu
+                    .device
+                    .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                        label: Some("palantir.atlas.purge"),
+                    });
+            self.atlas_textures
+                .commit(&self.gpu, &mut encoder, &mut self.atlas);
+            if !more {
+                let mut ctx = GpuCtx::new(
+                    &self.gpu,
+                    &mut self.staging,
+                    &mut encoder,
+                    self.atlas.frame(),
+                );
+                self.gradient
+                    .upload(&mut ctx, self.atlas.rows_mut().flush());
+                self.staging.finish_and_recall_on_submit(&encoder);
+                self.gpu.queue.submit(iter::once(encoder.finish()));
+                break;
+            }
+            self.gpu.queue.submit(iter::once(encoder.finish()));
+        }
+        self.frame_group.follow(&self.gpu, self.gradient.row_view());
+        self.atlas_group.follow(&self.gpu, &self.atlas_textures);
+        self.drop_evicted();
         self.backdrops.drop_groups();
-        self.gpu.queue.submit(iter::once(encoder.finish()));
     }
 
-    /// Where the mask pages hold each key's table, with the pool they live in, which a frame's
-    /// plan builds in.
+    /// The display frame `owner`'s next submit will belong to, which a build of it that paints
+    /// moves the pool to first.
+    pub(crate) fn next_frame(&self, owner: RenderOwnerId) -> u64 {
+        self.frames.next(owner)
+    }
+
+    /// Where the mask pages hold each key's table, with the pool they live in: a frame's build
+    /// registers its gradients in the pool's row table, then its plan places its tables.
     pub(crate) const fn cutout_placing(&mut self) -> CutoutPlacing<'_> {
         CutoutPlacing {
-            placements: self.programs.quad.cutout_placements_mut(),
+            placements: &mut self.cutout_placements,
             pool: &mut self.atlas,
         }
     }
@@ -1378,7 +1410,9 @@ pub(crate) mod internals {
     use crate::gpu::atlas::atlas_format::AtlasFormat;
     #[cfg(test)]
     use crate::gpu::atlas::page_list::MAX_PAGES;
-    use crate::gpu::atlas_memory::{AtlasMemory, AtlasUse};
+    use crate::gpu::atlas_memory::AtlasMemory;
+    #[cfg(test)]
+    use crate::gpu::device::backbuffer_out::BackbufferOut;
     #[cfg(test)]
     use crate::gpu::device::pass_traffic::PassTraffic;
     #[cfg(test)]
@@ -1386,16 +1420,25 @@ pub(crate) mod internals {
     #[cfg(test)]
     #[cfg(test)]
     use crate::gpu::raster::raster_atlas::counters::AtlasCounts;
-    #[cfg(test)]
-    use crate::gpu::surface::backbuffer_out::BackbufferOut;
-    use crate::gpu::surface::render_target::TargetFormat;
+    use crate::gpu::texel::TargetFormat;
     use crate::gpu::wgpu_backend::WgpuBackend;
-    use crate::renderer::cpu_gradient_atlas::CpuGradientAtlas;
+    use crate::renderer::row_table::RowTable;
 
     impl WgpuBackend {
-        /// Every atlas's memory, its gradient rows read against `gradient`, the frontend's atlas
-        /// that bakes them.
-        pub(crate) fn atlas_memory(&self, gradient: &CpuGradientAtlas) -> AtlasMemory {
+        /// The pool's gradient row table.
+        #[cfg(test)]
+        pub(crate) const fn rows(&self) -> &RowTable {
+            self.atlas.rows()
+        }
+
+        /// The pool's gradient row table, for a build outside a painted frame, which the next
+        /// submit flushes.
+        pub(crate) const fn rows_mut(&mut self) -> &mut RowTable {
+            self.atlas.rows_mut()
+        }
+
+        /// Every atlas's memory.
+        pub(crate) fn atlas_memory(&self) -> AtlasMemory {
             let masks = self
                 .atlas_textures
                 .memory(&self.atlas, AtlasFormat::R8, "mask pages");
@@ -1408,21 +1451,13 @@ pub(crate) mod internals {
                 "half-float pages and scratch",
             );
             let blur = self.backdrops.blur_memory();
-            let live_rows = gradient.live_rows();
-            let staging = AtlasUse {
-                name: "gradient staging (CPU)",
-                textures: 0,
-                bytes: gradient.staging_bytes(),
-                live_bytes: None,
-            };
             AtlasMemory {
                 uses: [
                     masks,
                     colors,
                     results,
                     blur,
-                    self.gradient.memory(live_rows),
-                    staging,
+                    self.gradient.memory(self.atlas.rows().live_rows()),
                 ],
             }
         }
@@ -1475,7 +1510,7 @@ pub(crate) mod internals {
         /// The shadow cutout tables the mask pages hold baked in part or whole.
         #[cfg(test)]
         pub(crate) fn baked_cutout_tables(&self) -> usize {
-            self.programs.quad.baked_cutout_tables()
+            self.cutout_placements.baked_len()
         }
 
         /// The texels of `format`'s scratch textures, held or idle.

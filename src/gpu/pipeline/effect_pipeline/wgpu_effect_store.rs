@@ -93,8 +93,9 @@ impl WgpuEffectStore {
         state.pending.clear();
     }
 
-    /// Build every wanted form for `format`, where it is new: before the frame that paints it.
-    pub(crate) fn ensure_format(&self, format: wgpu::TextureFormat) {
+    /// Build every wanted form for `format` on `gpu`, the attached device, where it is new: before
+    /// the frame that paints it.
+    pub(crate) fn ensure_format(&self, gpu: &Gpu, format: wgpu::TextureFormat) {
         let mut state = self.state.borrow_mut();
         let StoreState {
             modules,
@@ -114,6 +115,7 @@ impl WgpuEffectStore {
         for slot in wanted.ones() {
             let key = EffectKey::of_slot(slot);
             attached.device.ensure(
+                gpu,
                 &mut built.effects[slot],
                 EffectTarget {
                     module: &modules[key.effect.idx()],
@@ -126,10 +128,11 @@ impl WgpuEffectStore {
         attached.formats.push(built);
     }
 
-    /// The start of a frame's GPU phase: want each key of `keys`, the frame's draws, and build
+    /// The start of a frame's GPU phase on `gpu`, the attached device: want each key of `keys`, the
+    /// frame's draws, and build
     /// every wanted form's halves not built yet for each format, before any pass; a frame of
     /// `clipping` [`Clipping::On`] first asks for the clipped half of every wanted form.
-    pub(crate) fn prepare(&self, keys: &[EffectKey], clipping: Clipping) {
+    pub(crate) fn prepare(&self, gpu: &Gpu, keys: &[EffectKey], clipping: Clipping) {
         let mut state = self.state.borrow_mut();
         for &key in keys {
             state.want(key);
@@ -156,6 +159,7 @@ impl WgpuEffectStore {
         for key in pending.drain(..) {
             for built in formats.iter_mut() {
                 device.ensure(
+                    gpu,
                     &mut built.effects[key.slot()],
                     EffectTarget {
                         module: &modules[key.effect.idx()],
@@ -271,7 +275,9 @@ impl EffectStore for WgpuEffectStore {
 #[cfg(test)]
 pub(crate) mod internals {
     use crate::gpu::pipeline::clip_variant::{ClipVariant, Clipping};
-    use crate::gpu::resource::wgpu_effect_store::{ATTACHED, FormatEffects, WgpuEffectStore};
+    use crate::gpu::pipeline::effect_pipeline::wgpu_effect_store::{
+        ATTACHED, FormatEffects, WgpuEffectStore,
+    };
     use crate::primitives::identity::effect_id::EffectId;
     use crate::renderer::render_buffer::effect_draw_row::EffectKey;
     use crate::renderer::render_buffer::shape_form::ShapeForm;
@@ -322,8 +328,8 @@ mod tests {
     use crate::effect::effect_source::{EffectBuild, EffectSource};
     use crate::gpu::pipeline::clip_variant::Clipping;
     use crate::gpu::surface::owned_target::OwnedTarget;
-    use crate::gpu::surface::render_target::TargetFormat;
     use crate::gpu::test_gpu::headless_test_gpu;
+    use crate::gpu::texel::TargetFormat;
     use crate::host::offscreen::{OffscreenHost, OffscreenTime};
     use crate::primitives::effect::effect_name::EffectName;
     use crate::primitives::geometry::corners::Corners;

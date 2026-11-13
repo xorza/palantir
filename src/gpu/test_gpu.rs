@@ -19,12 +19,13 @@ use crate::gpu::device::gpu_wait::GpuWait;
 use crate::gpu::device::requested_gpu::GpuRequest;
 use crate::gpu::error::GpuRequestError;
 #[cfg(test)]
-use crate::gpu::frame::gpu_ctx::GpuCtx;
+use crate::gpu::resource::gpu_ctx::GpuCtx;
 #[cfg(test)]
 use crate::gpu::resource::upload_staging::UploadStaging;
-use crate::gpu::surface::owned_target::{OwnedTarget, TargetSpec};
-use crate::gpu::surface::render_target::TargetFormat;
+use crate::gpu::surface::owned_target::OwnedTarget;
 use crate::gpu::surface::texel_readback::TexelReadback;
+use crate::gpu::texel::TargetFormat;
+use crate::gpu::texel::TargetSpec;
 
 /// HighPerformance, as the benches use: with several adapters, goldens must record the one users see.
 const TEST_POWER: PowerPreference = PowerPreference::HighPerformance;

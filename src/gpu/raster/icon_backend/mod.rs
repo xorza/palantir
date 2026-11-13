@@ -13,11 +13,12 @@ use crate::gpu::atlas::AtlasPool;
 use crate::gpu::atlas::atlas_textures::AtlasTextures;
 use crate::gpu::atlas::tenant::Tenant;
 use crate::gpu::device::gpu::Gpu;
-use crate::gpu::frame::gpu_ctx::GpuCtx;
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
 use crate::gpu::pipeline::raster_pipeline::RasterPipelinePair;
 use crate::gpu::pipeline::raster_pipeline::raster_quad::RasterQuad;
-use crate::gpu::raster::raster_pass::{RasterPass, RasterPassConfig, Rasterized};
+use crate::gpu::raster::raster_atlas::Found;
+use crate::gpu::raster::raster_pass::{Filed, RasterPass, RasterPassConfig};
+use crate::gpu::resource::gpu_ctx::GpuCtx;
 use crate::icons::icon_raster_key::IconRasterKey;
 use crate::icons::icon_rasterizer::IconRasterizer;
 use crate::icons::icon_registry::IconRegistry;
@@ -59,11 +60,7 @@ impl IconBackend {
     ) {
         self.pass.open_batch(batch_idx);
         for row in rows {
-            let Some(idx) = self.slot(pool, row.key) else {
-                continue;
-            };
-            // A raster past a page takes a slot that draws nothing, as a glyph's does.
-            let Some(slot) = self.pass.atlas.placement(pool, idx) else {
+            let Some(Found::Raster(slot)) = self.find(pool, row.key) else {
                 continue;
             };
             let mut quad = RasterQuad {
@@ -81,26 +78,32 @@ impl IconBackend {
         }
     }
 
-    /// The atlas slab index holding `key`, rasterizing on a miss. `None` when the
-    /// icon could not be rasterized, or the atlas is at its ceiling with nothing
-    /// evictable (transient; retried next frame).
-    fn slot(&mut self, pool: &mut AtlasPool, key: IconRasterKey) -> Option<u32> {
-        if let Some(idx) = self.pass.atlas.touch(pool, &key) {
-            return Some(idx);
+    /// What `key` draws, rasterizing and filing it on a miss, as a glyph's run does. `None` where
+    /// the atlas is at its ceiling with nothing evictable, transient and tried again next frame.
+    fn find(&mut self, pool: &mut AtlasPool, key: IconRasterKey) -> Option<Found> {
+        if let Some(found) = self.pass.atlas.find(pool, &key) {
+            return Some(found);
         }
         let table = self.icons.get(key.icon.set);
-        let raster = self.rasterizer.rasterize(&table, key)?;
-        match self.pass.insert_raster(pool, key, raster) {
-            Rasterized::Slot(idx) => Some(idx),
-            Rasterized::AtlasFull => None,
+        match self
+            .pass
+            .file(pool, key, self.rasterizer.rasterize(&table, key))
+        {
+            Filed::Found(found) => Some(found),
+            Filed::Full => None,
         }
     }
 
-    /// Unload what a released icon set left behind, then hand the frame boundary
-    /// to the pass; runs for every submit. `frame` is the shared text clock from
-    /// [`TextBackend::end_frame`](crate::gpu::raster::text_backend::TextBackend::end_frame),
-    /// so both atlas tenants age on one clock.
-    pub(crate) fn end_frame(&mut self, pool: &mut AtlasPool, frame: u64) {
+    /// Drop the keys of the icons the pool evicted since the last drain: at the end of each submit,
+    /// and after a purge.
+    pub(crate) fn drop_evicted(&mut self, pool: &mut AtlasPool) {
+        self.pass.atlas.drop_evicted(pool);
+    }
+
+    /// Unload what a released icon set left behind, then hand the frame boundary to the pass, its
+    /// entries that draw nothing aging on `pool`'s display frames; runs for every submit, after its
+    /// drain.
+    pub(crate) fn end_frame(&mut self, pool: &mut AtlasPool) {
         {
             // Destructured so the drain closure can borrow the two caches mutably while
             // the registry is borrowed.
@@ -118,7 +121,12 @@ impl IconBackend {
                 pass.atlas.forget(pool, |key| !sets.contains(&key.icon.set));
             });
         }
-        self.pass.end_frame(pool, frame);
+        self.pass.end_frame(pool.frame());
+    }
+
+    /// Whether this frame turns a icon, which draws through the spun raster pipeline.
+    pub(crate) const fn turns_rasters(&self) -> bool {
+        self.pass.turns()
     }
 
     /// Upload this frame's quads and any rasters queued for the pool's pages, after its commit.

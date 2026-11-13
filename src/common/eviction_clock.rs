@@ -1,9 +1,23 @@
-//! [`ClockSweep`]: one turn of a list's eviction clock, judged by its caller, so the walk is
-//! testable with no slab.
+//! [`ClockSweep`]: one turn of an eviction clock, judged by its caller, so the walk is testable with
+//! no slab; the atlas pool's page lists and its row table both turn one.
+
+/// The display frames past the one an item was last drawn in that it stays from every eviction:
+/// nothing drawn this display frame or the last goes, which keeps a working set a little past
+/// budget from evicting what the next frame draws again, as WebRender's least age at full pressure
+/// (`src/gpu/AGENTS.md`, Atlases).
+pub(crate) const GRACE_FRAMES: u64 = 1;
+
+/// The items one display frame's age-out takes below four times the soft budget, WebRender's
+/// `MAX_EVICTIONS_PER_FRAME`, which keeps a frame of many from a stutter.
+pub(crate) const AGE_EVICTIONS_MAX: u32 = 32;
+
+/// The slots one display frame's age-out walks, from where the last stopped, so its cost a frame
+/// holds however many items the allocator keeps; one of more takes more frames to walk.
+pub(crate) const AGE_SCAN_MAX: usize = 1024;
 
 /// What the clock makes of one slot.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum Verdict {
+pub(crate) enum Verdict {
     /// Not a candidate: free or exempt.
     Skip,
     /// Evictable, but freeing it makes no room for the item: on a shelf that does not take it.
@@ -15,19 +29,19 @@ pub(super) enum Verdict {
 /// One turn of the clock: the victim it found, whether it passed an evictable slot it refused,
 /// and where the hand stopped.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) struct ClockSweep {
-    pub(super) victim: Option<u32>,
+pub(crate) struct ClockSweep {
+    pub(crate) victim: Option<u32>,
     /// With no victim, whether the turn passed a slot [`Verdict::Refuse`]d: a list with none is
     /// dry, and learning it costs no second turn.
-    pub(super) refused: bool,
+    pub(crate) refused: bool,
     /// Where the next turn resumes: past the victim, whose slot is about to be refilled.
-    pub(super) hand: u32,
+    pub(crate) hand: u32,
 }
 
 impl ClockSweep {
     /// Walk `len` slots from `hand`, wrapping once, to the first `judge` takes: an approximately
     /// oldest victim without the per-eviction scan of exact LRU.
-    pub(super) fn over(len: usize, hand: u32, judge: impl Fn(usize) -> Verdict) -> Self {
+    pub(crate) fn over(len: usize, hand: u32, judge: impl Fn(usize) -> Verdict) -> Self {
         if len == 0 {
             return Self {
                 victim: None,
@@ -62,7 +76,7 @@ impl ClockSweep {
 
 #[cfg(test)]
 mod tests {
-    use crate::gpu::atlas::eviction_clock::{ClockSweep, Verdict};
+    use crate::common::eviction_clock::{ClockSweep, Verdict};
 
     /// The walk resumes at the hand and wraps once: over `[Skip, Take, Refuse, Take]` from 2 it
     /// refuses 2, takes 3 and parks at 0; from 0 it skips 0, takes 1 and parks at 2.

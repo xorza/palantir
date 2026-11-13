@@ -7,9 +7,7 @@ mod gradient_resolver;
 mod plane_ctx;
 
 use crate::damage::Damage;
-use crate::image_registry::texture_limit::TextureLimit;
 use crate::primitives::geometry::rect::Rect;
-use crate::renderer::cpu_gradient_atlas::{CpuGradientAtlas, FlushedRows};
 use crate::renderer::frontend::encoder::cull_region::CullRegion;
 use crate::renderer::frontend::encoder::gradient_resolver::GradientResolver;
 use crate::renderer::frontend::encoder::plane_ctx::PlaneCtx;
@@ -17,34 +15,15 @@ use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::{BuildPlan, FrameScene};
 use crate::renderer::repaint_scissors;
 
-/// The encode pass's retained state: the gradient atlas every window's frames register their
-/// ramps in, the per-frame gradient memo, and the footprints a partial frame encodes, kept for
-/// their capacity.
+/// The encode pass's retained state: the per-frame gradient memo, and the footprints a partial
+/// frame encodes, kept for their capacity.
 #[derive(Debug, Default)]
 pub(crate) struct Encoder {
-    gradient_atlas: CpuGradientAtlas,
     gradients: GradientResolver,
     footprints: Vec<Rect>,
 }
 
 impl Encoder {
-    /// Start the gradient atlas over under `texture_limit`, as a new device's texture holds none
-    /// of its rows, so the next frames register their ramps again.
-    pub(crate) fn attach_device(&mut self, texture_limit: TextureLimit) {
-        self.gradient_atlas = CpuGradientAtlas::for_device(texture_limit);
-    }
-
-    /// Rows the gradient atlas holds, the height the backend's LUT texture starts at.
-    pub(crate) const fn gradient_rows(&self) -> u32 {
-        self.gradient_atlas.capacity()
-    }
-
-    /// The gradient rows baked since the last flush, for the frame that paints them; ends the
-    /// atlas's registration epoch.
-    pub(crate) fn flush_gradients(&mut self) -> Option<FlushedRows<'_>> {
-        self.gradient_atlas.flush()
-    }
-
     /// Walks every tree in paint order, emitting logical-px paint commands into `out`.
     /// `Damage::Partial` culls subtrees whose paint rect intersects no damage rect or captured
     /// backdrop footprint; callers skip the call when nothing is damaged.
@@ -61,6 +40,7 @@ impl Encoder {
         let BuildPlan {
             render: plan,
             backdrops: tickets,
+            rows,
         } = plan;
         let viewport = scene.stamp.display.logical_rect();
         let now = scene.stamp.time;
@@ -84,11 +64,9 @@ impl Encoder {
             }
             Damage::Full => None,
         };
-        self.gradient_atlas.begin_frame();
-        let mut gradients = self.gradients.begin(
-            scene.forest.record_store.gradients.records.as_slice(),
-            &mut self.gradient_atlas,
-        );
+        let mut gradients = self
+            .gradients
+            .begin(scene.forest.record_store.gradients.records.as_slice(), rows);
         let mut first_backdrop = 0;
         for (plane, tree) in scene.forest.trees.iter_paint_order() {
             let plane_cascades = &scene.cascade.planes[plane];
@@ -121,67 +99,51 @@ impl Encoder {
     }
 }
 
-#[cfg(feature = "internals")]
+#[cfg(test)]
 pub(crate) mod internals {
-    #[cfg(test)]
     use crate::internals::paint_capture::PaintCapture;
-    #[cfg(test)]
     use crate::internals::scratch_report;
-    #[cfg(test)]
     use crate::renderer::backdrop_captures::{BackdropCaptures, BackdropDamage};
-    use crate::renderer::cpu_gradient_atlas::CpuGradientAtlas;
     use crate::renderer::frontend::encoder::Encoder;
-    #[cfg(test)]
     use crate::renderer::frontend::{BuildPlan, FrameScene};
-    #[cfg(test)]
     use crate::renderer::render_plan::RenderPlan;
+    use crate::renderer::row_table::RowTable;
 
     impl Encoder {
-        /// The gradient atlas the encoder registers ramps in.
-        pub(crate) const fn gradient_atlas(&self) -> &CpuGradientAtlas {
-            &self.gradient_atlas
-        }
-
-        #[cfg(test)]
         pub(crate) fn scratch_bytes(&self) -> usize {
             let Self {
-                gradient_atlas: _,
                 gradients,
                 footprints,
             } = self;
             gradients.scratch_bytes() + scratch_report::vec_bytes(footprints)
         }
 
-        #[cfg(test)]
-        pub(crate) const fn gradient_max_rows(&self) -> u32 {
-            self.gradient_atlas.max_rows()
+        /// Encode `scene` under `plan` into a capture, its gradients registered in `rows`, every
+        /// backdrop capturing, as a fresh window's do.
+        pub(crate) fn capture(
+            &mut self,
+            scene: FrameScene<'_>,
+            plan: RenderPlan,
+            rows: &mut RowTable,
+        ) -> PaintCapture {
+            let mut ledger = BackdropCaptures::default();
+            ledger.decide(
+                scene.backdrops(),
+                scene.stamp.display,
+                BackdropDamage::Whole,
+            );
+            let mut recorded = PaintCapture::default();
+            self.encode(
+                &scene,
+                BuildPlan {
+                    render: plan,
+                    backdrops: ledger.tickets(),
+                    rows,
+                },
+                &mut recorded,
+            );
+            recorded
         }
-    }
-
-    /// Encode `scene` under `plan` through `encoder` into a capture, every backdrop capturing, as a
-    /// fresh window's do.
-    #[cfg(test)]
-    pub(crate) fn encode(
-        scene: FrameScene<'_>,
-        encoder: &mut Encoder,
-        plan: RenderPlan,
-    ) -> PaintCapture {
-        let mut ledger = BackdropCaptures::default();
-        ledger.decide(
-            scene.backdrops(),
-            scene.stamp.display,
-            BackdropDamage::Whole,
-        );
-        let mut recorded = PaintCapture::default();
-        encoder.encode(
-            &scene,
-            BuildPlan {
-                render: plan,
-                backdrops: ledger.tickets(),
-            },
-            &mut recorded,
-        );
-        recorded
     }
 }
 

@@ -4,7 +4,6 @@ use super::*;
 use crate::common::counters::CounterSet;
 use crate::gpu::atlas::atlas_format::AtlasFormat;
 use crate::text::key::TextShapeKey;
-use glam::{IVec2, U16Vec2, UVec2};
 
 /// The scale rung is this fixture's only axis, so one run identity stands for the text across every row.
 fn key(scale_q: u32) -> EncodedKey {
@@ -19,14 +18,7 @@ fn key(scale_q: u32) -> EncodedKey {
 /// Distinguishable glyph payload: `tag` reaches every field, so a misrouted or over-read block can't pass.
 fn glyph(tag: u32) -> EncodedGlyph {
     EncodedGlyph {
-        instance: RasterQuad {
-            pos: IVec2::new(tag as i32, -(tag as i32)),
-            dim: U16Vec2::new(tag as u16, (tag >> 16) as u16),
-            size: UVec2::new(tag ^ 0x5a5a, 0),
-            uv_and_kind: tag << 8,
-            color: bytemuck::cast(u64::from(!tag)),
-            clip: bytemuck::cast(tag.rotate_left(16)),
-        },
+        offset: IVec2::new(tag as i32, -(tag as i32)),
         handle: AtlasHandle {
             format: AtlasFormat::R8,
             idx: tag,
@@ -35,9 +27,9 @@ fn glyph(tag: u32) -> EncodedGlyph {
     }
 }
 
-/// Byte-exact comparison; `RasterQuad` is `Pod`, so any dropped field is caught.
+/// Field-exact comparison, so any dropped field is caught.
 fn same(a: &EncodedGlyph, b: &EncodedGlyph) -> bool {
-    bytemuck::bytes_of(&a.instance) == bytemuck::bytes_of(&b.instance) && a.handle == b.handle
+    a.offset == b.offset && a.handle == b.handle
 }
 
 impl EncodedCache {

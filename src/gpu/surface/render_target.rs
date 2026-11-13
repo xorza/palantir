@@ -1,6 +1,6 @@
-//! The texture a frame renders into, and its format.
+//! The texture a frame renders into.
 
-use crate::gpu::texel;
+use crate::gpu::texel::{self, TargetFormat};
 use glam::UVec2;
 use std::borrow::Cow;
 
@@ -67,7 +67,7 @@ impl<'a> RenderTarget<'a> {
     }
 
     pub(crate) fn format(self) -> TargetFormat {
-        TargetFormat(self.texture.format())
+        TargetFormat::new(self.texture.format())
     }
 
     /// Whether a frame can be copied onto this target (false for a GLES swapchain image).
@@ -85,52 +85,13 @@ impl<'a> RenderTarget<'a> {
     }
 }
 
-/// The texel format of a [`RenderTarget`]; opaque, only compared and keyed on.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct TargetFormat(wgpu::TextureFormat);
-
-impl TargetFormat {
-    /// 8-bit sRGB RGBA, what an image file holds: the format of the crate's own window targets.
-    pub(crate) const RGBA8_SRGB: Self = Self(wgpu::TextureFormat::Rgba8UnormSrgb);
-
-    /// 16-bit float RGBA, which keeps linear values past 8 bits.
-    pub(crate) const RGBA16_FLOAT: Self = Self(wgpu::TextureFormat::Rgba16Float);
-
-    /// Name a format directly, under [`RenderTarget::new`]'s rule.
-    ///
-    /// # Panics
-    ///
-    /// Panics when `format` is neither sRGB nor float.
-    #[track_caller]
-    pub fn new(format: wgpu::TextureFormat) -> Self {
-        assert!(
-            Self::encodes_linear(format),
-            "a render target's format must be sRGB or float",
-        );
-        Self(format)
-    }
-
-    /// True if a target in `format` encodes linear light (unorm renders too dark).
-    fn encodes_linear(format: wgpu::TextureFormat) -> bool {
-        format.is_srgb()
-            || matches!(
-                format,
-                wgpu::TextureFormat::Rgba16Float
-                    | wgpu::TextureFormat::Rgba32Float
-                    | wgpu::TextureFormat::Rg11b10Ufloat
-            )
-    }
-
-    pub(crate) const fn get(self) -> wgpu::TextureFormat {
-        self.0
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use crate::gpu::surface::owned_target::{OwnedTarget, TargetSpec};
-    use crate::gpu::surface::render_target::{RenderTarget, TargetFormat};
+    use crate::gpu::surface::owned_target::OwnedTarget;
+    use crate::gpu::surface::render_target::RenderTarget;
     use crate::gpu::test_gpu::headless_test_gpu;
+    use crate::gpu::texel::TargetFormat;
+    use crate::gpu::texel::TargetSpec;
     use crate::internals::panic_probe;
     use glam::UVec2;
     use std::borrow::Cow;

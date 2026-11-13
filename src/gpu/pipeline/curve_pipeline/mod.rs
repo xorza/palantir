@@ -7,12 +7,12 @@ pub(crate) mod bench;
 
 use crate::common::span::Span;
 use crate::gpu::device::gpu::{FilledBuffer, Gpu};
-use crate::gpu::frame::gpu_ctx::GpuCtx;
 use crate::gpu::pipeline::clip_variant::ClipVariant;
 use crate::gpu::pipeline::instanced_pipeline::{InstancedPipeline, InstancedSpec, VariantTarget};
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
-use crate::gpu::pipeline::pipeline_recipe::{self, Pipeline, PipelineRecipe, vertex_attr};
-use crate::gpu::pipeline::shader_body::{ShaderBody, ShaderConstant};
+use crate::gpu::resource::gpu_ctx::GpuCtx;
+use crate::gpu::resource::pipeline_recipe::{self, Pipeline, PipelineRecipe, vertex_attr};
+use crate::gpu::resource::shader_body::{ShaderBody, ShaderConstant};
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::line_style::LineCap;
@@ -80,9 +80,9 @@ impl CurvePipeline {
                 InstancedSpec {
                     shader: Self::SHADER,
                     layout: "palantir.curve.pl",
-                    // The frame group, which holds the gradient atlas; the viewport rides the
+                    // The frame group, which holds the gradient rows; the viewport rides the
                     // shared immediate region.
-                    groups: &[Some(textures.frame())],
+                    groups: &[Some(textures.frame_layout())],
                     instances: "palantir.curve.instances",
                     capacity: 64,
                 },

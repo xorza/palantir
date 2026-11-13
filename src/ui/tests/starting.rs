@@ -8,7 +8,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
-use crate::renderer::frontend::{BuildPlan, Frontend};
+use crate::renderer::frontend::Frontend;
 use crate::renderer::render_plan::RenderPlan;
 use crate::scene::plane::Plane;
 use crate::ui::tests::support::{self, SURFACE};
@@ -25,12 +25,12 @@ fn empty_ui_drives_a_frame_safely() {
 
     // Empty first frame has damage `None`; force `Full`.
     let mut frontend = Frontend::for_test();
-    frontend.build(
+    frontend.build_alone(
         h.frames().ui().frame_scene(),
-        BuildPlan::without_backdrops(RenderPlan {
+        RenderPlan {
             clear: h.ui().theme().window_bg,
             damage: Damage::Full,
-        }),
+        },
     );
     let buffer = &frontend.buffer;
     assert!(buffer.quads.is_empty());

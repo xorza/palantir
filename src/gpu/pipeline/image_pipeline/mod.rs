@@ -8,15 +8,15 @@
 
 use crate::common::span::Span;
 use crate::gpu::device::gpu::Gpu;
-use crate::gpu::frame::gpu_ctx::GpuCtx;
 use crate::gpu::pipeline::clip_variant::ClipVariant;
 use crate::gpu::pipeline::instanced_pipeline::{InstancedPipeline, InstancedSpec, VariantTarget};
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
-use crate::gpu::pipeline::pipeline_recipe::{self, Pipeline, PipelineRecipe, vertex_attr};
 use crate::gpu::pipeline::runs::Runs;
-use crate::gpu::pipeline::shader_body::{ShaderBody, ShaderConstant};
 use crate::gpu::pipeline::shape_template::{self, TemplateIndices};
+use crate::gpu::resource::gpu_ctx::GpuCtx;
 use crate::gpu::resource::gpu_view_targets::GpuViewTargets;
+use crate::gpu::resource::pipeline_recipe::{self, Pipeline, PipelineRecipe, vertex_attr};
+use crate::gpu::resource::shader_body::{ShaderBody, ShaderConstant};
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::resource::wgpu_image_store::ImageTexture;
 use crate::primitives::identity::texture_id::TextureId;
@@ -89,7 +89,10 @@ impl ImagePipeline {
                     shader: Self::SHADER,
                     layout: "palantir.image.pl",
                     // The frame group, then the image's texture.
-                    groups: &[Some(textures.frame()), Some(textures.layout())],
+                    groups: &[
+                        Some(textures.frame_layout()),
+                        Some(textures.texture_layout()),
+                    ],
                     instances: "palantir.image.instances",
                     capacity: 16,
                 },

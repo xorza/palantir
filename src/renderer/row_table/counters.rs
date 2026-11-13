@@ -1,22 +1,22 @@
-//! Observability for the gradient LUT atlas, built on [`BenchOnly`]. A row id
-//! does not say how [`CpuGradientAtlas::register`] reached it (index hit,
+//! Observability for the gradient row table, built on [`BenchOnly`]. A row id
+//! does not say how [`RowTable::register`] reached it (index hit,
 //! free-row bake, eviction bake, doubling, magenta fallback), which cost very
-//! differently. Counters accumulate rather than reset, as the atlas is shared
+//! differently. Counters accumulate rather than reset, as the table is shared
 //! across windows with no single pass to scope a reset to.
 //!
 //! [`BenchOnly`]: crate::common::counters::BenchOnly
-//! [`CpuGradientAtlas::register`]:
-//!     crate::renderer::cpu_gradient_atlas::CpuGradientAtlas::register
+//! [`RowTable::register`]:
+//!     crate::renderer::row_table::RowTable::register
 
 use crate::common::counters::counter_snapshot;
 
 counter_snapshot! {
     cells BenchOnly, reads cfg(feature = "internals");
 
-    pub(super) struct GradientAtlasCounters;
+    pub(super) struct RowTableCounters;
 
     /// One reading; subtract two for a span's activity.
-    pub(super) struct GradientAtlasCounts;
+    pub(super) struct RowTableCounts;
 
     /// `register` calls, however they resolved.
     registrations: u32,
@@ -29,8 +29,12 @@ counter_snapshot! {
     evictions: u32,
     /// Capacity doublings.
     growths: u32,
-    /// Capacity halvings, each at the end of an idle expiry window.
-    halvings: u32,
+    /// Rows a decay or a purge took out, idle past the expiry window or undrawn.
+    expiries: u32,
+    /// Rows moved into an expired row's place, each baked at the next flush.
+    moves: u32,
+    /// Capacity drops, each to the smallest rung that holds twice the rows.
+    shrinks: u32,
     /// LUT rows handed to the GPU, summed over flushes: each flush's dirty runs, with clean gaps
     /// of up to `MERGE_GAP_ROWS` folded in, so compare with [`Self::bakes`].
     rows_uploaded: u32,

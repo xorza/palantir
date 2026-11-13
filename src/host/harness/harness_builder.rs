@@ -4,12 +4,13 @@
 use crate::display::system_scale::SystemScale;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::surface::owned_target::OwnedTarget;
-use crate::gpu::surface::render_target::TargetFormat;
+use crate::gpu::texel::TargetFormat;
 use crate::host::harness::{Harness, HarnessPaint};
 use crate::host::headless_window::{HeadlessSettings, HeadlessWindow};
 use crate::host::host_core::HostCore;
 use crate::host::host_cpu::HostCpu;
 use crate::primitives::reduction::Reduction;
+use crate::renderer::row_table::RowTable;
 use crate::text::font_scope::FontScope;
 use crate::text::shaper::TextShaper;
 use crate::theme::color_scheme::ColorScheme;
@@ -225,7 +226,10 @@ impl HarnessBuilder {
             Depth::Compose => {
                 let mut cpu = HostCpu::new(options, shaper);
                 let frames = cpu.open(token, self.strategy);
-                let paint = HarnessPaint::Compose { size: self.size };
+                let paint = HarnessPaint::Compose {
+                    size: self.size,
+                    rows: RowTable::default(),
+                };
                 self.open(cpu, frames, paint)
             }
             Depth::Gpu { gpu, format } => {
@@ -258,7 +262,7 @@ impl HarnessBuilder {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
-    use crate::gpu::wgpu_backend::FrameTiming;
+    use crate::gpu::frame::gpu_timings::FrameTiming;
     #[cfg(test)]
     use crate::host::harness::harness_builder::Depth;
     use crate::host::harness::harness_builder::HarnessBuilder;
@@ -266,6 +270,8 @@ pub(crate) mod internals {
     use crate::host::harness::{Harness, HarnessPaint};
     #[cfg(test)]
     use crate::host::host_cpu::HostCpu;
+    #[cfg(test)]
+    use crate::renderer::row_table::RowTable;
     use crate::text::shaper::TextShaper;
     #[cfg(test)]
     use crate::ui::resources::UiResources;
@@ -303,7 +309,10 @@ pub(crate) mod internals {
             let frames = cpu.open(token, self.strategy);
             let paint = match self.depth {
                 Depth::Record => HarnessPaint::Record { size: self.size },
-                Depth::Compose => HarnessPaint::Compose { size: self.size },
+                Depth::Compose => HarnessPaint::Compose {
+                    size: self.size,
+                    rows: RowTable::default(),
+                },
                 Depth::Gpu { .. } => unreachable!("a window over shared resources has no device"),
             };
             self.open(cpu, frames, paint)

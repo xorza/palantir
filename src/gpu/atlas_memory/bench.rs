@@ -140,32 +140,53 @@ fn total(uses: &[AtlasUse]) -> AtlasUse {
     }
 }
 
-/// One run's table: an atlas a row, then the total.
+/// The heading of the names' column.
+const NAME_HEADING: &str = "atlas";
+
+/// One run's table: an atlas a row, then the total, the names' column as wide as its widest.
 fn write_run(out: &mut impl Write, run: &Run) -> io::Result<()> {
     writeln!(
         out,
         "\n== {}/{} ({} frames) ==",
         run.group, run.name, run.frames
     )?;
-    writeln!(
-        out,
-        "{:<22} {:>8} {:>11} {:>11} {:>11} {:>7}",
-        "atlas", "textures", "peak", "bytes", "live", "share"
-    )?;
-    for (used, &peak) in run.last.uses.iter().zip(&run.peak) {
-        write_row(out, used, peak)?;
-    }
-    write_row(out, &total(&run.last.uses), run.peak_total)
+    write_table(out, &run.last.uses, &run.peak, run.peak_total)
 }
 
-/// One row: `used` at the run's last frame, after the most it held, `peak`.
-fn write_row(out: &mut impl Write, used: &AtlasUse, peak: u64) -> io::Result<()> {
+/// The rows of `uses`, each after the most it held in `peak`, then their total after
+/// `peak_total`, under a heading.
+fn write_table(
+    out: &mut impl Write,
+    uses: &[AtlasUse],
+    peak: &[u64],
+    peak_total: u64,
+) -> io::Result<()> {
+    let total = total(uses);
+    let width = uses
+        .iter()
+        .chain([&total])
+        .map(|used| used.name.chars().count())
+        .fold(NAME_HEADING.len(), usize::max);
+    writeln!(
+        out,
+        "{NAME_HEADING:<width$} {:>8} {:>11} {:>11} {:>11} {:>7}",
+        "textures", "peak", "bytes", "live", "share"
+    )?;
+    for (used, &peak) in uses.iter().zip(peak) {
+        write_row(out, used, peak, width)?;
+    }
+    write_row(out, &total, peak_total, width)
+}
+
+/// One row: `used` at the run's last frame, after the most it held, `peak`, its name in a column
+/// `width` wide.
+fn write_row(out: &mut impl Write, used: &AtlasUse, peak: u64, width: usize) -> io::Result<()> {
     let live = used
         .live_bytes
         .map_or_else(|| "—".to_owned(), |live| Bytes(live).to_string());
     writeln!(
         out,
-        "{:<22} {:>8} {:>11} {:>11} {:>11} {:>7}",
+        "{:<width$} {:>8} {:>11} {:>11} {:>11} {:>7}",
         used.name,
         used.textures,
         Bytes(peak).to_string(),
@@ -198,7 +219,7 @@ fn share(used: &AtlasUse) -> String {
 #[cfg(test)]
 mod tests {
     use crate::gpu::atlas_memory::AtlasUse;
-    use crate::gpu::atlas_memory::bench::{share, total};
+    use crate::gpu::atlas_memory::bench::{share, total, write_table};
 
     fn used(bytes: u64, live_bytes: Option<u64>) -> AtlasUse {
         AtlasUse {
@@ -234,5 +255,25 @@ mod tests {
         ];
         let sum = total(&rows);
         assert_eq!((sum.textures, sum.bytes, sum.live_bytes), (3, 30, Some(3)));
+    }
+
+    /// Every row's numbers start where the heading's do, however long a name: "half-float pages
+    /// and scratch", 28 characters, sets the names' column, and the textures column of each of the
+    /// three lines ends at the same character.
+    #[test]
+    fn the_rows_line_up_under_the_heading() {
+        let rows = [
+            AtlasUse {
+                name: "half-float pages and scratch",
+                ..used(10, Some(3))
+            },
+            used(20, None),
+        ];
+        let mut out = Vec::new();
+        write_table(&mut out, &rows, &[10, 20], 30).unwrap();
+        let text = String::from_utf8(out).unwrap();
+        // The names' column, 28 wide, a space, then the textures column, 8 wide.
+        let textures: Vec<&str> = text.lines().map(|line| line[29..37].trim()).collect();
+        assert_eq!(textures, ["textures", "1", "1", "2"]);
     }
 }

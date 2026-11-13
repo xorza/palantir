@@ -1,7 +1,7 @@
 //! [`ContentType`]: single-channel coverage, or full color. Beside [`RasterImage`](crate::primitives::paint::raster_image::RasterImage) in primitives, since both rasterizers and the atlas name it.
 
-/// What a raster's bytes hold, and so which of an atlas's two sides it lives on. The discriminants
-/// are load-bearing: `RasterAtlas` indexes its `[Side; 2]` with `content as usize`.
+/// What a raster's bytes hold, and so which of the atlas pool's lists it lives in. The
+/// discriminants are load-bearing: a raster quad packs its content as its kind bit.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u8)]
 pub enum ContentType {
@@ -10,13 +10,4 @@ pub enum ContentType {
     Mask = 0,
     /// Straight sRGB RGBA, four bytes per pixel; premultiplied in linear at output.
     Color = 1,
-}
-
-impl ContentType {
-    pub(crate) const fn bytes_per_pixel(self) -> u32 {
-        match self {
-            Self::Mask => 1,
-            Self::Color => 4,
-        }
-    }
 }

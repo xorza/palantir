@@ -6,12 +6,13 @@
 
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_wait::GpuWait;
+use crate::gpu::frame::gpu_timings::FrameTiming;
+use crate::gpu::pipeline::effect_pipeline::wgpu_effect_store::WgpuEffectStore;
 use crate::gpu::resource::texture_binding::TextureBinding;
-use crate::gpu::resource::wgpu_effect_store::WgpuEffectStore;
 use crate::gpu::resource::wgpu_image_store::WgpuImageStore;
 use crate::gpu::surface::render_target::RenderTarget;
+use crate::gpu::wgpu_backend::WgpuBackend;
 use crate::gpu::wgpu_backend::backend_resources::BackendResources;
-use crate::gpu::wgpu_backend::{FrameTiming, WgpuBackend};
 use crate::host::host_cpu::HostCpu;
 use crate::image_registry::texture_limit::TextureLimit;
 use crate::ui::app::App;
@@ -75,17 +76,6 @@ impl HostDevice {
         self.gpu().wait_until(&|| frames.screenshots_landed())
     }
 
-    /// The backend every window of the host draws through, for a test or a bench that reads it.
-    #[cfg(feature = "internals")]
-    pub(super) const fn backend(&self) -> &WgpuBackend {
-        &self.backend
-    }
-
-    #[cfg(feature = "internals")]
-    pub(super) const fn backend_mut(&mut self) -> &mut WgpuBackend {
-        &mut self.backend
-    }
-
     /// Give back what the backend's atlases can, as the system warns of low memory, between two
     /// frames.
     #[cfg_attr(
@@ -106,7 +96,8 @@ impl HostDevice {
 
     /// The CPU half of a frame that paints, the one sequence every painting host runs: build the
     /// pipelines of its target's format, hand over a screenshot the device finished, drop what
-    /// evicted backdrops held, then record `app` and build the draw list through `cpu`'s frontend.
+    /// evicted backdrops held, then record `app` and build the draw list through `cpu`'s frontend,
+    /// on the display frame its submit will belong to.
     pub(super) fn frame<'c, T: App>(
         &mut self,
         cpu: &'c mut HostCpu,
@@ -118,10 +109,12 @@ impl HostDevice {
         frames.deliver_screenshot(&self.backend);
         frames.forget_evicted_backdrops(&mut self.backend);
         let report = frames.record(spec, app);
+        let frame = self.backend.next_frame(frames.render_owner());
         frames.build_paint(
             BuildCtx {
                 frontend: &mut cpu.frontend,
                 placing: self.backend.cutout_placing(),
+                frame,
             },
             report,
         )
@@ -165,7 +158,7 @@ impl BackendSpec {
     /// made with the device, the image store holds textures on it, the CPU core takes its limit,
     /// and the backend is built over it. Refused: the binding made by the image store,
     /// which pipelines took from it only because the store attached first. On a first attach the
-    /// store and the gradient atlas hold nothing yet, so the same steps do nothing extra.
+    /// store holds nothing yet, so the same steps do nothing extra.
     ///
     /// # Panics
     ///
@@ -187,10 +180,34 @@ impl BackendSpec {
                 image_store: &self.image_store,
                 effect_store: &self.effect_store,
                 icons: cpu.resources.icons(),
-                gradient_rows: cpu.frontend.gradient_rows(),
                 texture_binding,
             },
             self.timing,
         )
+    }
+}
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use crate::gpu::wgpu_backend::WgpuBackend;
+    use crate::host::host_device::HostDevice;
+    use crate::renderer::row_table::RowTable;
+
+    impl HostDevice {
+        /// The backend every window of the host draws through, for a test or a bench that reads
+        /// it.
+        pub(crate) const fn backend(&self) -> &WgpuBackend {
+            &self.backend
+        }
+
+        pub(crate) const fn backend_mut(&mut self) -> &mut WgpuBackend {
+            &mut self.backend
+        }
+
+        /// The device pool's gradient row table, for a build outside a painted frame, which the
+        /// next submit flushes.
+        pub(crate) const fn rows_mut(&mut self) -> &mut RowTable {
+            self.backend.rows_mut()
+        }
     }
 }

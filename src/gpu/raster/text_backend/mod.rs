@@ -20,15 +20,14 @@ use crate::gpu::atlas::AtlasPool;
 use crate::gpu::atlas::atlas_textures::AtlasTextures;
 use crate::gpu::atlas::tenant::Tenant;
 use crate::gpu::device::gpu::Gpu;
-use crate::gpu::frame::gpu_ctx::GpuCtx;
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
 use crate::gpu::pipeline::raster_pipeline::RasterPipelinePair;
 use crate::gpu::raster::raster_pass::{RasterPass, RasterPassConfig};
-use crate::gpu::raster::text_backend::encode::EncodedRunKey;
-use crate::gpu::raster::text_backend::encode::encoder::{MissedRun, TextEncoder};
+use crate::gpu::raster::text_backend::encode::encoder::TextEncoder;
+use crate::gpu::resource::gpu_ctx::GpuCtx;
 use crate::primitives::text::interned_text::InternedText;
 use crate::renderer::render_buffer::text_draw_row::TextDrawRow;
-use crate::text::render::{GlyphRasterKey, RunPlacement};
+use crate::text::render::GlyphRasterKey;
 use crate::text::shaper::TextShaper;
 
 /// One text batch to prepare: its rows, the frame's raster scale, and the text they resolve against.
@@ -68,54 +67,11 @@ impl TextBackend {
         }
     }
 
-    /// Append-mode prepare. Encoded-cache hits bypass shaping; the first miss
-    /// opens the exclusive glyph lease.
+    /// Append-mode prepare: the batch's runs into the batch it opens ([`TextEncoder::encode_batch`]).
     pub(crate) fn prepare_batch(&mut self, pool: &mut AtlasPool, batch: TextBatchInput<'_>) {
-        let TextBatchInput {
-            idx,
-            runs,
-            scale,
-            interned_text,
-        } = batch;
-        self.encoder.sync_fonts(self.shaper.font_epoch());
-        self.pass.open_batch(idx);
-
-        // One walk: hits emit directly, misses encode through the lazily opened
-        // lease, so an all-hit frame never touches cosmic.
-        let mut glyphs = None;
-        for r in runs {
-            let run_key = EncodedRunKey::for_row(r, scale);
-            let text = interned_text.resolve(r.text.span);
-            let start = self.pass.instance_count();
-            if !self
-                .encoder
-                .try_emit_cached(pool, &mut self.pass, &run_key, text)
-            {
-                let glyphs = glyphs.get_or_insert_with(|| self.shaper.glyphs());
-                self.encoder.encode_run(
-                    pool,
-                    &mut self.pass,
-                    glyphs,
-                    MissedRun {
-                        request: r.text.resolve_request(&interned_text),
-                        placement: RunPlacement {
-                            origin: run_key.origin(),
-                            scale: scale * r.scale,
-                            // A turned run's lines reach rows its unturned ones do not, so it
-                            // culls none against its bounds.
-                            bounds: r.spin.is_none().then_some(r.bounds),
-                        },
-                        key: run_key,
-                    },
-                );
-            }
-            // A turned run is emitted as an unturned one, then turned whole; its batch's scissor
-            // clips it. An unturned one clips to its bounds here, so it batches with any run.
-            match r.spin {
-                Some(spin) => self.pass.turn_since(start, spin, r.clip),
-                None => self.pass.clip_since(start, r.bounds, r.clip),
-            }
-        }
+        self.pass.open_batch(batch.idx);
+        self.encoder
+            .encode_batch(pool, &mut self.pass, &self.shaper, batch);
     }
 
     /// The shaper this backend encodes against, lent to a `GpuView` through
@@ -124,17 +80,23 @@ impl TextBackend {
         &self.shaper
     }
 
-    /// Frame teardown for every submit, even one with no text batch; the last step
-    /// of `WgpuBackend::submit`.
-    ///
-    /// Both caches age against the shaper's clock, so a text-free frame still
-    /// sweeps ([`RasterPass::end_frame`]). Returns that clock so the icon atlas
-    /// ages on the same span.
-    pub(crate) fn end_frame(&mut self, pool: &mut AtlasPool) -> u64 {
-        let frame = self.shaper.frame();
-        self.pass.end_frame(pool, frame);
-        self.encoder.end_frame(frame);
-        frame
+    /// Drop the keys of the glyphs the pool evicted since the last drain: at the end of each submit,
+    /// and after a purge.
+    pub(crate) fn drop_evicted(&mut self, pool: &mut AtlasPool) {
+        self.pass.atlas.drop_evicted(pool);
+    }
+
+    /// Frame teardown for every submit, even one with no text batch, after its drain: the encoded
+    /// runs age on the shaper's clock, which their shaped buffers age on, and the glyph entries that
+    /// draw nothing on `pool`'s display frames, which the atlas ages on.
+    pub(crate) fn end_frame(&mut self, pool: &AtlasPool) {
+        self.pass.end_frame(pool.frame());
+        self.encoder.end_frame(self.shaper.frame());
+    }
+
+    /// Whether this frame turns a glyph, which draws through the spun raster pipeline.
+    pub(crate) const fn turns_rasters(&self) -> bool {
+        self.pass.turns()
     }
 
     /// Upload this frame's quads and any rasters queued for the pool's pages, after its commit.
@@ -169,12 +131,14 @@ pub(crate) mod internals {
             self.pass.atlas.counters.counts()
         }
 
-        /// One frame boundary as a window drives it: tick the shared text clock
-        /// (owned by the record pass in production), then sweep this side. For
-        /// harnesses with no `Ui`, since [`TextBackend::end_frame`] only reads the clock.
+        /// One frame boundary as a window's submit and its next record pass drive it, for
+        /// harnesses with no `Ui`: the drain and this side's sweep at the clock the frame prepared
+        /// at, then the shared text clock ticks for the next frame, as the record pass ticks it in
+        /// production.
         pub(crate) fn tick_frame(&mut self, pool: &mut AtlasPool) {
-            self.shaper.tick_frame();
+            self.drop_evicted(pool);
             self.end_frame(pool);
+            self.shaper.tick_frame();
         }
     }
 }

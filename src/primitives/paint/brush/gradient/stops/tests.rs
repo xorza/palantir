@@ -24,7 +24,7 @@ fn worst_bucket(keys: &[GradientStops], buckets: usize) -> usize {
 }
 
 /// Structured palettes must spread across buckets; clustering shows only as a 10-30x slowdown in
-/// `CpuGradientAtlas`'s index. The bound is loose: 200 keys in 256 buckets peak around 4-5.
+/// `RowTable`'s index. The bound is loose: 200 keys in 256 buckets peak around 4-5.
 #[test]
 fn hash_spreads_across_buckets_for_structured_palettes() {
     const N: u32 = 200;

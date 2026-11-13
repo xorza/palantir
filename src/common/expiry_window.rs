@@ -6,7 +6,7 @@
 /// paints no frame keeps them until it paints again, as no frame runs to shrink them. Expire after
 /// idle, as Chromium's `cc::ResourcePool` and Flutter's `RasterCache` drop what recent frames did
 /// not use. The GPU side counts display frames
-/// ([`GpuCtx::frame`](crate::gpu::frame::gpu_ctx::GpuCtx)), so a second window does not halve it.
+/// ([`GpuCtx::frame`](crate::gpu::resource::gpu_ctx::GpuCtx)), so a second window does not halve it.
 pub(crate) const EXPIRY_FRAMES: u64 = 120;
 
 /// One resource's current expiry window over the backend's display frames.

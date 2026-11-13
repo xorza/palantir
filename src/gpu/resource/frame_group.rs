@@ -1,15 +1,14 @@
 //! The frame group: what every color pipeline of the main pass reads at one slot.
 
-use crate::gpu::atlas::row_table::RowTable;
 use crate::gpu::device::gpu::Gpu;
-use crate::gpu::frame::gpu_ctx::GpuCtx;
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
+use crate::gpu::resource::gpu_ctx::GpuCtx;
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::renderer::render_buffer::rounded_clip::RoundedClip;
 
 /// The group every color pipeline reads at
 /// [`FRAME_GROUP`](crate::primitives::wgsl::FRAME_GROUP), which the main pass binds once: the
-/// gradient atlas and the frame's rounded clips, the pool each draw's
+/// gradient rows and the frame's rounded clips, the pool each draw's
 /// [`ClipChain`](crate::renderer::render_buffer::clip_chain::ClipChain) names a run of. Owned by
 /// the backend beside the instance buffers, as every window's submit uploads its own before its
 /// passes.
@@ -18,24 +17,32 @@ pub(crate) struct FrameGroup {
     binding: TextureBinding,
     clips: DynamicBuffer<RoundedClip>,
     group: wgpu::BindGroup,
-    /// What `group` binds, which a grown atlas or pool changes.
+    /// What `group` binds, which a row texture made again or a grown pool changes.
     bound: Bound,
 }
 
-/// The atlas generation and the pool's capacity a frame group was made over.
+/// The row texture's view as the frame group binds it, and which texture it views, which a table
+/// that grew or shrank makes again.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct RowView<'a> {
+    pub(crate) view: &'a wgpu::TextureView,
+    pub(crate) generation: u64,
+}
+
+/// The row texture's generation and the pool's capacity a frame group was made over.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Bound {
-    atlas: u64,
+    rows: u64,
     clips: usize,
 }
 
 impl FrameGroup {
-    /// The group over `atlas` and an empty pool.
-    pub(crate) fn new(gpu: &Gpu, binding: TextureBinding, atlas: &RowTable) -> Self {
+    /// The group over `rows` and an empty pool.
+    pub(crate) fn new(gpu: &Gpu, binding: TextureBinding, rows: RowView<'_>) -> Self {
         let clips = DynamicBuffer::storage(gpu, "palantir.frame.clips", 16);
-        let group = binding.frame_group(gpu, atlas.view(), &clips.buffer);
+        let group = binding.frame_group(gpu, rows.view, &clips.buffer);
         let bound = Bound {
-            atlas: atlas.generation(),
+            rows: rows.generation,
             clips: clips.capacity(),
         };
         Self {
@@ -46,18 +53,27 @@ impl FrameGroup {
         }
     }
 
-    /// Upload the frame's `clips` and bind `atlas`, making the group again where the atlas grew or
-    /// the pool moved to another buffer.
-    pub(crate) fn upload(&mut self, ctx: &mut GpuCtx<'_>, atlas: &RowTable, clips: &[RoundedClip]) {
+    /// Upload the frame's `clips` and bind `rows`, making the group again where the row texture
+    /// was made again or the pool moved to another buffer.
+    pub(crate) fn upload(
+        &mut self,
+        ctx: &mut GpuCtx<'_>,
+        rows: RowView<'_>,
+        clips: &[RoundedClip],
+    ) {
         self.clips.upload_instances(ctx, clips);
+        self.follow(ctx.gpu, rows);
+    }
+
+    /// Bind `rows` and the pool's buffer, making the group again where either changed, so a
+    /// texture the purge replaced leaves the group at once.
+    pub(crate) fn follow(&mut self, gpu: &Gpu, rows: RowView<'_>) {
         let bound = Bound {
-            atlas: atlas.generation(),
+            rows: rows.generation,
             clips: self.clips.capacity(),
         };
         if bound != self.bound {
-            self.group = self
-                .binding
-                .frame_group(ctx.gpu, atlas.view(), &self.clips.buffer);
+            self.group = self.binding.frame_group(gpu, rows.view, &self.clips.buffer);
             self.bound = bound;
         }
     }

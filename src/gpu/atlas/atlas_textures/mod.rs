@@ -4,13 +4,14 @@
 pub(crate) mod move_draw;
 
 use crate::gpu::atlas::AtlasPool;
-use crate::gpu::atlas::atlas_format::AtlasFormat;
+use crate::gpu::atlas::atlas_format::{AtlasFormat, PerFormat};
 use crate::gpu::atlas::atlas_textures::move_draw::{MoveDraw, MoveRect, MoveRun};
-use crate::gpu::atlas::page_list::{MAX_PAGES, Move, MoveBudget, PageList};
+use crate::gpu::atlas::page_list::{MAX_PAGES, Move, PageList};
+use crate::gpu::atlas::scratch_cache::ScratchId;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::pass_traffic::PassTraffic;
-use crate::gpu::surface::owned_target::TargetSpec;
 use crate::gpu::texel;
+use crate::gpu::texel::TargetSpec;
 use glam::UVec2;
 
 /// The texture format of `format`'s pages: color pages are linear, the raster shader decoding
@@ -173,7 +174,7 @@ impl ListTextures {
                     );
                 }
             }
-            Mover::Draw { draw, rects } => {
+            Mover::Draw(draw) => {
                 // One page drains at a time and no drain is planned over waiting moves, so a
                 // commit's moves leave one page: a run a destination page, in the moves' order.
                 debug_assert!(
@@ -189,8 +190,7 @@ impl ListTextures {
                         continue;
                     };
                     let to = dest(first);
-                    rects.clear();
-                    rects.extend(landing.map(|&m| MoveRect::of(m, to.bound.size().x)));
+                    let edge = to.bound.size().x;
                     draw.record(
                         gpu,
                         encoder,
@@ -198,16 +198,16 @@ impl ListTextures {
                             format: self.format,
                             source: &source(first).bound.view,
                             dest: &to.bound.view,
-                            rects,
                         },
+                        landing.map(|&m| MoveRect::of(m, edge)),
                     );
                 }
             }
         }
         drop(previous);
-        let slots = list.scratch().slots();
-        self.scratch.resize_with(slots.len(), || None);
-        for (texture, size) in self.scratch.iter_mut().zip(slots) {
+        let sizes = list.scratch().sizes();
+        self.scratch.resize_with(sizes.len(), || None);
+        for (texture, size) in self.scratch.iter_mut().zip(sizes) {
             match (size, texture.as_ref()) {
                 (None, None) => continue,
                 (Some(size), Some(held)) if held.size() == size => continue,
@@ -223,41 +223,22 @@ impl ListTextures {
 
 /// How a device moves a drain's items between pages: by copy commands where a pass moves its
 /// whole target, as a draw onto a page would load and store all of it, and by one draw a
-/// destination page elsewhere, WebRender's two routes (`src/gpu/AGENTS.md`, Atlases).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum MoveRoute {
-    Copy,
-    Draw,
-}
-
-impl MoveRoute {
-    /// The route of a device whose passes move `traffic`.
-    pub(crate) const fn of(traffic: PassTraffic) -> Self {
-        match traffic {
-            PassTraffic::WholeTarget => Self::Copy,
-            PassTraffic::Drawn => Self::Draw,
-        }
-    }
-
-    /// What a display frame's moves may take on it.
-    pub(crate) const fn budget(self) -> MoveBudget {
-        match self {
-            Self::Copy => MoveBudget::COPIES,
-            Self::Draw => MoveBudget::DRAWN,
-        }
-    }
-}
-
-/// What a commit moves items with: copy commands, or [`MoveDraw`] and the scratch one run's
-/// rectangles gather in, kept across commits.
+/// destination page elsewhere, WebRender's two routes (`src/gpu/AGENTS.md`, Atlases), the
+/// budget's [`MoveBudget::of`](crate::gpu::atlas::page_list::MoveBudget::of) beside it.
 #[derive(Debug)]
 enum Mover {
     Copy,
-    Draw {
-        draw: MoveDraw,
-        /// One run's rectangles.
-        rects: Vec<MoveRect>,
-    },
+    Draw(MoveDraw),
+}
+
+impl Mover {
+    /// The mover of a device whose passes move `traffic`.
+    fn of(gpu: &Gpu, traffic: PassTraffic) -> Self {
+        match traffic {
+            PassTraffic::WholeTarget => Self::Copy,
+            PassTraffic::Drawn => Self::Draw(MoveDraw::new(gpu)),
+        }
+    }
 }
 
 /// The textures behind every list of an [`AtlasPool`], made again by its constructor on a new
@@ -265,37 +246,22 @@ enum Mover {
 /// (`src/gpu/AGENTS.md`, Device loss).
 #[derive(Debug)]
 pub(crate) struct AtlasTextures {
-    lists: [ListTextures; 3],
+    lists: PerFormat<ListTextures>,
     mover: Mover,
 }
 
 impl AtlasTextures {
-    /// The textures of a device, which moves items by its [`MoveRoute`].
+    /// The textures of a device, which moves items as its passes move their targets.
     pub(crate) fn new(gpu: &Gpu) -> Self {
-        Self::with_route(gpu, MoveRoute::of(gpu.pass_traffic()))
+        Self::with_traffic(gpu, gpu.pass_traffic())
     }
 
-    /// The textures of a device, moving items by `route`.
-    fn with_route(gpu: &Gpu, route: MoveRoute) -> Self {
+    /// The textures of a device, moving items as passes that move `traffic` call for.
+    fn with_traffic(gpu: &Gpu, traffic: PassTraffic) -> Self {
         Self {
-            lists: AtlasFormat::ALL.map(|format| ListTextures::new(gpu, format)),
-            mover: match route {
-                MoveRoute::Copy => Mover::Copy,
-                MoveRoute::Draw => Mover::Draw {
-                    draw: MoveDraw::new(gpu),
-                    rects: Vec::new(),
-                },
-            },
+            lists: PerFormat::from_fn(|format| ListTextures::new(gpu, format)),
+            mover: Mover::of(gpu, traffic),
         }
-    }
-
-    /// What a display frame's moves may take on this device, which the pool's decay takes.
-    pub(crate) const fn move_budget(&self) -> MoveBudget {
-        let route = match self.mover {
-            Mover::Copy => MoveRoute::Copy,
-            Mover::Draw { .. } => MoveRoute::Draw,
-        };
-        route.budget()
     }
 
     /// Make every texture follow `pool`, a grow's and the drains' copies recorded on `encoder`,
@@ -306,10 +272,10 @@ impl AtlasTextures {
         encoder: &mut wgpu::CommandEncoder,
         pool: &mut AtlasPool,
     ) {
-        if let Mover::Draw { draw, .. } = &mut self.mover {
+        if let Mover::Draw(draw) = &mut self.mover {
             draw.begin();
         }
-        for (textures, format) in self.lists.iter_mut().zip(AtlasFormat::ALL) {
+        for (format, textures) in self.lists.iter_mut() {
             textures.commit(gpu, encoder, pool.list(format), &mut self.mover);
         }
         pool.forget_moves();
@@ -317,7 +283,7 @@ impl AtlasTextures {
 
     /// The views of `format`'s pages by page index, a closed page's the 1 × 1 stand-in.
     pub(crate) fn views(&self, format: AtlasFormat) -> [&wgpu::TextureView; MAX_PAGES] {
-        let list = &self.lists[format as usize];
+        let list = &self.lists[format];
         std::array::from_fn(|idx| {
             list.pages[idx]
                 .as_ref()
@@ -327,34 +293,35 @@ impl AtlasTextures {
 
     /// Moves whenever a view of `format`'s pages or scratch textures changes: a consumer that binds
     /// them makes its group again when it differs from the one it made the group at.
-    pub(crate) const fn generation(&self, format: AtlasFormat) -> u64 {
-        self.lists[format as usize].generation
+    pub(crate) fn generation(&self, format: AtlasFormat) -> u64 {
+        self.lists[format].generation
     }
 
     /// The view of `format`'s page `idx`, `None` where none is open.
     pub(crate) fn page_view(&self, format: AtlasFormat, idx: usize) -> Option<&wgpu::TextureView> {
-        self.lists[format as usize].pages[idx]
+        self.lists[format].pages[idx]
             .as_ref()
             .map(|page| &page.bound.view)
     }
 
     /// The texture of `format`'s page `idx`, `None` where none is open.
     pub(crate) fn page_texture(&self, format: AtlasFormat, idx: usize) -> Option<&wgpu::Texture> {
-        self.lists[format as usize].pages[idx]
+        self.lists[format].pages[idx]
             .as_ref()
             .map(|page| &page.bound.texture)
     }
 
     /// The 1 × 1 view of `format` a binding with no texture of its own binds.
-    pub(crate) const fn absent_view(&self, format: AtlasFormat) -> &wgpu::TextureView {
-        &self.lists[format as usize].absent.view
+    pub(crate) fn absent_view(&self, format: AtlasFormat) -> &wgpu::TextureView {
+        &self.lists[format].absent.view
     }
 
-    /// The view of `format`'s scratch slot `idx`, `None` where it holds no texture.
-    pub(crate) fn scratch_view(&self, format: AtlasFormat, idx: u32) -> Option<&wgpu::TextureView> {
-        self.lists[format as usize]
+    /// The view of the texture `id` holds, as committed, `None` where its slot holds none: the GPU
+    /// half keeps no generation, so a caller holds `id` live.
+    pub(crate) fn scratch_view(&self, id: ScratchId) -> Option<&wgpu::TextureView> {
+        self.lists[id.format]
             .scratch
-            .get(idx as usize)?
+            .get(id.idx as usize)?
             .as_ref()
             .map(|bound| &bound.view)
     }
@@ -366,21 +333,13 @@ pub(crate) mod internals {
     use crate::gpu::atlas::atlas_format::AtlasFormat;
     use crate::gpu::atlas::atlas_textures::{AtlasTextures, ListTextures};
     use crate::gpu::atlas::page_list::Page;
-    use crate::gpu::atlas_memory::AtlasUse;
-    use crate::gpu::texel;
+    use crate::gpu::atlas_memory::{self, AtlasUse};
 
     impl ListTextures {
         fn bytes(&self) -> u64 {
             let pages = self.pages.iter().flatten().map(|page| &page.bound.texture);
             let scratch = self.scratch.iter().flatten().map(|bound| &bound.texture);
-            pages
-                .chain(scratch)
-                .map(|texture| {
-                    let size = texel::size(texture);
-                    u64::from(size.x) * u64::from(size.y)
-                })
-                .sum::<u64>()
-                * u64::from(self.format.texel_bytes())
+            pages.chain(scratch).map(atlas_memory::texture_bytes).sum()
         }
     }
 
@@ -388,7 +347,7 @@ pub(crate) mod internals {
         /// The bytes of `format`'s page and scratch textures, which the CPU half counts as
         /// [`PageList::bytes`](crate::gpu::atlas::page_list::PageList::bytes) once committed.
         pub(crate) fn bytes(&self, format: AtlasFormat) -> u64 {
-            self.lists[format as usize].bytes()
+            self.lists[format].bytes()
         }
 
         /// `format`'s textures, named `name`, against the texels its pages' items and its held
@@ -399,7 +358,7 @@ pub(crate) mod internals {
             format: AtlasFormat,
             name: &'static str,
         ) -> AtlasUse {
-            let textures = &self.lists[format as usize];
+            let textures = &self.lists[format];
             let count =
                 textures.pages.iter().flatten().count() + textures.scratch.iter().flatten().count();
             let list = pool.list(format);

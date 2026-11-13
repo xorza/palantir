@@ -4,7 +4,7 @@
 
 use crate::effect::effect_registry::EffectRegistry;
 use crate::gpu::device::gpu::Gpu;
-use crate::gpu::resource::wgpu_effect_store::WgpuEffectStore;
+use crate::gpu::pipeline::effect_pipeline::wgpu_effect_store::WgpuEffectStore;
 use crate::gpu::resource::wgpu_image_store::WgpuImageStore;
 use crate::host::host_cpu::HostCpu;
 use crate::host::host_device::{BackendSpec, HostDevice};
@@ -61,12 +61,12 @@ impl HostCore {
 mod tests {
     use crate::damage::Damage;
     use crate::gpu::device::gpu::Gpu;
+    use crate::gpu::frame::gpu_timings::FrameTiming;
     use crate::gpu::frame::submission::Route;
     use crate::gpu::surface::owned_target::OwnedTarget;
-    use crate::gpu::surface::render_target::TargetFormat;
     use crate::gpu::test_gpu::headless_test_gpu;
     use crate::gpu::test_gpu::isolated_headless_test_gpu;
-    use crate::gpu::wgpu_backend::FrameTiming;
+    use crate::gpu::texel::TargetFormat;
     use crate::host::host_core::HostCore;
     use crate::host::host_options::HostOptions;
     use crate::primitives::geometry::rect::Rect;

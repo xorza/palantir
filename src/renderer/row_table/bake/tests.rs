@@ -16,30 +16,12 @@ use crate::primitives::paint::brush::gradient::stops::{GradientStops, Stop};
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::oklab::Oklab;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
-use crate::renderer::cpu_gradient_atlas::bake::{self, LUT_ROW_TEXELS, LutRowTexels, RampTexels};
+use crate::renderer::row_table::bake::{self, LUT_ROW_TEXELS, LutRowTexels};
 use std::collections::HashSet;
 
 /// A row of transparent texels for a bake to fill.
 const fn fresh_row() -> LutRowTexels {
     [RgbaF16::TRANSPARENT; LUT_ROW_TEXELS]
-}
-
-/// The bake `zip`s the ramp against a fixed-length row, so a short ramp or
-/// wrong `size_hint` would leave stale texels.
-#[test]
-fn a_ramp_yields_exactly_one_row_of_texels() {
-    let stops = GradientStops::new([
-        Stop::new(0.0, RgbaF32::BLACK),
-        Stop::new(1.0, RgbaF32::WHITE),
-    ]);
-    let color_ramp = ColorRamp {
-        stops,
-        interpolation: Interpolation::Linear,
-    };
-    let ramp = RampTexels::new(&color_ramp);
-
-    assert_eq!(ramp.len(), LUT_ROW_TEXELS);
-    assert_eq!(ramp.count(), LUT_ROW_TEXELS);
 }
 
 /// Opaque red to transparent blue, premultiplied: texel 51 (t = 0.2) is

@@ -4,8 +4,9 @@ use glam::UVec2;
 
 use crate::common::tracy;
 use crate::gpu::device::gpu::Gpu;
-use crate::gpu::surface::render_target::{RenderTarget, TargetFormat};
+use crate::gpu::surface::render_target::RenderTarget;
 use crate::gpu::surface::surface_manager::{swapchain_mode, vsync_of};
+use crate::gpu::texel::TargetFormat;
 use crate::window::vsync::Vsync;
 
 /// A window's swapchain, from [`SurfaceManager::make_surface`](crate::gpu::surface::surface_manager::SurfaceManager::make_surface).

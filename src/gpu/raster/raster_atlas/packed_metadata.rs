@@ -5,9 +5,9 @@ use glam::{I16Vec2, IVec2, U16Vec2, UVec2};
 /// A raster's extents and bearing narrowed to the atlas's widths; what doesn't fit could never have been packed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct PackedMetadata {
-    pub(super) size: U16Vec2,
+    pub(crate) size: U16Vec2,
     /// Offset from the pen to the raster's top-left; `x` right, `y` **up**.
-    pub(super) bearing: I16Vec2,
+    pub(crate) bearing: I16Vec2,
 }
 
 impl PackedMetadata {

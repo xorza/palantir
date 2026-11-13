@@ -23,6 +23,8 @@ pub(crate) mod panic_probe;
 #[cfg(test)]
 pub(crate) mod scratch_report;
 #[cfg(test)]
+pub(crate) mod seeded_rng;
+#[cfg(test)]
 pub(crate) mod size_trio;
 #[cfg(test)]
 pub(crate) mod srgb_reference;
@@ -34,11 +36,12 @@ use crate::ui::Ui;
 /// benches outside the crate, which share its adapter check and its devices.
 pub use crate::gpu::bench_gpu::{BenchGpu, Timing};
 /// A texture a harness renders into and reads back, and what it is made as.
-pub use crate::gpu::surface::owned_target::{OwnedTarget, TargetSpec};
+pub use crate::gpu::surface::owned_target::OwnedTarget;
 /// The GPU test device lives in `crate::gpu` (`clippy.toml` keeps wgpu types there); re-exported for the suites.
 pub use crate::gpu::test_gpu::{
     TestGpu, headless_test_adapter, headless_test_gpu, isolated_headless_test_gpu,
 };
+pub use crate::gpu::texel::TargetSpec;
 
 pub use crate::text::internals::SHAPED_BUFFER_RING_FRAMES;
 

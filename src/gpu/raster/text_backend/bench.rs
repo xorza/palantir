@@ -12,23 +12,23 @@
 use crate::bench::backends::{Backend, Backends};
 use crate::bench::kind::{Kind, Scale};
 use crate::common::counters::CounterSet;
-use crate::gpu::atlas::atlas_format::AtlasFormat;
+use crate::gpu::atlas::atlas_format::{AtlasFormat, PerFormat};
 use crate::gpu::atlas::atlas_textures::AtlasTextures;
-use crate::gpu::atlas::page_group::PageGroup;
-use crate::gpu::atlas::page_list::PageListConfig;
-use crate::gpu::atlas::row_table::RowTable;
-use crate::gpu::atlas::{AtlasPool, LIST_CONFIGS};
+use crate::gpu::atlas::page_list::{MoveBudget, PageListConfig};
+use crate::gpu::atlas::row_texture::RowTexture;
+use crate::gpu::atlas::{AtlasPool, PoolConfig};
 use crate::gpu::bench_gpu::{BenchGpu, TARGET_FORMAT, Timing};
 use crate::gpu::device::gpu::Gpu;
-use crate::gpu::frame::gpu_ctx::GpuCtx;
+use crate::gpu::pipeline::atlas_binding::{AtlasGroup, AtlasSlots};
 use crate::gpu::pipeline::clip_variant::Clipping;
 use crate::gpu::pipeline::instanced_pipeline::VariantTarget;
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
-use crate::gpu::pipeline::raster_pipeline::{RASTER_FORMATS, RasterPipeline, RasterVariants};
+use crate::gpu::pipeline::raster_pipeline::{RasterDraws, RasterPipeline, RasterVariants};
 use crate::gpu::pipeline::viewport_push::ViewportPush;
 use crate::gpu::raster::text_backend::encode::cache::internals::{ChurnBench, SweepBench};
 use crate::gpu::raster::text_backend::{TextBackend, TextBatchInput};
 use crate::gpu::resource::frame_group::FrameGroup;
+use crate::gpu::resource::gpu_ctx::GpuCtx;
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::resource::upload_staging::UploadStaging;
 use crate::primitives::geometry::urect::URect;
@@ -37,6 +37,7 @@ use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::wgsl::FRAME_GROUP;
 use crate::renderer::render_buffer::clip_chain::ClipChain;
 use crate::renderer::render_buffer::text_draw_row::TextDrawRow;
+use crate::renderer::row_table::RowTableConfig;
 use crate::shape::record_store::RecordStore;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::run::TextRun;
@@ -172,10 +173,14 @@ fn distinct_runs(store: &mut RecordStore, shaper: &TextShaper) -> Vec<TextDrawRo
 /// glyphs fill past it within [`CHURN_SCALE_CYCLE`] rungs and the pool evicts. At the starting
 /// 8 MiB, or the glyph atlas's own 4 MiB before the pool, the whole set fits one page under the
 /// budget, which ages nothing out, and no measured frame evicts.
-const fn bench_configs() -> [PageListConfig; 3] {
-    let mut configs = LIST_CONFIGS;
-    configs[AtlasFormat::R8 as usize].soft_bytes = 1 << 20;
-    configs
+fn bench_configs() -> PerFormat<PageListConfig> {
+    PerFormat::from_fn(|format| match format {
+        AtlasFormat::R8 => PageListConfig {
+            soft_bytes: 1 << 20,
+            ..PageListConfig::of(format)
+        },
+        AtlasFormat::Rgba8 | AtlasFormat::Rgba16F => PageListConfig::of(format),
+    })
 }
 
 /// Runs drawn at one raster scale, as one text batch.
@@ -195,7 +200,7 @@ struct Fixture {
     pipelines: RasterVariants,
     pool: AtlasPool,
     atlas: AtlasTextures,
-    group: PageGroup<2>,
+    group: AtlasGroup,
     /// The display frames the pool ages on, one a frame.
     display_frame: u64,
     frame: FrameGroup,
@@ -212,22 +217,21 @@ impl Fixture {
         let mut store = RecordStore::default();
         let runs = make_runs(&mut store, &shaper);
         let textures = TextureBinding::new(&g.gpu);
-        let program = RasterPipeline::new(&g.gpu, &textures);
-        // The frame group the raster pipelines take first, which their glyphs read no clip of.
-        let frame = FrameGroup::new(&g.gpu, textures, &RowTable::new(&g.gpu, 1));
         let atlas = AtlasTextures::new(&g.gpu);
-        let group = PageGroup::new(
-            &g.gpu,
-            program.layout(),
-            "palantir.raster.atlas",
-            RASTER_FORMATS,
-            &atlas,
-        );
+        let group = AtlasGroup::new(&g.gpu, &atlas);
+        let program = RasterPipeline::new(&g.gpu, &textures, group.layout());
+        // The frame group the raster pipelines take first, which their glyphs read no clip of.
+        let frame = FrameGroup::new(&g.gpu, textures, RowTexture::new(&g.gpu, 1).row_view());
         Self {
             backend: TextBackend::new(&g.gpu, shaper),
             program,
             pipelines: RasterVariants::NONE,
-            pool: AtlasPool::with_configs(bench_configs(), g.gpu.max_texture_dim().get()),
+            pool: AtlasPool::new(PoolConfig {
+                lists: bench_configs(),
+                rows: RowTableConfig::of_device(g.gpu.max_texture_dim().get()),
+                device_edge: g.gpu.max_texture_dim().get(),
+                move_budget: MoveBudget::of(g.gpu.pass_traffic()),
+            }),
             atlas,
             group,
             display_frame: 0,
@@ -281,7 +285,11 @@ impl Fixture {
                 VariantTarget {
                     format: TARGET_FORMAT.get(),
                     clipping: Clipping::Off,
-                    slots: self.pool.slots(),
+                    slots: AtlasSlots::of(&self.pool),
+                },
+                RasterDraws {
+                    flat: true,
+                    spun: self.backend.turns_rasters(),
                 },
             );
             self.group.follow(ctx.gpu, &self.atlas);
@@ -292,7 +300,7 @@ impl Fixture {
         self.gpu.queue.submit([encoder.finish()]);
         self.belt.recall();
         self.gpu.wait();
-        self.pool.end_submit(self.atlas.move_budget());
+        self.pool.end_submit();
         self.backend.tick_frame(&mut self.pool);
     }
 
@@ -330,9 +338,11 @@ impl Fixture {
             },
         );
         rec.group(FRAME_GROUP, self.frame.group());
-        let pipelines = self
-            .pipelines
-            .pair(Clipping::Off, self.pool.slots(), self.group.group());
+        let pipelines = self.pipelines.pair(
+            Clipping::Off,
+            AtlasSlots::of(&self.pool),
+            self.group.group(),
+        );
         for idx in 0..batches {
             self.backend.render_batch(&mut rec, idx, pipelines);
         }

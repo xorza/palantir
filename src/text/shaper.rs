@@ -314,6 +314,8 @@ pub(crate) mod internals {
     use crate::text::wrap::TextWrap;
     #[cfg(test)]
     use glam::Vec2;
+    #[cfg(test)]
+    use std::cell::Ref;
 
     impl TextShaper {
         /// Deterministic mono shaper for tests and headless tools: every glyph is
@@ -374,11 +376,11 @@ pub(crate) mod internals {
             self.probe_layout(text, shape, |probe| probe.byte_at(Vec2::new(x, y)))
         }
 
-        /// Hold the exclusive borrow for the caller's scope, proving an encoded-cache hit
-        /// never touches the shaper.
+        /// Hold a shared borrow for the caller's scope, proving an encoded-cache hit never shapes
+        /// or rasterizes, each of which takes the exclusive one; a read of the clock passes.
         pub(crate) fn hold_borrow(&self) -> ShaperLease<'_> {
             ShaperLease {
-                _inner: self.shared.inner.borrow_mut(),
+                _inner: self.shared.inner.borrow(),
             }
         }
 
@@ -426,6 +428,6 @@ pub(crate) mod internals {
     #[cfg(test)]
     #[derive(Debug)]
     pub(crate) struct ShaperLease<'a> {
-        _inner: RefMut<'a, ShaperInner>,
+        _inner: Ref<'a, ShaperInner>,
     }
 }

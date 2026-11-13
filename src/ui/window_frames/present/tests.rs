@@ -6,7 +6,7 @@ use crate::display::system_scale::SystemScale;
 use crate::gpu::atlas::AtlasPool;
 use crate::gpu::pipeline::quad_pipeline::cutout_placements::{CutoutPlacements, CutoutPlacing};
 use crate::gpu::render_owner_id::RenderOwners;
-use crate::gpu::surface::render_target::TargetFormat;
+use crate::gpu::texel::TargetFormat;
 use crate::renderer::frontend::Frontend;
 use crate::ui::app::App;
 use crate::ui::frame_report::FrameReport;
@@ -57,8 +57,9 @@ impl WindowFrames {
             frontend,
             placing: CutoutPlacing {
                 placements: &mut CutoutPlacements::default(),
-                pool: &mut AtlasPool::new(DEVICE_EDGE),
+                pool: &mut AtlasPool::of_edge(DEVICE_EDGE),
             },
+            frame: 0,
         };
         self.build_paint(ctx, report)
     }
@@ -312,8 +313,8 @@ mod output_validity_tests {
 
     use crate::gpu::frame::submission::Route;
     use crate::gpu::surface::capture::Capture;
-    use crate::gpu::surface::render_target::TargetFormat;
     use crate::gpu::test_gpu::headless_test_gpu;
+    use crate::gpu::texel::TargetFormat;
     use crate::primitives::geometry::rect::Rect;
     use crate::primitives::paint::color::RgbaF32;
     use crate::renderer::frontend::Frontend;
@@ -1037,7 +1038,7 @@ mod cutout_census_tests {
                 });
         };
         let mut placements = CutoutPlacements::default();
-        let mut pool = AtlasPool::new(super::DEVICE_EDGE);
+        let mut pool = AtlasPool::of_edge(super::DEVICE_EDGE);
         let mut damage = |cards_now: usize, tick_now: bool| {
             cards.set(cards_now);
             tick.set(tick_now);
@@ -1048,6 +1049,7 @@ mod cutout_census_tests {
                     placements: &mut placements,
                     pool: &mut pool,
                 },
+                frame: 0,
             };
             let frame = frames.build_paint(ctx, report);
             frames.damage_base = DamageBase::Prev;
@@ -1086,8 +1088,8 @@ mod screenshot_tests {
     use glam::{UVec2, Vec2};
     use image::imageops;
 
-    use crate::gpu::surface::render_target::TargetFormat;
     use crate::gpu::test_gpu::headless_test_gpu;
+    use crate::gpu::texel::TargetFormat;
     use crate::host::harness::Harness;
     use crate::host::harness::harness_builder::Depth;
     use crate::primitives::geometry::rect::Rect;
@@ -1358,6 +1360,7 @@ mod escalation_tests {
     use crate::renderer::frontend::Frontend;
     use crate::renderer::render_buffer::backdrop_row::BackdropSource;
     use crate::renderer::render_plan::RenderPlan;
+    use crate::renderer::row_table::RowTable;
     use crate::shape::Shape;
     use crate::ui::Ui;
     use crate::ui::resources::UiResources;
@@ -1463,8 +1466,9 @@ mod escalation_tests {
             frontend: &mut frontend,
             placing: CutoutPlacing {
                 placements: &mut CutoutPlacements::default(),
-                pool: &mut AtlasPool::new(super::DEVICE_EDGE),
+                pool: &mut AtlasPool::of_edge(super::DEVICE_EDGE),
             },
+            frame: 0,
         };
         let job = frames.build_painted(ctx, facts.path(plan), facts);
         assert_eq!(
@@ -1483,12 +1487,17 @@ mod escalation_tests {
     fn a_composed_frame_past_the_cap_captures_every_backdrop() {
         let shared = UiResources::isolated_mono();
         let mut frontend = Frontend::for_test();
+        let mut rows = RowTable::default();
         let mut frames = new_frames(WindowToken(1), &shared, config(Retained, true));
         frames.note_target(&spec(PHYSICAL, 1.0));
         let mut app = |ui: &mut Ui| bars(ui, 10);
         let stamp = frames.stamp(&spec(PHYSICAL, 1.0));
         let report = frames.frame(stamp, &mut app);
-        frames.compose(&mut frontend, report.plan.expect("a first frame paints"));
+        frames.compose(
+            &mut frontend,
+            &mut rows,
+            report.plan.expect("a first frame paints"),
+        );
         let keys: Vec<BackdropKey> = frames
             .ui
             .frame_scene()
@@ -1500,7 +1509,7 @@ mod escalation_tests {
             frames.backdrop_captures.forget(key);
         }
 
-        frames.compose(&mut frontend, bands(1));
+        frames.compose(&mut frontend, &mut rows, bands(1));
 
         let held = frontend
             .buffer

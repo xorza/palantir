@@ -87,7 +87,7 @@ impl MapState {
 
 #[cfg(test)]
 pub(crate) mod internals {
-    use crate::gpu::surface::map_state::{FAILED, MAPPED, MapState, PENDING};
+    use crate::gpu::resource::map_state::{FAILED, MAPPED, MapState, PENDING};
     use std::sync::Arc;
     use std::sync::atomic::AtomicU32;
 
@@ -111,7 +111,7 @@ pub(crate) mod internals {
 #[cfg(test)]
 mod tests {
     use crate::gpu::device::gpu_wait::GpuWait;
-    use crate::gpu::surface::map_state::MapState;
+    use crate::gpu::resource::map_state::MapState;
     use crate::gpu::test_gpu::isolated_headless_test_gpu;
 
     /// One state serves every map of its buffer: idle, pending, mapped, idle again once cleared,

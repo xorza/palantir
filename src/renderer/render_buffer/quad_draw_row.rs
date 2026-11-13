@@ -55,7 +55,7 @@ impl QuadKey {
 ///
 /// **Solid fill:** `fill_kind` is [`FillKind::SOLID`], `fill` is the color, `fill_lut_row` / `fill_axis` ignored.
 ///
-/// **Linear-gradient fill:** `fill_kind` is [`FillKind::linear`], `fill_lut_row` indexes the gradient atlas row, `fill_axis = (dir_x, dir_y, t0, t1)` gives the projection axis and range; `fill` is white, the shader's multiplier on the ramp, so its alpha carries a fade.
+/// **Linear-gradient fill:** `fill_kind` is [`FillKind::linear`], `fill_lut_row` indexes the gradient row, `fill_axis = (dir_x, dir_y, t0, t1)` gives the projection axis and range; `fill` is white, the shader's multiplier on the ramp, so its alpha carries a fade.
 ///
 /// **Border** is inline `border_color` + `border_width` so the user `Border` can carry non-`Pod` sources; gradient borders are unsupported.
 #[repr(C)]
@@ -69,7 +69,7 @@ pub(crate) struct QuadInstance {
     pub(crate) border_width: f32,
     /// Packed brush metadata; see [`FillKind`] for layout.
     pub(crate) fill_kind: FillKind,
-    /// Gradient atlas row when `fill_kind` is a gradient tag; `LutRow::FALLBACK` (0) is the magenta debug fallback, written by solid quads and ignored.
+    /// Gradient row when `fill_kind` is a gradient tag; `LutRow::FALLBACK` (0) is the magenta debug fallback, written by solid quads and ignored.
     pub(crate) fill_lut_row: LutRow,
     pub(crate) fill_axis: FillAxis,
 }

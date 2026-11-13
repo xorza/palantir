@@ -1,4 +1,4 @@
-// A read of the gradient LUT atlas. The includer binds `palantir_gradient_tex` and
+// A read of the gradient rows. The includer binds `palantir_gradient_tex` and
 // `palantir_gradient_sampler`, in whichever group its layout gives them.
 
 // A ramp parameter `t` in 0..1 as the texture coordinate of a LUT row

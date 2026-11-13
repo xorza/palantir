@@ -34,7 +34,7 @@ impl BackbufferOut {
 
 #[cfg(test)]
 mod tests {
-    use crate::gpu::surface::backbuffer_out::BackbufferOut;
+    use crate::gpu::device::backbuffer_out::BackbufferOut;
 
     /// Metal with memoryless storage, an Apple GPU, draws; Metal without it, an Intel or AMD GPU
     /// in a Mac, copies, as does every other backend, a Vulkan device whose transient attachments

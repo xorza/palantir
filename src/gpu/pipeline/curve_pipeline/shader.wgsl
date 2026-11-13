@@ -143,7 +143,7 @@ struct VsOut {
     @location(3) color: vec4<f32>,
     // `FLAG_*` bits.
     @location(4) @interpolate(flat) flags: u32,
-    // Gradient LUT atlas row; ignored without `FLAG_RAMP_FILL`.
+    // Gradient row; ignored without `FLAG_RAMP_FILL`.
     // Carried as the row rather than a resolved `v` because deriving
     // `v` needs the atlas height, and that query has to run in the
     // fragment stage — the gradient bind group is fragment-visible only.

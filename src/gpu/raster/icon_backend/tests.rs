@@ -4,9 +4,9 @@ mod gpu {
     use crate::common::counters::CounterSet;
     use crate::gpu::atlas::AtlasPool;
     use crate::gpu::atlas::atlas_format::AtlasFormat;
-    use crate::gpu::atlas::page_list::PageListConfig;
     use crate::gpu::device::gpu::Gpu;
     use crate::gpu::raster::icon_backend::IconBackend;
+    use crate::gpu::raster::raster_atlas::Found;
     use crate::gpu::test_gpu::headless_test_gpu;
     use crate::icons::icon_raster_key::IconRasterKey;
     use crate::icons::icon_registry::IconRegistry;
@@ -28,10 +28,14 @@ mod gpu {
     /// One tintable icon, so the raster lands on the mask side.
     const SOLID: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><rect width="8" height="8" fill="#000"/></svg>"##;
 
-    /// One frame boundary as `WgpuBackend::submit` drives it, on a clock this test owns.
+    /// One frame boundary as `WgpuBackend::submit` drives it: the decay, the drain, the icon
+    /// side's end, and the pool's display frame moves on, counted in `frame`.
     fn tick(backend: &mut IconBackend, pool: &mut AtlasPool, frame: &mut u64) {
+        pool.end_submit();
+        backend.drop_evicted(pool);
+        backend.end_frame(pool);
         *frame += 1;
-        backend.end_frame(pool, *frame);
+        pool.advance_to(*frame);
     }
 
     fn load(icons: &IconRegistry) -> IconSet {
@@ -43,7 +47,7 @@ mod gpu {
         let icon = set.handle(IconId::new(0)).icon;
         let key = IconRasterKey::for_box(icon, Vec2::splat(16.0));
         assert!(
-            backend.slot(pool, key).is_some(),
+            matches!(backend.find(pool, key), Some(Found::Raster(_))),
             "the fixture icon must rasterize",
         );
     }
@@ -54,7 +58,7 @@ mod gpu {
         let gpu = headless_test_gpu();
         let icons = IconRegistry::default();
         let mut backend = icon_backend(&gpu, &icons);
-        let mut pool = AtlasPool::new(16384);
+        let mut pool = AtlasPool::of_edge(16384);
         let mut frame = 0u64;
 
         let set = load(&icons);
@@ -101,12 +105,7 @@ mod gpu {
         let gpu = headless_test_gpu();
         let icons = IconRegistry::default();
         let mut backend = icon_backend(&gpu, &icons);
-        let config = PageListConfig {
-            first_edge: 8,
-            page_edge: 8,
-            soft_bytes: 1 << 20,
-        };
-        let mut pool = AtlasPool::with_configs([config; 3], 16384);
+        let mut pool = AtlasPool::uniform(8, 8, 1 << 20);
         let mut frame = 0u64;
         let set = load(&icons);
         let row = IconDrawRow {
@@ -141,7 +140,7 @@ mod gpu {
         let gpu = headless_test_gpu();
         let icons = IconRegistry::default();
         let mut backend = icon_backend(&gpu, &icons);
-        let mut pool = AtlasPool::new(16384);
+        let mut pool = AtlasPool::of_edge(16384);
         let mut frame = 0u64;
 
         let first = load(&icons);
@@ -173,7 +172,7 @@ mod gpu {
         let gpu = headless_test_gpu();
         let icons = IconRegistry::default();
         let mut backend = icon_backend(&gpu, &icons);
-        let mut pool = AtlasPool::new(16384);
+        let mut pool = AtlasPool::of_edge(16384);
         let mut frame = 0u64;
 
         let mut held: Option<IconSet> = None;

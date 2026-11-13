@@ -81,8 +81,8 @@ use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy};
 use winit::window::WindowId;
 
+use crate::gpu::frame::gpu_timings::FrameTiming;
 use crate::gpu::surface::surface_manager::SurfaceManager;
-use crate::gpu::wgpu_backend::FrameTiming;
 use crate::host::winit::config::WinitHostConfig;
 use crate::host::winit::error::WinitHostError;
 use crate::host::winit::frame_log::FrameLog;

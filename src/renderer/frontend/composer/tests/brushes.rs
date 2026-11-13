@@ -73,11 +73,11 @@ fn compose_linear_brush_emits_kind_one_with_atlas_row() {
     use crate::primitives::packed::fill_kind::FillKind;
     use crate::primitives::paint::brush::gradient::Spread;
     use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
-    use crate::renderer::cpu_gradient_atlas::CpuGradientAtlas;
+    use crate::renderer::row_table::RowTable;
     let g =
         LinearGradient::horizontal([RgbaF32::WHITE, RgbaF32::BLACK]).with_spread(Spread::Reflect);
     let expected_axis = g.axis();
-    let mut atlas = CpuGradientAtlas::default();
+    let mut atlas = RowTable::default();
     let row = atlas.register(&g.ramp);
     let lowered = ResolvedGradient {
         axis: expected_axis,
@@ -106,9 +106,9 @@ fn compose_linear_brush_emits_kind_one_with_atlas_row() {
 fn compose_repeated_linear_brush_shares_atlas_row() {
     use crate::primitives::packed::fill_kind::FillKind;
     use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
-    use crate::renderer::cpu_gradient_atlas::CpuGradientAtlas;
+    use crate::renderer::row_table::RowTable;
     let g = LinearGradient::new(0.5, [RgbaF32::hex(0x336699), RgbaF32::hex(0xddaa44)]);
-    let mut atlas = CpuGradientAtlas::default();
+    let mut atlas = RowTable::default();
     let lowered = ResolvedGradient {
         axis: g.axis(),
         lut_row: atlas.register(&g.ramp),

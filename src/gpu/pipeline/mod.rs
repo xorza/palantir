@@ -1,6 +1,8 @@
 //! The render pipelines, one directory per pipeline beside its WGSL (`shader.wgsl`, or one file a
-//! concern where a pipeline holds several), and the recipe, prelude and shader assembly they share.
+//! concern where a pipeline holds several), the atlas group they read the pool's pages through,
+//! and the pass recorder; the recipe and shader assembly they build by are `resource`'s.
 
+pub(crate) mod atlas_binding;
 pub(crate) mod blit_pipeline;
 pub(crate) mod clip_variant;
 pub(crate) mod curve_pipeline;
@@ -10,11 +12,9 @@ pub(crate) mod image_pipeline;
 pub(crate) mod instanced_pipeline;
 pub(crate) mod mesh_pipeline;
 pub(crate) mod pass_recorder;
-pub(crate) mod pipeline_recipe;
 pub(crate) mod quad_pipeline;
 pub(crate) mod raster_pipeline;
 pub(crate) mod runs;
-pub(crate) mod shader_body;
 pub(crate) mod shape_template;
 pub(crate) mod viewport_push;
 
@@ -35,7 +35,7 @@ pub(crate) mod internals {
     use crate::gpu::pipeline::mesh_pipeline::MeshPipeline;
     use crate::gpu::pipeline::quad_pipeline::QuadPipeline;
     use crate::gpu::pipeline::raster_pipeline::RasterPipeline;
-    use crate::gpu::pipeline::shader_body::ShaderBody;
+    use crate::gpu::resource::shader_body::ShaderBody;
 
     /// Every shader body the backend compiles, which the shader tests walk.
     pub(crate) const SHADERS: [ShaderBody; 7] = [

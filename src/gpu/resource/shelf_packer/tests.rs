@@ -1,4 +1,5 @@
-use crate::gpu::resource::shelf_packer::ShelfPacker;
+use crate::gpu::resource::shelf_packer::{ShelfPacker, takes};
+use crate::internals::seeded_rng::SeededRng;
 use glam::U16Vec2;
 
 fn size(w: u16, h: u16) -> U16Vec2 {
@@ -12,15 +13,15 @@ fn shelves_fill_left_to_right_and_stack() {
     let mut packer = ShelfPacker::new(64);
     assert_eq!(packer.allocate(size(30, 10)), Some(U16Vec2::new(0, 0)));
     assert_eq!(packer.allocate(size(30, 9)), Some(U16Vec2::new(30, 0)));
-    assert_eq!(packer.shelf_height(0), 12, "10 rounds up to 12");
+    assert_eq!(packer.shelf(0).height, 12, "10 rounds up to 12");
     assert_eq!(
         packer.allocate(size(10, 12)),
         Some(U16Vec2::new(0, 12)),
         "4 columns are left on the first shelf, too few for 10: a second opens"
     );
     // 2 rows above a 10 is within its slack of 4; 12 above a 20 is not.
-    assert!(ShelfPacker::takes(12, 10));
-    assert!(!ShelfPacker::takes(32, 20));
+    assert!(takes(12, 10));
+    assert!(!takes(32, 20));
     assert_eq!(packer.allocate(size(10, 30)), Some(U16Vec2::new(0, 24)));
     assert_eq!(packer.allocate(size(65, 1)), None, "wider than the side");
     assert_eq!(
@@ -144,7 +145,7 @@ fn a_rectangle_takes_the_shortest_empty_shelf_that_holds_it() {
 /// rows, a 20-row one 20 to 25, a 40-row one 40 to 50.
 #[test]
 fn a_shelf_takes_a_rectangle_within_its_slack() {
-    for (height, h, takes) in [
+    for (height, h, want) in [
         (4, 4, true),
         (8, 4, true),
         (9, 4, false),
@@ -157,7 +158,7 @@ fn a_shelf_takes_a_rectangle_within_its_slack() {
         (5, 1, true),
         (6, 1, false),
     ] {
-        assert_eq!(ShelfPacker::takes(height, h), takes, "{h} on {height}");
+        assert_eq!(takes(height, h), want, "{h} on {height}");
     }
 }
 
@@ -270,7 +271,7 @@ fn rectangles_at_the_edges_of_the_side() {
     assert_eq!(ShelfPacker::within(0).allocate(size(1, 1)), None);
 
     let mut widest = ShelfPacker::within(1 << 20);
-    assert_eq!(widest.size, u16::MAX, "held to the 16-bit edge");
+    assert_eq!(widest.edge, u16::MAX, "held to the 16-bit edge");
     assert_eq!(widest.allocate(size(3, u16::MAX - 1)), Some(U16Vec2::ZERO));
     assert_eq!(rows(&widest), [(0, u16::MAX)]);
     assert_eq!(
@@ -345,7 +346,7 @@ struct Workload {
     name: &'static str,
     side: u16,
     grown: Option<u16>,
-    sizes: fn(&mut Rng) -> U16Vec2,
+    sizes: fn(&mut SeededRng) -> U16Vec2,
     /// Out of 100 steps, how many free a rectangle.
     frees: u32,
     eviction: Eviction,
@@ -362,24 +363,6 @@ enum Path {
     New,
     /// On an emptied shelf, split to it.
     Empty,
-}
-
-/// A xorshift generator, so a run repeats.
-#[derive(Debug)]
-struct Rng(u32);
-
-impl Rng {
-    fn next(&mut self) -> u32 {
-        self.0 ^= self.0 << 13;
-        self.0 ^= self.0 >> 17;
-        self.0 ^= self.0 << 5;
-        self.0
-    }
-
-    /// A value in `range`, inclusive.
-    fn within(&mut self, lo: u16, hi: u16) -> u16 {
-        lo + (self.next() % u32::from(hi - lo + 1)) as u16
-    }
 }
 
 /// Every workload's run, step by step against a reference that finds by a full scan where the
@@ -414,7 +397,7 @@ fn every_workload_places_as_the_reference_and_drains_to_empty() {
             side: 64,
             grown: Some(128),
             sizes: |rng| {
-                if rng.next() % 8 == 0 {
+                if rng.below(8) == 0 {
                     size(rng.within(40, 64), rng.within(20, 64))
                 } else {
                     size(rng.within(1, 4), rng.within(1, 4))
@@ -456,7 +439,7 @@ fn every_workload_places_as_the_reference_and_drains_to_empty() {
         let name = workload.name;
         let mut packer = ShelfPacker::new(workload.side);
         let mut placed: Vec<(U16Vec2, U16Vec2)> = Vec::new();
-        let mut rng = Rng(0x2545_f491);
+        let mut rng = SeededRng::new(0x2545_f491_4f6c_dd1d);
         let mut paths = [0; 3];
         let mut refusals = 0;
         for step in 0..STEPS {
@@ -465,10 +448,10 @@ fn every_workload_places_as_the_reference_and_drains_to_empty() {
             {
                 packer.grow(side);
             }
-            if rng.next() % 100 < workload.frees && !placed.is_empty() {
+            if rng.below(100) < u64::from(workload.frees) && !placed.is_empty() {
                 let at = match workload.eviction {
                     Eviction::Oldest => 0,
-                    Eviction::Random => rng.next() as usize % placed.len(),
+                    Eviction::Random => rng.below(placed.len() as u64) as usize,
                 };
                 let (origin, size) = placed.remove(at);
                 packer.deallocate(origin, size.x);
@@ -504,7 +487,7 @@ fn every_workload_places_as_the_reference_and_drains_to_empty() {
         while !placed.is_empty() {
             let at = match workload.eviction {
                 Eviction::Oldest => 0,
-                Eviction::Random => rng.next() as usize % placed.len(),
+                Eviction::Random => rng.below(placed.len() as u64) as usize,
             };
             let (origin, size) = placed.remove(at);
             packer.deallocate(origin, size.x);
@@ -520,13 +503,13 @@ fn every_workload_places_as_the_reference_and_drains_to_empty() {
 /// the shortest empty shelf that holds it, the upper of two. `None` when none is.
 fn reference(packer: &ShelfPacker, size: U16Vec2) -> Option<(U16Vec2, Path)> {
     let (w, h) = (size.x, size.y);
-    if w > packer.size || h > packer.size {
+    if w > packer.edge || h > packer.edge {
         return None;
     }
     let fitting = packer
         .shelves
         .iter()
-        .filter(|shelf| ShelfPacker::takes(shelf.height, h))
+        .filter(|shelf| shelf.takes(h))
         .filter_map(|shelf| {
             let span = shelf.free.iter().find(|span| span.end - span.start >= w)?;
             Some((shelf.height, shelf.y, span.start))
@@ -535,13 +518,13 @@ fn reference(packer: &ShelfPacker, size: U16Vec2) -> Option<(U16Vec2, Path)> {
     if let Some((_, y, x)) = fitting {
         return Some((U16Vec2::new(x, y), Path::Shelf));
     }
-    if packer.size - packer.top >= h {
+    if packer.edge - packer.top >= h {
         return Some((U16Vec2::new(0, packer.top), Path::New));
     }
     packer
         .shelves
         .iter()
-        .filter(|shelf| h <= shelf.height && matches!(shelf.free.as_slice(), [span] if span.start == 0 && span.end == packer.size))
+        .filter(|shelf| h <= shelf.height && matches!(shelf.free.as_slice(), [span] if span.start == 0 && span.end == packer.edge))
         .map(|shelf| (shelf.height, shelf.y))
         .min()
         .map(|(_, y)| (U16Vec2::new(0, y), Path::Empty))
@@ -550,7 +533,7 @@ fn reference(packer: &ShelfPacker, size: U16Vec2) -> Option<(U16Vec2, Path)> {
 /// The rectangles of `placed` lie apart and inside the side, each at its shelf's row and no
 /// taller than it, and each shelf's spans and rectangles tile its row as the packer promises.
 fn check(packer: &ShelfPacker, placed: &[(U16Vec2, U16Vec2)]) {
-    let side = usize::from(packer.size);
+    let side = usize::from(packer.edge);
     let mut owner = vec![false; side * side];
     for &(origin, size) in placed {
         let shelf = &packer.shelves[packer.shelf_at(origin.y)];
@@ -599,7 +582,7 @@ fn check(packer: &ShelfPacker, placed: &[(U16Vec2, U16Vec2)]) {
             assert_eq!(columns.start, x, "shelf {shelf:?} tiles its row");
             x = columns.end;
         }
-        assert_eq!(x, packer.size, "shelf {shelf:?} tiles its row");
+        assert_eq!(x, packer.edge, "shelf {shelf:?} tiles its row");
     }
     assert_eq!(y, packer.top);
 }

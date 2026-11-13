@@ -1,12 +1,12 @@
 //! [`MoveDraw`]: a list's moves drawn onto their destination page, one instanced draw a run of a
 //! source and a destination, as WebRender's `ps_copy` moves texture-cache items.
 
-use crate::gpu::atlas::atlas_format::AtlasFormat;
+use crate::gpu::atlas::atlas_format::{AtlasFormat, PerFormat};
 use crate::gpu::atlas::atlas_textures::texture_format;
 use crate::gpu::atlas::page_list::Move;
 use crate::gpu::device::gpu::Gpu;
-use crate::gpu::pipeline::pipeline_recipe::{self, PipelineRecipe, vertex_attr};
-use crate::gpu::pipeline::shader_body::ShaderBody;
+use crate::gpu::resource::pipeline_recipe::{self, PipelineRecipe, vertex_attr};
+use crate::gpu::resource::shader_body::ShaderBody;
 use crate::gpu::resource::texture_binding::{self, Filtering};
 use std::mem::offset_of;
 
@@ -86,20 +86,21 @@ fn fs(in: MoveOut) -> @location(0) vec4<f32> {
 };
 
 /// The draw that moves a list's items: its shader, the source's layout, a pipeline for each list's
-/// format, built on the first move of that list, and the buffer every run of a submission writes
-/// its rectangles into, each at its own place.
+/// format, built on the first move of that list, the buffer every run of a submission writes its
+/// rectangles into, each at its own place, and the scratch one run's rectangles gather in.
 #[derive(Debug)]
 pub(crate) struct MoveDraw {
     shader: wgpu::ShaderModule,
     layout: wgpu::BindGroupLayout,
     pipeline_layout: wgpu::PipelineLayout,
-    /// By [`AtlasFormat`].
-    pipelines: [Option<wgpu::RenderPipeline>; 3],
+    pipelines: PerFormat<Option<wgpu::RenderPipeline>>,
     /// Grown to the most rectangles one submission moved, and kept: its bound is the moves of the
     /// largest commit, a purge's, which a list's items bound.
     rects: Option<wgpu::Buffer>,
     /// The bytes of `rects` the runs since [`Self::begin`] took.
     used: u64,
+    /// One run's rectangles, kept across runs.
+    run_rects: Vec<MoveRect>,
 }
 
 /// One run of moves a draw records: from `source` onto `dest`, a page of `format`.
@@ -108,7 +109,6 @@ pub(crate) struct MoveRun<'a> {
     pub(crate) format: AtlasFormat,
     pub(crate) source: &'a wgpu::TextureView,
     pub(crate) dest: &'a wgpu::TextureView,
-    pub(crate) rects: &'a [MoveRect],
 }
 
 impl MoveDraw {
@@ -127,9 +127,10 @@ impl MoveDraw {
                 &[Some(&layout)],
             ),
             layout,
-            pipelines: [const { None }; 3],
+            pipelines: PerFormat::default(),
             rects: None,
             used: 0,
+            run_rects: Vec::new(),
         }
     }
 
@@ -139,23 +140,31 @@ impl MoveDraw {
         self.used = 0;
     }
 
-    /// Record `run` on `encoder`: one pass over its destination, which keeps the page's other
-    /// texels, and one instanced draw. The source's group is made for the run, as moves come only
-    /// on the frames a drain runs.
+    /// Record `run` of `rects` on `encoder`: one pass over its destination, which keeps the page's
+    /// other texels, and one instanced draw. The source's group is made for the run, as moves come
+    /// only on the frames a drain runs.
     pub(crate) fn record(
         &mut self,
         gpu: &Gpu,
         encoder: &mut wgpu::CommandEncoder,
         run: MoveRun<'_>,
+        rects: impl IntoIterator<Item = MoveRect>,
     ) {
+        self.run_rects.clear();
+        self.run_rects.extend(rects);
+        self.record_run(gpu, encoder, run);
+    }
+
+    /// [`Self::record`] of the rectangles gathered in `run_rects`.
+    fn record_run(&mut self, gpu: &Gpu, encoder: &mut wgpu::CommandEncoder, run: MoveRun<'_>) {
         let MoveRun {
             format,
             source,
             dest,
-            rects,
         } = run;
+        let rects = self.run_rects.as_slice();
         debug_assert!(!rects.is_empty(), "a run moves an item");
-        let pipeline = self.pipelines[format as usize].get_or_insert_with(|| {
+        let pipeline = self.pipelines[format].get_or_insert_with(|| {
             PipelineRecipe {
                 vertex_buffers: &[Some(pipeline_recipe::vertex_layout(
                     size_of::<MoveRect>(),

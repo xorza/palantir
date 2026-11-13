@@ -16,19 +16,20 @@ use crate::display::frame_stamp::FrameStamp;
 use crate::image_registry::texture_limit::TextureLimit;
 use crate::layout::Layout;
 use crate::renderer::backdrop_captures::BackdropTicket;
-use crate::renderer::cpu_gradient_atlas::FlushedRows;
 use crate::renderer::frontend::composer::Composer;
 use crate::renderer::frontend::encoder::Encoder;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_plan::RenderPlan;
+use crate::renderer::row_table::RowTable;
 use crate::scene::forest::Forest;
 
-/// What a frame builds: the plan it paints by, and the ticket of each backdrop of its scene, planes
-/// and backdrops in paint order.
-#[derive(Clone, Copy, Debug)]
+/// What a frame builds: the plan it paints by, the ticket of each backdrop of its scene, planes
+/// and backdrops in paint order, and the row table its gradients take rows in.
+#[derive(Debug)]
 pub(crate) struct BuildPlan<'a> {
     pub(crate) render: RenderPlan,
     pub(crate) backdrops: &'a [Option<BackdropTicket>],
+    pub(crate) rows: &'a mut RowTable,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -79,14 +80,6 @@ impl FrameScene<'_> {
     }
 }
 
-/// What the GPU half paints a built frame with: its draw list, and the gradient rows baked since
-/// the last frame painted.
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct FrameOutput<'a> {
-    pub(crate) buffer: &'a RenderBuffer,
-    pub(crate) gradients: Option<FlushedRows<'a>>,
-}
-
 /// CPU paint stage: tree to composed buffer, reused serially across window drivers.
 #[derive(Debug)]
 pub(crate) struct Frontend {
@@ -105,25 +98,10 @@ impl Frontend {
         }
     }
 
-    /// The CPU side of a device attach, at startup and after a loss alike: start the gradient
-    /// atlas over under the device's `texture_limit`, which also caps `GpuView` target sizes.
-    pub(crate) fn attach_device(&mut self, texture_limit: TextureLimit) {
-        self.encoder.attach_device(texture_limit);
+    /// The CPU side of a device attach, at startup and after a loss alike: the device's
+    /// `texture_limit` caps `GpuView` target sizes.
+    pub(crate) const fn attach_device(&mut self, texture_limit: TextureLimit) {
         self.composer.attach_device(texture_limit);
-    }
-
-    /// Rows the gradient atlas holds, the height a new backend's LUT texture starts at.
-    pub(crate) const fn gradient_rows(&self) -> u32 {
-        self.encoder.gradient_rows()
-    }
-
-    /// The last built frame as the GPU half paints it, which ends the gradient atlas's
-    /// registration epoch: call it for a frame that paints, once.
-    pub(crate) fn output(&mut self) -> FrameOutput<'_> {
-        FrameOutput {
-            buffer: &self.buffer,
-            gradients: self.encoder.flush_gradients(),
-        }
     }
 
     pub(crate) fn build(&mut self, scene: FrameScene<'_>, plan: BuildPlan<'_>) {
@@ -142,31 +120,26 @@ impl Frontend {
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
     use crate::image_registry::texture_limit::TextureLimit;
-    use crate::renderer::cpu_gradient_atlas::CpuGradientAtlas;
     use crate::renderer::frontend::BuildPlan;
-    use crate::renderer::frontend::Frontend;
+    #[cfg(test)]
+    use crate::renderer::frontend::{FrameScene, Frontend};
     use crate::renderer::render_plan::RenderPlan;
+    use crate::renderer::row_table::RowTable;
     use std::num::NonZeroU32;
 
     /// No `wgpu::Device` to query; 8192 is `wgpu::Limits::default`'s `max_texture_dimension_2d`.
     pub(crate) const TEST_TEXTURE_LIMIT: TextureLimit =
         TextureLimit::from_device(NonZeroU32::new(8192).unwrap());
 
-    impl BuildPlan<'static> {
-        /// A build of a scene that holds no backdrop, as a test or a bench drives one; the encoder
-        /// asserts a ticket for each backdrop.
-        pub(crate) const fn without_backdrops(render: RenderPlan) -> Self {
+    impl<'a> BuildPlan<'a> {
+        /// A build of a scene that holds no backdrop, its gradients in `rows`, as a test or a bench
+        /// drives one; the encoder asserts a ticket for each backdrop.
+        pub(crate) const fn without_backdrops(render: RenderPlan, rows: &'a mut RowTable) -> Self {
             Self {
                 render,
                 backdrops: &[],
+                rows,
             }
-        }
-    }
-
-    impl Frontend {
-        /// The gradient atlas the frame's ramps register in.
-        pub(crate) const fn gradient_atlas(&self) -> &CpuGradientAtlas {
-            self.encoder.gradient_atlas()
         }
     }
 
@@ -179,9 +152,13 @@ pub(crate) mod internals {
             frontend
         }
 
-        /// The growth ceiling of the gradient atlas, which the last device attach set.
-        pub(crate) fn gradient_max_rows(&self) -> u32 {
-            self.encoder.gradient_max_rows()
+        /// Build `scene` by `render`, which holds no backdrop, its gradients in a row table of
+        /// their own, as a test that reads the draw list alone builds it.
+        pub(crate) fn build_alone(&mut self, scene: FrameScene<'_>, render: RenderPlan) {
+            self.build(
+                scene,
+                BuildPlan::without_backdrops(render, &mut RowTable::default()),
+            );
         }
 
         /// Leaves out `buffer`, the composed frame the backend reads.

@@ -12,6 +12,27 @@ pub(crate) enum Tenant {
 }
 
 impl Tenant {
-    /// How many tenants there are, the length of the pool's eviction queues.
-    pub(crate) const COUNT: usize = 4;
+    /// Every tenant, in discriminant order, which indexes the pool's eviction queues.
+    pub(crate) const ALL: [Self; 4] = [
+        Self::Glyphs,
+        Self::Icons,
+        Self::CutoutTables,
+        Self::Backdrops,
+    ];
+
+    /// How many tenants there are.
+    pub(crate) const COUNT: usize = Self::ALL.len();
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::gpu::atlas::tenant::Tenant;
+
+    /// `ALL` lists each tenant at its discriminant, which indexes the eviction queues.
+    #[test]
+    fn every_tenant_sits_at_its_discriminant() {
+        for (at, tenant) in Tenant::ALL.into_iter().enumerate() {
+            assert_eq!(tenant as usize, at);
+        }
+    }
 }

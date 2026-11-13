@@ -18,17 +18,17 @@ use std::cell::Cell;
 /// The magenta outlines the encoder emitted for this frame's explicit-id collisions, in physical pixels. Selected by stroke width, the only 3 px stroke the encoder emits.
 fn collision_outlines(frames: &WindowFrames) -> Vec<Rect> {
     use crate::damage::Damage;
-    use crate::renderer::frontend::{BuildPlan, Frontend};
+    use crate::renderer::frontend::Frontend;
     use crate::renderer::render_plan::RenderPlan;
 
     // Share Ui's record store so mesh/polyline bytes pushed at record time are visible at compose.
     let mut frontend = Frontend::for_test();
-    frontend.build(
+    frontend.build_alone(
         frames.ui().frame_scene(),
-        BuildPlan::without_backdrops(RenderPlan {
+        RenderPlan {
             clear: frames.ui().theme().window_bg,
             damage: Damage::Full,
-        }),
+        },
     );
     frontend
         .buffer

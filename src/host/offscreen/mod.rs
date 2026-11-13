@@ -10,8 +10,8 @@
 use crate::display::system_scale::SystemScale;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_wait::GpuWait;
+use crate::gpu::frame::gpu_timings::FrameTiming;
 use crate::gpu::surface::render_target::RenderTarget;
-use crate::gpu::wgpu_backend::FrameTiming;
 use crate::host::clock::RealtimeClock;
 use crate::host::headless_window::{HeadlessCanvas, HeadlessSettings, HeadlessWindow};
 use crate::host::host_core::HostCore;
@@ -385,14 +385,14 @@ impl OffscreenHost {
 pub(crate) mod internals {
     use crate::damage::Damage;
     use crate::gpu::atlas_memory::AtlasMemory;
-    use crate::gpu::surface::render_target::TargetFormat;
+    use crate::gpu::texel::TargetFormat;
     use crate::host::offscreen::{OffscreenHost, OffscreenHostBuilder};
     use crate::primitives::geometry::rect::Rect;
     use crate::renderer::render_buffer::RenderBuffer;
     use crate::ui::window_frames::present::PresentStrategy;
 
     #[cfg(test)]
-    use crate::gpu::resource::wgpu_effect_store::WgpuEffectStore;
+    use crate::gpu::pipeline::effect_pipeline::wgpu_effect_store::WgpuEffectStore;
     #[cfg(test)]
     use crate::gpu::surface::render_target::RenderTarget;
     #[cfg(test)]
@@ -496,9 +496,7 @@ pub(crate) mod internals {
 
         /// Every atlas's memory on the host's device.
         pub(crate) fn atlas_memory(&self) -> AtlasMemory {
-            self.device
-                .backend()
-                .atlas_memory(self.window.cpu.frontend.gradient_atlas())
+            self.device.backend().atlas_memory()
         }
 
         /// Images resident in the GPU texture cache.

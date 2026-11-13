@@ -2,8 +2,8 @@
 
 use crate::diagnostics::gpu_pass_stats::PassCounts;
 use crate::gpu::debug_marker;
-use crate::gpu::pipeline::pipeline_recipe::Pipeline;
 use crate::gpu::pipeline::viewport_push::ViewportPush;
+use crate::gpu::resource::pipeline_recipe::Pipeline;
 use crate::primitives::geometry::urect::URect;
 use std::ops::Range;
 
@@ -67,7 +67,7 @@ impl PassState for wgpu::RenderPass<'_> {
 }
 
 /// Bind-group slots a draw of this backend uses: group 0, 1 (a shadow's cutout tables, an effect's
-/// images), 2 (the backdrop results a backdrop effect reads) and 3 (the gradient atlas a material's
+/// images), 2 (the backdrop results a backdrop effect reads) and 3 (the gradient rows a material's
 /// box reads).
 const GROUP_SLOTS: usize = 4;
 

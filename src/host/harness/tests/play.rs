@@ -18,8 +18,12 @@ use crate::primitives::input::keyboard::modifiers::Modifiers;
 use crate::primitives::input::pointer::PointerButton;
 use crate::primitives::input::shortcut::{Shortcut, ShortcutMods};
 use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::color::srgba_u8::SrgbaU8;
+use crate::renderer::row_table::SOFT_ROWS;
+use crate::shape::Shape;
 use crate::ui::Ui;
 use crate::ui::app::App;
 use crate::ui::frame_report::FramePaint;
@@ -76,6 +80,33 @@ fn each_depth_builds_what_it_names() {
         assert!(!still.repaint_requested);
         assert_eq!(quads(&h), built, "a still frame builds nothing new");
     }
+    let mut recording = Harness::builder(UVec2::new(64, 32)).mono().build();
+    recording.frame(tile);
+    assert_panics_with("builds no draw list", || recording.paint_full());
+}
+
+/// A window that composes and paints nothing counts a display frame a compose, so its row table
+/// evicts the ramps no frame drew in the grace rather than grow past its soft rows: 300 frames of a
+/// new ramp each leave the table at its 256 soft rows and on frame 300. Counted by flushes, as before, its
+/// ramps stayed in one epoch and the 256th grew the table, on to the fallback at its ceiling.
+#[test]
+fn a_composing_window_evicts_its_idle_rows() {
+    let mut h = Harness::builder(UVec2::new(64, 32))
+        .mono()
+        .depth(Depth::Compose)
+        .build();
+    for i in 0..300u32 {
+        h.frame(|ui: &mut Ui| {
+            let [r, g, _, _] = i.to_le_bytes();
+            ui.add_shape(
+                Shape::rect().at(Rect::new(0.0, 0.0, 8.0, 8.0)),
+                LinearGradient::horizontal([SrgbaU8::rgb(r, g, 1).into(), RgbaF32::WHITE]),
+            );
+        });
+    }
+    let rows = h.paint.rows_mut();
+    assert_eq!(rows.frame(), 300, "a display frame a compose");
+    assert_eq!(rows.capacity(), SOFT_ROWS);
 }
 
 /// A frame that opens and closes windows records each command, in order, and runs on.

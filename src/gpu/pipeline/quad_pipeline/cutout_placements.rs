@@ -3,11 +3,11 @@
 
 use crate::gpu::atlas::AtlasPool;
 use crate::gpu::atlas::atlas_format::AtlasFormat;
-use crate::gpu::atlas::atlas_handle::AtlasHandle;
+use crate::gpu::atlas::atlas_handle::{Allocation, AtlasHandle};
 use crate::gpu::atlas::error::AtlasError;
 use crate::gpu::atlas::tenant::Tenant;
 use crate::gpu::pipeline::quad_pipeline::cutout_plan::{BakeTable, CutoutKey, CutoutPlan};
-use glam::U16Vec2;
+use glam::{U16Vec2, UVec2};
 use rustc_hash::FxHashMap;
 
 /// The table each cutout key holds in the pool's mask pages, which the backend lends each
@@ -29,10 +29,40 @@ pub(crate) struct CutoutPlacements {
 #[derive(Clone, Copy, Debug)]
 struct PlacedTable {
     handle: AtlasHandle,
-    side: u32,
-    /// The last bake into the table, its span every texel baked since it was placed; `None`
-    /// before its first.
-    baked: Option<BakeTable>,
+    /// Every texel baked since the table was placed; `None` before its first bake. A drain's move
+    /// carries the texels with the table, so a moved table keeps its span.
+    baked: Option<BakedSpan>,
+}
+
+/// The span of a table's texels baked so far, table-relative as a [`BakeTable`]'s.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct BakedSpan {
+    lo: U16Vec2,
+    hi: U16Vec2,
+}
+
+impl BakedSpan {
+    /// The span `table` bakes.
+    const fn of(table: BakeTable) -> Self {
+        Self {
+            lo: table.lo,
+            hi: table.hi,
+        }
+    }
+
+    /// Whether the span holds `table`'s.
+    fn holds(self, table: BakeTable) -> bool {
+        self.lo.cmple(table.lo).all() && table.hi.cmple(self.hi).all()
+    }
+
+    /// `table` over the least span that holds its own and this one.
+    fn joined(self, table: BakeTable) -> BakeTable {
+        BakeTable {
+            lo: self.lo.min(table.lo),
+            hi: self.hi.max(table.hi),
+            ..table
+        }
+    }
 }
 
 /// [`CutoutPlacements`] with the pool its tables live in, as a plan places them.
@@ -49,63 +79,58 @@ impl CutoutPlacing<'_> {
     pub(crate) fn acquire(&mut self, key: CutoutKey, side: u32) -> Option<u32> {
         let placements = &mut *self.placements;
         if let Some(placed) = placements.keys.get(&key) {
-            if let Some(placement) = self.pool.placement(placed.handle) {
-                self.pool.pin(placed.handle);
-                return Some(CutoutPlan::code(placement, side));
+            if let Some(placement) = self.pool.pin(placed.handle) {
+                return Some(CutoutPlan::code(placement));
             }
             // Evicted, its handle waiting in the queue, which the drain passes over.
             placements.by_handle.remove(&placed.handle);
             placements.keys.remove(&key);
         }
-        let edge = u16::try_from(side).expect("a table's side is at most a page's");
-        let handle =
+        let Allocation { handle, placement } =
             match self
                 .pool
-                .allocate(AtlasFormat::R8, Tenant::CutoutTables, U16Vec2::splat(edge))
+                .allocate(AtlasFormat::R8, Tenant::CutoutTables, UVec2::splat(side))
             {
-                Ok(handle) => handle,
+                Ok(allocation) => allocation,
                 Err(AtlasError::Full) => return None,
                 Err(oversized @ AtlasError::Oversized { .. }) => {
                     unreachable!("a table fits a mask page by the plan's bound: {oversized}")
                 }
             };
-        self.pool.pin(handle);
+        let pinned = self.pool.pin(handle);
+        debug_assert_eq!(pinned, Some(placement), "a new table is placed");
         placements.keys.insert(
             key,
             PlacedTable {
                 handle,
-                side,
                 baked: None,
             },
         );
         placements.by_handle.insert(handle, key);
-        Some(self.code(key))
+        Some(CutoutPlan::code(placement))
     }
 
     /// The [`CutoutPlan::code`] of `key`, which a plan holds a use of.
     pub(crate) fn code(&self, key: CutoutKey) -> u32 {
-        let placed = self.placements.keys[&key];
         let placement = self
             .pool
-            .placement(placed.handle)
+            .placement(self.placements.keys[&key].handle)
             .expect("a held table is pinned");
-        CutoutPlan::code(placement, placed.side)
+        CutoutPlan::code(placement)
     }
 
-    /// Give back one use of `key`, which [`Self::acquire`] placed, and stamp it as drawn now, so
-    /// the clock takes the tables let go longest ago first.
+    /// Give back one use of `key`, which [`Self::acquire`] placed; the unpin stamps it as drawn
+    /// now, so the clock takes the tables let go longest ago first.
     pub(crate) fn release(&mut self, key: CutoutKey) {
-        let handle = self.placements.keys[&key].handle;
-        self.pool.unpin(handle);
-        let stamped = self.pool.stamp(handle);
-        debug_assert!(stamped.is_some(), "a table pinned until now is placed");
+        self.pool.unpin(self.placements.keys[&key].handle);
     }
 }
 
 impl CutoutPlacements {
     /// Write into `bakes` what of the frame's `tables` the mask pages lack, and note it baked: a
-    /// table baked at its place whole bakes nothing, one baked there in part bakes the least span
-    /// that holds both, and one placed since its last bake bakes its span.
+    /// table baked whole bakes nothing, one baked in part bakes the least span that holds both,
+    /// and one placed since its last bake, a new entry, bakes its span. A drain's move keeps the
+    /// entry and its span, as the commit moved its texels.
     pub(crate) fn bakes(&mut self, tables: &[BakeTable], bakes: &mut Vec<BakeTable>) {
         bakes.clear();
         for &table in tables {
@@ -114,17 +139,18 @@ impl CutoutPlacements {
                 .get_mut(&table.key())
                 .expect("a planned table is placed");
             let bake = match placed.baked {
-                Some(baked) if baked.is_at(table) && baked.holds(table) => continue,
-                Some(baked) if baked.is_at(table) => baked.joined(table),
-                _ => table,
+                Some(baked) if baked.holds(table) => continue,
+                Some(baked) => baked.joined(table),
+                None => table,
             };
-            placed.baked = Some(bake);
+            placed.baked = Some(BakedSpan::of(bake));
             bakes.push(bake);
         }
     }
 
-    /// Drop the tables the pool evicted since the last drain, at the end of each submit.
-    pub(crate) fn drain_evicted(&mut self, pool: &mut AtlasPool) {
+    /// Drop the tables the pool evicted since the last drain: at the end of each submit, and after
+    /// a purge.
+    pub(crate) fn drop_evicted(&mut self, pool: &mut AtlasPool) {
         for handle in pool.drain_evicted(Tenant::CutoutTables) {
             // A lookup that found the table gone dropped its entry already.
             if let Some(key) = self.by_handle.remove(&handle) {
@@ -149,6 +175,19 @@ pub(crate) mod internals {
                     .pins(placed.handle)
                     .unwrap_or(0)
             })
+        }
+
+        /// The display frame each placed table was last drawn in, in order.
+        pub(crate) fn last_uses(&self) -> Vec<u64> {
+            let list = self.pool.list(AtlasFormat::R8);
+            let mut last_uses: Vec<u64> = self
+                .placements
+                .keys
+                .values()
+                .filter_map(|placed| list.last_use(placed.handle))
+                .collect();
+            last_uses.sort_unstable();
+            last_uses
         }
 
         /// The uses every plan holds, of every key.
@@ -178,11 +217,10 @@ mod tests {
     use crate::gpu::atlas::AtlasPool;
     use crate::gpu::atlas::atlas_format::AtlasFormat;
     use crate::gpu::atlas::atlas_handle::Placement;
-    use crate::gpu::atlas::page_list::PageListConfig;
     use crate::gpu::atlas::tenant::Tenant;
     use crate::gpu::pipeline::quad_pipeline::cutout_placements::{CutoutPlacements, CutoutPlacing};
     use crate::gpu::pipeline::quad_pipeline::cutout_plan::{BakeTable, CutoutKey, CutoutPlan};
-    use glam::U16Vec2;
+    use glam::{U16Vec2, UVec2};
 
     fn key(r: f32) -> CutoutKey {
         CutoutKey::new(r, 2.0)
@@ -190,12 +228,7 @@ mod tests {
 
     /// A pool whose mask list holds one 64² page and evicts past nothing.
     fn pool() -> AtlasPool {
-        let config = PageListConfig {
-            first_edge: 64,
-            page_edge: 64,
-            soft_bytes: 0,
-        };
-        AtlasPool::with_configs([config; 3], 16384)
+        AtlasPool::uniform(64, 64, 0)
     }
 
     /// The code of a table of `side` at `(x, y)` of page 0.
@@ -205,14 +238,11 @@ mod tests {
 
     /// The code of a table of `side` at `(x, y)` of page `page`.
     fn on(page: u8, x: u16, y: u16, side: u32) -> u32 {
-        CutoutPlan::code(
-            Placement {
-                page,
-                origin: U16Vec2::new(x, y),
-                size: U16Vec2::splat(side as u16),
-            },
-            side,
-        )
+        CutoutPlan::code(Placement {
+            page,
+            origin: U16Vec2::new(x, y),
+            size: U16Vec2::splat(side as u16),
+        })
     }
 
     /// A key keeps its table while a plan uses it, pinned, and its uses count per plan: two uses
@@ -242,15 +272,16 @@ mod tests {
 
         pool.advance_to(2);
         let glyph = pool
-            .allocate(AtlasFormat::R8, Tenant::Glyphs, U16Vec2::new(64, 32))
-            .unwrap();
+            .allocate(AtlasFormat::R8, Tenant::Glyphs, UVec2::new(64, 32))
+            .unwrap()
+            .handle;
         assert_eq!(pool.placement(glyph).unwrap().origin, U16Vec2::new(0, 32));
         assert!(
-            pool.allocate(AtlasFormat::R8, Tenant::Glyphs, U16Vec2::splat(32))
+            pool.allocate(AtlasFormat::R8, Tenant::Glyphs, UVec2::splat(32))
                 .is_ok(),
             "b's texels"
         );
-        placements.drain_evicted(&mut pool);
+        placements.drop_evicted(&mut pool);
         assert_eq!(placements.baked_len(), 0, "b's bake went with it");
         let mut placing = CutoutPlacing {
             placements: &mut placements,
@@ -275,8 +306,9 @@ mod tests {
         placing.release(key(1.0));
         pool.advance_to(2);
         let glyph = pool
-            .allocate(AtlasFormat::R8, Tenant::Glyphs, U16Vec2::splat(64))
-            .unwrap();
+            .allocate(AtlasFormat::R8, Tenant::Glyphs, UVec2::splat(64))
+            .unwrap()
+            .handle;
         pool.release(glyph);
         let mut placing = CutoutPlacing {
             placements: &mut placements,
@@ -284,7 +316,7 @@ mod tests {
         };
         assert_eq!(placing.acquire(key(1.0), 64), Some(at(0, 0, 64)));
         assert_eq!(placing.users(key(1.0)), 1);
-        placements.drain_evicted(&mut pool);
+        placements.drop_evicted(&mut pool);
         let placing = CutoutPlacing {
             placements: &mut placements,
             pool: &mut pool,
@@ -305,8 +337,8 @@ mod tests {
 
     /// Frame by frame: the first bakes both its tables; the second needs nothing new and bakes
     /// nothing; the third widens `a`, which bakes the span that holds both; the fourth needs `b`
-    /// in part, already baked, and bakes nothing; once `b` is placed again its old bake does not
-    /// count, and the table bakes its span.
+    /// in part, already baked, and bakes nothing; and `b` moved by a drain, a new code at its new
+    /// place, bakes nothing either, as the commit carried its texels.
     #[test]
     fn a_table_bakes_only_what_it_lacks() {
         let mut pool = pool();
@@ -340,6 +372,47 @@ mod tests {
             ..b
         };
         placements.bakes(&[moved], &mut bakes);
-        assert_eq!(bakes, [moved], "another place bakes afresh");
+        assert_eq!(bakes, [], "a move carries the texels");
+    }
+
+    /// A table a drain moved keeps its entry, its pin and its bake: its code is its new place's,
+    /// and it bakes nothing more, as the commit moved its texels. On pages of 64², `a`'s 32² table
+    /// pinned at the first page's origin, three glyphs filling the page and one opening the second;
+    /// with the three gone, the first page, the emptier by slot, drains `a` to the second's (32, 0).
+    #[test]
+    fn a_moved_table_keeps_its_bake_at_its_new_place() {
+        let mut pool = pool();
+        let mut placements = CutoutPlacements::default();
+        let mut placing = CutoutPlacing {
+            placements: &mut placements,
+            pool: &mut pool,
+        };
+        assert_eq!(placing.acquire(key(1.0), 32), Some(at(0, 0, 32)));
+        let a = table(&placing, 1.0, 32);
+        placements.bakes(&[a], &mut Vec::new());
+        let glyphs: Vec<_> = (0..4)
+            .map(|_| {
+                pool.allocate(AtlasFormat::R8, Tenant::Glyphs, UVec2::splat(32))
+                    .unwrap()
+                    .handle
+            })
+            .collect();
+        assert_eq!(pool.placement(glyphs[3]).unwrap().page, 1);
+        for &glyph in &glyphs[..3] {
+            pool.release(glyph);
+        }
+        pool.advance_to(1);
+        pool.end_submit();
+        assert_eq!(pool.list(AtlasFormat::R8).moves().len(), 1);
+        let placing = CutoutPlacing {
+            placements: &mut placements,
+            pool: &mut pool,
+        };
+        let moved = on(1, 32, 0, 32);
+        assert_eq!(placing.code(key(1.0)), moved);
+        assert_eq!(placing.users(key(1.0)), 1, "still pinned");
+        let mut bakes = Vec::new();
+        placements.bakes(&[BakeTable { table: moved, ..a }], &mut bakes);
+        assert_eq!(bakes, [], "the move carried the texels");
     }
 }

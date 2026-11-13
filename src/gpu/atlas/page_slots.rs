@@ -39,24 +39,6 @@ impl PageSlots {
     }
 }
 
-/// The open slots of the lists a frame's raster and shadow draws read, after the pool's commit:
-/// what their pipelines are built for.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct AtlasSlots {
-    /// The `R8` list's: glyph and icon masks, and the shadows' cutout tables.
-    pub(crate) mask: PageSlots,
-    /// The `Rgba8` list's: color glyphs and icons.
-    pub(crate) color: PageSlots,
-}
-
-impl AtlasSlots {
-    /// Slot 0 of each list.
-    pub(crate) const FIRST: Self = Self {
-        mask: PageSlots::FIRST,
-        color: PageSlots::FIRST,
-    };
-}
-
 #[cfg(test)]
 pub(crate) mod internals {
     use crate::gpu::atlas::page_slots::PageSlots;
@@ -71,5 +53,30 @@ pub(crate) mod internals {
         pub(crate) const fn holds(self, page: u8) -> bool {
             self.0 & (1 << page) != 0
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::gpu::atlas::page_slots::PageSlots;
+
+    /// Every set of the four slots but the empty one, at its place among them.
+    #[test]
+    fn every_set_but_the_empty_one_has_a_place() {
+        let idxs: Vec<usize> = PageSlots::all().map(PageSlots::idx).collect();
+        assert_eq!(idxs, (0..PageSlots::COUNT).collect::<Vec<_>>());
+        assert_eq!(PageSlots::new(0b1111).bits(), 15);
+    }
+
+    #[test]
+    #[should_panic(expected = "a draw reads a slot")]
+    fn no_set_is_empty() {
+        let _ = PageSlots::new(0);
+    }
+
+    #[test]
+    #[should_panic(expected = "a slot past the list's")]
+    fn no_set_names_a_fifth_slot() {
+        let _ = PageSlots::new(16);
     }
 }

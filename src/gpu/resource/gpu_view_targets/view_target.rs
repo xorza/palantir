@@ -4,8 +4,8 @@ use crate::gpu::device::gpu::Gpu;
 use crate::gpu::render_owner_id::RenderOwnerId;
 use crate::gpu::resource::gpu_view_targets::TARGET_FORMAT;
 use crate::gpu::resource::texture_binding::TextureBinding;
-use crate::gpu::surface::owned_target::TargetSpec;
 use crate::gpu::texel;
+use crate::gpu::texel::TargetSpec;
 use crate::renderer::render_buffer::render_target_draw::ViewStamp;
 use glam::UVec2;
 use std::time::Duration;
@@ -42,7 +42,7 @@ impl AllocatedTarget {
             },
         );
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let bind_group = binding.bind_group(gpu, &view, "palantir.gpu_view.tex.bg");
+        let bind_group = binding.texture_group(gpu, &view, "palantir.gpu_view.tex.bg");
         Self { view, bind_group }
     }
 }

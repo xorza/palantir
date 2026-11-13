@@ -1,11 +1,11 @@
 //! The device and queue Palantir draws with.
 
+use crate::gpu::device::backbuffer_out::BackbufferOut;
 use crate::gpu::device::device_health::DeviceHealth;
 use crate::gpu::device::device_requirements::DeviceRequirements;
 use crate::gpu::device::gpu_wait::GpuWait;
 use crate::gpu::device::pass_traffic::PassTraffic;
 use crate::gpu::error::UnmetRequirements;
-use crate::gpu::surface::backbuffer_out::BackbufferOut;
 use std::iter;
 use std::num::NonZeroU32;
 use std::thread;
@@ -244,9 +244,9 @@ impl Gpu {
 
 #[cfg(test)]
 pub(crate) mod internals {
+    use crate::gpu::device::backbuffer_out::BackbufferOut;
     use crate::gpu::device::gpu::Gpu;
     use crate::gpu::device::pass_traffic::PassTraffic;
-    use crate::gpu::surface::backbuffer_out::BackbufferOut;
 
     impl Gpu {
         /// This handle reads as a device whose passes move `traffic`, whatever the device is;
@@ -267,7 +267,7 @@ pub(crate) mod internals {
 mod tests {
     use crate::gpu::device::gpu::FilledBuffer;
     use crate::gpu::device::gpu_wait::GpuWait;
-    use crate::gpu::surface::map_state::MapState;
+    use crate::gpu::resource::map_state::MapState;
     use crate::gpu::test_gpu::isolated_headless_test_gpu;
     use crate::internals::panic_probe;
     use std::sync::Arc;

@@ -4,6 +4,23 @@ How palantir draws, from the renderer's instance streams through wgpu: the decis
 `renderer`, `gpu` or the shared WGSL in `primitives::wgsl` keeps. Measurements behind them are in
 `.notes/PERF.md` and `.notes/research/`.
 
+## Module order
+
+- **`gpu`'s submodules import only those to their left**, as the crate's top-level modules do
+  (`internals::module_order` holds both):
+
+  ```text
+  {debug_marker, flag_names, render_owner_id, spectrum_tables, atlas_memory} → error → device
+    → {texel, gpu_paint} → resource → atlas → pipeline → {raster, backdrop} → frame → surface
+    → wgpu_backend
+  ```
+
+  A type two layers share sits in the lower: `GpuCtx` and the pipeline recipe in `resource`, a
+  target's `TargetSpec` and `TargetFormat` in `texel`, what a backdrop's composite binds in
+  `pipeline`, and a layer hands a lower one what it reads, a view and a size, not its own type.
+  Refused: one cycle through eleven submodules, which no part of `gpu` could be read or tested
+  apart from.
+
 ## Shapes
 
 - **A closed shape draws as a template the vertex stage builds**: a fill, a shaped image, a
@@ -72,15 +89,16 @@ Facts and sources: `.notes/research/2026-11-12-atlas-pools.md` and
 - **A list a texel format, shared by every tenant of it**: R8 holds glyph and icon masks and the
   shadow cutout tables, RGBA8 color glyphs and icons, RGBA16F small backdrop results, as
   WebRender's `SharedTextures` and Zed's atlas keep a list a format. Glyphs and icons share their
-  lists and one bind group, as Zed keeps glyphs and SVG icons in one `Monochrome` list; nothing a
+  lists, as Zed keeps glyphs and SVG icons in one `Monochrome` list, and the rasters and the
+  shadows read the mask and color pages through one bind group at one slot, so a switch between
+  a text run and a shadow binds nothing; nothing a
   frame drew this frame or the last is evicted, so they compete for idle items alone. Refused: a
   budget a tenant, which kept a color-icon-heavy frame from evicting glyphs at the cost of each
   tenant's own headroom.
 - **An allocation is a handle; a move rewrites its placement and nothing else.** Every tenant
   reads its placement at the lookup that draws it, so a drain needs no tenant's help; only an
-  eviction moves a handle's generation. Each tenant drops what the pool evicted at the end of the
-  submit; the backdrops after a purge too, as a window decides what its backdrops hold before its
-  next submit, where a raster or a table reads as stale at its lookup.
+  eviction moves a handle's generation. Every tenant drops what the pool evicted at the end of the
+  submit and after a purge, as a window decides what its backdrops hold before its next submit.
 - **A list binds up to four pages together, the page in the instance**, as Skia's
   `kMaxMultitexturePages`, so a draw never splits by page; a closed page binds a 1 × 1 stand-in.
   The first page doubles from its first edge to the page edge; past it the list adds pages.
@@ -113,11 +131,22 @@ Facts and sources: `.notes/research/2026-11-12-atlas-pools.md` and
   texture in one group and a choice among five in the shader, the B-spline five times, which V3D
   compiled in full (619 → 1340 instructions, the board's `modal/scrolling` +6.9 %).
 - **Gradient rows are a row table, not atlas items**, per-paint data every color pipeline reads
-  branch-free through the frame group, as WebRender keeps gradient stops in its GPU cache. A row
-  keeps its id while it lives; the table doubles when full and halves at the start of a frame that
-  ends an idle expiry window under a quarter used, its live rows renumbered and baked again from
-  their ramps. Refused: a CPU mirror of the texture, 2 KiB a row, kept only to fill a run's gaps,
-  which a bake from the ramp fills with the same bytes.
+  branch-free through the frame group, as WebRender keeps gradient stops in its GPU cache. The
+  pool owns the table, made and lost with it; a build registers on the display frame its submit
+  belongs to, and the rows age as the lists' items do, with the clock and the one-frame grace:
+  under the soft rows the table doubles, over them a ramp takes the row of one no frame drew in
+  the grace, and with none it doubles to its ceiling, past which a ramp takes the magenta row 0.
+  The table starts at 16 rows. A row keeps its id while it lives; above the soft rows the decay,
+  once a display frame with the lists', takes rows idle past an expiry window, the last row moving
+  into each place and baked again there, at most 32 moves a frame as the lists' age-out, and with
+  a quarter or less held drops the capacity to the smallest rung that holds twice the rows, which
+  keep their ids, so the texture copies them. A host with no device counts a display frame a
+  compose. Refused: an epoch a flush ends, which two windows end twice a round, so each evicted
+  the rows the other draws, and which a host that never flushes never ends; a halving that
+  renumbered every live row and baked them all in one frame; 256 first rows, 512 KiB for an app
+  with one gradient; a CPU mirror of the texture, 2 KiB a row, kept only to fill a run's gaps,
+  which a bake from the ramp fills with the same bytes, and a staging copy of each flush, which a
+  bake into the belt row by row spares.
 - **Eviction is a clock with a one-frame grace and pins.** Nothing drawn this display frame or the
   last goes, which keeps a working set a little past budget from evicting what the next frame
   draws again, WebRender's least age at full pressure; a pin, a cutout table a plan holds, keeps
@@ -130,26 +159,33 @@ Facts and sources: `.notes/research/2026-11-12-atlas-pools.md` and
   as WebRender's `bytes_allocated`, and nothing ages under the budget on one page, grown or not,
   as WebRender ages under its threshold only across several textures (refused: a grown page aged
   under the budget, which evicted every glyph of a 512-scale zoom just before its scale came back,
-  `cache_churn` +40 to +83 %); the emptiest page whose items fit the others drains into them, until
-  a frame has moved 512² texels as WebRender's compaction, whose last move may pass them, so an
-  item of more still moves; one page a smaller one holds twice over for an expiry window, an eighth
-  full at most, drains into the smallest page that holds twice its items' texels and packs them,
-  landing at half or under as a `Vec` halves. One page drains at a time, a source or a destination
-  in one frame and never both, and no drain starts while moves wait for the commit, so no page
-  closes under a move; the commit lands the moves in the order they were made, as a purge may land
-  one where an item it evicted had just moved. Refused: Skia's
+  `cache_churn` +40 to +83 %); of several pages, the emptiest whose items fit half the others'
+  free texels drains into them, a page whose drain found no room passed while what it counts
+  holds, until a frame has moved 512² texels as WebRender's compaction, whose last move may pass
+  them, so an item of more still moves; the frame's budget goes to the lists round robin, a list
+  later each frame, as WebRender's compaction takes one list a call. One page a smaller one holds
+  twice over for an expiry window, an eighth full at most, drains into the smallest page that holds
+  twice its items' texels and packs them, landing at half or under as a `Vec` halves; one that
+  holds nothing closes, so a list once drawn holds no page for good (refused: a first page kept,
+  512 KiB of half-float an app that once showed a glass holds for its life). One page drains at a
+  time, a source or a destination in one frame and never both, and no drain starts while moves
+  wait for the commit, so no page closes under a move; the commit lands the moves in the order they
+  were made, as a purge may land one where an item it evicted had just moved. Refused: Skia's
   compaction by eviction, which rasterizes a page's visible items again in one frame; a repack in
   one frame, which moves the whole live set at once.
 - **Moves go by one instanced draw a destination page, or by copy commands where a pass moves its
-  whole target** (`MoveRoute`, from `PassTraffic`), WebRender's two routes. Where a pass moves
-  only what it draws, a draw wins at every count measured: 16 glyphs 107 µs against 222 on the
-  handheld, and ties at 16 and wins past 64 on the Apple laptop. Where it moves the whole target, a
+  whole target** (`MoveBudget::of` and the GPU half's mover, from `PassTraffic`), WebRender's two
+  routes. Where a pass moves only what it draws, a draw wins at every count measured: 16 glyphs
+  107 µs against 222 on the handheld, and ties at 16 and wins past 64 on the Apple laptop. Where it moves the whole target, a
   draw loads and stores the whole destination page, 2.2 to 5.1 ms on V3D at 2048², so copies win
   below about 64 there, and a frame takes 16 copies, about 0.7 ms at V3D's 43 µs a copy, where 64
   took 2.4 ms. Both stop at 512² texels a frame.
 - **The system's memory warnings purge the pool on every platform**, between frames: everything no
-  one pins and the last frame did not draw goes, idle scratch goes, and the pages drain with no
-  budget, committed at once so the memory returns with no frame to wait for; a stutter traded for
+  one pins and the last frame did not draw goes, scratch held or idle that frame did not draw
+  goes, as one full-window glass holds tens of MiB, every gradient row that frame did not draw
+  goes and the table compacts and shrinks, and the pages drain and shrink
+  with no budget, committed at once, round after round as each drain's moves land before the next
+  is planned, so the memory returns with no frame to wait for; a stutter traded for
   the process not being killed, as Chromium's memory-pressure listeners and GLib's
   `GMemoryMonitor` advice to free caches. A watch a platform, no crate past the platform's: macOS's
   libdispatch memory-pressure source, Linux's portal `MemoryMonitor`, Windows's

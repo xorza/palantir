@@ -5,21 +5,22 @@
 use crate::common::span::Span;
 use crate::gpu::atlas::AtlasPool;
 use crate::gpu::atlas::atlas_format::AtlasFormat;
-use crate::gpu::atlas::page_list::PageListConfig;
 use crate::gpu::atlas::tenant::Tenant;
+use crate::gpu::pipeline::raster_pipeline::raster_quad::RasterQuad;
 use crate::gpu::raster::raster_atlas::internals::unallocated_dies_at;
 use crate::gpu::raster::raster_pass::RasterDraw;
 use crate::gpu::raster::text_backend::TextBackend;
-use crate::gpu::raster::text_backend::encode::cache::EncodedGlyph;
+use crate::gpu::raster::text_backend::encode::cache::{ENCODED_CACHE_KEEP_FRAMES, EncodedGlyph};
 use crate::gpu::raster::text_backend::tests::text_rig::{PHYSICAL, TextRig};
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::math::libm_ext::LibmVec2;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
+use crate::primitives::paint::content_type::ContentType;
 use crate::renderer::render_buffer::clip_chain::ClipChain;
 use crate::renderer::render_buffer::row_spin::RowSpin;
 use crate::renderer::render_buffer::text_draw_row::TextDrawRow;
 use crate::text::{RENDERED_RUN_KEEP_FRAMES, RENDERED_RUN_KEEP_SPREAD_MASK};
-use glam::{IVec2, U16Vec2, Vec2};
+use glam::{IVec2, UVec2, Vec2};
 use std::slice;
 
 mod text_rig;
@@ -164,16 +165,11 @@ fn an_evicted_raster_invalidates_only_its_runs() {
 /// pages of 64², the run's glyphs sit on the first page; 32² icons fill the rest of it and open a
 /// second, and those on the first go, which leaves it the emptiest, its glyphs fitting the
 /// second's free texels twice. The decay drains them there and closes the first page, and the
-/// next frame's replay packs each glyph's `uv` from its moved placement, on page 1.
+/// next frame's replay packs each glyph's `uv` from its moved placement, on page 1, as a mask.
 #[test]
 fn a_cached_run_replays_its_moved_glyphs_where_they_moved() {
     let mut rig = TextRig::new();
-    let config = PageListConfig {
-        first_edge: 64,
-        page_edge: 64,
-        soft_bytes: 1 << 20,
-    };
-    rig.pool = AtlasPool::with_configs([config; 3], 16384);
+    rig.pool = AtlasPool::uniform(64, 64, 1 << 20);
     let runs = [rig.row("File", 14.0 * 1.2, Vec2::new(20.0, 20.0))];
     rig.frame(1.0, &[&runs]);
     let templates: Vec<EncodedGlyph> = rig
@@ -192,8 +188,9 @@ fn a_cached_run_replays_its_moved_glyphs_where_they_moved() {
     for _ in 0..16 {
         let icon = rig
             .pool
-            .allocate(AtlasFormat::R8, Tenant::Icons, U16Vec2::splat(32))
-            .unwrap();
+            .allocate(AtlasFormat::R8, Tenant::Icons, UVec2::splat(32))
+            .unwrap()
+            .handle;
         icons.push(icon);
         if rig.pool.placement(icon).unwrap().page == 1 {
             break;
@@ -217,7 +214,7 @@ fn a_cached_run_replays_its_moved_glyphs_where_they_moved() {
         assert_eq!(placement.page, 1);
         assert_eq!(
             quad.uv_and_kind,
-            glyph.instance.placed_at(placement).uv_and_kind
+            RasterQuad::pack_uv(placement.origin.x, placement.origin.y, 1, ContentType::Mask)
         );
     }
 }
@@ -437,11 +434,6 @@ fn both_caches_age_on_one_clock_including_text_free_frames() {
             before + 1,
             "a text-free frame must still advance the shared clock",
         );
-        assert_eq!(
-            rig.backend.pass.atlas.frame(),
-            rig.shaper.frame(),
-            "the atlas must track the shaper's clock, not its own count",
-        );
     }
 
     // The encoded entry expires on the same clock: last used at frame 0, it dies
@@ -473,14 +465,7 @@ fn swept_empty_glyph_reinserts() {
     let mut rig = TextRig::new();
 
     let runs = [rig.row(" ", 16.0, Vec2::new(2.0, 2.0))];
-    let empties = |b: &TextBackend| {
-        b.pass
-            .atlas
-            .cache()
-            .values()
-            .filter(|&&i| b.pass.atlas.slots()[i as usize].raster().is_none())
-            .count()
-    };
+    let empties = |b: &TextBackend| b.pass.atlas.unplaced_len();
 
     rig.frame(1.0, &[&runs]);
     assert!(
@@ -492,18 +477,12 @@ fn swept_empty_glyph_reinserts() {
         1,
         "the space rasterizes to one zero-area entry"
     );
-    let first_frame = rig.backend.pass.atlas.frame();
     rig.tick();
-    assert_eq!(
-        rig.backend.pass.atlas.frame(),
-        first_frame + 1,
-        "a prepared zero-instance batch must still advance cache aging",
-    );
 
-    // The space was rasterized on frame 0, so its ticket falls due at
+    // The space was rasterized on display frame 0, so its ticket falls due at
     // `unallocated_dies_at(0)`; advance one frame past it with text frames that
     // never touch the space.
-    while rig.backend.pass.atlas.frame() < unallocated_dies_at(0) + 1 {
+    while rig.pool.frame() < unallocated_dies_at(0) + 1 {
         rig.frame(1.0, &[&[]]);
         rig.tick();
     }
@@ -522,4 +501,29 @@ fn swept_empty_glyph_reinserts() {
         "swept empty glyph re-inserts on next use"
     );
     rig.tick();
+}
+
+/// An encoded run lives a whole keep window past the frame that last replayed it, on the shaper's
+/// clock as that frame prepared: replayed at frame 5, it stays through the sweep at
+/// `5 + ENCODED_CACHE_KEEP_FRAMES` and goes at the one after. A stamp from the clock of the last
+/// submit's end, a frame behind the record pass's tick, would take it a frame early.
+#[test]
+fn a_replayed_run_keeps_a_whole_window_from_its_frame() {
+    let mut rig = TextRig::new();
+    let runs = [rig.row("File", 16.0, Vec2::new(2.0, 2.0))];
+    rig.frame(1.0, &[&runs]);
+    while rig.shaper.frame() < 5 {
+        rig.tick();
+    }
+    rig.frame(1.0, &[&runs]);
+    while rig.shaper.frame() <= 5 + ENCODED_CACHE_KEEP_FRAMES {
+        rig.tick();
+    }
+    assert_eq!(
+        rig.backend.encoder.cache().rows(),
+        1,
+        "kept through the sweep at 5 + KEEP"
+    );
+    rig.tick();
+    assert_eq!(rig.backend.encoder.cache().rows(), 0, "gone at the next");
 }

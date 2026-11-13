@@ -3,19 +3,17 @@
 use crate::gpu::atlas::AtlasPool;
 use crate::gpu::atlas::atlas_format::AtlasFormat;
 use crate::gpu::atlas::atlas_textures::AtlasTextures;
-use crate::gpu::atlas::page_group::PageGroup;
-use crate::gpu::atlas::page_list::{MAX_PAGES, PageListConfig};
-use crate::gpu::atlas::page_slots::{AtlasSlots, PageSlots};
-use crate::gpu::atlas::row_table::RowTable;
+use crate::gpu::atlas::page_list::MAX_PAGES;
+use crate::gpu::atlas::page_slots::PageSlots;
+use crate::gpu::atlas::row_texture::RowTexture;
 use crate::gpu::atlas::tenant::Tenant;
 use crate::gpu::device::gpu::FilledBuffer;
+use crate::gpu::pipeline::atlas_binding::{ATLAS_GROUP, AtlasGroup, AtlasSlots};
 use crate::gpu::pipeline::clip_variant::Clipping;
 use crate::gpu::pipeline::instanced_pipeline::VariantTarget;
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
 use crate::gpu::pipeline::raster_pipeline::raster_quad::RasterQuad;
-use crate::gpu::pipeline::raster_pipeline::{
-    ATLAS_GROUP, RASTER_FORMATS, RasterPipeline, RasterVariants,
-};
+use crate::gpu::pipeline::raster_pipeline::{RasterDraws, RasterPipeline, RasterVariants};
 use crate::gpu::pipeline::viewport_push::ViewportPush;
 use crate::gpu::resource::frame_group::FrameGroup;
 use crate::gpu::resource::texture_binding::TextureBinding;
@@ -41,23 +39,21 @@ const fn alpha(page: u8) -> u8 {
 /// kind, a 16² cell apiece, onto a cleared target: a mask quad's alpha is its coverage, a color
 /// quad's its texel's alpha, so each cell's alpha byte reads `40 (k + 1)` back exactly, from 40 to
 /// 160, and a quad that read another page would read another multiple. The sets: slot 0, 1 and 3
-/// alone, where one page sits past slot 0 as a shrink leaves it, 0 and 2, and all four.
+/// alone, where one page sits past slot 0 as a shrink leaves it, 0 and 2, and all four. A census
+/// that turns no raster builds the flat pipeline alone; one that turns one builds the spun twin
+/// too, which compiles for every set.
 #[test]
 fn a_quad_reads_its_page_under_every_set_of_slots() {
     let gpu = headless_test_gpu();
-    let config = PageListConfig {
-        first_edge: u32::from(SIDE),
-        page_edge: u32::from(SIDE),
-        soft_bytes: 0,
-    };
-    let mut pool = AtlasPool::with_configs([config; 3], 16384);
+    let mut pool = AtlasPool::uniform(u32::from(SIDE), u32::from(SIDE), 0);
     pool.advance_to(1);
     let mut items = |format| -> Vec<u8> {
         (0..MAX_PAGES)
             .map(|_| {
                 let handle = pool
-                    .allocate(format, Tenant::Glyphs, U16Vec2::splat(SIDE))
-                    .unwrap();
+                    .allocate(format, Tenant::Glyphs, UVec2::splat(u32::from(SIDE)))
+                    .unwrap()
+                    .handle;
                 pool.placement(handle).unwrap().page
             })
             .collect()
@@ -89,15 +85,9 @@ fn a_quad_reads_its_page_under_every_set_of_slots() {
     }
 
     let binding = TextureBinding::new(&gpu);
-    let program = RasterPipeline::new(&gpu, &binding);
-    let frame = FrameGroup::new(&gpu, binding, &RowTable::new(&gpu, 1));
-    let group = PageGroup::new(
-        &gpu,
-        program.layout(),
-        "palantir.test.raster.atlas",
-        RASTER_FORMATS,
-        &atlas,
-    );
+    let group = AtlasGroup::new(&gpu, &atlas);
+    let program = RasterPipeline::new(&gpu, &binding, group.layout());
+    let frame = FrameGroup::new(&gpu, binding, RowTexture::new(&gpu, 1).row_view());
     let size = UVec2::new(u32::from(SIDE) * MAX_PAGES as u32, 2 * u32::from(SIDE));
     let target = gpu.target("palantir.test.raster.slots", size);
     let mut variants = RasterVariants::NONE;
@@ -107,14 +97,33 @@ fn a_quad_reads_its_page_under_every_set_of_slots() {
             mask: open,
             color: open,
         };
-        program.ensure(
-            &mut variants,
-            &gpu,
-            VariantTarget {
-                format: target.texture().format(),
-                clipping: Clipping::Off,
-                slots,
-            },
+        let variant = VariantTarget {
+            format: target.texture().format(),
+            clipping: Clipping::Off,
+            slots,
+        };
+        let flat = RasterDraws {
+            flat: true,
+            spun: false,
+        };
+        program.ensure(&mut variants, &gpu, variant, flat);
+        assert!(
+            variants
+                .pair(Clipping::Off, slots, group.group())
+                .spun
+                .is_none(),
+            "a frame that turns no raster builds no spun pipeline"
+        );
+        let turned = RasterDraws {
+            flat: true,
+            spun: true,
+        };
+        program.ensure(&mut variants, &gpu, variant, turned);
+        assert!(
+            variants
+                .pair(Clipping::Off, slots, group.group())
+                .spun
+                .is_some()
         );
         let quads: Vec<RasterQuad> = [ContentType::Mask, ContentType::Color]
             .into_iter()

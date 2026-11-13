@@ -1,7 +1,7 @@
-//! Register-path scaling benchmark for the gradient LUT atlas.
+//! Register-path scaling benchmark for the gradient row table.
 //!
 //! Tests **flatness, not speed**: `register` must not get more expensive as
-//! the atlas grows. Each arm runs at two capacities; compare the ratio
+//! the table grows. Each arm runs at two capacities; compare the ratio
 //! between them from a single quiet run, not absolutes (256 rows stay
 //! cache-resident, 2048 spill). `miss/*` is the arm to watch for per-row walks.
 //!
@@ -15,23 +15,16 @@
 //!   re-bakes regardless of table size.
 //!
 //! Both assert against
-//! [`GradientAtlasCounters`](super::counters::GradientAtlasCounters) first, so
+//! [`RowTableCounters`](super::counters::RowTableCounters) first, so
 //! a fixture that stops doing what its name says fails loudly.
-//!
-//! - `gap_row/*`: one clean row a flush folds into a run, baked again from its ramp as the flush
-//!   does with no CPU mirror, against the copy a mirror made. Per row.
 
 use crate::bench::backends::Backend;
-use crate::bench::case_group::CaseGroup;
 use crate::bench::kind::{Kind, Scale};
 use crate::common::counters::CounterSet;
-use crate::primitives::paint::brush::gradient::Interpolation;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
-use crate::renderer::cpu_gradient_atlas::bake::{self, LUT_ROW_TEXELS, LutRowTexels};
-use crate::renderer::cpu_gradient_atlas::{CpuGradientAtlas, MERGE_GAP_ROWS};
+use crate::renderer::row_table::{RowTable, RowTableConfig};
 use criterion::{Criterion, Throughput};
 use std::hint::black_box;
 
@@ -58,10 +51,10 @@ fn gradient_for(seed: u32) -> ColorRamp {
 
 /// Atlas grown to `capacity` and filled to one row short of full.
 ///
-/// Fills in a single epoch so the table grows rather than evicting, then
-/// `flush` frees the rows for eviction.
-fn filled(capacity: u32) -> CpuGradientAtlas {
-    let mut atlas = CpuGradientAtlas::new(capacity);
+/// Fills in one display frame so the table grows rather than evicting, flushes, then moves two
+/// frames on, past the grace, so the rows are free for eviction.
+fn filled(capacity: u32) -> RowTable {
+    let mut atlas = RowTable::new(RowTableConfig::of_device(capacity));
     let mut seed = 0u32;
     while atlas.capacity() < capacity || atlas.counters.counts().bakes < capacity - 1 {
         seed += 1;
@@ -70,6 +63,7 @@ fn filled(capacity: u32) -> CpuGradientAtlas {
     }
     assert_eq!(atlas.capacity(), capacity);
     atlas.flush();
+    atlas.advance_to(2);
     atlas
 }
 
@@ -114,6 +108,7 @@ pub(crate) fn atomic(c: &mut Criterion) {
                 let (hits, bakes) = (atlas.counters.counts().hits, atlas.counters.counts().bakes);
                 for k in 0..16 {
                     atlas.flush();
+                    atlas.advance_to(atlas.frame() + 2);
                     black_box(atlas.register(&gradient_for(CHURN_BASE + k)));
                 }
                 assert_eq!(
@@ -129,9 +124,11 @@ pub(crate) fn atomic(c: &mut Criterion) {
                 let growths = atlas.counters.counts().growths;
                 let mut seed = CHURN_BASE + 16;
                 b.iter(|| {
-                    // `flush` ends the epoch; otherwise claimed rows stay eviction-exempt and the
-                    // atlas grows instead of churning.
+                    // A submit's flush bakes the row the last miss claimed; two frames on, past
+                    // the grace, as otherwise the claimed rows stay exempt and the table grows
+                    // instead of churning.
                     atlas.flush();
+                    atlas.advance_to(atlas.frame() + 2);
                     seed = seed.wrapping_add(1);
                     black_box(atlas.register(&gradient_for(seed)))
                 });
@@ -143,56 +140,5 @@ pub(crate) fn atomic(c: &mut Criterion) {
             },
         );
     }
-    gap_row(&mut group);
     group.finish();
-}
-
-/// Where a flush finds the bytes of a clean row it folds into a run.
-#[derive(Clone, Copy, Debug)]
-enum GapSource {
-    /// The CPU mirror, which holds every row baked.
-    Mirror,
-    /// A bake of the row's ramp.
-    Bake,
-}
-
-/// `atomic/gradient_atlas/cpu/gap_row/<mirror|bake>/<oklab|linear>`: one clean row of a
-/// [`MERGE_GAP_ROWS`] gap staged, copied from the mirror or baked again from its ramp in that
-/// interpolation. Each case first checks that both give the same bytes.
-fn gap_row(group: &mut CaseGroup<'_>) {
-    for (interpolation, space) in [
-        (Interpolation::Oklab, "oklab"),
-        (Interpolation::Linear, "linear"),
-    ] {
-        for (source, name) in [(GapSource::Mirror, "mirror"), (GapSource::Bake, "bake")] {
-            group.bench_function(Backend::Cpu.case(&format!("gap_row/{name}/{space}")), |b| {
-                let ramps: Vec<ColorRamp> = (1..=MERGE_GAP_ROWS)
-                    .map(|seed| gradient_for(seed).with_interpolation(interpolation))
-                    .collect();
-                let mut mirror: Vec<LutRowTexels> =
-                    vec![[RgbaF16::TRANSPARENT; LUT_ROW_TEXELS]; ramps.len()];
-                for (ramp, row) in ramps.iter().zip(&mut mirror) {
-                    bake::row(ramp, row);
-                }
-                let mut staged = [RgbaF16::TRANSPARENT; LUT_ROW_TEXELS];
-                for (ramp, row) in ramps.iter().zip(&mirror) {
-                    bake::row(ramp, &mut staged);
-                    assert_eq!(
-                        &staged, row,
-                        "{space}: a bake again gives the mirror's bytes"
-                    );
-                }
-                let mut i = 0usize;
-                b.iter(|| {
-                    let at = i % ramps.len();
-                    i = i.wrapping_add(1);
-                    match source {
-                        GapSource::Mirror => staged.copy_from_slice(&mirror[at]),
-                        GapSource::Bake => bake::row(&ramps[at], &mut staged),
-                    }
-                    black_box(&staged);
-                });
-            });
-        }
-    }
 }

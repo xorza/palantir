@@ -6,7 +6,7 @@ use std::num::NonZeroU32;
 
 /// The device's `max_texture_dimension_2d`, the one ceiling for any texture palantir allocates or accepts.
 ///
-/// The gradient atlas, image registration and
+/// The gradient rows, image registration and
 /// [`Ui::max_image_dimension`](crate::Ui::max_image_dimension) share it as one type. `None` is a standalone CPU recorder: no device, no ceiling.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct TextureLimit(Option<NonZeroU32>);

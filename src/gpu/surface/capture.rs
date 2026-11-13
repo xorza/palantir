@@ -4,8 +4,8 @@ use crate::gpu::device::gpu::Gpu;
 use crate::gpu::pipeline::blit_pipeline;
 use crate::gpu::resource::readback_staging::ReadbackStaging;
 use crate::gpu::resource::texture_binding::TextureBinding;
-use crate::gpu::surface::owned_target::TargetSpec;
 use crate::gpu::texel;
+use crate::gpu::texel::TargetSpec;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::paint::image::Image;
 use std::iter;
@@ -158,7 +158,8 @@ impl Capture {
                     wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
                 );
                 let cut_view = cut.create_view(&wgpu::TextureViewDescriptor::default());
-                let bind_group = binding.bind_group(gpu, &cut_view, "palantir.capture.region.bg");
+                let bind_group =
+                    binding.texture_group(gpu, &cut_view, "palantir.capture.region.bg");
                 let encoded_view = encoded.create_view(&wgpu::TextureViewDescriptor::default());
                 blit_pipeline::draw(&mut encoder, &bind_group, &encoded_view, pipeline);
                 encoder.copy_texture_to_buffer(encoded.as_image_copy(), into_buffer, extent);
@@ -175,7 +176,7 @@ impl Capture {
     }
 
     /// Whether the copy's map callback has yet to run, which on a lost device it may never do
-    /// ([`MapState::is_pending`](crate::gpu::surface::map_state::MapState::is_pending)).
+    /// ([`MapState::is_pending`](crate::gpu::resource::map_state::MapState::is_pending)).
     pub(crate) fn is_pending(&self) -> bool {
         self.staging.map().is_pending()
     }

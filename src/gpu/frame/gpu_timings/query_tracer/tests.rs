@@ -5,7 +5,7 @@ use crate::gpu::frame::gpu_timings::query_tracer::{
     BACKDROP_IDX, COPY_OUT_IDX, MAX_TIMESTAMPS, Publisher, QUERY_COUNT, QueryTracer, maps_landed,
 };
 use crate::gpu::frame::main_segment::MainSegment;
-use crate::gpu::surface::map_state::MapState;
+use crate::gpu::resource::map_state::MapState;
 use crate::gpu::test_gpu;
 use std::time::Duration;
 

@@ -1,8 +1,8 @@
 //! Drawing the retained backbuffer onto a target that cannot be copied into.
 
 use crate::gpu::device::gpu::Gpu;
-use crate::gpu::pipeline::pipeline_recipe::{self, PipelineRecipe};
-use crate::gpu::pipeline::shader_body::ShaderBody;
+use crate::gpu::resource::pipeline_recipe::{self, PipelineRecipe};
+use crate::gpu::resource::shader_body::ShaderBody;
 use crate::gpu::resource::texture_binding::TextureBinding;
 use rustc_hash::FxHashMap;
 
@@ -37,7 +37,7 @@ impl BlitPipeline {
             pipeline_layout: pipeline_recipe::pipeline_layout(
                 gpu,
                 "palantir.blit.pl",
-                &[Some(textures.layout())],
+                &[Some(textures.texture_layout())],
             ),
             pipelines: FxHashMap::default(),
         }
