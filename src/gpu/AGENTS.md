@@ -51,7 +51,13 @@ How palantir draws, from the renderer's instance streams through wgpu: the decis
   batches with any other, and one the composer saw whole skips that pass; a closing group's quads
   join one run per form, looking back past quads they do not overlap, as WebRender's
   `batch_lookback_count`. Refused: sorting by pipeline with a depth buffer, as Graphite does, a
-  depth attachment in every pipeline for a small ceiling.
+  depth attachment in every pipeline for a small ceiling; one pipeline for text and quads over a
+  white texel, as egui and Dear ImGui draw, whose fragment would read the template's varyings and
+  a page, which an Apple GPU pays for a varying and V3D compiles from 196 to 943 instructions, to
+  save one draw a group; solid boxes as raster quads, as only a sharp, solid, pixel-aligned box
+  fits one; a draw's layer, one raster stream for glyphs and icons, one ordered lane for every
+  family and clip distances, which cut draws alone, as fewer draws buy no frame time on any host
+  measured (`.notes/PERF.md`, Rejected, "Changes that only cut draws").
 - **The composer hands the backend its draws in the order they paint**: a list of runs, each a
   span of one lane's rows under one scissor, which a group appends as it closes, its quads, the
   text batches that end in it and its tiers in turn, and a text batch that outlives its last group
@@ -81,9 +87,10 @@ How palantir draws, from the renderer's instance streams through wgpu: the decis
   still closes every lane; a rect clip in each instance's chain (Rounded clip); cut boxes clipped
   on the CPU, as a glyph is, exact for a sharp, solid, unturned box alone; a text batch with no
   scissor, which a partial frame drew at every damage rect. Kept though the draws it saves buy no
-  frame time on any host measured, and the composer pays 1 to 5 % of a CPU frame
-  (`.notes/PERF.md`, "Fewer draws buy no frame time on any host"): runs in paint order under the
-  scissor they need are what a draw's layer builds on.
+  frame time on any host measured, and the composer pays 1 to 5 % of a CPU frame, as its groups
+  span every clip (`.notes/PERF.md`, "Fewer draws buy no frame time on any host"): a run's own
+  scissor and bounds are what a partial frame's damage walk skips by, and only a group a clip
+  would take the composer's cost back.
 
 ## Rounded clip
 

@@ -113,6 +113,12 @@ an older number here reads as a share, not a time.
   to +3 %, scrolling and resizing the most, the composer's wider groups. The board's clip
   scrolling frames are 11 to 43 ms of fill either way; no host spends enough a draw for 99 fewer
   to show on these scenes.
+- **The composer's groups span every clip** (apple, `atomic/composer/cpu/*` at 4096 draws against
+  `bd30eb4e2`): `clips/*` +35 to +43 %, `mixed_overlap` +19 %, `same_tier_image` +16 %,
+  `quads/clipped` +15 %, `quads/rounded_clip` +7 %, `quads/plain` +6 %. The paint-order grids'
+  union no longer rejects in a group that spans clips, so each draw walks a tile, the quad's
+  queries of the higher tiers and the closed text most of it, and the prune runs over the whole
+  group; a group a clip, which emptied them, is what the cost bought back the runs with.
 - **The CPU frame** (old fixture, local `frame/cpu/hovering` 116 µs, LBR call stacks): record is
   nearly all of it. `open_node` 21.6 %, `Ui::response_for` 10.1 %, `post_record` 9.7 %, `Text::show`
   5.4 %, `Button::show` 4.9 %, the text shape's push 4.7 %, `widget_id` 3.8 %, the fixture's own
@@ -237,6 +243,23 @@ an older number here reads as a share, not a time.
   | `theming` | 148.0 µs | 2,216 µs |
 
 ## Rejected
+
+- **Changes that only cut draws** (2026-11-14, by "Fewer draws buy no frame time on any host"):
+  a draw's layer, the lowest it fits, which would turn the canvas fixture's 6 paint-order closes
+  and their 56 later draws into runs of fewer layers, at a rect set kept a barrier's span and read
+  to its end; one raster stream for glyphs and icons, which saved one draw on one showcase page;
+  one ordered lane of runs for every family, as WebRender's batch list; clip distances for cut
+  draws (`Features::CLIP_DISTANCES`), a variant of every family to save a scroll's edge runs; an
+  image or a mesh a draw joined across neighbors; a curve ordered by its sub-instances' bounds,
+  which only frees later draws from one conflict. Each spends composer or backend work, the one
+  cost that showed, for draws no host shows. Reopen with a scene whose frame a host spends in
+  its draw calls.
+- **A fence a clip scope** (2026-11-14, apple, ABBA against `b98f9626f`): a clip whose scissor lay
+  apart from every rect the paint-order grids held fenced its scope, and a draw in it scanned
+  only the rects pushed since, as an empty group would. Its own check walks a tile a clip, the
+  walks it saved were as cheap, and `clips/rect` ran 8 % slower; with each rect's draw kept in a
+  column of its own, `HigherKindRects::push` fell out of line and `same_tier_mesh` ran 33 %
+  slower.
 
 - **A smaller `Response`** (2026-11-11, intel core 2, ABBA against `70a8b430e`): `response_for`
   is 6.8 % of a hover frame, but flat over its lookups and branches, with no copy in it, and a
@@ -592,12 +615,6 @@ an older number here reads as a share, not a time.
   coverage math is about 40 µs of the shadows' 115 µs on the AMD iGPU.
 - **A shadow corner stream per shadow, not per quad**: in a frame with a shadow every quad
   uploads 16 B of `CornerTables` that only shadow instances read. No bench shows the upload.
-- **One ordered lane of runs for every family**: the quad lane replays in record order and every
-  other family in a fixed tier order after it (`PaintTier`), closing a group where order would
-  break. WebRender batches every kind in one list with a look-back, which would remove the
-  quad-first asymmetry and the tier conflict test. Structural, and no workload asks for it. Gate:
-  the draw count and the main pass on the showcase pages
-  (`.notes/research/2026-11-10-draw-calls.md`).
 - **The rect form for a sharp fill**: a sharp unturned solid box draws the template's 64 points
   where a plain image draws four, as `FillForm` refuses `ShapeForm::Rect`. Gate: the
   main pass on V3D, whose vertex floor is 4.8 ms ("The board's vertex floor"); the vertex stage
@@ -626,14 +643,7 @@ an older number here reads as a share, not a time.
 
 - One glass shader with its spectrum branch on V3D (`gpu::backdrop`, "One glass").
 - The f32 corner points of a closed shape on V3D (`Quad` 64 → 100 B, step `3c010b1d1`).
-- Three batching changes, each built only once its bench approves it:
-  - Quad runs joined again on `QuadDraw` in the backend, so a shadow's cutout entry splits no run
-    its key joins: the Shadows page's 15 runs toward 11, against `atomic/composer/cpu/quads/*` and
-    `integration/frame/gpu/*`, which pay a second reorder of each group's quads, corner tables
-    and entries. Refused: the entry decided in the composer, which would move the cutout plan, a
-    backend's knowledge of its atlas, into the frontend.
-  - Icons in the raster lane, batched across groups as text is, as WebRender batches images and
-    text in one list: the draws on the Icons and Dock pages and a toolbar of icons in clipped
-    groups. Cost: icon and text batches order against each other.
-  - Opaque images occluding the quads under them, the image's opacity learned at upload: a
-    full-bleed photo over cards, on the AMD iGPU's main pass. No showcase page has one.
+- Opaque images occluding the quads under them, the image's opacity learned at upload: a
+  full-bleed photo over cards, on the AMD iGPU's main pass. No showcase page has one. A shadow's
+  cutout entry splitting a run its key joins, and icons in the raster lane, cut draws alone
+  (Rejected, "Changes that only cut draws").
