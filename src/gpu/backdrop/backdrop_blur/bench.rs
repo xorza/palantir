@@ -1,15 +1,22 @@
 //! The backdrop blur's device benches, in device time between passes.
 //!
 //! - `atomic/backdrop_blur/gpu/<σ>/<side>`: one blur of a whole `side`² surface at σ physical px,
-//!   from its capture into its result. Each σ names its levels: 1 and 4 px stay at full
-//!   resolution, 16 px halves twice, 48 px four times and 160 px six.
+//!   from its capture into its result, a scratch texture, as a result past half a page takes.
+//!   Each σ names its levels: 1 and 4 px stay at full resolution, 16 px halves twice, 48 px four
+//!   times and 160 px six.
 //! - `atomic/backdrop_blur/gpu/jobs/<n>`: `n` blurs of 8 × 8 texels at σ 32 px, three halvings,
-//!   apart on a 2048² surface, in one set of passes, as backdrops that share a break blur: the cost
-//!   a set of passes pays whatever it blurs.
+//!   apart on a 2048² surface, in one set of passes, as backdrops that share a break blur, into a
+//!   page of the half-float list's edge, where small results lie: the cost a set of passes pays
+//!   whatever it blurs, the destination's whole-page pass or its staging and copies among it.
 
 use crate::bench::backends::Backends;
 use crate::bench::kind::{Kind, Scale};
-use crate::gpu::backdrop::backdrop_blur::{BackdropBlur, BlurJob, JobLayout, LEVEL_FORMAT};
+use crate::gpu::atlas::atlas_format::AtlasFormat;
+use crate::gpu::atlas::page_list::PageListConfig;
+use crate::gpu::atlas::scratch_cache::ScratchId;
+use crate::gpu::backdrop::backdrop_blur::{
+    BackdropBlur, BlurJob, JobLayout, LEVEL_FORMAT, ResultTarget,
+};
 use crate::gpu::bench_gpu::{BenchGpu, PassTimer, TARGET_FORMAT, Timing};
 use crate::gpu::pipeline::effect_pipeline::backdrop_groups::ResultTexture;
 use crate::gpu::resource::gpu_ctx::GpuCtx;
@@ -71,7 +78,11 @@ pub(crate) fn atomic(c: &mut Criterion, backends: &Backends) {
                     format: TARGET_FORMAT,
                     footprint: URect::new(0, 0, side, side),
                     region,
-                    dest: ResultTexture::Page(0),
+                    dest: ResultTexture::Scratch(ScratchId {
+                        format: AtlasFormat::Rgba16F,
+                        idx: 0,
+                        generation: 0,
+                    }),
                     dest_origin: UVec2::ZERO,
                     layout: JobLayout::default(),
                 };
@@ -89,11 +100,20 @@ pub(crate) fn atomic(c: &mut Criterion, backends: &Backends) {
                     sample_count: 1,
                     dimension: wgpu::TextureDimension::D2,
                     format: LEVEL_FORMAT,
-                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_DST,
                     view_formats: &[],
                 });
                 let view = dest.create_view(&wgpu::TextureViewDescriptor::default());
-                time_jobs(bencher, gpu, &mut blur, &mut [job], &view);
+                time_jobs(
+                    bencher,
+                    gpu,
+                    &mut blur,
+                    &mut [job],
+                    ResultTarget {
+                        texture: &dest,
+                        view: &view,
+                    },
+                );
             });
         }
     }
@@ -117,9 +137,12 @@ pub(crate) fn atomic(c: &mut Criterion, backends: &Backends) {
                 .collect();
             let mut blur = BackdropBlur::new(&gpu.gpu, TextureBinding::new(&gpu.gpu).sampler());
             fill_capture(gpu, &mut blur, 2048);
-            let dest_size = jobs
-                .iter()
-                .fold(UVec2::ZERO, |size, job| size.max(job.dest_rect().max()));
+            let dest_size = UVec2::splat(PageListConfig::of(AtlasFormat::Rgba16F).page_edge);
+            assert!(
+                jobs.iter()
+                    .all(|job| job.dest_rect().max().cmple(dest_size).all()),
+                "every result lies on the page"
+            );
             let dest = gpu.gpu.device.create_texture(&wgpu::TextureDescriptor {
                 label: Some("palantir.bench.backdrop_blur.jobs"),
                 size: wgpu::Extent3d {
@@ -131,11 +154,20 @@ pub(crate) fn atomic(c: &mut Criterion, backends: &Backends) {
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
                 format: LEVEL_FORMAT,
-                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_DST,
                 view_formats: &[],
             });
             let view = dest.create_view(&wgpu::TextureViewDescriptor::default());
-            time_jobs(bencher, gpu, &mut blur, &mut jobs, &view);
+            time_jobs(
+                bencher,
+                gpu,
+                &mut blur,
+                &mut jobs,
+                ResultTarget {
+                    texture: &dest,
+                    view: &view,
+                },
+            );
         });
     }
     group.finish();
@@ -147,7 +179,7 @@ fn time_jobs(
     gpu: &BenchGpu,
     blur: &mut BackdropBlur,
     jobs: &mut [BlurJob],
-    dest: &wgpu::TextureView,
+    dest: ResultTarget<'_>,
 ) {
     let mut timer = PassTimer::new(gpu);
     let mut belt = UploadStaging::new(&gpu.gpu.device, 1 << 16);

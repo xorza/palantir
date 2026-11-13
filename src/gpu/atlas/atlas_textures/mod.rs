@@ -319,11 +319,16 @@ impl AtlasTextures {
     /// The view of the texture `id` holds, as committed, `None` where its slot holds none: the GPU
     /// half keeps no generation, so a caller holds `id` live.
     pub(crate) fn scratch_view(&self, id: ScratchId) -> Option<&wgpu::TextureView> {
-        self.lists[id.format]
-            .scratch
-            .get(id.idx as usize)?
-            .as_ref()
-            .map(|bound| &bound.view)
+        self.scratch_bound(id).map(|bound| &bound.view)
+    }
+
+    /// The texture `id` holds, as [`Self::scratch_view`] finds it.
+    pub(crate) fn scratch_texture(&self, id: ScratchId) -> Option<&wgpu::Texture> {
+        self.scratch_bound(id).map(|bound| &bound.texture)
+    }
+
+    fn scratch_bound(&self, id: ScratchId) -> Option<&Bound> {
+        self.lists[id.format].scratch.get(id.idx as usize)?.as_ref()
     }
 }
 

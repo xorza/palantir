@@ -15,8 +15,11 @@ struct BakeIn {
     // The texels of the table to bake, from `lo` up to `hi`.
     @location(3) lo:    vec2<u32>,
     @location(4) hi:    vec2<u32>,
-    // The edge of the page the pass renders into, in texels.
-    @location(5) page_edge: f32,
+    // What turns a texel of the table's page into one of the target the pass renders into: none
+    // for the page itself, a shift into a staging target's place for it.
+    @location(5) to_target: vec2<i32>,
+    // The size of the target the pass renders into, in texels.
+    @location(6) target_size: vec2<f32>,
 };
 
 struct BakeOut {
@@ -24,18 +27,21 @@ struct BakeOut {
     @location(0) @interpolate(flat) table: u32,
     @location(1) @interpolate(flat) r:     f32,
     @location(2) @interpolate(flat) sigma: f32,
+    @location(3) @interpolate(flat) to_target: vec2<i32>,
 };
 
 // The texels of the table the frame bakes, from `lo` up to `hi` of its
-// square of its page, one fragment per texel.
+// square of its page, in the target, one fragment per texel.
 @vertex
 fn vs_cutout_bake(@builtin(vertex_index) vi: u32, bake: BakeIn) -> BakeOut {
-    let texel = vec2<f32>(cutout_origin(bake.table) + select(bake.lo, bake.hi, CORNERS[vi] > vec2<f32>(0.5)));
+    let corner = cutout_origin(bake.table) + select(bake.lo, bake.hi, CORNERS[vi] > vec2<f32>(0.5));
+    let texel = vec2<f32>(vec2<i32>(corner) + bake.to_target) / bake.target_size;
     var out: BakeOut;
-    out.clip = vec4<f32>(texel.x / bake.page_edge * 2.0 - 1.0, 1.0 - texel.y / bake.page_edge * 2.0, 0.0, 1.0);
+    out.clip = vec4<f32>(texel.x * 2.0 - 1.0, 1.0 - texel.y * 2.0, 0.0, 1.0);
     out.table = bake.table;
     out.r = bake.r;
     out.sigma = bake.sigma;
+    out.to_target = bake.to_target;
     return out;
 }
 
@@ -43,7 +49,8 @@ fn vs_cutout_bake(@builtin(vertex_index) vi: u32, bake: BakeIn) -> BakeOut {
 // `CUTOUT_BAKE_NODES`.
 @fragment
 fn fs_cutout_bake(in: BakeOut) -> @location(0) vec4<f32> {
-    let texel = vec2<f32>(vec2<u32>(in.clip.xy) - cutout_origin(in.table));
+    let page_texel = vec2<i32>(in.clip.xy) - in.to_target;
+    let texel = vec2<f32>(vec2<u32>(page_texel) - cutout_origin(in.table));
     let reach = SHADOW_REACH_SIGMAS * in.sigma + PALANTIR_AA_HALF_WIDTH;
     let q = texel * (in.sigma / CUTOUT_TEXELS_PER_SIGMA) - vec2<f32>(reach);
     return vec4<f32>(corner_cutout(q, in.r, in.sigma, reach, CUTOUT_BAKE_NODES), 0.0, 0.0, 0.0);

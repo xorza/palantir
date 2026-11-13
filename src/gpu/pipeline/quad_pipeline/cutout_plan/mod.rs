@@ -468,6 +468,12 @@ impl CutoutPlan {
         (table >> Self::PAGE_SHIFT) as usize
     }
 
+    /// The first texel of a table [`code`](Self::code) on its page.
+    pub(crate) const fn table_origin(table: u32) -> UVec2 {
+        let mask = (1 << Self::COORD_BITS) - 1;
+        UVec2::new(table & mask, (table >> Self::COORD_BITS) & mask)
+    }
+
     /// A table's side for `(r, σ)`: a texel per `σ / TEXELS_PER_SIGMA` across the cutout square widened by `reach`, plus one for bilinear.
     #[expect(
         clippy::cast_sign_loss,
@@ -685,20 +691,10 @@ fn spread_radius(r: [f32; 4], s: f32) -> [f32; 4] {
 pub(crate) mod internals {
     use crate::gpu::pipeline::quad_pipeline::cutout_plan::{CutoutMode, CutoutPlan};
 
-    #[cfg(test)]
-    use glam::UVec2;
-
     impl CutoutPlan {
         /// A plan that shades every corner: the reference the visual suite holds the tables to.
         pub(crate) const fn shading() -> Self {
             Self::with_mode(CutoutMode::Shade)
-        }
-
-        /// The first texel of a table [`code`](Self::code) on its page.
-        #[cfg(test)]
-        pub(crate) const fn table_origin(table: u32) -> UVec2 {
-            let mask = (1 << Self::COORD_BITS) - 1;
-            UVec2::new(table & mask, (table >> Self::COORD_BITS) & mask)
         }
 
         /// The side in texels of a table [`code`](Self::code).

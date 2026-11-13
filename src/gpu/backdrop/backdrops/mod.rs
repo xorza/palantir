@@ -22,7 +22,9 @@ use crate::gpu::atlas::atlas_textures::AtlasTextures;
 use crate::gpu::atlas::error::AtlasError;
 use crate::gpu::atlas::scratch_cache::ScratchId;
 use crate::gpu::atlas::tenant::Tenant;
-use crate::gpu::backdrop::backdrop_blur::{BackdropBlur, BlurJob, JobLayout, TargetSource};
+use crate::gpu::backdrop::backdrop_blur::{
+    BackdropBlur, BlurJob, JobLayout, ResultTarget, TargetSource,
+};
 use crate::gpu::device::gpu::{FilledBuffer, Gpu};
 use crate::gpu::pipeline::effect_pipeline::backdrop_groups::{
     BackdropGroups, CompositeBound, CompositeGroups, ResultTexture,
@@ -685,12 +687,19 @@ impl Backdrops {
         textures: &AtlasTextures,
     ) {
         let pages = textures.views(RESULTS);
+        let committed = "a result's texture was committed";
         self.blur()
             .encode(encoder, &self.jobs[at.jobs.clone()], |dest| match dest {
-                ResultTexture::Page(page) => pages[usize::from(page)],
-                ResultTexture::Scratch(id) => textures
-                    .scratch_view(id)
-                    .expect("a held scratch was committed"),
+                ResultTexture::Page(page) => ResultTarget {
+                    texture: textures
+                        .page_texture(RESULTS, usize::from(page))
+                        .expect(committed),
+                    view: pages[usize::from(page)],
+                },
+                ResultTexture::Scratch(id) => ResultTarget {
+                    texture: textures.scratch_texture(id).expect(committed),
+                    view: textures.scratch_view(id).expect(committed),
+                },
             });
     }
 
@@ -738,9 +747,19 @@ fn held_clear(clear: RgbaF16, format: TargetFormat) -> [f32; 3] {
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
     use crate::gpu::atlas_memory::AtlasUse;
+    use crate::gpu::backdrop::backdrop_blur::BackdropBlur;
     use crate::gpu::backdrop::backdrops::Backdrops;
+    use crate::gpu::resource::staging_target::StagingTarget;
 
     impl Backdrops {
+        /// The target the blur's staged jobs draw into, `None` before a frame blurs.
+        pub(crate) fn blur_staging(&self) -> Option<&StagingTarget> {
+            self.resources
+                .as_ref()
+                .and_then(|resources| resources.blur.as_ref())
+                .map(BackdropBlur::staging)
+        }
+
         /// The memory of the blur's textures; none before the first frame that blurs.
         pub(crate) fn blur_memory(&self) -> AtlasUse {
             const BLUR: &str = "backdrop blur";

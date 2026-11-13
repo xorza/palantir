@@ -3,7 +3,7 @@
 
 pub(crate) mod cutout_placements;
 pub(crate) mod cutout_plan;
-mod cutout_tables;
+pub(crate) mod cutout_tables;
 pub(crate) mod quad_draw;
 
 use crate::common::span::Span;
@@ -609,6 +609,7 @@ pub(crate) mod internals {
     #[cfg(test)]
     use crate::gpu::pipeline::quad_pipeline::quad_draw::QuadDraw;
     use crate::gpu::pipeline::quad_pipeline::quad_draw::ShapeCells;
+    use crate::gpu::resource::staging_target::StagingTarget;
 
     #[cfg(test)]
     impl QuadVariants {
@@ -625,6 +626,11 @@ pub(crate) mod internals {
     }
 
     impl QuadPipeline {
+        /// The target a device whose passes move their whole target bakes the cutout tables into.
+        pub(crate) const fn cutout_staging(&self) -> &StagingTarget {
+            self.cutouts.staging()
+        }
+
         /// Draw every shadow as one quad of the full form, the reference the template is compared
         /// with. Affects variants built afterwards.
         pub(crate) const fn disable_shadow_template(&mut self) {

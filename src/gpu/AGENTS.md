@@ -180,6 +180,18 @@ Facts and sources: `.notes/research/2026-11-12-atlas-pools.md` and
   it moves the whole target, a draw loads and stores the whole destination page, 2.2 to 5.1 ms on
   V3D at 2048², so copies win below about 64 there, and a frame takes 16 copies, about 0.7 ms at
   V3D's 43 µs a copy, where 64 took 2.4 ms. Both stop at 512² texels a frame.
+- **A tenant's draw into a page goes through a staging target where a pass moves its whole
+  target**: a cutout table's bake and a backdrop result's last pass draw into a small render
+  target of their own, cleared, and a copy takes each rectangle onto its page (`StagingTarget`),
+  the moves' split for the tenants' writes; elsewhere they draw onto the page. Refused: a render
+  area limited to the written texels, as Vulkan's `renderArea` and Dawn's experimental
+  `render-pass-render-area`, which wgpu does not expose; the cutout tables baked on the CPU, as
+  Skia builds its blur profiles, which keeps a second form of `corner_cutout` beside the shader's
+  and leaves the backdrop results; a compute pass storing the texels, storage on every page and a
+  second form of each pass. Mali skips the tiles a pass draws nothing in, so the cost is V3D's
+  and its like's. A result past half a page takes a scratch texture, never staged, so one write
+  stages at most a quarter of a page. Cost: a round whose writes fill most of a page moves about
+  what the page's pass would.
 - **The system's memory warnings purge the pool on every platform**, between frames: everything no
   one pins and the last frame did not draw goes, scratch held or idle that frame did not draw
   goes, as one full-window glass holds tens of MiB, every gradient row that frame did not draw

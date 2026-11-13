@@ -1,7 +1,8 @@
 use crate::common::expiry_window::EXPIRY_FRAMES;
 use crate::gpu::backdrop::backdrop_blur::{
-    BackdropBlur, BlurJob, BlurParams, JobLayout, LEVEL_FORMAT, ResidualLoop, grown,
+    BackdropBlur, BlurJob, BlurParams, JobLayout, LEVEL_FORMAT, ResidualLoop, ResultTarget, grown,
 };
+use crate::gpu::device::pass_traffic::PassTraffic;
 use crate::gpu::pipeline::effect_pipeline::backdrop_groups::ResultTexture;
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::test_gpu::{TestGpu, headless_test_gpu};
@@ -196,12 +197,21 @@ fn blur_on(
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
         format: LEVEL_FORMAT,
-        usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+            | wgpu::TextureUsages::COPY_SRC
+            | wgpu::TextureUsages::COPY_DST,
         view_formats: &[],
     });
     let view = dest.create_view(&wgpu::TextureViewDescriptor::default());
     gpu.frame(|ctx| {
-        engine.run(ctx, jobs, &view);
+        engine.run(
+            ctx,
+            jobs,
+            ResultTarget {
+                texture: &dest,
+                view: &view,
+            },
+        );
     });
     read_f16(gpu, &dest)
 }
@@ -456,13 +466,15 @@ fn a_texture_grows_by_whole_granules_up_to_the_ceiling() {
 }
 
 /// Blur `jobs` over `color` in `batches`, each batch's captures copied before its passes, as the
-/// main pass breaks; every texel of each destination page the jobs name, from page 0, rows of
-/// `width` texels, each page the size that holds every job's texels.
+/// main pass breaks, on a device whose passes move `traffic`; every texel of each destination page
+/// the jobs name, from page 0, rows of `width` texels, each page the size that holds every job's
+/// texels.
 fn blur_batches(
     gpu: &TestGpu,
     color: &wgpu::Texture,
     jobs: &mut [BlurJob],
     batches: &[Range<usize>],
+    traffic: PassTraffic,
 ) -> Vec<Vec<[f32; 4]>> {
     let page_of = |dest: ResultTexture| match dest {
         ResultTexture::Page(page) => usize::from(page),
@@ -485,7 +497,9 @@ fn blur_batches(
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: LEVEL_FORMAT,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::COPY_SRC
+                | wgpu::TextureUsages::COPY_DST,
             view_formats: &[],
         })
     };
@@ -495,14 +509,16 @@ fn blur_batches(
         .map(|dest| dest.create_view(&wgpu::TextureViewDescriptor::default()))
         .collect();
     let mut engine = BackdropBlur::new(gpu, TextureBinding::new(gpu).sampler());
+    engine.traffic = traffic;
     gpu.frame(|ctx| {
         engine.prepare(ctx, jobs, batches.iter().cloned(), None);
         for batch in batches {
             for job in &jobs[batch.clone()] {
                 engine.copy_capture(ctx.encoder, job, color);
             }
-            engine.encode(ctx.encoder, &jobs[batch.clone()], |dest| {
-                &views[page_of(dest)]
+            engine.encode(ctx.encoder, &jobs[batch.clone()], |dest| ResultTarget {
+                texture: &dests[page_of(dest)],
+                view: &views[page_of(dest)],
             });
         }
     });
@@ -587,7 +603,8 @@ fn a_backdrop_blurs_from_its_footprint_alone() {
             ..backdrop_job(plan, backdrop)
         };
         let mut jobs = [whole, alone];
-        let got = blur_batches(&gpu, &color, &mut jobs, &[0..1, 1..2]).remove(0);
+        let got =
+            blur_batches(&gpu, &color, &mut jobs, &[0..1, 1..2], PassTraffic::Drawn).remove(0);
         let [whole, alone] = jobs;
         assert_eq!(
             alone.layout.capture_origin, alone.footprint.min,
@@ -618,13 +635,15 @@ fn a_backdrop_blurs_from_its_footprint_alone() {
         ..deep
     };
     let mut apart = [shallow, deep];
-    let got_apart = blur_batches(&gpu, &color, &mut apart, &[0..1, 1..2]).remove(0);
+    let got_apart =
+        blur_batches(&gpu, &color, &mut apart, &[0..1, 1..2], PassTraffic::Drawn).remove(0);
     let mut together = [shallow, deep];
     #[expect(
         clippy::single_range_in_vec_init,
         reason = "one batch of both jobs, not the jobs' indices"
     )]
-    let got_together = blur_batches(&gpu, &color, &mut together, &[0..2]).remove(0);
+    let got_together =
+        blur_batches(&gpu, &color, &mut together, &[0..2], PassTraffic::Drawn).remove(0);
     let levels_origin = together[0].layout.levels_origin;
     assert_eq!(levels_origin, together[1].layout.levels_origin, "one batch");
     // Level 1 starts at the shallow backdrop's region, (50, 40) − 22 halved: (14, 9); and at the
@@ -656,7 +675,8 @@ fn a_backdrop_blurs_from_its_footprint_alone() {
         clippy::single_range_in_vec_init,
         reason = "one batch of both jobs, not the jobs' indices"
     )]
-    let got_paged = blur_batches(&gpu, &color, &mut paged, &[0..2]);
+    let got_paged = blur_batches(&gpu, &color, &mut paged, &[0..2], PassTraffic::Drawn);
+    let drawn_places = paged.map(|job| job.layout.scratch_origin);
     assert_eq!(
         backdrop_texels(&got_paged[0], w, paged[0], left),
         backdrop_texels(&got_together, w, together[0], left),
@@ -673,6 +693,28 @@ fn a_backdrop_blurs_from_its_footprint_alone() {
             .all(|texel| *texel == [0.0; 4]),
         "page 0 holds none of the deep job"
     );
+
+    // A device whose passes move their whole target draws each job's second axis into its
+    // staging target, one pass for both, and copies each onto its page: every texel of both pages
+    // as the drawn pass gives it.
+    #[expect(
+        clippy::single_range_in_vec_init,
+        reason = "one batch of both jobs, not the jobs' indices"
+    )]
+    let got_staged = blur_batches(&gpu, &color, &mut paged, &[0..2], PassTraffic::WholeTarget);
+    assert!(
+        got_staged == got_paged,
+        "the staged pages read back as the drawn ones"
+    );
+    // Drawn, a job's place in the scratch holds its region, so the deep job's shelf starts below
+    // the shallow one's 26 rows, rounded to a shelf's 4: row 28. Staged, it holds the job's result,
+    // its region and an apron of 2 a side, which its second axis takes in the staging target: 30
+    // rows, rounded to 32.
+    assert_eq!(shallow.region.size, UVec2::new(27, 26));
+    assert_eq!(shallow.dest_rect().size, UVec2::new(31, 30));
+    assert_eq!(drawn_places, [UVec2::ZERO, UVec2::new(0, 28)]);
+    let staged_places = paged.map(|job| job.layout.scratch_origin);
+    assert_eq!(staged_places, [UVec2::ZERO, UVec2::new(0, 32)]);
 }
 
 /// A batch whose regions overflow the scratch runs its residual in rounds, each packing the

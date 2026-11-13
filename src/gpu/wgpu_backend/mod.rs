@@ -1412,7 +1412,7 @@ pub(crate) mod internals {
     use crate::gpu::atlas::atlas_format::AtlasFormat;
     #[cfg(test)]
     use crate::gpu::atlas::page_list::MAX_PAGES;
-    use crate::gpu::atlas_memory::AtlasMemory;
+    use crate::gpu::atlas_memory::{AtlasMemory, AtlasUse};
     #[cfg(test)]
     use crate::gpu::device::backbuffer_out::BackbufferOut;
     #[cfg(test)]
@@ -1421,6 +1421,7 @@ pub(crate) mod internals {
     use crate::gpu::pipeline::format_pipelines::FormatPipelines;
     #[cfg(test)]
     use crate::gpu::raster::raster_atlas::counters::AtlasCounts;
+    use crate::gpu::resource::staging_target::StagingTarget;
     use crate::gpu::texel::TargetFormat;
     use crate::gpu::wgpu_backend::WgpuBackend;
     use crate::renderer::row_table::RowTable;
@@ -1452,6 +1453,10 @@ pub(crate) mod internals {
                 "half-float pages and scratch",
             );
             let blur = self.backdrops.blur_memory();
+            let staging = [
+                Some(self.programs.quad.cutout_staging()),
+                self.backdrops.blur_staging(),
+            ];
             AtlasMemory {
                 uses: [
                     masks,
@@ -1459,6 +1464,13 @@ pub(crate) mod internals {
                     results,
                     blur,
                     self.gradient.memory(self.atlas.rows().live_rows()),
+                    AtlasUse::scratch(
+                        "page staging",
+                        staging
+                            .into_iter()
+                            .flatten()
+                            .filter_map(StagingTarget::texture),
+                    ),
                 ],
             }
         }

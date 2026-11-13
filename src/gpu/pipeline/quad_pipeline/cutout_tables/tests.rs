@@ -6,10 +6,10 @@ use crate::gpu::atlas::tenant::Tenant;
 use crate::gpu::pipeline::quad_pipeline::QuadPipeline;
 use crate::gpu::pipeline::quad_pipeline::cutout_placements::CutoutPlacing;
 use crate::gpu::pipeline::quad_pipeline::cutout_plan::CutoutKey;
-use crate::gpu::test_gpu::headless_test_gpu;
+use crate::gpu::test_gpu::{TestGpu, headless_test_gpu};
 use crate::primitives::paint::antialias::AA_HALF_WIDTH;
 use crate::shape::paint::lowered_shadow::ShadowGeometry;
-use glam::{U16Vec2, UVec2};
+use glam::U16Vec2;
 
 /// What the bake's `CUTOUT_BAKE_NODES` midpoint nodes may err from the cutout's integral
 /// (`cutout_bake.wgsl`).
@@ -80,38 +80,14 @@ fn corner_cutout(q: Q, r: f64, sigma: f64, reach: f64) -> f64 {
 /// 16) + 2 = 87` texels and takes the series forms; a σ of 2 makes `(8 + 2 · 8.5) · 5 + 2 = 127`
 /// and takes the difference forms. On pages of 128², a 16² glyph takes the first page's top shelf,
 /// so the 87 lands below it at `(0, 16)`, and the 127 finds no room left there and opens the second
-/// page. The deepest cutout of each lies past the bound, so a table left at zero fails it.
+/// page. The deepest cutout of each lies past the bound, so a table left at zero fails it. A device
+/// whose passes move their whole target bakes into its staging target and copies each table onto
+/// its page, and the pages read back the same to the byte.
 #[test]
 fn a_baked_table_holds_the_cutout_it_tabulates() {
     let gpu = headless_test_gpu();
     let shader = QuadPipeline::SHADER.module(&gpu);
-    let mut pool = AtlasPool::uniform(128, 128, 0);
-    pool.allocate(AtlasFormat::R8, Tenant::Glyphs, UVec2::splat(16))
-        .unwrap();
-    let mut textures = AtlasTextures::new(&gpu);
-    let mut tables = CutoutTables::new(&gpu, &shader);
-    let mut placements = CutoutPlacements::default();
-    let mut placing = CutoutPlacing {
-        placements: &mut placements,
-        pool: &mut pool,
-    };
-    let bakes: Vec<BakeTable> = [(8.0, 16.0, 87), (8.0, 2.0, 127)]
-        .into_iter()
-        .map(|(r, sigma, side)| BakeTable {
-            table: placing.acquire(CutoutKey::new(r, sigma), side).unwrap(),
-            r,
-            sigma,
-            lo: U16Vec2::ZERO,
-            hi: U16Vec2::splat(side as u16),
-        })
-        .collect();
-    tables.bakes.clone_from(&bakes);
-    gpu.frame(|ctx| {
-        textures.commit(ctx.gpu, ctx.encoder, &mut pool);
-        tables.bake(ctx, &textures);
-    });
-    let pages =
-        [0, 1].map(|page| gpu.read_texture(textures.page_texture(AtlasFormat::R8, page).unwrap()));
+    let Baked { bakes, pages } = bake_two_tables(&gpu, &shader, PassTraffic::Drawn);
     let edge = 128;
     assert_eq!(
         bakes
@@ -158,4 +134,102 @@ fn a_baked_table_holds_the_cutout_it_tabulates() {
         });
         assert_eq!(outside.count(), 0, "σ = {sigma}: the bake spilled");
     }
+    let staged = bake_two_tables(&gpu, &shader, PassTraffic::WholeTarget);
+    assert!(
+        staged.pages == pages,
+        "the staged bake reads back as the drawn one, to the byte"
+    );
+}
+
+/// What [`bake_two_tables`] baked, and its two pages as they read back.
+#[derive(Debug)]
+struct Baked {
+    bakes: Vec<BakeTable>,
+    pages: [Vec<u8>; 2],
+}
+
+/// [`a_baked_table_holds_the_cutout_it_tabulates`]'s two tables, baked on a device whose passes
+/// move `traffic`.
+fn bake_two_tables(gpu: &TestGpu, shader: &wgpu::ShaderModule, traffic: PassTraffic) -> Baked {
+    let mut pool = AtlasPool::uniform(128, 128, 0);
+    pool.allocate(AtlasFormat::R8, Tenant::Glyphs, UVec2::splat(16))
+        .unwrap();
+    let mut textures = AtlasTextures::new(gpu);
+    let mut tables = CutoutTables::new(gpu, shader);
+    tables.traffic = traffic;
+    let mut placements = CutoutPlacements::default();
+    let mut placing = CutoutPlacing {
+        placements: &mut placements,
+        pool: &mut pool,
+    };
+    let bakes: Vec<BakeTable> = [(8.0, 16.0, 87), (8.0, 2.0, 127)]
+        .into_iter()
+        .map(|(r, sigma, side)| BakeTable {
+            table: placing.acquire(CutoutKey::new(r, sigma), side).unwrap(),
+            r,
+            sigma,
+            lo: U16Vec2::ZERO,
+            hi: U16Vec2::splat(side as u16),
+        })
+        .collect();
+    tables.bakes.clone_from(&bakes);
+    gpu.frame(|ctx| {
+        textures.commit(ctx.gpu, ctx.encoder, &mut pool);
+        tables.bake(ctx, &textures);
+    });
+    let pages =
+        [0, 1].map(|page| gpu.read_texture(textures.page_texture(AtlasFormat::R8, page).unwrap()));
+    Baked { bakes, pages }
+}
+
+/// A bake of part of a table, its texels from `lo` up to `hi`, writes those texels and no other, on
+/// a device that draws onto its page and on one that stages, to the same bytes: of the 87 texels
+/// of `(8, 16)`'s table at `(0, 16)` of a 128² page, texels `(8, 4)` up to `(40, 30)`.
+#[test]
+fn a_partial_bake_writes_its_span_alone() {
+    let gpu = headless_test_gpu();
+    let shader = QuadPipeline::SHADER.module(&gpu);
+    let [drawn, staged] = [PassTraffic::Drawn, PassTraffic::WholeTarget].map(|traffic| {
+        let mut pool = AtlasPool::uniform(128, 128, 0);
+        pool.allocate(AtlasFormat::R8, Tenant::Glyphs, UVec2::splat(16))
+            .unwrap();
+        let mut textures = AtlasTextures::new(&gpu);
+        let mut tables = CutoutTables::new(&gpu, &shader);
+        tables.traffic = traffic;
+        let mut placements = CutoutPlacements::default();
+        let table = CutoutPlacing {
+            placements: &mut placements,
+            pool: &mut pool,
+        }
+        .acquire(CutoutKey::new(8.0, 16.0), 87)
+        .unwrap();
+        tables.bakes.push(BakeTable {
+            table,
+            r: 8.0,
+            sigma: 16.0,
+            lo: U16Vec2::new(8, 4),
+            hi: U16Vec2::new(40, 30),
+        });
+        gpu.frame(|ctx| {
+            textures.commit(ctx.gpu, ctx.encoder, &mut pool);
+            tables.bake(ctx, &textures);
+        });
+        gpu.read_texture(textures.page_texture(AtlasFormat::R8, 0).unwrap())
+    });
+    let written: Vec<usize> = drawn
+        .iter()
+        .enumerate()
+        .filter(|&(_, &texel)| texel != 0)
+        .map(|(at, _)| at)
+        .collect();
+    let span = |at: usize| {
+        let (x, y) = (at % 128, at / 128);
+        (8..40).contains(&x) && (16 + 4..16 + 30).contains(&y)
+    };
+    assert!(!written.is_empty());
+    assert!(written.iter().all(|&at| span(at)), "the bake left its span");
+    assert!(
+        staged == drawn,
+        "the staged bake reads back as the drawn one"
+    );
 }

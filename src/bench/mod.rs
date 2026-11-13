@@ -31,6 +31,7 @@ use crate::cascade;
 use crate::gpu::backdrop;
 use crate::gpu::backdrop::backdrop_blur;
 use crate::gpu::frame::schedule;
+use crate::gpu::pipeline::quad_pipeline::cutout_tables;
 use crate::gpu::pipeline::{curve_pipeline, effect_pipeline, image_pipeline};
 use crate::gpu::raster::text_backend;
 use crate::layout::cache as measure_cache;
@@ -86,6 +87,7 @@ fn run<S: Scene>(c: &mut Criterion) {
     color_field::bench::atomic(c);
     composer::bench::atomic(c);
     curve_pipeline::bench::atomic(c, &backends);
+    cutout_tables::bench::atomic(c, &backends);
     damage::bench::atomic(c);
     effect_pipeline::bench::atomic(c, &backends);
     frontend::bench::atomic::<S>(c);

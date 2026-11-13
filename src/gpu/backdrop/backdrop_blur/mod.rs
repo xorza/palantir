@@ -3,6 +3,7 @@
 
 use crate::common::expiry_window::ExpiryWindow;
 use crate::gpu::device::gpu::Gpu;
+use crate::gpu::device::pass_traffic::PassTraffic;
 use crate::gpu::device::tiler_family::TilerFamily;
 use crate::gpu::pipeline::effect_pipeline::backdrop_groups::ResultTexture;
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
@@ -10,6 +11,7 @@ use crate::gpu::resource::gpu_ctx::GpuCtx;
 use crate::gpu::resource::pipeline_recipe::{self, PipelineRecipe};
 use crate::gpu::resource::shader_body::{ShaderBody, ShaderConstant};
 use crate::gpu::resource::shelf_packer::ShelfPacker;
+use crate::gpu::resource::staging_target::StagingTarget;
 use crate::gpu::resource::texture_binding::{self, Filtering};
 use crate::gpu::texel;
 use crate::gpu::texel::TargetFormat;
@@ -112,8 +114,12 @@ pub(crate) struct JobLayout {
     /// scratch.
     scratch_round: u32,
     /// Where the residual's first axis writes the region's first texel in the scratch, apart from
-    /// every job of its round.
+    /// every job of its round, in a place as large as its region, or a staged job's as its
+    /// [`BlurJob::dest_rect`], which its second axis takes in the staging target.
     scratch_origin: UVec2,
+    /// Whether the job's second axis draws into the staging target, copied onto its page after:
+    /// a result on a page, on a device whose passes move their whole target.
+    staged: bool,
 }
 
 impl JobLayout {
@@ -141,6 +147,14 @@ impl BlurJob {
             ),
         }
     }
+}
+
+/// A texture a job's result lands in: its view, which a pass draws into, and the texture, which a
+/// staged job's copy lands in.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ResultTarget<'v> {
+    pub(crate) texture: &'v wgpu::Texture,
+    pub(crate) view: &'v wgpu::TextureView,
 }
 
 /// A retained texture, its view, and the group binding the view as a pass's source.
@@ -171,6 +185,8 @@ struct BlurNeeds {
     levels: UVec2,
     mips: u8,
     scratch: UVec2,
+    /// The staging target's, the scratch's where a job is staged, else none.
+    staging: UVec2,
 }
 
 impl BlurNeeds {
@@ -188,6 +204,7 @@ impl BlurNeeds {
             levels: self.levels.max(other.levels),
             mips: self.mips.max(other.mips),
             scratch: self.scratch.max(other.scratch),
+            staging: self.staging.max(other.staging),
         }
     }
 }
@@ -256,6 +273,11 @@ pub(crate) struct BackdropBlur {
     levels: Option<Levels>,
     /// The residual's first axis, sized to the largest round seen.
     scratch: Option<Sampled>,
+    /// What the device's passes move: where a pass moves its whole target, the second axis of a
+    /// result on a page draws into [`Self::staging`], copied onto the page after.
+    traffic: PassTraffic,
+    /// The second axis of a frame's staged jobs, at their places in the scratch.
+    staging: StagingTarget,
     /// The most a frame of the current expiry window read of the levels and the scratch; each
     /// capture keeps its own.
     peak: BlurNeeds,
@@ -391,6 +413,8 @@ impl BackdropBlur {
             captures: Vec::new(),
             levels: None,
             scratch: None,
+            traffic: gpu.pass_traffic(),
+            staging: StagingTarget::new("palantir.backdrop.staging", LEVEL_FORMAT),
             peak: BlurNeeds::default(),
             window: ExpiryWindow::default(),
             scratch_packer: ShelfPacker::within(ceiling),
@@ -581,6 +605,7 @@ impl BackdropBlur {
         debug_assert_eq!(laid_out, jobs.len(), "batches cover the jobs");
         self.make_room(ctx.gpu, needs);
         self.write_params(ctx, jobs);
+        self.staging.decay(ctx.gpu, ctx.frame, needs.staging);
         self.expire(ctx, needs);
     }
 
@@ -594,6 +619,9 @@ impl BackdropBlur {
         }
         if needs.scratch != UVec2::ZERO {
             self.ensure_scratch(gpu, needs.scratch);
+        }
+        if needs.staging != UVec2::ZERO {
+            self.staging.reserve(gpu, needs.staging);
         }
     }
 
@@ -691,13 +719,22 @@ impl BackdropBlur {
                 needs.mips = deepest;
                 origin
             });
-        let mut scratch = UVec2::ZERO;
         let mut round = 0;
         self.scratch_packer.clear();
         for job in batch {
             job.layout.capture_origin = capture_origin;
             job.layout.levels_origin = levels_origin;
-            let size = job.region.size.as_u16vec2();
+            job.layout.staged = self.traffic == PassTraffic::WholeTarget
+                && matches!(job.dest, ResultTexture::Page(_));
+            // A staged job's place holds its result, which a page holds, so within the device's
+            // edge; every other job's only its region, as a larger scratch costs a device whose
+            // passes move their whole target each pass into it.
+            let place = if job.layout.staged {
+                job.dest_rect().size
+            } else {
+                job.region.size
+            };
+            let size = place.as_u16vec2();
             let origin = self.scratch_packer.allocate(size).unwrap_or_else(|| {
                 round += 1;
                 self.scratch_packer.clear();
@@ -707,9 +744,12 @@ impl BackdropBlur {
             });
             job.layout.scratch_round = round;
             job.layout.scratch_origin = origin.as_uvec2();
-            scratch = scratch.max(job.layout.scratch_origin + job.region.size);
+            let end = job.layout.scratch_origin + place;
+            needs.scratch = needs.scratch.max(end);
+            if job.layout.staged {
+                needs.staging = needs.staging.max(end);
+            }
         }
-        needs.scratch = scratch;
         needs
     }
 
@@ -815,13 +855,15 @@ impl BackdropBlur {
 
     /// Record prepared jobs `jobs`' passes, which read one capture: their tents a level to a pass,
     /// then for each round of the scratch the residual across into it and down into each job's
-    /// texels of its [`BlurJob::dest`], whose view `dests` gives, a pass a destination. Every pass
-    /// draws each job under its own scissor, so the jobs pay one pass a stage and destination.
+    /// texels of its [`BlurJob::dest`], which `dests` gives, a pass a destination; a staged job's
+    /// down into its place of the staging target, one pass for the round, and a copy onto its
+    /// destination. Every pass draws each job under its own scissor, so the jobs pay one pass a
+    /// stage and destination.
     pub(crate) fn encode<'v>(
         &self,
         encoder: &mut wgpu::CommandEncoder,
         jobs: &[BlurJob],
-        dests: impl Fn(ResultTexture) -> &'v wgpu::TextureView,
+        dests: impl Fn(ResultTexture) -> ResultTarget<'v>,
     ) {
         let first = &jobs[0];
         debug_assert!(
@@ -876,10 +918,34 @@ impl BackdropBlur {
                 },
             });
             self.pass(encoder, &scratch.view, across);
-            // A pass for each destination the round writes, at its first job: rounds are few
-            // jobs, so the scan beats a sort that would reorder the slots.
+            let staged_rect = |job: &BlurJob| URect {
+                min: job.layout.scratch_origin,
+                size: job.dest_rect().size,
+            };
+            if round.iter().any(|job| job.layout.staged) {
+                {
+                    let mut rp = self.staging.begin_pass(encoder);
+                    let down = round
+                        .iter()
+                        .filter(|job| job.layout.staged)
+                        .map(|job| Draw {
+                            pipeline: &self.vertical,
+                            source: &scratch.group,
+                            slot: residual(job) + 1,
+                            scissor: staged_rect(job),
+                        });
+                    self.draw(&mut rp, down);
+                }
+                for job in round.iter().filter(|job| job.layout.staged) {
+                    let dest = dests(job.dest);
+                    self.staging
+                        .copy_to(encoder, staged_rect(job), dest.texture, job.dest_origin);
+                }
+            }
+            // A pass for each destination the round writes unstaged, at its first job: rounds
+            // are few jobs, so the scan beats a sort that would reorder the slots.
             for (at, job) in round.iter().enumerate() {
-                if round[..at].iter().any(|before| before.dest == job.dest) {
+                if job.layout.staged || round[..at].iter().any(|before| before.dest == job.dest) {
                     continue;
                 }
                 let down = round[at..]
@@ -891,7 +957,7 @@ impl BackdropBlur {
                         slot: residual(other) + 1,
                         scissor: other.dest_rect(),
                     });
-                self.pass(encoder, dests(job.dest), down);
+                self.pass(encoder, dests(job.dest).view, down);
             }
         }
     }
@@ -962,8 +1028,13 @@ impl BackdropBlur {
         let apron = plan.apron() as i32;
         // A read past the region lands on another job's texels of the scratch, or on none,
         // outside the support of every texel the backdrop shows.
+        let lands = if layout.staged {
+            scratch_origin
+        } else {
+            dest_origin
+        };
         slot(BlurParams {
-            target_to_lattice: region.min.as_ivec2() - IVec2::splat(apron) - dest_origin.as_ivec2(),
+            target_to_lattice: region.min.as_ivec2() - IVec2::splat(apron) - lands.as_ivec2(),
             level_size,
             source_origin: to_scratch,
             source_max: last_texel(scratch_origin + region.size),
@@ -996,6 +1067,11 @@ impl BackdropBlur {
             occlusion_query_set: None,
             multiview_mask: None,
         });
+        self.draw(&mut rp, draws);
+    }
+
+    /// Draw each of `draws` in `rp`.
+    fn draw<'a>(&'a self, rp: &mut wgpu::RenderPass<'_>, draws: impl Iterator<Item = Draw<'a>>) {
         for draw in draws {
             let Draw {
                 pipeline,
@@ -1114,11 +1190,12 @@ const SHADER_CONSTANTS: &[ShaderConstant] = &[ShaderConstant::uint(
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
     use crate::gpu::atlas_memory::AtlasUse;
-    use crate::gpu::backdrop::backdrop_blur::{BackdropBlur, BlurJob};
+    use crate::gpu::backdrop::backdrop_blur::{BackdropBlur, BlurJob, ResultTarget};
     use crate::gpu::device::gpu::Gpu;
     use crate::gpu::resource::gpu_ctx::GpuCtx;
     #[cfg(test)]
     use crate::gpu::resource::shelf_packer::ShelfPacker;
+    use crate::gpu::resource::staging_target::StagingTarget;
     use crate::gpu::texel::TargetFormat;
     use glam::UVec2;
     use std::iter;
@@ -1130,6 +1207,11 @@ pub(crate) mod internals {
             let levels = self.levels.iter().map(|levels| &levels.texture);
             let scratch = self.scratch.iter().map(|scratch| &scratch.texture);
             AtlasUse::scratch(name, captures.chain(levels).chain(scratch))
+        }
+
+        /// The target the blur's staged jobs draw their second axis into.
+        pub(crate) const fn staging(&self) -> &StagingTarget {
+            &self.staging
         }
 
         /// Hold every texture of the blur to an edge of `ceiling` texels, as a device of that
@@ -1159,7 +1241,7 @@ pub(crate) mod internals {
             &mut self,
             ctx: &mut GpuCtx<'_>,
             jobs: &mut [BlurJob],
-            dest: &wgpu::TextureView,
+            dest: ResultTarget<'_>,
         ) {
             let all = 0..jobs.len();
             self.prepare(ctx, jobs, iter::once(all), None);
