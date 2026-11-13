@@ -22,7 +22,3 @@
   `MoveRoute` avoids for a drain's moves.
 - The spun raster pipelines compile with the flat ones for every pair of slot sets a session meets
   and at startup, whether or not a frame turns a glyph or an icon.
-- `PageList::evict_shelf` latches nothing when no shelf qualifies, so at four pages every insert of
-  the frame that finds no room walks the slab once a page again.
-- A sparse page's shrink that stalls after an insert or an eviction changed the packing its plan
-  tried leaves the new page open beside it while the larger of the two is the emptier.

@@ -254,14 +254,17 @@ fn a_sparse_page_shrinks_to_twice_its_items_after_a_window() {
     assert_eq!(at(&purged, items[1]).0, 1);
 }
 
-/// A drain whose item fits the others' free texels but no shape of them stalls, and is not tried
-/// again while what it counts holds. Four 32² items fill a 64² page in two 32-texel shelves; an 8 ×
-/// 48 item opens a second page; three of the first page's go, leaving 3072 free texels in shelves
-/// 32 high. The second page, 384 texels, is the emptiest and drains, but its item finds no shelf
-/// 48 high: the drain stalls and the page takes allocations again. The next frame, under a budget
-/// of no copy, a drain begun would leave the page draining; none is. Once the first page's
-/// last item goes, the count moves and the planning runs again: the emptied first page drains,
-/// with nothing to move, and closes.
+/// A drain whose item fits the others' free texels but no shape of them stalls, and its page is
+/// not planned again while what it counts holds, though the next page by its items is. Four 32²
+/// items fill a 64² page in two 32-texel shelves; an 8 × 48 item opens a second page; three of the
+/// first page's go, leaving 3072 free texels in shelves 32 high. The second page, 384 texels, is
+/// the emptiest and drains, but its item finds no shelf 48 high: the drain stalls, spending none
+/// of a budget of one move, and the page takes allocations again. The next frame passes it for the
+/// first page, whose one item's 1024 texels fit half the second's 3712 free: it drains, under a
+/// budget of no move moving nothing. The frame after, its item finds no row either, under the
+/// second page's 48-row shelf, 16 rows left: both pages stall, and the next frame plans nothing.
+/// Once the first page's item goes its count moves: the emptied page drains, with nothing to move,
+/// and closes.
 #[test]
 fn a_drain_that_finds_no_room_stalls_until_its_count_moves() {
     let mut list = list(64, 64, 1 << 20);
@@ -274,24 +277,36 @@ fn a_drain_that_finds_no_room_stalls_until_its_count_moves() {
     for &handle in &first[1..] {
         list.release(handle);
     }
-    assert!(decay(&mut list, 1, ROOMY).moves.is_empty());
+    let mut one = MoveBudget {
+        texels: u64::MAX,
+        moves: 1,
+    };
+    list.decay(1, &mut one, &mut evictions);
+    assert!(list.moves().is_empty());
+    assert_eq!(one.moves, 1, "a stall spends no move");
     assert_eq!(list.draining(), None, "cancelled");
     assert_eq!(
-        list.stalled,
+        list.page(1).unwrap().stalled,
         Some(DrainCount {
-            epoch: 1,
             live_texels: 8 * 48,
             others_free: 64 * 64 - 32 * 32,
         })
     );
+    assert!(list.is_stalled(1));
     let none = MoveBudget {
         texels: u64::MAX,
         moves: 0,
     };
     let _ = decay(&mut list, 2, none);
-    assert_eq!(list.draining(), None, "not tried again");
+    assert_eq!(list.draining(), Some(0), "the stalled page passed");
+    assert!(decay(&mut list, 3, ROOMY).moves.is_empty());
+    assert_eq!(list.draining(), None);
+    assert!(list.is_stalled(0));
+    assert!(list.is_stalled(1));
+    let _ = decay(&mut list, 4, none);
+    assert_eq!(list.draining(), None, "neither planned again");
     list.release(first[0]);
-    let _ = decay(&mut list, 3, none);
+    let _ = decay(&mut list, 5, none);
     assert!(
         list.page(0).is_none(),
         "the emptied first page drained and closed"
@@ -370,12 +385,12 @@ fn a_shrink_opens_the_smallest_page_its_items_pack_into() {
         assert!(list.page(1).is_none(), "{frame}: no page opened");
     }
     assert_eq!(
-        list.stalled,
+        list.page(0).unwrap().stalled,
         Some(DrainCount {
-            epoch: 0,
             live_texels: 2 * 200 * 40 + 4 * 200,
             others_free: 0,
-        })
+        }),
+        "no page packs the three"
     );
     list.release(tall);
     for frame in 361..480 {
@@ -384,4 +399,38 @@ fn a_shrink_opens_the_smallest_page_its_items_pack_into() {
     assert_eq!(decay(&mut list, 480, ROOMY).moves.len(), 2);
     assert_eq!(list.page(1).unwrap().edge(), 256);
     assert_eq!((at(&list, first).0, at(&list, second).0), (1, 1));
+}
+
+/// A shrink whose target an insert fills stalls, and the list ends on one page: the walk passes the
+/// stalled large page and drains the small one back into it. Two 32² items on a 128² page, an
+/// eighth, shrink at the window's end into a 64² page under a budget of one move, the first item
+/// moving. Three inserts fill the small page while the large one drains; the next frame the second
+/// item finds no room, and the large page stalls. The frame after, the small page's four items,
+/// 4096 texels, fit half the large page's free 15 360: they drain back, the small page closes, and
+/// the five items sit on the large page.
+#[test]
+fn a_shrink_whose_target_fills_ends_on_one_page() {
+    let mut list = list(32, 128, 1 << 20);
+    let items = insert(&mut list, 5, 32);
+    for &handle in &items[2..] {
+        list.release(handle);
+    }
+    let one = MoveBudget {
+        texels: u64::MAX,
+        moves: 1,
+    };
+    for frame in 1..120 {
+        assert!(decay(&mut list, frame, one).moves.is_empty(), "{frame}");
+    }
+    assert_eq!(decay(&mut list, 120, one).moves.len(), 1);
+    assert_eq!(list.page(1).unwrap().edge(), 64, "the shrink's page");
+    let filler = insert(&mut list, 3, 32);
+    assert!(filler.iter().all(|&handle| at(&list, handle).0 == 1));
+    assert!(decay(&mut list, 121, ROOMY).moves.is_empty());
+    assert!(list.is_stalled(0));
+    let back = decay(&mut list, 122, ROOMY).moves;
+    assert_eq!(back.len(), 4);
+    assert!(back.iter().all(|m| m.from.page == 1 && m.to.page == 0));
+    assert!(list.page(1).is_none(), "the small page drained back");
+    assert_eq!(list.page(0).unwrap().live_texels(), 5 * 32 * 32);
 }

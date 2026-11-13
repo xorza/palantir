@@ -147,11 +147,12 @@ Facts and sources: `.notes/research/2026-11-12-atlas-pools.md` and
   as WebRender's `bytes_allocated`, and nothing ages under the budget on one page, grown or not,
   as WebRender ages under its threshold only across several textures (refused: a grown page aged
   under the budget, which evicted every glyph of a 512-scale zoom just before its scale came back,
-  `cache_churn` +40 to +83 %); the emptiest page whose items fit the others drains into them, until
-  a frame has moved 512² texels as WebRender's compaction, whose last move may pass them, so an
-  item of more still moves; one page a smaller one holds twice over for an expiry window, an eighth
-  full at most, drains into the smallest page that holds twice its items' texels and packs them,
-  landing at half or under as a `Vec` halves. One page drains at a time, a source or a destination
+  `cache_churn` +40 to +83 %); of several pages, the emptiest whose items fit half the others'
+  free texels drains into them, a page whose drain found no room passed while what it counts
+  holds, until a frame has moved 512² texels as WebRender's compaction, whose last move may pass
+  them, so an item of more still moves; one page a smaller one holds twice over for an expiry
+  window, an eighth full at most, drains into the smallest page that holds twice its items' texels
+  and packs them, landing at half or under as a `Vec` halves. One page drains at a time, a source or a destination
   in one frame and never both, and no drain starts while moves wait for the commit, so no page
   closes under a move; the commit lands the moves in the order they were made, as a purge may land
   one where an item it evicted had just moved. Refused: Skia's
