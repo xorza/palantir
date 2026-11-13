@@ -29,7 +29,7 @@ mod geometry;
 mod higher_kind_rects;
 mod lowering;
 mod occlusion_pruner;
-mod paint_order;
+pub(crate) mod paint_order;
 mod physical_map;
 mod polyline_scratch;
 mod quad_runs;
@@ -98,6 +98,8 @@ pub(crate) mod internals {
     #[cfg(test)]
     use crate::renderer::frontend::composer::Composer;
     use crate::renderer::frontend::composer::compose_session::ComposeSession;
+    #[cfg(test)]
+    use crate::renderer::frontend::composer::paint_order::internals::GroupCloses;
 
     impl ComposeSession<'_> {
         /// Replay a recorded paint stream into this session and finish it, so
@@ -110,6 +112,11 @@ pub(crate) mod internals {
 
     #[cfg(test)]
     impl Composer {
+        /// Why the groups of the last session's draw list closed.
+        pub(crate) fn group_closes(&self) -> GroupCloses {
+            self.order.group_closes()
+        }
+
         pub(crate) fn scratch_bytes(&self) -> usize {
             let Self {
                 clip,

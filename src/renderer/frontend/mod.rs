@@ -122,6 +122,8 @@ pub(crate) mod internals {
     use crate::image_registry::texture_limit::TextureLimit;
     use crate::renderer::frontend::BuildPlan;
     #[cfg(test)]
+    use crate::renderer::frontend::composer::paint_order::internals::GroupCloses;
+    #[cfg(test)]
     use crate::renderer::frontend::{FrameScene, Frontend};
     use crate::renderer::render_plan::RenderPlan;
     use crate::renderer::row_table::RowTable;
@@ -159,6 +161,11 @@ pub(crate) mod internals {
                 scene,
                 BuildPlan::without_backdrops(render, &mut RowTable::default()),
             );
+        }
+
+        /// Why the groups of the last build's draw list closed.
+        pub(crate) fn group_closes(&self) -> GroupCloses {
+            self.composer.group_closes()
         }
 
         /// Leaves out `buffer`, the composed frame the backend reads.

@@ -3,7 +3,7 @@ use std::time::Duration;
 use std::{env, fs, process};
 
 use palantir::glam::{UVec2, Vec2};
-use palantir::internals::{headless_test_gpu, main_pass_draws};
+use palantir::internals::{headless_test_gpu, main_pass_counts};
 use palantir::{
     Action, AgentWindow, ColorScheme, Depth, Harness, Key, Locator, Palette, PointerButton, Rect,
     Shortcut, ShortcutMods, SystemScale, ZoomFactor,
@@ -436,36 +436,68 @@ fn every_page_draws_in_dark() {
     draws_every_page(ColorScheme::Dark);
 }
 
-/// The draws of each page that clips to a rounded rect, at the bench window's logical size,
+/// Each page's census: draws, pipelines, bind groups, scissors, viewport pushes, vertex buffers and
+/// index buffers.
+#[rustfmt::skip]
+const CENSUS: [(&str, [u32; 7]); 24] = [
+    //                    draws  pipes  groups  scissors  viewports  vertex  index
+    ("Controls",         [    8,     4,      2,        7,         4,      4,     3]),
+    ("Colors",           [   15,     9,      7,        6,         9,      9,     5]),
+    ("Tabs",             [   14,     7,      2,       13,         7,      7,     5]),
+    ("Dock",             [   14,     4,      2,       13,         4,      4,     3]),
+    ("Custom widget",    [    6,     3,      2,        6,         3,      3,     2]),
+    ("Overlays",         [   10,     7,      6,        9,         7,      7,     4]),
+    ("Text input",       [    9,     3,      2,        8,         3,      3,     1]),
+    ("Focus & keyboard", [    9,     4,      2,        7,         4,      4,     3]),
+    ("Sizing & spacing", [    7,     4,      2,        7,         4,      4,     3]),
+    ("Containers",       [    6,     3,      2,        6,         3,      3,     1]),
+    ("Text",             [    6,     3,      2,        6,         3,      3,     1]),
+    ("Clip & transform", [   12,     5,      2,       11,         5,      5,     3]),
+    ("Scroll & zoom",    [   16,     2,      2,       16,         2,      2,     1]),
+    ("Shapes",           [    7,     4,      2,        6,         3,      3,     1]),
+    ("Strokes",          [    7,     4,      2,        7,         4,      4,     3]),
+    ("Gradients",        [    7,     4,      2,        6,         3,      3,     1]),
+    ("Shadows",          [   17,    13,      2,        9,        13,      6,     1]),
+    ("Materials",        [   20,    17,     23,       18,        17,     17,    13]),
+    ("Effects",          [    8,     5,      3,        7,         4,      4,     3]),
+    ("Icons",            [    7,     3,      2,        7,         3,      4,     1]),
+    ("Images",           [    9,     5,      4,        7,         5,      5,     3]),
+    ("Motion",           [   14,     9,      2,        9,         9,      9,     7]),
+    ("GPU view",         [    5,     3,      3,        5,         3,      3,     1]),
+    ("App & windows",    [    7,     3,      2,        6,         3,      3,     1]),
+];
+
+/// The census: the calls each page's main pass records, at the bench window's logical size,
 /// repainted whole by a resize of 2 px, as `.notes/research/2026-11-10-draw-calls.md` counts them:
-/// a change to how a rounded clip draws moves these. At scale 1, which draws what scale 2 does
-/// over a quarter of the pixels.
+/// a change to batching moves these. At scale 1, which draws what scale 2 does over a quarter of
+/// the pixels.
 #[test]
-fn rounded_clip_pages_draw_their_counts() {
+fn every_page_records_its_census() {
     let gpu = headless_test_gpu();
     let size = UVec2::new(1280, 720);
     let mut h = Harness::builder(size)
         .depth(Depth::gpu(gpu.handles()))
         .build();
-    let mut counts = Vec::new();
+    let mut census = Vec::new();
     for (page, label) in Shell::page_labels().enumerate() {
-        if !matches!(label, "Tabs" | "Dock" | "Clip & transform" | "Motion") {
-            continue;
-        }
         h.resize(size);
         let mut shell = Shell::open(page);
         h.session(&mut shell).settle().unwrap();
         h.resize(size + UVec2::new(2, 0));
         h.session(&mut shell).settle().unwrap();
-        counts.push((label, main_pass_draws(h.ui())));
+        let counts = main_pass_counts(h.ui());
+        census.push((
+            label,
+            [
+                counts.draws,
+                counts.pipelines,
+                counts.groups,
+                counts.scissors,
+                counts.viewports,
+                counts.vertex_buffers,
+                counts.index_buffers,
+            ],
+        ));
     }
-    assert_eq!(
-        counts,
-        [
-            ("Tabs", 14),
-            ("Dock", 14),
-            ("Clip & transform", 12),
-            ("Motion", 14)
-        ]
-    );
+    assert_eq!(census, CENSUS);
 }

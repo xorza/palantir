@@ -107,11 +107,28 @@ pub(crate) struct BackdropTimes {
 /// The calls the last frame's main pass recorded, summed over the passes it breaks into, each
 /// counted where the recorder issued it after eliding a repeat: what a change to batching moves.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) struct PassCounts {
-    pub(crate) draws: u32,
-    pub(crate) pipelines: u32,
-    pub(crate) groups: u32,
-    pub(crate) scissors: u32,
+#[cfg_attr(
+    not(feature = "internals"),
+    expect(
+        unreachable_pub,
+        reason = "`pub` for the `internals` re-export, which a build without it lacks"
+    )
+)]
+pub struct PassCounts {
+    /// Draws, indexed or not.
+    pub draws: u32,
+    /// Pipelines set.
+    pub pipelines: u32,
+    /// Bind groups set.
+    pub groups: u32,
+    /// Scissor rects set.
+    pub scissors: u32,
+    /// The viewport pushed into immediate data, again at each change of pipeline layout.
+    pub viewports: u32,
+    /// Vertex buffers set.
+    pub vertex_buffers: u32,
+    /// Index buffers set.
+    pub index_buffers: u32,
 }
 
 impl PassCounts {
@@ -121,6 +138,9 @@ impl PassCounts {
         pipelines: 0,
         groups: 0,
         scissors: 0,
+        viewports: 0,
+        vertex_buffers: 0,
+        index_buffers: 0,
     };
 
     /// Add `other`'s calls to these.
@@ -129,6 +149,9 @@ impl PassCounts {
         self.pipelines += other.pipelines;
         self.groups += other.groups;
         self.scissors += other.scissors;
+        self.viewports += other.viewports;
+        self.vertex_buffers += other.vertex_buffers;
+        self.index_buffers += other.index_buffers;
     }
 }
 

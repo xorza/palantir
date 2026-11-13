@@ -32,6 +32,8 @@ pub(crate) mod srgb_reference;
 use crate::text;
 use crate::ui::Ui;
 
+/// What the main pass recorded, which [`main_pass_counts`] reads.
+pub use crate::diagnostics::gpu_pass_stats::PassCounts;
 /// The bench device lives in `crate::gpu` (`clippy.toml` keeps wgpu types there); re-exported for
 /// benches outside the crate, which share its adapter check and its devices.
 pub use crate::gpu::bench_gpu::{BenchGpu, Timing};
@@ -48,8 +50,8 @@ pub use crate::text::internals::SHAPED_BUFFER_RING_FRAMES;
 /// The raster-scale quantum, so the allocation suite's scale ramp steps one rung a frame.
 pub const TEXT_SCALE_STEP: f32 = text::TEXT_SCALE_STEP;
 
-/// The draws the main pass of `ui`'s window recorded on its last painted frame, after the
+/// The calls the main pass of `ui`'s window recorded on its last painted frame, after the
 /// recorder's elision: what a change to batching moves.
-pub fn main_pass_draws(ui: &Ui) -> u32 {
-    ui.gpu_pass_stats().last_pass_counts().draws
+pub fn main_pass_counts(ui: &Ui) -> PassCounts {
+    ui.gpu_pass_stats().last_pass_counts()
 }

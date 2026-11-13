@@ -396,6 +396,8 @@ pub(crate) mod internals {
     #[cfg(test)]
     use crate::gpu::surface::render_target::RenderTarget;
     #[cfg(test)]
+    use crate::renderer::frontend::composer::paint_order::internals::GroupCloses;
+    #[cfg(test)]
     use crate::ui::app::App;
     #[cfg(test)]
     use crate::ui::window_frames::WindowFrames;
@@ -466,6 +468,12 @@ pub(crate) mod internals {
             app: &mut impl App,
         ) -> Option<PaintPath> {
             self.halves(target, app, |built, _| built.path())
+        }
+
+        /// Why the groups of the most recent [`OffscreenHost::frame`]'s draw list closed.
+        #[cfg(test)]
+        pub(crate) fn group_closes(&self) -> GroupCloses {
+            self.window.cpu.frontend.group_closes()
         }
 
         /// Draw list the most recent [`OffscreenHost::frame`] composed; the benchmark replays it for exact step counts.

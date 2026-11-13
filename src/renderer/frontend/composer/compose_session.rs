@@ -17,7 +17,7 @@ use crate::renderer::frontend::composer::clip_stack::ClipFrame;
 use crate::renderer::frontend::composer::curve_run::CurveRun;
 use crate::renderer::frontend::composer::geometry;
 use crate::renderer::frontend::composer::lowering::{Lowering, ScaledRect};
-use crate::renderer::frontend::composer::paint_order::{Lane, Ordering, TextClip};
+use crate::renderer::frontend::composer::paint_order::{GroupClose, Lane, Ordering, TextClip};
 use crate::renderer::frontend::composer::polyline_scratch::{PolylineLook, StagedColors};
 use crate::renderer::frontend::composer::stroke_bbox::StrokeBbox;
 use crate::renderer::frontend::composer::template_shape::TemplateShape;
@@ -143,7 +143,7 @@ impl ComposeSession<'_> {
     pub(crate) fn finish(mut self) {
         let mut ordering = self.ordering();
         ordering.close_batch();
-        ordering.flush();
+        ordering.flush(GroupClose::End);
     }
 }
 

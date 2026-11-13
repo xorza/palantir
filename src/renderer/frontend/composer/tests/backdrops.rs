@@ -2,6 +2,7 @@
 
 use crate::cascade::plane_backdrop::PlaneBackdrop;
 use crate::common::span::Span;
+use crate::internals::compose_rig::ComposeRig;
 use crate::internals::paint_capture::PaintCapture;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
@@ -11,8 +12,9 @@ use crate::primitives::identity::effect_id::EffectId;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::color::RgbaF32;
 use crate::renderer::backdrop_captures::BackdropTicket;
+use crate::renderer::frontend::composer::paint_order::internals::{Closes, GroupCloses};
 use crate::renderer::frontend::composer::tests::support::{
-    draw, draw_marked, effect, params, run, survivor_calls, text,
+    clip, draw, draw_marked, effect, params, run, survivor_calls, text,
 };
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
@@ -157,6 +159,45 @@ fn a_backdrop_cuts_the_frame_at_its_barrier() {
     let instance = buf.effects.instance()[0];
     assert_eq!((instance.backdrop_idx, instance.opacity), (0, 1.0));
     assert_eq!(instance.header.rect, rect);
+}
+
+/// Paint order tallies each group by why it closed, and the draws ordered after: a quad and a text
+/// run close at the backdrop's barrier with 3 draws after (the effect, a quad, a quad); the quad
+/// over the effect at the next quad's paint order, with 2 after; that quad at the clip around the
+/// last, with 1 after; the last as the clip ends, with none. The session's end finds no draw left
+/// and closes none.
+#[test]
+fn each_group_counts_why_it_closed() {
+    let rect = Rect::new(20.0, 20.0, 40.0, 20.0);
+    let mut recorded = PaintCapture::default();
+    draw(&mut recorded, Rect::new(0.0, 0.0, 90.0, 90.0));
+    text(&mut recorded, Rect::new(10.0, 10.0, 40.0, 10.0));
+    ticketed(&mut recorded, rect, ticket(0, rect, 5.0, true), 1.0);
+    draw(&mut recorded, Rect::new(30.0, 30.0, 5.0, 5.0));
+    clip(&mut recorded, Rect::new(100.0, 100.0, 50.0, 50.0));
+    draw(&mut recorded, Rect::new(110.0, 110.0, 10.0, 10.0));
+    recorded.pop_clip();
+    let mut rig = ComposeRig::new(params(1.0, UVec2::new(200, 200)));
+    rig.compose(&recorded);
+    assert_eq!(rig.out.groups.len(), 4);
+    assert_eq!(
+        rig.composer.group_closes(),
+        GroupCloses {
+            clip: Closes {
+                groups: 2,
+                draws_after: 1,
+            },
+            paint_order: Closes {
+                groups: 1,
+                draws_after: 2,
+            },
+            barrier: Closes {
+                groups: 1,
+                draws_after: 3,
+            },
+            end: Closes::default(),
+        }
+    );
 }
 
 /// A held backdrop keeps its result, so it breaks nothing: its effect row joins the open group

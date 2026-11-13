@@ -1,6 +1,7 @@
 //! Paint order: which draws may reorder within a group, and where a group or a text batch must
 //! close so none that overlap does.
 
+use crate::common::counters::TestOnly;
 use crate::common::span::Span;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::urect::URect;
@@ -29,6 +30,32 @@ pub(super) enum Lane {
     Tier(PaintTier),
 }
 
+/// Why a group closed: the clip in force changed its scissor, a draw would have swapped paint order
+/// with one it overlaps, a backdrop's barrier, or the session's end.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum GroupClose {
+    Clip,
+    PaintOrder,
+    Barrier,
+    End,
+}
+
+impl GroupClose {
+    const COUNT: usize = 4;
+}
+
+/// A frame's closed groups by cause, and the draws each cause's closes had after them.
+#[derive(Clone, Copy, Debug, Default)]
+struct CloseTally {
+    /// The draws ordered so far in the frame.
+    draws: u32,
+    /// The groups closed, by [`GroupClose`].
+    groups: [u32; GroupClose::COUNT],
+    /// The draws ordered before each close, summed by its cause: a cause's draws after its closes
+    /// are its groups times the frame's draws, less these.
+    draws_before: [u32; GroupClose::COUNT],
+}
+
 /// The retained state of paint order: the open text batch, the higher-kind rects, where the open
 /// group's slices begin, the occluders the group prunes with, and the backdrop break.
 ///
@@ -52,6 +79,8 @@ pub(super) struct PaintOrder {
     runs: QuadRuns,
     /// The last break the main pass takes for a backdrop, and what is painted after it.
     backdrop_break: BackdropBreak,
+    /// Why this frame's groups closed, which the batching census reads.
+    closes: TestOnly<CloseTally>,
 }
 
 /// Allocation-owning state for text batching. The open grid may span groups; the closed grid and
@@ -135,6 +164,7 @@ impl PaintOrder {
         self.cursors = GroupCursors::default();
         self.occlusion.start_frame(viewport);
         self.backdrop_break.open(0);
+        self.closes.reset();
     }
 }
 
@@ -182,7 +212,7 @@ impl Ordering<'_> {
             Lane::Quad => self.quad_forces_flush(visible),
             Lane::Text => {
                 if self.order.higher_kinds.any_overlap(visible) {
-                    self.flush();
+                    self.flush(GroupClose::PaintOrder);
                 }
             }
             Lane::Tier(tier) => {
@@ -190,12 +220,13 @@ impl Ordering<'_> {
                     self.close_batch();
                 }
                 if self.order.higher_kinds.conflicts(tier, visible) {
-                    self.flush();
+                    self.flush(GroupClose::PaintOrder);
                 }
                 self.order.higher_kinds.push(tier, visible);
             }
         }
         self.order.backdrop_break.paint(visible);
+        self.order.closes.edit(|tally| tally.draws += 1);
     }
 
     /// Where a backdrop of `ticket` reads: its cached result where it holds one, else a
@@ -214,7 +245,7 @@ impl Ordering<'_> {
             .shared(ticket.capture.footprint)
             .unwrap_or_else(|| {
                 self.close_batch();
-                self.flush();
+                self.flush(GroupClose::Barrier);
                 let barrier = self.out.groups.len() as u32;
                 self.order.backdrop_break.open(barrier);
                 barrier
@@ -258,13 +289,13 @@ impl Ordering<'_> {
     /// [`Self::flush`] stamps the closing group with the stack top.
     pub(super) fn break_for_clip(&mut self, next: Option<ClipFrame>) {
         if next.map(|frame| frame.scissor) != self.clip.scissor() {
-            self.flush();
+            self.flush(GroupClose::Clip);
         }
     }
 
-    /// Close the open group: push a `DrawGroup` if anything was emitted, advance the per-kind
-    /// cursors and clear the overlap scratches. Scissor and rounded clip carry over.
-    pub(super) fn flush(&mut self) {
+    /// Close the open group for `cause`: push a `DrawGroup` if anything was emitted, advance the
+    /// per-kind cursors and clear the overlap scratches. Scissor and rounded clip carry over.
+    pub(super) fn flush(&mut self, cause: GroupClose) {
         let order = &mut *self.order;
         order.occlusion.prune(self.out, order.cursors.quads);
         let mut group = self.out.quads.idx_mut(order.cursors.quads as usize..);
@@ -295,6 +326,10 @@ impl Ordering<'_> {
             self.out.groups.push(DrawGroup {
                 scissor: self.clip.scissor(),
                 quads: Span::try_from(order.cursors.quads..q_end).unwrap(),
+            });
+            order.closes.edit(|tally| {
+                tally.groups[cause as usize] += 1;
+                tally.draws_before[cause as usize] += tally.draws;
             });
         }
         order.cursors = GroupCursors {
@@ -375,7 +410,7 @@ impl Ordering<'_> {
         }
         if renders_after || self.closed_hit(overlap) || self.order.higher_kinds.any_overlap(overlap)
         {
-            self.flush();
+            self.flush(GroupClose::PaintOrder);
         }
     }
 
@@ -411,7 +446,35 @@ impl Ordering<'_> {
 
 #[cfg(test)]
 pub(crate) mod internals {
-    use crate::renderer::frontend::composer::paint_order::{BatchState, PaintOrder};
+    use crate::renderer::frontend::composer::paint_order::{
+        BatchState, CloseTally, GroupClose, PaintOrder,
+    };
+
+    /// The groups a frame closed for one cause, and the draws ordered after those closes, summed.
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+    pub(crate) struct Closes {
+        pub(crate) groups: u32,
+        pub(crate) draws_after: u32,
+    }
+
+    /// A frame's closed groups, by cause.
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+    pub(crate) struct GroupCloses {
+        pub(crate) clip: Closes,
+        pub(crate) paint_order: Closes,
+        pub(crate) barrier: Closes,
+        pub(crate) end: Closes,
+    }
+
+    impl CloseTally {
+        fn of(&self, cause: GroupClose) -> Closes {
+            let at = cause as usize;
+            Closes {
+                groups: self.groups[at],
+                draws_after: self.groups[at] * self.draws - self.draws_before[at],
+            }
+        }
+    }
 
     impl PaintOrder {
         pub(crate) fn scratch_bytes(&self) -> usize {
@@ -428,6 +491,7 @@ pub(crate) mod internals {
                 occlusion,
                 runs,
                 backdrop_break: _,
+                closes: _,
             } = self;
             open_grid.scratch_bytes()
                 + closed_grid.scratch_bytes()
@@ -439,6 +503,17 @@ pub(crate) mod internals {
         /// The cover-containment tests the occlusion pruner ran.
         pub(crate) fn contains_tests(&self) -> u32 {
             self.occlusion.contains_tests()
+        }
+
+        /// Why the last frame's groups closed.
+        pub(crate) fn group_closes(&self) -> GroupCloses {
+            let tally = self.closes.get();
+            GroupCloses {
+                clip: tally.of(GroupClose::Clip),
+                paint_order: tally.of(GroupClose::PaintOrder),
+                barrier: tally.of(GroupClose::Barrier),
+                end: tally.of(GroupClose::End),
+            }
         }
     }
 }

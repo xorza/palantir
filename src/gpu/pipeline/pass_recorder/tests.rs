@@ -156,7 +156,9 @@ fn a_switch_sets_only_what_changed() {
     rec.scissor(URect::new(0, 0, 8, 8));
     rec.scissor(URect::new(0, 0, 8, 8));
     rec.draw_indexed(0..3, 0, 0..1);
-    // Pipelines 1, 2, 3, 4, 1 and 5; groups 20, 21, 22 and 20 again; the draw and the indexed one.
+    // Pipelines 1, 2, 3, 4, 1 and 5; groups 20, 21, 22 and 20 again; the draw and the indexed one;
+    // the viewport at the quad, shadow, quad and mesh layouts; vertex buffers 30, 31, 32 and 33;
+    // index buffer 34, then 34 again as `Uint16`.
     assert_eq!(
         rec.counts(),
         PassCounts {
@@ -164,6 +166,9 @@ fn a_switch_sets_only_what_changed() {
             pipelines: 6,
             groups: 4,
             scissors: 2,
+            viewports: 4,
+            vertex_buffers: 4,
+            index_buffers: 2,
         },
         "the counts are the calls the pass took"
     );

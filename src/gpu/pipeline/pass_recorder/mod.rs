@@ -132,6 +132,7 @@ impl<'a, S: PassState> PassRecorder<'a, S> {
         if self.layout != Some(layout) {
             self.pass.push_viewport(self.viewport);
             self.layout = Some(layout);
+            self.counts.viewports += 1;
         }
     }
 
@@ -159,6 +160,7 @@ impl<'a, S: PassState> PassRecorder<'a, S> {
         if !same(*bound, buffer) {
             self.pass.set_vertex_buffer(slot, buffer);
             *bound = Some(buffer);
+            self.counts.vertex_buffers += 1;
         }
     }
 
@@ -171,6 +173,7 @@ impl<'a, S: PassState> PassRecorder<'a, S> {
         if !bound {
             self.pass.set_index_buffer(buffer, format);
             self.index = Some(IndexBinding { buffer, format });
+            self.counts.index_buffers += 1;
         }
     }
 
