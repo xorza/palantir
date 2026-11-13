@@ -82,7 +82,7 @@ use crate::gpu::pipeline::pass_recorder::PassRecorder;
 use crate::gpu::pipeline::quad_pipeline::cutout_placements::{CutoutPlacements, CutoutPlacing};
 use crate::gpu::pipeline::quad_pipeline::quad_draw::QuadDraw;
 use crate::gpu::pipeline::quad_pipeline::{self, QuadExtras, QuadPipeline, QuadRun};
-use crate::gpu::pipeline::raster_pipeline::RasterPipeline;
+use crate::gpu::pipeline::raster_pipeline::{RasterDraws, RasterPipeline};
 use crate::gpu::pipeline::viewport_push::ViewportPush;
 use crate::gpu::raster::icon_backend::IconBackend;
 use crate::gpu::raster::text_backend::{TextBackend, TextBatchInput};
@@ -708,7 +708,10 @@ impl WgpuBackend {
                         forms
                     },
                     curves: !buffer.curves.is_empty(),
-                    rasters: !buffer.texts.is_empty() || !buffer.icons.is_empty(),
+                    rasters: RasterDraws::of(
+                        !buffer.texts.is_empty() || !buffer.icons.is_empty(),
+                        self.text.turns_rasters() || self.icon.turns_rasters(),
+                    ),
                 },
             );
     }

@@ -44,8 +44,8 @@ impl RasterVariants {
         spun: [const { ClipVariant::NONE }; SLOT_PAIRS],
     };
 
-    /// The pair a frame of `clipping` over `slots` binds, which its census built, drawing through
-    /// `atlas`, the pool's atlas group.
+    /// The pair a frame of `clipping` over `slots` binds, which its census built, the spun half
+    /// where it turns a raster, drawing through `atlas`, the pool's atlas group.
     pub(crate) const fn pair<'a>(
         &'a self,
         clipping: Clipping,
@@ -55,8 +55,32 @@ impl RasterVariants {
         let idx = slots_idx(slots);
         RasterPipelinePair {
             flat: self.flat[idx].get(clipping),
-            spun: self.spun[idx].get(clipping),
+            spun: self.spun[idx].built(clipping),
             atlas,
+        }
+    }
+}
+
+/// Which raster pipelines a frame draws through. A turned raster is a raster, so a frame that
+/// draws the spun pipeline draws the flat one too.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum RasterDraws {
+    /// No text or icon.
+    None,
+    /// Text or icons, none turned.
+    Flat,
+    /// Text or icons, a paint animation turning one.
+    FlatAndSpun,
+}
+
+impl RasterDraws {
+    /// What a frame of `rasters`, its text and icons, draws, `turned` where an animation turns
+    /// one.
+    pub(crate) const fn of(rasters: bool, turned: bool) -> Self {
+        match (rasters, turned) {
+            (false, _) => Self::None,
+            (true, false) => Self::Flat,
+            (true, true) => Self::FlatAndSpun,
         }
     }
 }
@@ -65,7 +89,8 @@ impl RasterVariants {
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct RasterPipelinePair<'a> {
     pub(crate) flat: &'a Pipeline,
-    pub(crate) spun: &'a Pipeline,
+    /// `None` in a frame that turns no raster, which builds no spun pipeline.
+    pub(crate) spun: Option<&'a Pipeline>,
     /// The pool's [`AtlasGroup`](crate::gpu::pipeline::atlas_binding::AtlasGroup).
     pub(crate) atlas: &'a wgpu::BindGroup,
 }
@@ -99,44 +124,56 @@ impl RasterPipeline {
         }
     }
 
-    /// Build the halves of `variants` `target` binds, where they are not built: the only
-    /// format-dependent part here, for unturned quads, and for the [`SpunRasterQuad`]s a paint
-    /// animation turns, each pinned to the target's open mask and color slots.
-    pub(crate) fn ensure(&self, variants: &mut RasterVariants, gpu: &Gpu, target: VariantTarget) {
+    /// Build the halves of `variants` `target` binds that `draws` names, where they are not built:
+    /// the only format-dependent part here, for unturned quads, and for the [`SpunRasterQuad`]s a
+    /// paint animation turns, each pinned to the target's open mask and color slots. Refused: the
+    /// spun half built with the flat one, for every pair of slot sets a session meets, whether or
+    /// not a frame turns a raster.
+    pub(crate) fn ensure(
+        &self,
+        variants: &mut RasterVariants,
+        gpu: &Gpu,
+        target: VariantTarget,
+        draws: RasterDraws,
+    ) {
         let idx = slots_idx(target.slots);
         let constants = target.slots.constants();
-        variants.flat[idx].ensure(
-            gpu,
-            target.clipping,
-            &PipelineRecipe {
-                constants: &constants,
-                vertex_buffers: &[Some(RasterQuad::LAYOUT)],
-                topology: wgpu::PrimitiveTopology::TriangleStrip,
-                ..PipelineRecipe::color(
-                    "palantir.raster.pipeline",
-                    &self.shader,
-                    &self.pipeline_layout,
-                    target.format,
-                )
-            },
-        );
-        variants.spun[idx].ensure(
-            gpu,
-            target.clipping,
-            &PipelineRecipe {
-                constants: &constants,
-                vertex_buffers: &[Some(SpunRasterQuad::LAYOUT)],
-                topology: wgpu::PrimitiveTopology::TriangleStrip,
-                vertex_entry: "vs_spun",
-                fragment_entry: "fs_spun",
-                ..PipelineRecipe::color(
-                    "palantir.raster.pipeline.spun",
-                    &self.shader,
-                    &self.pipeline_layout,
-                    target.format,
-                )
-            },
-        );
+        if draws != RasterDraws::None {
+            variants.flat[idx].ensure(
+                gpu,
+                target.clipping,
+                &PipelineRecipe {
+                    constants: &constants,
+                    vertex_buffers: &[Some(RasterQuad::LAYOUT)],
+                    topology: wgpu::PrimitiveTopology::TriangleStrip,
+                    ..PipelineRecipe::color(
+                        "palantir.raster.pipeline",
+                        &self.shader,
+                        &self.pipeline_layout,
+                        target.format,
+                    )
+                },
+            );
+        }
+        if draws == RasterDraws::FlatAndSpun {
+            variants.spun[idx].ensure(
+                gpu,
+                target.clipping,
+                &PipelineRecipe {
+                    constants: &constants,
+                    vertex_buffers: &[Some(SpunRasterQuad::LAYOUT)],
+                    topology: wgpu::PrimitiveTopology::TriangleStrip,
+                    vertex_entry: "vs_spun",
+                    fragment_entry: "fs_spun",
+                    ..PipelineRecipe::color(
+                        "palantir.raster.pipeline.spun",
+                        &self.shader,
+                        &self.pipeline_layout,
+                        target.format,
+                    )
+                },
+            );
+        }
     }
 }
 

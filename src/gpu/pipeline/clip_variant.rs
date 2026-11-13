@@ -79,12 +79,16 @@ impl ClipVariant {
 
     /// The pipeline a frame of `clipping` binds, which its census built.
     pub(crate) const fn get(&self, clipping: Clipping) -> &Pipeline {
-        let built = match clipping {
-            Clipping::Off => &self.off,
-            Clipping::On => &self.on,
-        };
-        built
-            .as_ref()
+        self.built(clipping)
             .expect("the frame's census builds every pipeline it binds")
+    }
+
+    /// The half of `clipping`, `None` where no census built it: a pipeline a frame binds only for
+    /// some of its draws, which a frame that draws none never asked for.
+    pub(crate) const fn built(&self, clipping: Clipping) -> Option<&Pipeline> {
+        match clipping {
+            Clipping::Off => self.off.as_ref(),
+            Clipping::On => self.on.as_ref(),
+        }
     }
 }

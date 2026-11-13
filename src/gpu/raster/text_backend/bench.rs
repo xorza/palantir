@@ -23,7 +23,7 @@ use crate::gpu::pipeline::atlas_binding::{AtlasGroup, AtlasSlots};
 use crate::gpu::pipeline::clip_variant::Clipping;
 use crate::gpu::pipeline::instanced_pipeline::VariantTarget;
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
-use crate::gpu::pipeline::raster_pipeline::{RasterPipeline, RasterVariants};
+use crate::gpu::pipeline::raster_pipeline::{RasterDraws, RasterPipeline, RasterVariants};
 use crate::gpu::pipeline::viewport_push::ViewportPush;
 use crate::gpu::raster::text_backend::encode::cache::internals::{ChurnBench, SweepBench};
 use crate::gpu::raster::text_backend::{TextBackend, TextBatchInput};
@@ -287,6 +287,7 @@ impl Fixture {
                     clipping: Clipping::Off,
                     slots: AtlasSlots::of(&self.pool),
                 },
+                RasterDraws::of(true, self.backend.turns_rasters()),
             );
             self.group.follow(ctx.gpu, &self.atlas);
             self.backend.flush(&mut ctx, &self.atlas);

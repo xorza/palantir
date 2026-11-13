@@ -6,5 +6,3 @@
 - On a device whose passes move their whole target, a frame that bakes a cutout table or blurs a
   backdrop result that lies on a page opens a load-and-store pass over the whole page, the cost
   a drain's moves avoid by copy.
-- The spun raster pipelines compile with the flat ones for every pair of slot sets a session meets
-  and at startup, whether or not a frame turns a glyph or an icon.

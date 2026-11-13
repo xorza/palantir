@@ -124,6 +124,11 @@ impl IconBackend {
         self.pass.end_frame(pool.frame());
     }
 
+    /// Whether this frame turns an icon, which draws through the spun raster pipeline.
+    pub(crate) const fn turns_rasters(&self) -> bool {
+        self.pass.turns()
+    }
+
     /// Upload this frame's quads and any rasters queued for the pool's pages, after its commit.
     pub(crate) fn flush(&mut self, ctx: &mut GpuCtx<'_>, textures: &AtlasTextures) {
         self.pass.flush(ctx, textures);

@@ -418,6 +418,11 @@ impl<K: Copy + Eq + Hash + Debug> RasterPass<K> {
         self.uploads.flush(ctx, textures);
     }
 
+    /// Whether this frame's quads turn a raster, which draws through the spun pipeline.
+    pub(super) const fn turns(&self) -> bool {
+        !self.spun.is_empty()
+    }
+
     /// Draw batch `batch_idx`'s quads through `pipelines`, reading the pool's pages through the
     /// atlas group in `pipelines`.
     pub(super) fn render_batch<'a>(
@@ -429,7 +434,13 @@ impl<K: Copy + Eq + Hash + Debug> RasterPass<K> {
         self.for_each_draw(batch_idx, |draw| {
             let (pipeline, vbuf, span) = match draw {
                 RasterDraw::Flat(span) => (pipelines.flat, &self.vbuf.buffer, span),
-                RasterDraw::Spun(span) => (pipelines.spun, &self.spun_vbuf.buffer, span),
+                RasterDraw::Spun(span) => (
+                    pipelines
+                        .spun
+                        .expect("a frame that turns a raster builds its spun pipeline"),
+                    &self.spun_vbuf.buffer,
+                    span,
+                ),
             };
             rec.pipeline(pipeline);
             rec.group(ATLAS_GROUP, pipelines.atlas);

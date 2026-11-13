@@ -10,7 +10,9 @@ use crate::gpu::pipeline::instanced_pipeline::FrameVariant;
 use crate::gpu::pipeline::mesh_pipeline::MeshPipeline;
 use crate::gpu::pipeline::quad_pipeline::quad_draw::{QuadDraw, QuadDraws};
 use crate::gpu::pipeline::quad_pipeline::{QuadPipeline, QuadVariants};
-use crate::gpu::pipeline::raster_pipeline::{RasterPipeline, RasterPipelinePair, RasterVariants};
+use crate::gpu::pipeline::raster_pipeline::{
+    RasterDraws, RasterPipeline, RasterPipelinePair, RasterVariants,
+};
 use crate::gpu::resource::pipeline_recipe::Pipeline;
 use crate::renderer::render_buffer::effect_draw_row::EffectKey;
 use crate::renderer::render_buffer::fill_form::{FillBrush, FillForm};
@@ -60,8 +62,8 @@ pub(crate) struct PipelineCensus {
     /// Images of each [`ShapeForm`], indexed by it.
     pub(crate) images: [bool; ShapeForm::ALL.len()],
     pub(crate) curves: bool,
-    /// Text or icons, which draw through the raster pipelines.
-    pub(crate) rasters: bool,
+    /// The raster pipelines its text and icons draw through.
+    pub(crate) rasters: RasterDraws,
 }
 
 impl PipelineCensus {
@@ -80,7 +82,7 @@ impl PipelineCensus {
             meshes: true,
             images: [true, false, false],
             curves: true,
-            rasters: true,
+            rasters: RasterDraws::Flat,
         }
     }
 }
@@ -118,9 +120,9 @@ impl FormatPipelines {
         if census.curves {
             programs.curve.ensure(&mut self.curve, gpu, target);
         }
-        if census.rasters {
-            programs.raster.ensure(&mut self.raster, gpu, target);
-        }
+        programs
+            .raster
+            .ensure(&mut self.raster, gpu, target, census.rasters);
     }
 
     /// These pipelines as a frame of `variant` binds them, with `effects`, the format's effect

@@ -13,7 +13,7 @@ use crate::gpu::pipeline::clip_variant::Clipping;
 use crate::gpu::pipeline::instanced_pipeline::VariantTarget;
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
 use crate::gpu::pipeline::raster_pipeline::raster_quad::RasterQuad;
-use crate::gpu::pipeline::raster_pipeline::{RasterPipeline, RasterVariants};
+use crate::gpu::pipeline::raster_pipeline::{RasterDraws, RasterPipeline, RasterVariants};
 use crate::gpu::pipeline::viewport_push::ViewportPush;
 use crate::gpu::resource::frame_group::FrameGroup;
 use crate::gpu::resource::texture_binding::TextureBinding;
@@ -39,7 +39,9 @@ const fn alpha(page: u8) -> u8 {
 /// kind, a 16² cell apiece, onto a cleared target: a mask quad's alpha is its coverage, a color
 /// quad's its texel's alpha, so each cell's alpha byte reads `40 (k + 1)` back exactly, from 40 to
 /// 160, and a quad that read another page would read another multiple. The sets: slot 0, 1 and 3
-/// alone, where one page sits past slot 0 as a shrink leaves it, 0 and 2, and all four.
+/// alone, where one page sits past slot 0 as a shrink leaves it, 0 and 2, and all four. A census
+/// that turns no raster builds the flat pipeline alone; one that turns one builds the spun twin
+/// too, which compiles for every set.
 #[test]
 fn a_quad_reads_its_page_under_every_set_of_slots() {
     let gpu = headless_test_gpu();
@@ -95,14 +97,25 @@ fn a_quad_reads_its_page_under_every_set_of_slots() {
             mask: open,
             color: open,
         };
-        program.ensure(
-            &mut variants,
-            &gpu,
-            VariantTarget {
-                format: target.texture().format(),
-                clipping: Clipping::Off,
-                slots,
-            },
+        let variant = VariantTarget {
+            format: target.texture().format(),
+            clipping: Clipping::Off,
+            slots,
+        };
+        program.ensure(&mut variants, &gpu, variant, RasterDraws::Flat);
+        assert!(
+            variants
+                .pair(Clipping::Off, slots, group.group())
+                .spun
+                .is_none(),
+            "a frame that turns no raster builds no spun pipeline"
+        );
+        program.ensure(&mut variants, &gpu, variant, RasterDraws::FlatAndSpun);
+        assert!(
+            variants
+                .pair(Clipping::Off, slots, group.group())
+                .spun
+                .is_some()
         );
         let quads: Vec<RasterQuad> = [ContentType::Mask, ContentType::Color]
             .into_iter()
@@ -179,4 +192,14 @@ fn a_quad_reads_its_page_under_every_set_of_slots() {
             }
         }
     }
+}
+
+/// A frame with no text or icon draws no raster pipeline, whatever it turns; one with some draws
+/// the flat one, and the spun one too where an animation turns one.
+#[test]
+fn a_frame_draws_the_spun_pipeline_only_where_it_turns_a_raster() {
+    assert_eq!(RasterDraws::of(false, false), RasterDraws::None);
+    assert_eq!(RasterDraws::of(false, true), RasterDraws::None);
+    assert_eq!(RasterDraws::of(true, false), RasterDraws::Flat);
+    assert_eq!(RasterDraws::of(true, true), RasterDraws::FlatAndSpun);
 }
