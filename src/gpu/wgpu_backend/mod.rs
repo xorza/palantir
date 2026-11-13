@@ -63,7 +63,7 @@ use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::pass_traffic::PassTraffic;
 use crate::gpu::frame::debug_overlay::{self, DebugOverlay, OverlayDraw};
 use crate::gpu::frame::frame_passes::{ColorLoad, FramePasses, FrameShape, PassStep, TargetKind};
-use crate::gpu::frame::gpu_timings::{BackdropPhase, GpuTimings, Mark};
+use crate::gpu::frame::gpu_timings::{BackdropPhase, FrameTiming, GpuTimings, Mark};
 use crate::gpu::frame::main_segment::MainSegment;
 use crate::gpu::frame::schedule::{GroupSpan, RenderStep, Schedule};
 use crate::gpu::frame::submission::{Route, Submission};
@@ -95,7 +95,8 @@ use crate::gpu::resource::wgpu_image_store::WgpuImageStore;
 use crate::gpu::surface::backbuffer::Backbuffer;
 use crate::gpu::surface::capture::{Capture, CaptureBlit, CaptureSource, TexelOrder};
 use crate::gpu::surface::damage_canvas::DamageCanvas;
-use crate::gpu::surface::render_target::{RenderTarget, TargetFormat};
+use crate::gpu::surface::render_target::RenderTarget;
+use crate::gpu::texel::TargetFormat;
 use crate::gpu::wgpu_backend::backend_resources::BackendResources;
 use crate::gpu::wgpu_backend::display_frames::DisplayFrames;
 use crate::gpu::wgpu_backend::render_stream::{RenderStream, StreamPasses};
@@ -174,25 +175,6 @@ const fn clipping(buffer: &RenderBuffer) -> Clipping {
         Clipping::On
     } else {
         Clipping::Off
-    }
-}
-
-/// Whether the backend times the frames it submits, which a host opts into.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum FrameTiming {
-    #[default]
-    Off,
-    On,
-}
-
-impl FrameTiming {
-    /// [`Self::On`] when a host's builder asks it to collect GPU stats.
-    pub(crate) const fn new(collect_gpu_stats: bool) -> Self {
-        if collect_gpu_stats {
-            Self::On
-        } else {
-            Self::Off
-        }
     }
 }
 
@@ -1387,7 +1369,7 @@ pub(crate) mod internals {
     use crate::gpu::pipeline::format_pipelines::FormatPipelines;
     #[cfg(test)]
     use crate::gpu::raster::raster_atlas::counters::AtlasCounts;
-    use crate::gpu::surface::render_target::TargetFormat;
+    use crate::gpu::texel::TargetFormat;
     use crate::gpu::wgpu_backend::WgpuBackend;
     use crate::renderer::row_table::RowTable;
 

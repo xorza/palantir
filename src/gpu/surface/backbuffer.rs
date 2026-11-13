@@ -4,9 +4,9 @@ use crate::gpu::device::backbuffer_out::BackbufferOut;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::pipeline::blit_pipeline;
 use crate::gpu::resource::texture_binding::TextureBinding;
-use crate::gpu::surface::owned_target::TargetSpec;
 use crate::gpu::surface::render_target::RenderTarget;
 use crate::gpu::texel;
+use crate::gpu::texel::TargetSpec;
 use glam::UVec2;
 
 /// Persistent off-screen color target for the backbuffer-copy path; keeping

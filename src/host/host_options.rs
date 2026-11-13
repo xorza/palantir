@@ -1,7 +1,7 @@
 //! [`HostOptions`]: the settings both host builders take, so they read and apply them alike.
 
 use crate::clipboard::Clipboard;
-use crate::gpu::wgpu_backend::FrameTiming;
+use crate::gpu::frame::gpu_timings::FrameTiming;
 use crate::text::font_scope::FontScope;
 use crate::text::shaper::TextShaper;
 

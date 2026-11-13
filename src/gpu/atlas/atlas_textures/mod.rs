@@ -9,8 +9,8 @@ use crate::gpu::atlas::atlas_textures::move_draw::{MoveDraw, MoveRect, MoveRun};
 use crate::gpu::atlas::page_list::{MAX_PAGES, Move, MoveBudget, PageList};
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::pass_traffic::PassTraffic;
-use crate::gpu::surface::owned_target::TargetSpec;
 use crate::gpu::texel;
+use crate::gpu::texel::TargetSpec;
 use glam::UVec2;
 
 /// The texture format of `format`'s pages: color pages are linear, the raster shader decoding

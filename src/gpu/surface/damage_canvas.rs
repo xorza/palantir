@@ -3,8 +3,8 @@
 //! ([`PassTraffic::WholeTarget`](crate::gpu::device::pass_traffic::PassTraffic::WholeTarget)).
 
 use crate::gpu::device::gpu::Gpu;
-use crate::gpu::surface::owned_target::TargetSpec;
 use crate::gpu::texel;
+use crate::gpu::texel::TargetSpec;
 use crate::primitives::geometry::urect::URect;
 use glam::UVec2;
 

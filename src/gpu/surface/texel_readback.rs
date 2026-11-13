@@ -88,10 +88,10 @@ impl TexelReadback {
 #[cfg(test)]
 mod tests {
     use crate::gpu::device::gpu_wait::GpuWait;
-    use crate::gpu::surface::owned_target::TargetSpec;
     use crate::gpu::surface::texel_readback::TexelReadback;
     use crate::gpu::test_gpu::isolated_headless_test_gpu;
     use crate::gpu::texel;
+    use crate::gpu::texel::TargetSpec;
     use glam::UVec2;
     use std::iter;
 

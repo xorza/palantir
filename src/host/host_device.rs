@@ -6,12 +6,13 @@
 
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_wait::GpuWait;
+use crate::gpu::frame::gpu_timings::FrameTiming;
 use crate::gpu::pipeline::effect_pipeline::wgpu_effect_store::WgpuEffectStore;
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::resource::wgpu_image_store::WgpuImageStore;
 use crate::gpu::surface::render_target::RenderTarget;
+use crate::gpu::wgpu_backend::WgpuBackend;
 use crate::gpu::wgpu_backend::backend_resources::BackendResources;
-use crate::gpu::wgpu_backend::{FrameTiming, WgpuBackend};
 use crate::host::host_cpu::HostCpu;
 use crate::image_registry::texture_limit::TextureLimit;
 use crate::ui::app::App;

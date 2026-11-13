@@ -4,7 +4,7 @@
 use crate::display::system_scale::SystemScale;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::surface::owned_target::OwnedTarget;
-use crate::gpu::surface::render_target::TargetFormat;
+use crate::gpu::texel::TargetFormat;
 use crate::host::harness::{Harness, HarnessPaint};
 use crate::host::headless_window::{HeadlessSettings, HeadlessWindow};
 use crate::host::host_core::HostCore;
@@ -258,7 +258,7 @@ impl HarnessBuilder {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
-    use crate::gpu::wgpu_backend::FrameTiming;
+    use crate::gpu::frame::gpu_timings::FrameTiming;
     #[cfg(test)]
     use crate::host::harness::harness_builder::Depth;
     use crate::host::harness::harness_builder::HarnessBuilder;

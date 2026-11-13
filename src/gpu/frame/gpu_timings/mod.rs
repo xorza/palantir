@@ -39,6 +39,25 @@ use crate::gpu::frame::gpu_timings::wall_clock_tracer::WallClockTracer;
 use crate::gpu::frame::main_segment::MainSegment;
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
 
+/// Whether the backend times the frames it submits, which a host opts into.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum FrameTiming {
+    #[default]
+    Off,
+    On,
+}
+
+impl FrameTiming {
+    /// [`Self::On`] when a host's builder asks it to collect GPU stats.
+    pub(crate) const fn new(collect_gpu_stats: bool) -> Self {
+        if collect_gpu_stats {
+            Self::On
+        } else {
+            Self::Off
+        }
+    }
+}
+
 /// Where a backdrop break's timestamp sits among its three.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum BackdropPhase {

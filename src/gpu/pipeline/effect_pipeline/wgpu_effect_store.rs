@@ -324,8 +324,8 @@ mod tests {
     use crate::effect::effect_source::{EffectBuild, EffectSource};
     use crate::gpu::pipeline::clip_variant::Clipping;
     use crate::gpu::surface::owned_target::OwnedTarget;
-    use crate::gpu::surface::render_target::TargetFormat;
     use crate::gpu::test_gpu::headless_test_gpu;
+    use crate::gpu::texel::TargetFormat;
     use crate::host::offscreen::{OffscreenHost, OffscreenTime};
     use crate::primitives::effect::effect_name::EffectName;
     use crate::primitives::geometry::corners::Corners;

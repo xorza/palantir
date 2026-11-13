@@ -714,8 +714,8 @@ mod tests {
         use crate::gpu::pipeline::quad_pipeline::cutout_plan::ShadowEntry;
         use crate::gpu::pipeline::quad_pipeline::quad_draw::QuadDraw;
         use crate::gpu::resource::texture_binding::TextureBinding;
-        use crate::gpu::surface::render_target::TargetFormat;
         use crate::gpu::test_gpu::headless_test_gpu;
+        use crate::gpu::texel::TargetFormat;
         use crate::renderer::render_buffer::fill_form::FillForm;
 
         let gpu = headless_test_gpu();

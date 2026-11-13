@@ -11,9 +11,9 @@ use crate::gpu::resource::pipeline_recipe::{self, PipelineRecipe};
 use crate::gpu::resource::shader_body::{ShaderBody, ShaderConstant};
 use crate::gpu::resource::shelf_packer::ShelfPacker;
 use crate::gpu::resource::texture_binding::{self, Filtering};
-use crate::gpu::surface::owned_target::TargetSpec;
-use crate::gpu::surface::render_target::TargetFormat;
 use crate::gpu::texel;
+use crate::gpu::texel::TargetFormat;
+use crate::gpu::texel::TargetSpec;
 use crate::primitives::geometry::urect::URect;
 use crate::shape::paint::blur_plan::BlurPlan;
 use glam::{IVec2, UVec2};
@@ -1124,7 +1124,7 @@ pub(crate) mod internals {
     use crate::gpu::resource::gpu_ctx::GpuCtx;
     #[cfg(test)]
     use crate::gpu::resource::shelf_packer::ShelfPacker;
-    use crate::gpu::surface::render_target::TargetFormat;
+    use crate::gpu::texel::TargetFormat;
     use glam::UVec2;
     use std::iter;
 

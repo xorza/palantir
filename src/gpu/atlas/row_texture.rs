@@ -7,8 +7,8 @@
 
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::resource::gpu_ctx::{GpuCtx, RowCopy};
-use crate::gpu::surface::owned_target::TargetSpec;
 use crate::gpu::texel;
+use crate::gpu::texel::TargetSpec;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::row_table::FlushedRows;
 use crate::renderer::row_table::bake::LUT_ROW_TEXELS;

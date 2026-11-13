@@ -32,7 +32,7 @@ use crate::gpu::resource::gpu_ctx::GpuCtx;
 use crate::gpu::resource::texture_binding::{self, TextureBinding};
 use crate::gpu::spectrum_tables::SpectrumTables;
 use crate::gpu::surface::backbuffer::Backbuffer;
-use crate::gpu::surface::render_target::TargetFormat;
+use crate::gpu::texel::TargetFormat;
 use crate::primitives::identity::backdrop_key::BackdropKey;
 use crate::primitives::identity::backdrop_keys::BackdropKeys;
 use crate::primitives::paint::color::RgbaF32;

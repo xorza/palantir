@@ -16,7 +16,7 @@ use crate::renderer::render_buffer::effect_draw_row::EffectKey;
 use crate::renderer::render_buffer::fill_form::{FillBrush, FillForm};
 use crate::renderer::render_buffer::shape_form::ShapeForm;
 
-/// All render pipelines for one swapchain format, keyed in the backend by [`TargetFormat`](crate::gpu::surface::render_target::TargetFormat).
+/// All render pipelines for one swapchain format, keyed in the backend by [`TargetFormat`](crate::gpu::texel::TargetFormat).
 ///
 /// Each is built on the first frame whose census asks for it ([`Self::ensure`]), before the
 /// frame's passes borrow the set; [`Self::new`] builds what nearly every frame draws, the solid,

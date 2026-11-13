@@ -64,7 +64,7 @@ use crate::driver::play::{self, BUSY_SETTLE_WAITS};
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_wait::GpuWait;
 use crate::gpu::surface::owned_target::OwnedTarget;
-use crate::gpu::surface::render_target::TargetFormat;
+use crate::gpu::texel::TargetFormat;
 use crate::host::harness::harness_builder::{HarnessBuilder, SettlePace, TARGET_LABEL};
 use crate::host::harness::harness_session::HarnessSession;
 use crate::host::headless_window::{HeadlessCanvas, HeadlessWindow};

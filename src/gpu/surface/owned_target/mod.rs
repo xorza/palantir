@@ -3,23 +3,10 @@
 
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_wait::GpuWait;
-use crate::gpu::surface::render_target::{RenderTarget, TargetFormat};
+use crate::gpu::surface::render_target::RenderTarget;
 use crate::gpu::surface::texel_readback::TexelReadback;
-use crate::gpu::texel;
+use crate::gpu::texel::{self, TargetFormat, TargetSpec};
 use glam::UVec2;
-
-/// What an [`OwnedTarget`] is made as: `label` names it in RenderDoc and validation errors.
-#[derive(Clone, Copy, Debug)]
-pub struct TargetSpec<'a> {
-    /// The debug name.
-    pub label: &'a str,
-    /// Physical pixels.
-    pub size: UVec2,
-    /// The texel format.
-    pub format: wgpu::TextureFormat,
-    /// What the texture may be used for.
-    pub usage: wgpu::TextureUsages,
-}
 
 /// A single-sample 2D texture and the device it lives on.
 #[derive(Debug)]

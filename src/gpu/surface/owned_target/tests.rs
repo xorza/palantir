@@ -1,6 +1,7 @@
 use crate::gpu::device::gpu_wait::GpuWait;
-use crate::gpu::surface::owned_target::{OwnedTarget, TargetSpec};
+use crate::gpu::surface::owned_target::OwnedTarget;
 use crate::gpu::test_gpu::{TestGpu, headless_test_gpu, isolated_headless_test_gpu};
+use crate::gpu::texel::TargetSpec;
 use crate::internals::panic_probe;
 use glam::UVec2;
 use image::Rgba;

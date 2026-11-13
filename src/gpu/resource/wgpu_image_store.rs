@@ -4,8 +4,8 @@
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::resource::effect_image_groups::{EffectImageGroups, EffectImages};
 use crate::gpu::resource::texture_binding::TextureBinding;
-use crate::gpu::surface::owned_target::TargetSpec;
 use crate::gpu::texel;
+use crate::gpu::texel::TargetSpec;
 use crate::image_registry::error::ImageTooLarge;
 use crate::image_registry::image_store::ImageStore;
 use crate::image_registry::texture_limit::TextureLimit;

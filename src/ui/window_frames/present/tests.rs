@@ -6,7 +6,7 @@ use crate::display::system_scale::SystemScale;
 use crate::gpu::atlas::AtlasPool;
 use crate::gpu::pipeline::quad_pipeline::cutout_placements::{CutoutPlacements, CutoutPlacing};
 use crate::gpu::render_owner_id::RenderOwners;
-use crate::gpu::surface::render_target::TargetFormat;
+use crate::gpu::texel::TargetFormat;
 use crate::renderer::frontend::Frontend;
 use crate::ui::app::App;
 use crate::ui::frame_report::FrameReport;
@@ -312,8 +312,8 @@ mod output_validity_tests {
 
     use crate::gpu::frame::submission::Route;
     use crate::gpu::surface::capture::Capture;
-    use crate::gpu::surface::render_target::TargetFormat;
     use crate::gpu::test_gpu::headless_test_gpu;
+    use crate::gpu::texel::TargetFormat;
     use crate::primitives::geometry::rect::Rect;
     use crate::primitives::paint::color::RgbaF32;
     use crate::renderer::frontend::Frontend;
@@ -1086,8 +1086,8 @@ mod screenshot_tests {
     use glam::{UVec2, Vec2};
     use image::imageops;
 
-    use crate::gpu::surface::render_target::TargetFormat;
     use crate::gpu::test_gpu::headless_test_gpu;
+    use crate::gpu::texel::TargetFormat;
     use crate::host::harness::Harness;
     use crate::host::harness::harness_builder::Depth;
     use crate::primitives::geometry::rect::Rect;

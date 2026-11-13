@@ -12,8 +12,8 @@ use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::power_preference::PowerPreference;
 use crate::gpu::device::requested_gpu::{GpuRequest, RequestedGpu};
 use crate::gpu::error::{GpuRequestError, SurfaceError, SurfaceStartError};
+use crate::gpu::frame::gpu_timings::FrameTiming;
 use crate::gpu::surface::window_surface::WindowSurface;
-use crate::gpu::wgpu_backend::FrameTiming;
 use crate::window::vsync::Vsync;
 use std::fmt;
 
