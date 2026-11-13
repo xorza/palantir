@@ -131,19 +131,27 @@ impl AtlasPool {
         }
         self.decayed = Some(self.frame);
         let mut budget = budget;
-        for (_, list) in self.lists.iter_mut() {
-            list.decay(self.frame, &mut budget, &mut self.evictions);
+        // A frame's first list a frame later each frame, as WebRender's compaction takes one list a
+        // call round robin, so on a copy device's 16 moves a draining mask list holds no other's.
+        let first = (self.frame % AtlasFormat::COUNT as u64) as usize;
+        for at in 0..AtlasFormat::COUNT {
+            let format = AtlasFormat::ALL[(first + at) % AtlasFormat::COUNT];
+            self.lists[format].decay(self.frame, &mut budget, &mut self.evictions);
         }
     }
 
     /// Give back all the lists can at once, as the system runs short of memory: every item no
     /// one pins and this display frame did not draw, idle scratch, and pages a drain empties
     /// with no budget. Between frames alone, as the moves and the closed pages wait for the GPU
-    /// half's next commit, which the caller records at once.
-    pub(crate) fn purge(&mut self) {
+    /// half's next commit, which the caller records at once. Whether moves wait, after which the
+    /// caller commits and purges again, as a drain that follows them could take the page they land
+    /// on; at most [`MAX_PAGES`](page_list::MAX_PAGES) and one more rounds.
+    pub(crate) fn purge(&mut self) -> bool {
+        let mut more = false;
         for (_, list) in self.lists.iter_mut() {
-            list.purge(self.frame, &mut self.evictions);
+            more |= list.purge(self.frame, &mut self.evictions);
         }
+        more
     }
 
     /// Forget every list's moves, which the GPU half's commit recorded.

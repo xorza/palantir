@@ -38,6 +38,15 @@ struct Drain {
     hand: u32,
 }
 
+/// What [`PageList::shrink`] does with a list's one page.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Shrink {
+    /// It holds no item, so it closes.
+    Close,
+    /// Its items drain into a new page of at least this edge.
+    To(u32),
+}
+
 /// One item a drain moved, from the page of opening `from_epoch` to another, which the GPU half
 /// moves at the next commit, ahead of every upload, bake and draw: its handle stays, and its
 /// tenant reads the new placement at its next lookup.
@@ -274,8 +283,8 @@ pub(crate) struct PageList {
     device_edge: u32,
     /// Where the age-out resumes.
     age_hand: u32,
-    /// The display frame since which the list's one page has had a smaller page to shrink to,
-    /// `None` while it has none or the list has other pages.
+    /// The display frame since which the list's one page has had a smaller page to shrink to, or
+    /// held no item, `None` while it has neither or the list has other pages.
     sparse_since: Option<u64>,
     draining: Option<Drain>,
     /// The packer a shrink tries its items in, kept so a trial allocates nothing once warm.
@@ -789,20 +798,20 @@ impl PageList {
 
     /// Return what the list holds past its need, once a display frame, at display frame `frame`
     /// (`src/gpu/AGENTS.md`, Atlases): age out what idled past the age the list's pressure sets
-    /// into `evictions`; with one page that had a smaller one to shrink to for an expiry window,
-    /// shrink it; with several, drain the emptiest whose items fit the others'; move a drain's
-    /// items within `budget`, for the GPU half to take ([`Self::moves`]); and close the page it
-    /// emptied. No drain is planned while moves wait for the commit, so no page a move lands on
-    /// drains before its texture takes the move.
+    /// into `evictions`; with one page that had a smaller one to shrink to, or none to close to,
+    /// for an expiry window, shrink or close it; with several, drain the emptiest whose items fit
+    /// the others'; move a drain's items within `budget`, for the GPU half to take
+    /// ([`Self::moves`]); and close the page it emptied. No drain is planned while moves wait for
+    /// the commit, so no page a move lands on drains before its texture takes the move.
     pub(crate) fn decay(&mut self, frame: u64, budget: &mut MoveBudget, evictions: &mut Evictions) {
         self.age_out(frame, evictions);
         if self.draining.is_none() && self.moves.is_empty() {
             match self.only_page().map(|idx| (idx, self.shrink_target(idx))) {
-                Some((idx, Some(edge))) => {
+                Some((idx, Some(target))) => {
                     let since = *self.sparse_since.get_or_insert(frame);
                     if frame - since + 1 >= EXPIRY_FRAMES {
                         self.sparse_since = None;
-                        self.shrink(idx, edge);
+                        self.shrink(idx, target);
                     }
                 }
                 Some((_, None)) => self.sparse_since = None,
@@ -817,10 +826,11 @@ impl PageList {
 
     /// Give back all the list can at once, as the system runs short of memory, at display frame
     /// `frame`: evict every item no one pins and this frame did not draw into `evictions`, drop the
-    /// idle scratch, and drain with no budget, a sparse page shrinking at once, until no drain is
-    /// left to start. A stutter traded for the process not being killed
-    /// (`src/gpu/AGENTS.md`, Atlases).
-    pub(crate) fn purge(&mut self, frame: u64, evictions: &mut Evictions) {
+    /// idle scratch, and drain with no budget, a sparse page shrinking and an empty one closing at
+    /// once, until a drain moved an item or none is left to start. A stutter traded for the process
+    /// not being killed (`src/gpu/AGENTS.md`, Atlases). Whether moves wait, after which the caller
+    /// commits them and purges again, as a drain planned now could take the page they land on.
+    pub(crate) fn purge(&mut self, frame: u64, evictions: &mut Evictions) -> bool {
         for idx in 0..self.entries.len() {
             let entry = &self.entries[idx];
             if entry.placement.is_some() && entry.is_idle(frame, 0) {
@@ -832,9 +842,9 @@ impl PageList {
             texels: u64::MAX,
             moves: u32::MAX,
         };
-        // A drain ends with its page closed or stalled, so each round closes a page or stops: the
-        // rounds are at most the pages, one more for a shrink's new page. A round that moved an
-        // item ends the purge, as the next drain could take the page it landed on.
+        // A drain ends with its page closed or stalled, and a shrink opens one page and closes
+        // another, so the rounds are at most the pages and one more. A drain under way goes on,
+        // as its moves all leave its page; a new one waits for the moves before it.
         for _ in 0..=MAX_PAGES {
             if self.draining.is_none() {
                 if !self.moves.is_empty() {
@@ -843,8 +853,8 @@ impl PageList {
                 self.sparse_since = None;
                 match self.only_page() {
                     Some(idx) => {
-                        if let Some(edge) = self.shrink_target(idx) {
-                            self.shrink(idx, edge);
+                        if let Some(target) = self.shrink_target(idx) {
+                            self.shrink(idx, target);
                         }
                     }
                     None => self.plan_merge(),
@@ -855,6 +865,7 @@ impl PageList {
             }
             self.drain(&mut budget);
         }
+        !self.moves.is_empty()
     }
 
     /// Evict the items no one pins and no frame drew for WebRender's age at the list's pressure,
@@ -898,23 +909,34 @@ impl PageList {
         }
     }
 
-    /// What page `idx`, the list's one, would shrink to: a page at the smallest power-of-two edge
-    /// from the first that holds twice its items' texels, so an eighth full at most, landing at
-    /// half or under as a `Vec` halves. `None` where that is no smaller, or the page is stalled.
-    fn shrink_target(&self, idx: usize) -> Option<u32> {
+    /// What page `idx`, the list's one, would shrink to: none where it holds no item, so it
+    /// closes; else a page at the smallest power-of-two edge from the first that holds twice its
+    /// items' texels, so an eighth full at most, landing at half or under as a `Vec` halves. `None`
+    /// where that is no smaller, or the page is stalled.
+    fn shrink_target(&self, idx: usize) -> Option<Shrink> {
         let page = self.pages[idx].as_ref().expect("the one page is open");
+        if page.live_texels == 0 {
+            return Some(Shrink::Close);
+        }
         let mut edge = self.config.first_edge;
         while u64::from(edge).pow(2) < 2 * page.live_texels {
             edge *= 2;
         }
-        (edge < page.edge() && !self.is_stalled(idx)).then_some(edge)
+        (edge < page.edge() && !self.is_stalled(idx)).then_some(Shrink::To(edge))
     }
 
-    /// Shrink page `idx`, the list's one, toward `target`, its [`Self::shrink_target`], with no
-    /// move waiting: open the smallest page from `target` that packs its items beside it and drain
-    /// into that. Where none smaller packs them, stall the page until they change.
-    fn shrink(&mut self, idx: usize, target: u32) {
-        let mut edge = target;
+    /// Shrink page `idx`, the list's one, as `target`, its [`Self::shrink_target`], says, with no
+    /// move waiting: close it where it holds no item, else open the smallest page from the target
+    /// that packs its items beside it and drain into that. Where none smaller packs them, stall the
+    /// page until they change.
+    fn shrink(&mut self, idx: usize, target: Shrink) {
+        let mut edge = match target {
+            Shrink::Close => {
+                self.close_page(idx);
+                return;
+            }
+            Shrink::To(edge) => edge,
+        };
         let page_edge = self.pages[idx]
             .as_ref()
             .expect("the one page is open")

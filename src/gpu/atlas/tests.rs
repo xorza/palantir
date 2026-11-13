@@ -364,3 +364,86 @@ fn a_purge_keeps_what_this_frame_drew_and_what_is_pinned() {
         Some(UVec2::splat(64))
     );
 }
+
+/// A purge whose drain moved items goes on once they are committed, round after round, until the
+/// list is on one page at the smallest edge that packs what it keeps. Forty 32² items grow the
+/// first page from 32 to 128, fill it, fill a second 128² page and open a third; at frame 5 the
+/// first item of each of the first two is drawn, and the purge takes the other 38. The first round
+/// closes the emptied third page and drains the first into the second; the second round shrinks the
+/// second, its two items an eighth of it, into a 64² page in the first slot; the third finds
+/// nothing to do.
+#[test]
+fn a_purge_goes_on_round_by_round_to_one_page() {
+    let config = PageListConfig {
+        first_edge: 32,
+        page_edge: 128,
+        soft_bytes: 1 << 30,
+    };
+    let mut pool = AtlasPool::with_configs([config; 3], 16384);
+    let items: Vec<AtlasHandle> = (0..40)
+        .map(|_| {
+            pool.allocate(AtlasFormat::R8, Tenant::Glyphs, U16Vec2::splat(32))
+                .unwrap()
+        })
+        .collect();
+    pool.advance_to(5);
+    pool.stamp(items[0]).unwrap();
+    pool.stamp(items[16]).unwrap();
+    let mut rounds = 0;
+    while pool.purge() {
+        rounds += 1;
+        assert!(rounds <= MAX_PAGES, "a purge ends");
+        pool.forget_moves();
+    }
+    assert_eq!(rounds, 2);
+    let list = pool.list(AtlasFormat::R8);
+    let edges: Vec<(usize, u32)> = (0..MAX_PAGES)
+        .filter_map(|idx| list.page(idx).map(|page| (idx, page.edge())))
+        .collect();
+    assert_eq!(edges, [(0, 64)]);
+    assert_eq!(pool.placement(items[0]).unwrap().page, 0);
+    assert_eq!(pool.placement(items[16]).unwrap().page, 0);
+}
+
+/// The frame's budget goes to the lists round robin, starting a list later each frame, so a
+/// draining mask list holds no other's moves. In the mask and the color lists 256 8² items fill a
+/// 128² page and 40 open a second; 128 of the first go, so each second page drains, 40 moves. Under
+/// a copy device's 16 moves a frame, frame 3 starts at the mask list, which takes all 16; frame 4
+/// at the color list; frame 5 at the half-float list, which drains nothing, then the mask list.
+#[test]
+fn the_move_budget_goes_round_the_lists() {
+    let config = PageListConfig {
+        first_edge: 128,
+        page_edge: 128,
+        soft_bytes: 1 << 30,
+    };
+    let mut pool = AtlasPool::with_configs([config; 3], 16384);
+    for format in [AtlasFormat::R8, AtlasFormat::Rgba8] {
+        let items: Vec<AtlasHandle> = (0..256 + 40)
+            .map(|_| {
+                pool.allocate(format, Tenant::Glyphs, U16Vec2::splat(8))
+                    .unwrap()
+            })
+            .collect();
+        for &handle in &items[..128] {
+            pool.release(handle);
+        }
+    }
+    let mut taken = Vec::new();
+    for frame in 3..6 {
+        pool.advance_to(frame);
+        pool.end_submit(MoveBudget::COPIES);
+        let moves = |format| pool.list(format).moves().len();
+        taken.push((moves(AtlasFormat::R8), moves(AtlasFormat::Rgba8)));
+        pool.forget_moves();
+    }
+    assert_eq!(taken, [(16, 0), (0, 16), (16, 0)]);
+}
+
+#[test]
+#[should_panic(expected = "the display frames ran backwards")]
+fn the_display_frames_do_not_run_backwards() {
+    let mut pool = AtlasPool::new(16384);
+    pool.advance_to(2);
+    pool.advance_to(1);
+}

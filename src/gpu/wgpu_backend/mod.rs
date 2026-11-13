@@ -56,6 +56,7 @@ use crate::effect::effect_store::EffectModule;
 use crate::gpu::atlas::AtlasPool;
 use crate::gpu::atlas::atlas_textures::AtlasTextures;
 use crate::gpu::atlas::page_group::PageGroup;
+use crate::gpu::atlas::page_list::MAX_PAGES;
 use crate::gpu::atlas::row_texture::RowTexture;
 use crate::gpu::backdrop::backdrops::{BackdropFrame, Backdrops};
 use crate::gpu::device::gpu::Gpu;
@@ -1269,26 +1270,35 @@ impl WgpuBackend {
     /// Give back all the atlas pool can at once, as the system runs short of memory, between two
     /// frames: the pool purges, and its textures follow at once on an encoder of their own, the
     /// purge's moves first, so the textures it freed leave every group that binds them and their
-    /// memory returns at the device's next maintain, with no frame to wait for. The backdrops it
-    /// took reach their windows' ledgers now, as a window's next frame decides what it holds
-    /// before any submit; the rasters and tables it took read as stale at their next lookup.
+    /// memory returns at the device's next maintain, with no frame to wait for. A purge whose
+    /// drain moved items commits them and purges again, a submission a round, as the move draw
+    /// writes each commit's rectangles from the start of one buffer. The backdrops it took reach
+    /// their windows' ledgers now, as a window's next frame decides what it holds before any
+    /// submit; the rasters and tables it took read as stale at their next lookup.
     pub(crate) fn purge_atlases(&mut self) {
-        self.atlas.purge();
+        let mut more = true;
+        for _ in 0..=MAX_PAGES {
+            more = self.atlas.purge();
+            let mut encoder =
+                self.gpu
+                    .device
+                    .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                        label: Some("palantir.atlas.purge"),
+                    });
+            self.atlas_textures
+                .commit(&self.gpu, &mut encoder, &mut self.atlas);
+            self.gpu.queue.submit(iter::once(encoder.finish()));
+            if !more {
+                break;
+            }
+        }
+        debug_assert!(!more, "a purge lands within MAX_PAGES + 1 rounds");
         self.backdrops.end_frame(&mut self.atlas);
-        let mut encoder = self
-            .gpu
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("palantir.atlas.purge"),
-            });
-        self.atlas_textures
-            .commit(&self.gpu, &mut encoder, &mut self.atlas);
         self.raster_group.follow(&self.gpu, &self.atlas_textures);
         self.programs
             .quad
             .follow_cutouts(&self.gpu, &self.atlas_textures);
         self.backdrops.drop_groups();
-        self.gpu.queue.submit(iter::once(encoder.finish()));
     }
 
     /// Where the mask pages hold each key's table, with the pool they live in, which a frame's

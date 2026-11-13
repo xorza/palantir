@@ -253,6 +253,152 @@ fn a_commit_lands_its_moves_in_the_order_they_were_made() {
     }
 }
 
+/// The `R8` texel page `page` of `edge`² holds in [`page_pattern`], at `(x, y)`.
+fn page_texel(page: u32, x: u32, y: u32) -> u8 {
+    ((x * 7 + y * 13 + page * 29) % 251) as u8
+}
+
+/// Every texel of an `R8` page `page` of `edge`², row by row, as [`page_texel`] gives it.
+fn page_pattern(page: u32, edge: u32) -> Vec<u8> {
+    (0..edge * edge)
+        .map(|i| page_texel(page, i % edge, i / edge))
+        .collect()
+}
+
+/// A drain whose items land on two pages moves each from its source by copy and by draw alike, a
+/// run a destination by draw. On 64² pages of 16² items the first holds 15, the second 8 and the
+/// third 2: the third, the emptiest, drains, its first item into the first page's hole at (16, 16),
+/// its second into the second page's first free place at (0, 0). Each destination keeps every other
+/// texel, and the third page closes.
+#[test]
+fn a_drain_lands_on_two_pages() {
+    let gpu = headless_test_gpu();
+    for route in [MoveRoute::Copy, MoveRoute::Draw] {
+        let config = PageListConfig {
+            first_edge: 64,
+            page_edge: 64,
+            soft_bytes: 1 << 20,
+        };
+        let mut pool = AtlasPool::with_configs([config; 3], 16384);
+        let mut textures = AtlasTextures::with_route(&gpu, route);
+        let items: Vec<_> = (0..34)
+            .map(|_| {
+                pool.allocate(AtlasFormat::R8, Tenant::Glyphs, U16Vec2::splat(16))
+                    .unwrap()
+            })
+            .collect();
+        commit(&gpu, &mut textures, &mut pool);
+        for page in 0..3 {
+            fill(
+                &gpu,
+                textures
+                    .page_texture(AtlasFormat::R8, page as usize)
+                    .unwrap(),
+                64,
+                &page_pattern(page, 64),
+            );
+        }
+        pool.release(items[5]);
+        for &handle in &items[16..24] {
+            pool.release(handle);
+        }
+        pool.advance_to(1);
+        pool.end_submit(route.budget());
+        let moved: Vec<_> = pool
+            .list(AtlasFormat::R8)
+            .moves()
+            .iter()
+            .map(|m| (m.from.page, m.from.origin, m.to.page, m.to.origin))
+            .collect();
+        assert_eq!(
+            moved,
+            [
+                (2, U16Vec2::new(0, 0), 0, U16Vec2::new(16, 16)),
+                (2, U16Vec2::new(16, 0), 1, U16Vec2::new(0, 0)),
+            ]
+        );
+        commit(&gpu, &mut textures, &mut pool);
+        assert!(textures.page_texture(AtlasFormat::R8, 2).is_none());
+        for (page, at, from_x) in [(0, UVec2::new(16, 16), 0), (1, UVec2::ZERO, 16)] {
+            let read = gpu.read_texture(textures.page_texture(AtlasFormat::R8, page).unwrap());
+            for y in 0..64 {
+                for x in 0..64 {
+                    let inside = (at.x..at.x + 16).contains(&x) && (at.y..at.y + 16).contains(&y);
+                    let want = if inside {
+                        page_texel(2, from_x + x - at.x, y - at.y)
+                    } else {
+                        page_texel(page as u32, x, y)
+                    };
+                    assert_eq!(
+                        read[(y * 64 + x) as usize],
+                        want,
+                        "{route:?}: page {page} texel ({x}, {y})"
+                    );
+                }
+            }
+        }
+    }
+}
+
+/// A move's source is the page it left though a new page opened in its slot before the commit:
+/// the commit reads the closed page's texture by its opening, and the new page starts empty. On 32²
+/// pages four 16² items fill the first and a fifth opens the second; two of the first page's go,
+/// and the decay drains the second into the first's (16, 0), closing it. A 32² item, which the
+/// first page has no room for, opens a page in the second slot before the commit.
+#[test]
+fn a_move_reads_its_page_though_its_slot_opened_again() {
+    let gpu = headless_test_gpu();
+    for route in [MoveRoute::Copy, MoveRoute::Draw] {
+        let config = PageListConfig {
+            first_edge: 32,
+            page_edge: 32,
+            soft_bytes: 1 << 20,
+        };
+        let mut pool = AtlasPool::with_configs([config; 3], 16384);
+        let mut textures = AtlasTextures::with_route(&gpu, route);
+        let items: Vec<_> = (0..5)
+            .map(|_| {
+                pool.allocate(AtlasFormat::R8, Tenant::Glyphs, U16Vec2::splat(16))
+                    .unwrap()
+            })
+            .collect();
+        commit(&gpu, &mut textures, &mut pool);
+        for page in 0..2 {
+            fill(
+                &gpu,
+                textures
+                    .page_texture(AtlasFormat::R8, page as usize)
+                    .unwrap(),
+                32,
+                &page_pattern(page, 32),
+            );
+        }
+        pool.release(items[1]);
+        pool.release(items[2]);
+        pool.advance_to(1);
+        pool.end_submit(route.budget());
+        assert!(pool.list(AtlasFormat::R8).page(1).is_none(), "closed");
+        let wide = pool
+            .allocate(AtlasFormat::R8, Tenant::Glyphs, U16Vec2::splat(32))
+            .unwrap();
+        assert_eq!(pool.placement(wide).unwrap().page, 1, "opened again");
+        commit(&gpu, &mut textures, &mut pool);
+        let first = gpu.read_texture(textures.page_texture(AtlasFormat::R8, 0).unwrap());
+        for y in 0..32 {
+            for x in 0..32 {
+                let want = if (16..32).contains(&x) && y < 16 {
+                    page_texel(1, x - 16, y)
+                } else {
+                    page_texel(0, x, y)
+                };
+                assert_eq!(first[(y * 32 + x) as usize], want, "{route:?}: ({x}, {y})");
+            }
+        }
+        let again = gpu.read_texture(textures.page_texture(AtlasFormat::R8, 1).unwrap());
+        assert!(again.iter().all(|&texel| texel == 0), "{route:?}: empty");
+    }
+}
+
 /// A device whose passes move their whole target moves by copy, with a frame's 16 copies; any
 /// other by draw, with no count of moves, both stopping at 512² texels.
 #[test]

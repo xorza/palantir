@@ -150,12 +150,15 @@ Facts and sources: `.notes/research/2026-11-12-atlas-pools.md` and
   `cache_churn` +40 to +83 %); of several pages, the emptiest whose items fit half the others'
   free texels drains into them, a page whose drain found no room passed while what it counts
   holds, until a frame has moved 512² texels as WebRender's compaction, whose last move may pass
-  them, so an item of more still moves; one page a smaller one holds twice over for an expiry
-  window, an eighth full at most, drains into the smallest page that holds twice its items' texels
-  and packs them, landing at half or under as a `Vec` halves. One page drains at a time, a source or a destination
-  in one frame and never both, and no drain starts while moves wait for the commit, so no page
-  closes under a move; the commit lands the moves in the order they were made, as a purge may land
-  one where an item it evicted had just moved. Refused: Skia's
+  them, so an item of more still moves; the frame's budget goes to the lists round robin, a list
+  later each frame, as WebRender's compaction takes one list a call. One page a smaller one holds
+  twice over for an expiry window, an eighth full at most, drains into the smallest page that holds
+  twice its items' texels and packs them, landing at half or under as a `Vec` halves; one that
+  holds nothing closes, so a list once drawn holds no page for good (refused: a first page kept,
+  512 KiB of half-float an app that once showed a glass holds for its life). One page drains at a
+  time, a source or a destination in one frame and never both, and no drain starts while moves
+  wait for the commit, so no page closes under a move; the commit lands the moves in the order they
+  were made, as a purge may land one where an item it evicted had just moved. Refused: Skia's
   compaction by eviction, which rasterizes a page's visible items again in one frame; a repack in
   one frame, which moves the whole live set at once.
 - **Moves go by one instanced draw a destination page, or by copy commands where a pass moves its
@@ -166,8 +169,9 @@ Facts and sources: `.notes/research/2026-11-12-atlas-pools.md` and
   below about 64 there, and a frame takes 16 copies, about 0.7 ms at V3D's 43 µs a copy, where 64
   took 2.4 ms. Both stop at 512² texels a frame.
 - **The system's memory warnings purge the pool on every platform**, between frames: everything no
-  one pins and the last frame did not draw goes, idle scratch goes, and the pages drain with no
-  budget, committed at once so the memory returns with no frame to wait for; a stutter traded for
+  one pins and the last frame did not draw goes, idle scratch goes, and the pages drain and shrink
+  with no budget, committed at once, round after round as each drain's moves land before the next
+  is planned, so the memory returns with no frame to wait for; a stutter traded for
   the process not being killed, as Chromium's memory-pressure listeners and GLib's
   `GMemoryMonitor` advice to free caches. A watch a platform, no crate past the platform's: macOS's
   libdispatch memory-pressure source, Linux's portal `MemoryMonitor`, Windows's

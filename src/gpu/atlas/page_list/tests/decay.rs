@@ -434,3 +434,45 @@ fn a_shrink_whose_target_fills_ends_on_one_page() {
     assert!(list.page(1).is_none(), "the small page drained back");
     assert_eq!(list.page(0).unwrap().live_texels(), 5 * 32 * 32);
 }
+
+/// An empty list closes its last page an expiry window after it emptied, and a purge closes it at
+/// once, so a list a frame once drew holds no page for good. Two 16² items on a 32² page go at
+/// frame 0: the page stays through frame 118 and closes at 119, the window's last frame. Another
+/// list's page, emptied the same way, closes at the purge that follows.
+#[test]
+fn an_empty_list_closes_its_last_page() {
+    let mut list = list(32, 32, 1 << 20);
+    for handle in insert(&mut list, 2, 16) {
+        list.release(handle);
+    }
+    for frame in 0..119 {
+        let _ = decay(&mut list, frame, ROOMY);
+        assert!(list.page(0).is_some(), "{frame}");
+    }
+    let _ = decay(&mut list, 119, ROOMY);
+    assert!(list.page(0).is_none(), "closed at the window's end");
+    assert_eq!(list.bytes(), 0);
+    assert_eq!(list.slots(), PageSlots::FIRST, "a draw reads the stand-in");
+
+    let mut purged = super::list(32, 32, 1 << 20);
+    for handle in insert(&mut purged, 2, 16) {
+        purged.release(handle);
+    }
+    assert!(!purged.purge(1, &mut Evictions::default()), "no move waits");
+    assert!(purged.page(0).is_none(), "closed at once");
+}
+
+/// The age-out caps its evictions at 32 a frame up to four times the soft budget, and lifts the cap
+/// past it. 40 idle 8² items fill 2560 bytes on three 32² pages. Under a budget of 640 they are
+/// exactly four times it, a pressure of 4 and an age of 25: at frame 26, 32 go. Under 639 they are
+/// past four times: all 40 go.
+#[test]
+fn the_age_out_cap_holds_to_four_times_the_budget() {
+    for (soft, gone) in [(640, 32), (639, 40)] {
+        let mut list = list(32, 32, soft);
+        let _ = insert(&mut list, 40, 8);
+        assert_eq!(list.live_page_bytes(), 4 * 640);
+        assert_eq!(decay(&mut list, 25, ROOMY).evicted.len(), 0, "{soft}");
+        assert_eq!(decay(&mut list, 26, ROOMY).evicted.len(), gone, "{soft}");
+    }
+}
