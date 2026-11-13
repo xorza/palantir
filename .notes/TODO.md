@@ -2,7 +2,6 @@
 - mesh once registrations
 - audit platform dependent behavior
 
-- showcase to build effects on start
 - build-in colors
 - optimal resolve strategies
 - material for texts and strokes?
