@@ -31,7 +31,8 @@ impl AtlasFormat {
 }
 
 /// One `T` for each [`AtlasFormat`], indexed by it: the pool's lists, their textures, a pipeline a
-/// format.
+/// format. As `enum_map`'s `EnumMap` keys an array by an enum
+/// ([docs.rs/enum-map](https://docs.rs/enum-map)). Refused: that dependency for three formats.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct PerFormat<T>([T; AtlasFormat::COUNT]);
 
