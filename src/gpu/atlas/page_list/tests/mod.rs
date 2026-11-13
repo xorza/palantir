@@ -310,3 +310,55 @@ fn a_page_is_not_closed_under_its_items() {
         .unwrap();
     list.close_page(0);
 }
+
+/// An item no shelf takes and no whole shelf frees latches for the frame, and an unpin opens the
+/// latch. Four 32² pages at the hard cap hold four 16² items each, one pinned on each of every
+/// page's two shelves, the rest idle: a 32² item at frame 2 finds no victim on a shelf that takes
+/// it and no shelf all evictable, and is refused, twice. Once page 0's two pins go, the third
+/// empties its two shelves and lands at its origin.
+#[test]
+fn a_shelf_no_insert_can_free_latches_until_an_unpin() {
+    let mut list = list(32, 32, 0);
+    let mut evictions = Evictions::default();
+    let items: Vec<AtlasHandle> = (0..16)
+        .map(|_| {
+            list.allocate(Tenant::Glyphs, square(16), 0, &mut evictions)
+                .unwrap()
+        })
+        .collect();
+    for page in items.chunks(4) {
+        list.pin(page[0]);
+        list.pin(page[2]);
+    }
+    for _ in 0..2 {
+        assert_eq!(
+            list.allocate(Tenant::Glyphs, square(32), 2, &mut evictions),
+            Err(AtlasError::Full)
+        );
+    }
+    list.unpin(items[0]);
+    list.unpin(items[2]);
+    let tall = list
+        .allocate(Tenant::Glyphs, square(32), 2, &mut evictions)
+        .unwrap();
+    assert_eq!(at(&list, tall), (0, U16Vec2::ZERO));
+    assert_eq!(evictions.queues[Tenant::Glyphs as usize].len(), 4);
+}
+
+/// A dry shelf latched for a 16 × 8 item at frame 3 covers, that frame, an item no shorter and no
+/// narrower: as large, taller, or wider. A shorter item, which more shelves take, a narrower one,
+/// whose longer side more pages hold, or the next frame finds the latch open.
+#[test]
+fn a_dry_shelf_covers_what_is_no_shorter_and_no_narrower() {
+    let dry = ShelfDry {
+        frame: 3,
+        size: U16Vec2::new(16, 8),
+    };
+    let covers = |w, h, frame| dry.covers(U16Vec2::new(w, h), frame);
+    assert!(covers(16, 8, 3), "the same item");
+    assert!(covers(16, 12, 3), "taller");
+    assert!(covers(20, 8, 3), "wider");
+    assert!(!covers(16, 6, 3), "shorter");
+    assert!(!covers(12, 8, 3), "narrower: its longer side 12 below 16");
+    assert!(!covers(16, 8, 4), "the next frame");
+}

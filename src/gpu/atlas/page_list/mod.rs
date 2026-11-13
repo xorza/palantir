@@ -203,6 +203,25 @@ enum ShelfUse {
     Kept,
 }
 
+/// The item [`PageList::evict_shelf`] last found no shelf for, in display frame `frame`: an item
+/// as tall and as wide finds none either until a shelf can become evictable, so a starving frame
+/// tallies the slab once.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct ShelfDry {
+    frame: u64,
+    size: U16Vec2,
+}
+
+impl ShelfDry {
+    /// Whether an item of `size` at display frame `frame` finds no shelf either: no shorter and no
+    /// narrower, as a taller item takes fewer shelves and a wider one fewer pages.
+    fn covers(self, size: U16Vec2, frame: u64) -> bool {
+        self.frame == frame
+            && size.y >= self.size.y
+            && size.max_element() >= self.size.max_element()
+    }
+}
+
 /// Which bytes a grow may reach.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Budget {
@@ -235,8 +254,13 @@ pub(crate) struct PageList {
     /// The display frame a whole turn of the clock found nothing evictable in: every item stays
     /// exempt for the rest of that frame, so no insert walks the slab again.
     dry_frame: Option<u64>,
-    /// [`Self::evict_shelf`]'s tally, kept so a starving insert allocates nothing.
+    /// [`Self::evict_shelf`]'s tally, every page that holds the item one after another, kept so a
+    /// starving insert allocates nothing.
     shelf_uses: Vec<ShelfUse>,
+    /// The last item [`Self::evict_shelf`] found no shelf for. Cleared wherever a shelf can turn
+    /// evictable: an item freed, which can empty a page's bottom shelf or a kept item's shelf; an
+    /// unpin; a move; a page grown or opened.
+    shelf_dry: Option<ShelfDry>,
     scratch: ScratchCache,
     /// The device's largest texture edge, which no scratch texture passes.
     device_edge: u32,
@@ -313,6 +337,7 @@ impl PageList {
             hand: 0,
             dry_frame: None,
             shelf_uses: Vec::new(),
+            shelf_dry: None,
             scratch: ScratchCache::default(),
             device_edge,
             age_hand: 0,
@@ -459,6 +484,7 @@ impl PageList {
                 return false;
             }
             page.packer.grow(edge_u16(edge * 2));
+            self.shelf_dry = None;
             return true;
         }
         let Some(slot) = self.pages.iter().position(Option::is_none) else {
@@ -481,6 +507,7 @@ impl PageList {
         debug_assert!(self.pages[slot].is_none(), "a page opens in a free slot");
         self.pages[slot] = Some(Page::new(edge, self.opened));
         self.opened = self.opened.checked_add(1).expect("a list opened 2³² pages");
+        self.shelf_dry = None;
     }
 
     /// Evict toward room for `size` at display frame `frame`, with no page draining: an evictable
@@ -522,33 +549,55 @@ impl PageList {
     }
 
     /// With no victim on a shelf that takes `size`, every item of one shelf whose items are all
-    /// evictable, on a page that holds `size`: the shortest tall enough,
-    /// for the item to reuse, else a page's bottom shelf, whose rows go back to its page. `0`
-    /// where no shelf qualifies, as emptying a short one in the middle frees nothing usable.
+    /// evictable, on a page that holds `size`: the shortest tall enough, for the item to reuse,
+    /// else a page's bottom shelf, whose rows go back to its page. `0` where no shelf qualifies, as
+    /// emptying a short one in the middle frees nothing usable; the latch then spares the frame's
+    /// later inserts at least as large the walk.
     fn evict_shelf(&mut self, size: U16Vec2, frame: u64, evictions: &mut Evictions) -> u32 {
-        let mut tall: Option<(u16, usize, u16)> = None;
-        let mut bottom: Option<(usize, u16)> = None;
-        for (page_idx, page) in self.pages.iter().enumerate() {
-            let Some(page) = page.as_ref().filter(|page| page.holds(size)) else {
+        if self.shelf_dry.is_some_and(|dry| dry.covers(size, frame)) {
+            return 0;
+        }
+        // Each page that holds `size` tallies its shelves from its start in `shelf_uses`.
+        let mut starts = [None; MAX_PAGES];
+        let uses = &mut self.shelf_uses;
+        uses.clear();
+        for (idx, page) in self.pages.iter().enumerate() {
+            if let Some(page) = page.as_ref().filter(|page| page.holds(size)) {
+                starts[idx] = Some(uses.len());
+                uses.resize(uses.len() + page.packer.shelves().len(), ShelfUse::Empty);
+            }
+        }
+        for entry in &self.entries {
+            let Some(placement) = entry.placement else {
                 continue;
             };
-            let shelves = page.packer.shelves();
-            let uses = &mut self.shelf_uses;
-            uses.clear();
-            uses.resize(shelves.len(), ShelfUse::Empty);
-            for entry in &self.entries {
-                let Some(placement) = entry.placement.filter(|p| p.page as usize == page_idx)
-                else {
-                    continue;
-                };
-                let shelf_use = &mut uses[page.packer.shelf_at(placement.origin.y)];
-                if !entry.is_idle(frame, Entry::GRACE_FRAMES) {
-                    *shelf_use = ShelfUse::Kept;
-                } else if *shelf_use == ShelfUse::Empty {
-                    *shelf_use = ShelfUse::Evictable;
-                }
+            let page_idx = usize::from(placement.page);
+            let Some(start) = starts[page_idx] else {
+                continue;
+            };
+            let page = self.pages[page_idx]
+                .as_ref()
+                .expect("an item sits on an open page");
+            let shelf_use = &mut uses[start + page.packer.shelf_at(placement.origin.y)];
+            if !entry.is_idle(frame, Entry::GRACE_FRAMES) {
+                *shelf_use = ShelfUse::Kept;
+            } else if *shelf_use == ShelfUse::Empty {
+                *shelf_use = ShelfUse::Evictable;
             }
-            for (shelf, &shelf_use) in shelves.iter().zip(uses.iter()) {
+        }
+        let mut tall: Option<(u16, usize, u16)> = None;
+        let mut bottom: Option<(usize, u16)> = None;
+        for (page_idx, start) in starts.into_iter().enumerate() {
+            let Some(start) = start else {
+                continue;
+            };
+            let shelves = self.pages[page_idx]
+                .as_ref()
+                .expect("a tallied page is open")
+                .packer
+                .shelves();
+            let uses = &uses[start..start + shelves.len()];
+            for (shelf, &shelf_use) in shelves.iter().zip(uses) {
                 if shelf_use == ShelfUse::Evictable
                     && shelf.height >= size.y
                     && tall.is_none_or(|(height, ..)| shelf.height < height)
@@ -562,13 +611,14 @@ impl PageList {
             }
         }
         let Some((page_idx, shelf_y)) = tall.map(|(_, page, y)| (page, y)).or(bottom) else {
+            self.shelf_dry = Some(ShelfDry { frame, size });
             return 0;
         };
         let mut evicted = 0;
         for idx in 0..self.entries.len() {
             let on_shelf = self.entries[idx]
                 .placement
-                .is_some_and(|p| p.page as usize == page_idx && p.origin.y == shelf_y);
+                .is_some_and(|p| usize::from(p.page) == page_idx && p.origin.y == shelf_y);
             if on_shelf {
                 self.evict(idx, evictions);
                 evicted += 1;
@@ -626,6 +676,7 @@ impl PageList {
             .as_mut()
             .expect("an item sits on an open page")
             .deallocate(placement);
+        self.shelf_dry = None;
         self.free
             .push(u32::try_from(idx).expect("a slab counts its slots in u32"));
     }
@@ -687,6 +738,7 @@ impl PageList {
         assert!(*pins > 0, "an item unpinned more than pinned");
         *pins -= 1;
         self.dry_frame = None;
+        self.shelf_dry = None;
     }
 
     /// Close page `idx`, which holds no item and is not draining, so its slot takes the next page
@@ -966,6 +1018,7 @@ impl PageList {
                 .as_mut()
                 .expect("the source is open")
                 .deallocate(from);
+            self.shelf_dry = None;
             self.entries[at].placement = Some(to);
             self.moves.push(Move {
                 from,
