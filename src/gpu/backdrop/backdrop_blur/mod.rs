@@ -2,9 +2,9 @@
 //! level, then the residual Gaussian across and down into the job's slot of the destination.
 
 use crate::common::expiry_window::ExpiryWindow;
-use crate::gpu::atlas::scratch_cache::ScratchId;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::tiler_family::TilerFamily;
+use crate::gpu::pipeline::effect_pipeline::backdrop_groups::ResultTexture;
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use crate::gpu::resource::gpu_ctx::GpuCtx;
 use crate::gpu::resource::pipeline_recipe::{self, PipelineRecipe};
@@ -93,14 +93,6 @@ pub(crate) struct BlurJob {
     pub(crate) dest_origin: UVec2,
     /// Where the job lies in the textures it shares, which [`BackdropBlur::prepare`] writes.
     pub(crate) layout: JobLayout,
-}
-
-/// The texture of the pool's half-float list a backdrop's result lives in: a page it shares, or a
-/// scratch texture of its own.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub(crate) enum ResultTexture {
-    Page(u8),
-    Scratch(ScratchId),
 }
 
 /// Where [`BackdropBlur::prepare`] lays a job out: its parameters, the origins of the capture

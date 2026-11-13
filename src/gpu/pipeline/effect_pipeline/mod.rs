@@ -2,6 +2,7 @@
 //! of one effect and form through that pair's pipeline. The pipelines live in the
 //! [`WgpuEffectStore`], which builds them where a use wants them.
 
+pub(crate) mod backdrop_groups;
 pub(crate) mod wgpu_effect_store;
 
 use std::array;
@@ -13,9 +14,9 @@ use crate::effect::contract::{
     BACKDROPS_GROUP, HALO_OVERRIDE, IMAGES_GROUP, TRIANGLE_OVERRIDE, WORDS_GROUP,
 };
 use crate::effect::effect_store::EffectModule;
-use crate::gpu::backdrop::backdrops::BackdropGroups;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::pipeline::clip_variant::{ClipVariant, Clipping};
+use crate::gpu::pipeline::effect_pipeline::backdrop_groups::BackdropGroups;
 use crate::gpu::pipeline::effect_pipeline::wgpu_effect_store::WgpuEffectStore;
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
 use crate::gpu::pipeline::runs::Runs;

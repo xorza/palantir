@@ -4,11 +4,11 @@ use crate::gpu::atlas::AtlasPool;
 use crate::gpu::atlas::atlas_format::AtlasFormat;
 use crate::gpu::atlas::atlas_textures::AtlasTextures;
 use crate::gpu::atlas::page_list::PageListConfig;
-use crate::gpu::backdrop::backdrop_blur::ResultTexture;
 use crate::gpu::backdrop::backdrops::{
     BackdropFrame, BackdropSlot, Backdrops, Held, Kept, RESULTS, SpectrumCell, held_clear, place,
 };
 use crate::gpu::backdrop::tests::CLEAR;
+use crate::gpu::pipeline::effect_pipeline::backdrop_groups::ResultTexture;
 use crate::gpu::render_owner_id::{RenderOwnerId, RenderOwners};
 use crate::gpu::resource::shader_body::ShaderBody;
 use crate::gpu::resource::texture_binding::TextureBinding;

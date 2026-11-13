@@ -9,10 +9,9 @@
 
 use crate::bench::backends::Backends;
 use crate::bench::kind::{Kind, Scale};
-use crate::gpu::backdrop::backdrop_blur::{
-    BackdropBlur, BlurJob, JobLayout, LEVEL_FORMAT, ResultTexture,
-};
+use crate::gpu::backdrop::backdrop_blur::{BackdropBlur, BlurJob, JobLayout, LEVEL_FORMAT};
 use crate::gpu::bench_gpu::{BenchGpu, PassTimer, TARGET_FORMAT, Timing};
+use crate::gpu::pipeline::effect_pipeline::backdrop_groups::ResultTexture;
 use crate::gpu::resource::gpu_ctx::GpuCtx;
 use crate::gpu::resource::upload_staging::UploadStaging;
 use crate::primitives::geometry::urect::URect;

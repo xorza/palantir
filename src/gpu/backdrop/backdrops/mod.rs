@@ -19,13 +19,13 @@ use crate::gpu::atlas::AtlasPool;
 use crate::gpu::atlas::atlas_format::AtlasFormat;
 use crate::gpu::atlas::atlas_handle::AtlasHandle;
 use crate::gpu::atlas::atlas_textures::AtlasTextures;
-use crate::gpu::atlas::page_list::MAX_PAGES;
 use crate::gpu::atlas::scratch_cache::ScratchId;
 use crate::gpu::atlas::tenant::Tenant;
-use crate::gpu::backdrop::backdrop_blur::{
-    BackdropBlur, BlurJob, JobLayout, ResultTexture, TargetSource,
-};
+use crate::gpu::backdrop::backdrop_blur::{BackdropBlur, BlurJob, JobLayout, TargetSource};
 use crate::gpu::device::gpu::{FilledBuffer, Gpu};
+use crate::gpu::pipeline::effect_pipeline::backdrop_groups::{
+    BackdropGroups, CompositeGroups, ResultTexture,
+};
 use crate::gpu::render_owner_id::RenderOwnerId;
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use crate::gpu::resource::gpu_ctx::GpuCtx;
@@ -246,51 +246,6 @@ struct BackdropResources {
     sampler: wgpu::Sampler,
     spectrum: wgpu::Buffer,
     groups: Option<CompositeGroups>,
-}
-
-/// The groups a backdrop's composite reads its result through, one over each texture a result can
-/// lie in: the stand-in, for a composite that shows its clear; each open page; and each scratch slot
-/// a result has read, by slot. A texture changes only with the list's generation, which makes them
-/// all again, so the scratch groups are as many as the slots, however often a result takes one
-/// again.
-#[derive(Debug)]
-struct CompositeGroups {
-    absent: wgpu::BindGroup,
-    pages: [Option<wgpu::BindGroup>; MAX_PAGES],
-    scratch: Vec<Option<wgpu::BindGroup>>,
-    /// The generation of the list's views the groups bind.
-    generation: u64,
-    /// The `slot_buffer` capacity the groups bind.
-    capacity: usize,
-}
-
-/// The groups a frame's composites read through, by the backdrop each draws.
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct BackdropGroups<'a> {
-    groups: &'a CompositeGroups,
-    slot_reads: &'a [Option<ResultTexture>],
-}
-
-impl BackdropGroups<'_> {
-    /// The texture backdrop `idx`'s composite reads, `None` for one that shows its clear: a draw
-    /// splits where it changes.
-    pub(crate) const fn read_of(&self, idx: u32) -> Option<ResultTexture> {
-        self.slot_reads[idx as usize]
-    }
-
-    /// The group a composite that reads `read` binds.
-    pub(crate) fn group(&self, read: Option<ResultTexture>) -> &wgpu::BindGroup {
-        let made = "a result's group was made at the follow";
-        match read {
-            None => &self.groups.absent,
-            Some(ResultTexture::Page(page)) => {
-                self.groups.pages[usize::from(page)].as_ref().expect(made)
-            }
-            Some(ResultTexture::Scratch(id)) => {
-                self.groups.scratch[id.idx as usize].as_ref().expect(made)
-            }
-        }
-    }
 }
 
 /// What the group a backdrop's composite reads its result through binds.
