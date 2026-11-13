@@ -3,12 +3,12 @@
 
 use crate::common::expiry_window::EXPIRY_FRAMES;
 use crate::gpu::atlas::atlas_format::AtlasFormat;
-use crate::gpu::atlas::atlas_handle::{AtlasHandle, Placement};
-use crate::gpu::atlas::page_list::{MAX_PAGES, MoveBudget, Page, PageListConfig};
+use crate::gpu::atlas::atlas_handle::{Allocation, AtlasHandle, Placement};
+use crate::gpu::atlas::page_list::{MAX_PAGES, Page, PageListConfig};
 use crate::gpu::atlas::tenant::Tenant;
 use crate::gpu::atlas::{AtlasPool, error::AtlasError};
 use crate::internals::seeded_rng::SeededRng;
-use glam::{U16Vec2, UVec2};
+use glam::UVec2;
 use std::collections::BTreeMap;
 
 /// What the model knows of a live item: its handle, where the pool put it, its pins and the
@@ -28,12 +28,7 @@ struct Held {
 /// frame or the last, and reads as stale; and no frame's moves land on a page they leave.
 #[test]
 fn the_pool_agrees_with_a_model_over_a_seeded_run() {
-    let config = PageListConfig {
-        first_edge: 32,
-        page_edge: 64,
-        soft_bytes: 2 * 64 * 64,
-    };
-    let mut pool = AtlasPool::with_configs([config; 3], 16384);
+    let mut pool = AtlasPool::uniform(32, 64, 2 * 64 * 64);
     // By slot and generation, so a walk over it runs in one order every run.
     let mut model: BTreeMap<(u32, u32), Held> = BTreeMap::new();
     let mut drained = Vec::new();
@@ -52,12 +47,12 @@ fn the_pool_agrees_with_a_model_over_a_seeded_run() {
         let pick = |rng: &mut SeededRng| live[rng.below(live.len() as u64) as usize];
         match rng.below(10) {
             0..=4 => {
-                let size = U16Vec2::new(1 + rng.below(40) as u16, 1 + rng.below(40) as u16);
+                let size = UVec2::new(1 + rng.below(40) as u32, 1 + rng.below(40) as u32);
                 let tenant = tenants[rng.below(tenants.len() as u64) as usize];
                 match pool.allocate(AtlasFormat::R8, tenant, size) {
-                    Ok(handle) => {
-                        let placement = pool.placement(handle).expect("a new item is live");
-                        assert_eq!(placement.size, size, "step {step}");
+                    Ok(Allocation { handle, placement }) => {
+                        assert_eq!(pool.placement(handle), Some(placement), "step {step}");
+                        assert_eq!(placement.size.as_uvec2(), size, "step {step}");
                         model.insert(
                             key(handle),
                             Held {
@@ -91,6 +86,7 @@ fn the_pool_agrees_with_a_model_over_a_seeded_run() {
                 if held.pins > 0 && rng.below(2) == 0 {
                     pool.unpin(handle);
                     held.pins -= 1;
+                    held.last_use = pool.frame();
                 } else if held.pins < 2 {
                     pool.pin(handle);
                     held.pins += 1;
@@ -98,7 +94,7 @@ fn the_pool_agrees_with_a_model_over_a_seeded_run() {
             }
             8 | 9 => {
                 pool.advance_to(pool.frame() + 1);
-                pool.end_submit(MoveBudget::COPIES);
+                pool.end_submit();
                 let moves = pool.list(AtlasFormat::R8).moves().to_vec();
                 pool.forget_moves();
                 for m in &moves {
@@ -185,39 +181,23 @@ fn check(pool: &AtlasPool, model: &BTreeMap<(u32, u32), Held>, step: usize) {
     assert_eq!(list.bytes(), bytes, "step {step}");
 }
 
-/// The pool's lists take the proposal's starting constants by format: `R8` from 256 to 2048 pages
-/// under 8 MiB, `Rgba8` from 256 to 1024 under 8 MiB, `Rgba16F` from 256 to 1024 under 32 MiB; a
-/// device of 1024 holds the `R8` page edge to 1024.
+/// A device's pool takes the starting constants by format: `R8` from 256 to 2048 pages under
+/// 8 MiB, `Rgba8` from 256 to 1024 under 8 MiB, `Rgba16F` from 256 to 1024 under 32 MiB; a device
+/// of 1024 holds the `R8` page edge to 1024.
 #[test]
 fn the_pool_takes_the_starting_constants() {
-    let pool = AtlasPool::new(16384);
+    let pool = AtlasPool::of_edge(16384);
     let config = |format| pool.list(format).config();
+    let want = |first_edge, page_edge, soft_bytes| PageListConfig {
+        first_edge,
+        page_edge,
+        soft_bytes,
+    };
+    assert_eq!(config(AtlasFormat::R8), want(256, 2048, 8 << 20));
+    assert_eq!(config(AtlasFormat::Rgba8), want(256, 1024, 8 << 20));
+    assert_eq!(config(AtlasFormat::Rgba16F), want(256, 1024, 32 << 20));
     assert_eq!(
-        config(AtlasFormat::R8),
-        PageListConfig {
-            first_edge: 256,
-            page_edge: 2048,
-            soft_bytes: 8 << 20
-        }
-    );
-    assert_eq!(
-        config(AtlasFormat::Rgba8),
-        PageListConfig {
-            first_edge: 256,
-            page_edge: 1024,
-            soft_bytes: 8 << 20
-        }
-    );
-    assert_eq!(
-        config(AtlasFormat::Rgba16F),
-        PageListConfig {
-            first_edge: 256,
-            page_edge: 1024,
-            soft_bytes: 32 << 20
-        }
-    );
-    assert_eq!(
-        AtlasPool::new(1024)
+        AtlasPool::of_edge(1024)
             .list(AtlasFormat::R8)
             .config()
             .page_edge,
@@ -227,29 +207,28 @@ fn the_pool_takes_the_starting_constants() {
 
 /// A full-window glass result takes a texture of its own on the ladder, 1936 × 1088 to
 /// 2048 × 1536, `2048 · 1536 · 8 = 25165824` bytes of `Rgba16F`; released at frame 3, it idles
-/// through frame `3 + EXPIRY_FRAMES - 1` and goes at `3 + EXPIRY_FRAMES` as the pool's frames move.
+/// through frame `3 + EXPIRY_FRAMES - 1` and goes at the decay of `3 + EXPIRY_FRAMES`.
 #[test]
 fn a_scratch_texture_idles_then_expires_with_the_frames() {
-    let mut pool = AtlasPool::new(16384);
+    let mut pool = AtlasPool::of_edge(16384);
     let id = pool
         .acquire_scratch(AtlasFormat::Rgba16F, UVec2::new(1936, 1088))
         .unwrap();
-    assert_eq!(
-        pool.scratch_size(AtlasFormat::Rgba16F, id),
-        Some(UVec2::new(2048, 1536))
-    );
+    assert_eq!(pool.scratch_size(id), Some(UVec2::new(2048, 1536)));
     let bytes = 2048 * 1536 * 8;
     assert_eq!(pool.list(AtlasFormat::Rgba16F).bytes(), bytes);
     pool.advance_to(3);
-    pool.release_scratch(AtlasFormat::Rgba16F, id);
-    assert_eq!(pool.scratch_size(AtlasFormat::Rgba16F, id), None);
+    pool.release_scratch(id);
+    assert_eq!(pool.scratch_size(id), None);
     pool.advance_to(3 + EXPIRY_FRAMES - 1);
+    pool.end_submit();
     assert_eq!(
         pool.list(AtlasFormat::Rgba16F).bytes(),
         bytes,
         "a frame short"
     );
     pool.advance_to(3 + EXPIRY_FRAMES);
+    pool.end_submit();
     assert_eq!(pool.list(AtlasFormat::Rgba16F).bytes(), 0);
 }
 
@@ -263,12 +242,13 @@ fn a_scratch_texture_idles_then_expires_with_the_frames() {
 /// budget, 16 copies and 512² texels.
 #[test]
 fn a_burst_past_one_page_decays_within_the_bounds() {
-    let mut pool = AtlasPool::new(16384);
+    let mut pool = AtlasPool::of_edge(16384);
     pool.advance_to(1);
     let burst: Vec<AtlasHandle> = (0..5000)
         .map(|_| {
-            pool.allocate(AtlasFormat::R8, Tenant::Glyphs, U16Vec2::splat(32))
+            pool.allocate(AtlasFormat::R8, Tenant::Glyphs, UVec2::splat(32))
                 .unwrap()
+                .handle
         })
         .collect();
     let edges = |pool: &AtlasPool| -> Vec<u32> {
@@ -291,7 +271,7 @@ fn a_burst_past_one_page_decays_within_the_bounds() {
             );
         }
         let pages_before = edges(&pool).len();
-        pool.end_submit(MoveBudget::COPIES);
+        pool.end_submit();
         let evicted = pool.drain_evicted(Tenant::Glyphs).count();
         assert!(evicted <= 32, "frame {frame}: {evicted} evictions");
         if evicted > 0 {
@@ -322,16 +302,12 @@ fn a_burst_past_one_page_decays_within_the_bounds() {
 /// closes; the first keeps the two. An idle scratch texture goes; a held one stays.
 #[test]
 fn a_purge_keeps_what_this_frame_drew_and_what_is_pinned() {
-    let config = PageListConfig {
-        first_edge: 32,
-        page_edge: 32,
-        soft_bytes: 1 << 20,
-    };
-    let mut pool = AtlasPool::with_configs([config; 3], 16384);
+    let mut pool = AtlasPool::uniform(32, 32, 1 << 20);
     let items: Vec<AtlasHandle> = (0..6)
         .map(|_| {
-            pool.allocate(AtlasFormat::R8, Tenant::Glyphs, U16Vec2::splat(16))
+            pool.allocate(AtlasFormat::R8, Tenant::Glyphs, UVec2::splat(16))
                 .unwrap()
+                .handle
         })
         .collect();
     assert!(pool.list(AtlasFormat::R8).page(1).is_some());
@@ -341,7 +317,7 @@ fn a_purge_keeps_what_this_frame_drew_and_what_is_pinned() {
     let held = pool
         .acquire_scratch(AtlasFormat::R8, UVec2::splat(64))
         .unwrap();
-    pool.release_scratch(AtlasFormat::R8, idle);
+    pool.release_scratch(idle);
     pool.advance_to(4);
     pool.stamp(items[1]).unwrap();
     pool.advance_to(5);
@@ -359,10 +335,7 @@ fn a_purge_keeps_what_this_frame_drew_and_what_is_pinned() {
     assert!(list.page(1).is_none(), "the emptied page closed");
     assert_eq!(list.page(0).unwrap().live_texels(), 2 * 16 * 16);
     assert_eq!(list.scratch().texels(), 64 * 64, "the held scratch alone");
-    assert_eq!(
-        pool.scratch_size(AtlasFormat::R8, held),
-        Some(UVec2::splat(64))
-    );
+    assert_eq!(pool.scratch_size(held), Some(UVec2::splat(64)));
 }
 
 /// A purge whose drain moved items goes on once they are committed, round after round, until the
@@ -374,16 +347,12 @@ fn a_purge_keeps_what_this_frame_drew_and_what_is_pinned() {
 /// nothing to do.
 #[test]
 fn a_purge_goes_on_round_by_round_to_one_page() {
-    let config = PageListConfig {
-        first_edge: 32,
-        page_edge: 128,
-        soft_bytes: 1 << 30,
-    };
-    let mut pool = AtlasPool::with_configs([config; 3], 16384);
+    let mut pool = AtlasPool::uniform(32, 128, 1 << 30);
     let items: Vec<AtlasHandle> = (0..40)
         .map(|_| {
-            pool.allocate(AtlasFormat::R8, Tenant::Glyphs, U16Vec2::splat(32))
+            pool.allocate(AtlasFormat::R8, Tenant::Glyphs, UVec2::splat(32))
                 .unwrap()
+                .handle
         })
         .collect();
     pool.advance_to(5);
@@ -412,17 +381,13 @@ fn a_purge_goes_on_round_by_round_to_one_page() {
 /// at the color list; frame 5 at the half-float list, which drains nothing, then the mask list.
 #[test]
 fn the_move_budget_goes_round_the_lists() {
-    let config = PageListConfig {
-        first_edge: 128,
-        page_edge: 128,
-        soft_bytes: 1 << 30,
-    };
-    let mut pool = AtlasPool::with_configs([config; 3], 16384);
+    let mut pool = AtlasPool::uniform(128, 128, 1 << 30);
     for format in [AtlasFormat::R8, AtlasFormat::Rgba8] {
         let items: Vec<AtlasHandle> = (0..256 + 40)
             .map(|_| {
-                pool.allocate(format, Tenant::Glyphs, U16Vec2::splat(8))
+                pool.allocate(format, Tenant::Glyphs, UVec2::splat(8))
                     .unwrap()
+                    .handle
             })
             .collect();
         for &handle in &items[..128] {
@@ -432,7 +397,7 @@ fn the_move_budget_goes_round_the_lists() {
     let mut taken = Vec::new();
     for frame in 3..6 {
         pool.advance_to(frame);
-        pool.end_submit(MoveBudget::COPIES);
+        pool.end_submit();
         let moves = |format| pool.list(format).moves().len();
         taken.push((moves(AtlasFormat::R8), moves(AtlasFormat::Rgba8)));
         pool.forget_moves();
@@ -443,7 +408,7 @@ fn the_move_budget_goes_round_the_lists() {
 #[test]
 #[should_panic(expected = "the display frames ran backwards")]
 fn the_display_frames_do_not_run_backwards() {
-    let mut pool = AtlasPool::new(16384);
+    let mut pool = AtlasPool::of_edge(16384);
     pool.advance_to(2);
     pool.advance_to(1);
 }

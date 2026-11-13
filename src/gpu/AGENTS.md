@@ -162,12 +162,12 @@ Facts and sources: `.notes/research/2026-11-12-atlas-pools.md` and
   compaction by eviction, which rasterizes a page's visible items again in one frame; a repack in
   one frame, which moves the whole live set at once.
 - **Moves go by one instanced draw a destination page, or by copy commands where a pass moves its
-  whole target** (`MoveRoute`, from `PassTraffic`), WebRender's two routes. Where a pass moves
-  only what it draws, a draw wins at every count measured: 16 glyphs 107 µs against 222 on the
-  handheld, and ties at 16 and wins past 64 on the Apple laptop. Where it moves the whole target, a
-  draw loads and stores the whole destination page, 2.2 to 5.1 ms on V3D at 2048², so copies win
-  below about 64 there, and a frame takes 16 copies, about 0.7 ms at V3D's 43 µs a copy, where 64
-  took 2.4 ms. Both stop at 512² texels a frame.
+  whole target** (`MoveBudget::of` and the GPU half's mover, from `PassTraffic`), WebRender's two
+  routes. Where a pass moves only what it draws, a draw wins at every count measured: 16 glyphs
+  107 µs against 222 on the handheld, and ties at 16 and wins past 64 on the Apple laptop. Where
+  it moves the whole target, a draw loads and stores the whole destination page, 2.2 to 5.1 ms on
+  V3D at 2048², so copies win below about 64 there, and a frame takes 16 copies, about 0.7 ms at
+  V3D's 43 µs a copy, where 64 took 2.4 ms. Both stop at 512² texels a frame.
 - **The system's memory warnings purge the pool on every platform**, between frames: everything no
   one pins and the last frame did not draw goes, idle scratch goes, and the pages drain and shrink
   with no budget, committed at once, round after round as each drain's moves land before the next

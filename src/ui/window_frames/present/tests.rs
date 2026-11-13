@@ -57,7 +57,7 @@ impl WindowFrames {
             frontend,
             placing: CutoutPlacing {
                 placements: &mut CutoutPlacements::default(),
-                pool: &mut AtlasPool::new(DEVICE_EDGE),
+                pool: &mut AtlasPool::of_edge(DEVICE_EDGE),
             },
         };
         self.build_paint(ctx, report)
@@ -1037,7 +1037,7 @@ mod cutout_census_tests {
                 });
         };
         let mut placements = CutoutPlacements::default();
-        let mut pool = AtlasPool::new(super::DEVICE_EDGE);
+        let mut pool = AtlasPool::of_edge(super::DEVICE_EDGE);
         let mut damage = |cards_now: usize, tick_now: bool| {
             cards.set(cards_now);
             tick.set(tick_now);
@@ -1463,7 +1463,7 @@ mod escalation_tests {
             frontend: &mut frontend,
             placing: CutoutPlacing {
                 placements: &mut CutoutPlacements::default(),
-                pool: &mut AtlasPool::new(super::DEVICE_EDGE),
+                pool: &mut AtlasPool::of_edge(super::DEVICE_EDGE),
             },
         };
         let job = frames.build_painted(ctx, facts.path(plan), facts);

@@ -5,7 +5,6 @@
 use crate::common::span::Span;
 use crate::gpu::atlas::AtlasPool;
 use crate::gpu::atlas::atlas_format::AtlasFormat;
-use crate::gpu::atlas::page_list::PageListConfig;
 use crate::gpu::atlas::tenant::Tenant;
 use crate::gpu::raster::raster_atlas::internals::unallocated_dies_at;
 use crate::gpu::raster::raster_pass::RasterDraw;
@@ -19,7 +18,7 @@ use crate::renderer::render_buffer::clip_chain::ClipChain;
 use crate::renderer::render_buffer::row_spin::RowSpin;
 use crate::renderer::render_buffer::text_draw_row::TextDrawRow;
 use crate::text::{RENDERED_RUN_KEEP_FRAMES, RENDERED_RUN_KEEP_SPREAD_MASK};
-use glam::{IVec2, U16Vec2, Vec2};
+use glam::{IVec2, UVec2, Vec2};
 use std::slice;
 
 mod text_rig;
@@ -168,12 +167,7 @@ fn an_evicted_raster_invalidates_only_its_runs() {
 #[test]
 fn a_cached_run_replays_its_moved_glyphs_where_they_moved() {
     let mut rig = TextRig::new();
-    let config = PageListConfig {
-        first_edge: 64,
-        page_edge: 64,
-        soft_bytes: 1 << 20,
-    };
-    rig.pool = AtlasPool::with_configs([config; 3], 16384);
+    rig.pool = AtlasPool::uniform(64, 64, 1 << 20);
     let runs = [rig.row("File", 14.0 * 1.2, Vec2::new(20.0, 20.0))];
     rig.frame(1.0, &[&runs]);
     let templates: Vec<EncodedGlyph> = rig
@@ -192,8 +186,9 @@ fn a_cached_run_replays_its_moved_glyphs_where_they_moved() {
     for _ in 0..16 {
         let icon = rig
             .pool
-            .allocate(AtlasFormat::R8, Tenant::Icons, U16Vec2::splat(32))
-            .unwrap();
+            .allocate(AtlasFormat::R8, Tenant::Icons, UVec2::splat(32))
+            .unwrap()
+            .handle;
         icons.push(icon);
         if rig.pool.placement(icon).unwrap().page == 1 {
             break;

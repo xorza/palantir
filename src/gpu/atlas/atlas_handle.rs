@@ -1,4 +1,5 @@
-//! [`AtlasHandle`]: an item of the pool, and [`Placement`], where it sits now.
+//! [`AtlasHandle`]: an item of the pool, [`Placement`], where it sits now, and [`Allocation`],
+//! both for a new item.
 
 use crate::gpu::atlas::atlas_format::AtlasFormat;
 use glam::U16Vec2;
@@ -27,4 +28,11 @@ impl Placement {
     pub(crate) fn texels(self) -> u64 {
         u64::from(self.size.x) * u64::from(self.size.y)
     }
+}
+
+/// A new item: its handle, and where it sits.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct Allocation {
+    pub(crate) handle: AtlasHandle,
+    pub(crate) placement: Placement,
 }

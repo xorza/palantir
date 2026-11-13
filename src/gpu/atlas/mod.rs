@@ -14,34 +14,35 @@ pub(crate) mod scratch_cache;
 pub(crate) mod tenant;
 
 use crate::gpu::atlas::atlas_format::{AtlasFormat, PerFormat};
-use crate::gpu::atlas::atlas_handle::{AtlasHandle, Placement};
+use crate::gpu::atlas::atlas_handle::{Allocation, AtlasHandle, Placement};
 use crate::gpu::atlas::error::AtlasError;
 use crate::gpu::atlas::page_list::{MoveBudget, PageList, PageListConfig};
 use crate::gpu::atlas::scratch_cache::ScratchId;
 use crate::gpu::atlas::tenant::Tenant;
-use glam::{U16Vec2, UVec2};
+use crate::gpu::device::pass_traffic::PassTraffic;
+use glam::UVec2;
 use std::vec::Drain;
 
-/// Each list's constants, by [`AtlasFormat`]: soft budgets the sum of the budgets the tenants held
-/// before the pool, page edges whose four pages are the cap one tenant held, until the bench hosts'
-/// memory study tunes them (`.notes/research/2026-11-12-atlas-pool-measurements.md`).
-pub(crate) const LIST_CONFIGS: [PageListConfig; 3] = [
-    PageListConfig {
-        first_edge: 256,
-        page_edge: 2048,
-        soft_bytes: 8 << 20,
-    },
-    PageListConfig {
-        first_edge: 256,
-        page_edge: 1024,
-        soft_bytes: 8 << 20,
-    },
-    PageListConfig {
-        first_edge: 256,
-        page_edge: 1024,
-        soft_bytes: 32 << 20,
-    },
-];
+/// What a pool is made with: each list's constants, the device's largest texture edge, and what a
+/// display frame's moves may take on it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct PoolConfig {
+    pub(crate) lists: PerFormat<PageListConfig>,
+    pub(crate) device_edge: u32,
+    pub(crate) move_budget: MoveBudget,
+}
+
+impl PoolConfig {
+    /// A device's: each list's starting constants ([`PageListConfig::of`]), its largest texture
+    /// edge `device_edge`, and the budget of a device whose passes move `traffic`.
+    pub(crate) fn of_device(device_edge: u32, traffic: PassTraffic) -> Self {
+        Self {
+            lists: PerFormat::from_fn(PageListConfig::of),
+            device_edge,
+            move_budget: MoveBudget::of(traffic),
+        }
+    }
+}
 
 /// The handles evicted since each tenant last drained its queue. Each holds a handle at most once
 /// a generation, so a queue is bounded by its list's slab.
@@ -56,32 +57,28 @@ impl Evictions {
     }
 }
 
-/// Every page list of one device, by [`AtlasFormat`], the display frame they age on, and the
-/// evictions their tenants have yet to drop.
+/// Every page list of one device, by [`AtlasFormat`], the display frame they age on, what a frame's
+/// moves may take, and the evictions their tenants have yet to drop.
 #[derive(Debug)]
 pub(crate) struct AtlasPool {
     lists: PerFormat<PageList>,
     frame: u64,
     /// The display frame the lists last decayed in, `None` before the first.
     decayed: Option<u64>,
+    move_budget: MoveBudget,
     evictions: Evictions,
 }
 
 impl AtlasPool {
-    /// The pool of a device whose largest texture edge is `device_edge`, at
-    /// [`LIST_CONFIGS`].
-    pub(crate) fn new(device_edge: u32) -> Self {
-        Self::with_configs(LIST_CONFIGS, device_edge)
-    }
-
-    /// The pool with each list as `configs` sets it, by [`AtlasFormat`].
-    pub(crate) fn with_configs(configs: [PageListConfig; 3], device_edge: u32) -> Self {
+    /// The pool `config` sets.
+    pub(crate) fn new(config: PoolConfig) -> Self {
         Self {
             lists: PerFormat::from_fn(|format| {
-                PageList::new(format, configs[format as usize], device_edge)
+                PageList::new(format, config.lists[format], config.device_edge)
             }),
             frame: 0,
             decayed: None,
+            move_budget: config.move_budget,
             evictions: Evictions::default(),
         }
     }
@@ -91,7 +88,7 @@ impl AtlasPool {
         &self.lists[format]
     }
 
-    /// Move to display frame `frame`, and drop the scratch textures idle for an expiry window.
+    /// Move to display frame `frame`.
     ///
     /// # Panics
     ///
@@ -103,19 +100,16 @@ impl AtlasPool {
             self.frame
         );
         self.frame = frame;
-        for (_, list) in self.lists.iter_mut() {
-            list.expire(frame);
-        }
     }
 
-    /// Room for an item of `size` of `format` for `tenant`, drawn this frame; the items evicted
-    /// for it wait in their tenants' queues.
+    /// Room for an item of `size` of `format` for `tenant`, drawn this frame, and where it sits;
+    /// the items evicted for it wait in their tenants' queues.
     pub(crate) fn allocate(
         &mut self,
         format: AtlasFormat,
         tenant: Tenant,
-        size: U16Vec2,
-    ) -> Result<AtlasHandle, AtlasError> {
+        size: UVec2,
+    ) -> Result<Allocation, AtlasError> {
         self.lists[format].allocate(tenant, size, self.frame, &mut self.evictions)
     }
 
@@ -123,14 +117,14 @@ impl AtlasPool {
     /// frame, after every draw of it: the evictions wait in their tenants' queues, and the moves
     /// in their lists for the GPU half's next commit, ahead of every upload, bake and draw, so the
     /// next build of any window reads the new placements (`src/gpu/AGENTS.md`, Atlases). As
-    /// WebRender runs its compaction once a frame. The moves spend `budget`, the GPU half's for
-    /// its device ([`atlas_textures::MoveRoute::budget`]), across the lists.
-    pub(crate) fn end_submit(&mut self, budget: MoveBudget) {
+    /// WebRender runs its compaction once a frame. The moves spend the device's budget across the
+    /// lists.
+    pub(crate) fn end_submit(&mut self) {
         if self.decayed == Some(self.frame) {
             return;
         }
         self.decayed = Some(self.frame);
-        let mut budget = budget;
+        let mut budget = self.move_budget;
         // A frame's first list a frame later each frame, as WebRender's compaction takes one list a
         // call round robin, so on a copy device's 16 moves a draining mask list holds no other's.
         let first = (self.frame % AtlasFormat::COUNT as u64) as usize;
@@ -161,7 +155,7 @@ impl AtlasPool {
         }
     }
 
-    /// Give `handle`'s item back.
+    /// Give `handle`'s item back; nothing where it went already.
     pub(crate) fn release(&mut self, handle: AtlasHandle) {
         self.lists[handle.format].release(handle);
     }
@@ -176,14 +170,15 @@ impl AtlasPool {
         self.lists[handle.format].stamp(handle, self.frame)
     }
 
-    /// Keep `handle`'s item from every eviction until a matching [`Self::unpin`].
-    pub(crate) fn pin(&mut self, handle: AtlasHandle) {
-        self.lists[handle.format].pin(handle);
+    /// Keep `handle`'s item from every eviction until a matching [`Self::unpin`], and say where it
+    /// sits; `None`, and no pin, once it went.
+    pub(crate) fn pin(&mut self, handle: AtlasHandle) -> Option<Placement> {
+        self.lists[handle.format].pin(handle)
     }
 
-    /// Take back one pin of `handle`'s item.
+    /// Take back one pin of `handle`'s item, which counts as drawn this frame.
     pub(crate) fn unpin(&mut self, handle: AtlasHandle) {
-        self.lists[handle.format].unpin(handle);
+        self.lists[handle.format].unpin(handle, self.frame);
     }
 
     /// The handles of `tenant`'s items evicted since its last drain, each stale now: the tenant
@@ -202,23 +197,46 @@ impl AtlasPool {
         format: AtlasFormat,
         size: UVec2,
     ) -> Result<ScratchId, AtlasError> {
-        self.lists[format].acquire_scratch(size)
+        self.lists[format].scratch_mut().acquire(size)
     }
 
-    /// Give back the texture of `format` `id` holds; it idles until it serves again or expires.
-    pub(crate) fn release_scratch(&mut self, format: AtlasFormat, id: ScratchId) {
-        self.lists[format].release_scratch(id, self.frame);
+    /// Give back the texture `id` holds; it idles until it serves again or expires.
+    pub(crate) fn release_scratch(&mut self, id: ScratchId) {
+        let frame = self.frame;
+        self.lists[id.format].scratch_mut().release(id, frame);
     }
 }
 
 #[cfg(test)]
 pub(crate) mod internals {
-    use crate::gpu::atlas::AtlasPool;
-    use crate::gpu::atlas::atlas_format::AtlasFormat;
+    use crate::gpu::atlas::atlas_format::{AtlasFormat, PerFormat};
+    use crate::gpu::atlas::page_list::{MoveBudget, PageListConfig};
     use crate::gpu::atlas::scratch_cache::ScratchId;
+    use crate::gpu::atlas::{AtlasPool, PoolConfig};
+    use crate::gpu::device::pass_traffic::PassTraffic;
     use glam::UVec2;
 
     impl AtlasPool {
+        /// The pool of a device whose largest texture edge is `device_edge` at the starting
+        /// constants, moving by copy commands.
+        pub(crate) fn of_edge(device_edge: u32) -> Self {
+            Self::new(PoolConfig::of_device(device_edge, PassTraffic::WholeTarget))
+        }
+
+        /// The pool whose lists all open at `first_edge`, double to `page_edge` and evict past
+        /// `soft_bytes`, on a device of 16384, moving by copy commands.
+        pub(crate) fn uniform(first_edge: u32, page_edge: u32, soft_bytes: u64) -> Self {
+            Self::new(PoolConfig {
+                lists: PerFormat::from_fn(|_| PageListConfig {
+                    first_edge,
+                    page_edge,
+                    soft_bytes,
+                }),
+                device_edge: 16384,
+                move_budget: MoveBudget::COPIES,
+            })
+        }
+
         /// The display frame the pool ages on.
         pub(crate) const fn frame(&self) -> u64 {
             self.frame
@@ -229,9 +247,9 @@ pub(crate) mod internals {
             self.lists[format].close_page(idx);
         }
 
-        /// The size of the texture of `format` `id` holds, `None` once released.
-        pub(crate) fn scratch_size(&self, format: AtlasFormat, id: ScratchId) -> Option<UVec2> {
-            self.lists[format].scratch_size(id)
+        /// The size of the texture `id` holds, `None` once released.
+        pub(crate) fn scratch_size(&self, id: ScratchId) -> Option<UVec2> {
+            self.lists[id.format].scratch().size(id)
         }
 
         /// Whether the lists decayed in the current display frame.

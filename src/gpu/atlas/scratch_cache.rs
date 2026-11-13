@@ -1,6 +1,7 @@
 //! [`ScratchCache`]: the textures of their own a list hands an item too large for a page.
 
 use crate::common::expiry_window::EXPIRY_FRAMES;
+use crate::gpu::atlas::atlas_format::AtlasFormat;
 use crate::gpu::atlas::error::AtlasError;
 use glam::UVec2;
 
@@ -45,19 +46,25 @@ enum ScratchState {
     Gone,
 }
 
-/// An item's texture of its own: its slot in the cache and the generation it was handed out at.
+/// An item's texture of its own: its list, its slot in the list's cache and the generation it was
+/// handed out at, as an [`AtlasHandle`](crate::gpu::atlas::atlas_handle::AtlasHandle) names an
+/// item of a page.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) struct ScratchId {
+    pub(crate) format: AtlasFormat,
     pub(crate) idx: u32,
     pub(crate) generation: u32,
 }
 
-/// Textures one item each, sized on the [`approx_side`] ladder, reused for a request they cover
-/// within twice its area (Chromium `ResourcePool`'s `kReuseThreshold`), the most recently idled
-/// first, and dropped an expiry window after they idle. The GPU half makes and drops a texture
-/// where a slot's size or state changes.
-#[derive(Debug, Default)]
+/// Textures one item each of one format, sized on the [`approx_side`] ladder, no side past the
+/// device's edge, reused for a request they cover within twice its area (Chromium
+/// `ResourcePool`'s `kReuseThreshold`), the most recently idled first, and dropped an expiry window
+/// after they idle. The GPU half makes and drops a texture where a slot's size or state changes.
+#[derive(Debug)]
 pub(crate) struct ScratchCache {
+    format: AtlasFormat,
+    /// The device's largest texture edge.
+    edge: u32,
     textures: Vec<ScratchTexture>,
 }
 
@@ -65,9 +72,19 @@ impl ScratchCache {
     /// The most a reused texture's area may pass the rounded request's, Chromium's.
     const REUSE_AREA_FACTOR: u64 = 2;
 
+    /// An empty cache of `format` on a device whose largest texture edge is `edge`.
+    pub(crate) const fn new(format: AtlasFormat, edge: u32) -> Self {
+        Self {
+            format,
+            edge,
+            textures: Vec::new(),
+        }
+    }
+
     /// A texture for an item of `size`, an idle one where one serves, else a new one on the
-    /// ladder, no side past `edge`, the device's.
-    pub(crate) fn acquire(&mut self, size: UVec2, edge: u32) -> Result<ScratchId, AtlasError> {
+    /// ladder.
+    pub(crate) fn acquire(&mut self, size: UVec2) -> Result<ScratchId, AtlasError> {
+        let edge = self.edge;
         if size.x > edge || size.y > edge {
             return Err(AtlasError::Oversized { size, edge });
         }
@@ -108,6 +125,7 @@ impl ScratchCache {
         let texture = &mut self.textures[idx];
         texture.state = ScratchState::Held;
         Ok(ScratchId {
+            format: self.format,
             idx: u32::try_from(idx).expect("scratch textures are counted in u32"),
             generation: texture.generation,
         })
@@ -115,7 +133,13 @@ impl ScratchCache {
 
     /// Give back the texture `id` holds at display frame `frame`; it idles until it serves again
     /// or expires.
+    ///
+    /// # Panics
+    ///
+    /// If `id` is another list's, or was released already: a scratch texture is never evicted, so
+    /// a stale id is its tenant's slip.
     pub(crate) fn release(&mut self, id: ScratchId, frame: u64) {
+        assert_eq!(id.format, self.format, "a scratch id of another list");
         let texture = &mut self.textures[id.idx as usize];
         assert_eq!(
             texture.generation, id.generation,
@@ -155,7 +179,7 @@ impl ScratchCache {
     }
 
     /// Each slot's texture size, by slot, `None` where it holds none: what the GPU half makes.
-    pub(crate) fn slots(&self) -> impl ExactSizeIterator<Item = Option<UVec2>> + '_ {
+    pub(crate) fn sizes(&self) -> impl ExactSizeIterator<Item = Option<UVec2>> + '_ {
         self.textures
             .iter()
             .map(|texture| (texture.state != ScratchState::Gone).then_some(texture.size))
@@ -202,9 +226,15 @@ pub(crate) mod internals {
 #[cfg(test)]
 mod tests {
     use crate::common::expiry_window::EXPIRY_FRAMES;
+    use crate::gpu::atlas::atlas_format::AtlasFormat;
     use crate::gpu::atlas::error::AtlasError;
     use crate::gpu::atlas::scratch_cache::{ScratchCache, approx_side};
     use glam::UVec2;
+
+    /// A half-float cache on a device of 16384.
+    fn cache() -> ScratchCache {
+        ScratchCache::new(AtlasFormat::Rgba16F, 16384)
+    }
 
     /// The ladder: at least 16, powers of two through 1024, then the midpoint where it holds the
     /// side: 1025 and 1536 take 1536, 1537 and 2048 take 2048, and 1936 × 1088, a full-window glass
@@ -236,18 +266,18 @@ mod tests {
     /// held texture serves no one. A released id reads as stale.
     #[test]
     fn a_request_reuses_what_covers_it_within_twice_its_area() {
-        let mut cache = ScratchCache::default();
-        let square = cache.acquire(UVec2::splat(2048), 16384).unwrap();
-        let wide = cache.acquire(UVec2::new(1937, 1100), 16384).unwrap();
+        let mut cache = cache();
+        let square = cache.acquire(UVec2::splat(2048)).unwrap();
+        let wide = cache.acquire(UVec2::new(1937, 1100)).unwrap();
         assert_eq!(cache.size(wide), Some(UVec2::new(2048, 1536)));
-        let held = cache.acquire(UVec2::new(2048, 1536), 16384).unwrap();
+        let held = cache.acquire(UVec2::new(2048, 1536)).unwrap();
         cache.release(square, 1);
         cache.release(wide, 2);
         assert_eq!(cache.size(wide), None, "a released id is stale");
-        let reused = cache.acquire(UVec2::new(1300, 900), 16384).unwrap();
+        let reused = cache.acquire(UVec2::new(1300, 900)).unwrap();
         assert_eq!(reused.idx, wide.idx, "the idle 2048 × 1536, twice the area");
         assert_eq!(cache.size(reused), Some(UVec2::new(2048, 1536)));
-        let fresh = cache.acquire(UVec2::new(1300, 900), 16384).unwrap();
+        let fresh = cache.acquire(UVec2::new(1300, 900)).unwrap();
         assert_ne!(
             fresh.idx, square.idx,
             "the idle 2048² passes twice the area"
@@ -263,15 +293,15 @@ mod tests {
     /// once and none held.
     #[test]
     fn an_idle_texture_expires_after_a_window() {
-        let mut cache = ScratchCache::default();
-        let a = cache.acquire(UVec2::splat(100), 16384).unwrap();
-        let b = cache.acquire(UVec2::splat(200), 16384).unwrap();
+        let mut cache = cache();
+        let a = cache.acquire(UVec2::splat(100)).unwrap();
+        let b = cache.acquire(UVec2::splat(200)).unwrap();
         cache.release(a, 10);
         cache.expire(10 + EXPIRY_FRAMES - 1);
         assert_eq!(cache.texels(), 128 * 128 + 256 * 256, "a frame short");
         cache.expire(10 + EXPIRY_FRAMES);
         assert_eq!(cache.texels(), 256 * 256);
-        let c = cache.acquire(UVec2::splat(30), 16384).unwrap();
+        let c = cache.acquire(UVec2::splat(30)).unwrap();
         assert_eq!(c.idx, a.idx, "the gone slot takes the new texture");
         cache.release(c, 20);
         cache.purge();
@@ -279,19 +309,35 @@ mod tests {
         assert_eq!(cache.size(b), Some(UVec2::splat(256)));
     }
 
+    #[test]
+    #[should_panic(expected = "a scratch id released twice")]
+    fn a_scratch_id_is_released_once() {
+        let mut cache = cache();
+        let id = cache.acquire(UVec2::splat(100)).unwrap();
+        cache.release(id, 1);
+        cache.release(id, 2);
+    }
+
+    #[test]
+    #[should_panic(expected = "a scratch id of another list")]
+    fn a_scratch_id_goes_back_to_its_own_list() {
+        let id = cache().acquire(UVec2::splat(100)).unwrap();
+        ScratchCache::new(AtlasFormat::R8, 16384).release(id, 1);
+    }
+
     /// No side passes the device's edge: a request wider than it is refused, and one within it
     /// whose rung passes it takes the edge itself.
     #[test]
     fn no_side_passes_the_device_edge() {
-        let mut cache = ScratchCache::default();
+        let mut cache = ScratchCache::new(AtlasFormat::Rgba16F, 4096);
         assert_eq!(
-            cache.acquire(UVec2::new(4097, 10), 4096),
+            cache.acquire(UVec2::new(4097, 10)),
             Err(AtlasError::Oversized {
                 size: UVec2::new(4097, 10),
                 edge: 4096
             })
         );
-        let id = cache.acquire(UVec2::new(3100, 10), 4096).unwrap();
+        let id = cache.acquire(UVec2::new(3100, 10)).unwrap();
         assert_eq!(cache.size(id), Some(UVec2::new(4096, 16)));
     }
 }

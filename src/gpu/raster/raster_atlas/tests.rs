@@ -2,7 +2,6 @@
 //! reaching it, its keys forgotten, and the expiry of its empty entries.
 
 use super::*;
-use crate::gpu::atlas::page_list::PageListConfig;
 use glam::{I16Vec2, IVec2};
 
 /// The atlas is generic over its key, so its tests use the cheapest one that
@@ -15,12 +14,7 @@ fn key(id: u16) -> TestKey {
 
 /// A pool whose lists hold four 32² pages each, opened at 32.
 fn pool() -> AtlasPool {
-    let config = PageListConfig {
-        first_edge: 32,
-        page_edge: 32,
-        soft_bytes: 0,
-    };
-    AtlasPool::with_configs([config; 3], 16384)
+    AtlasPool::uniform(32, 32, 0)
 }
 
 /// A raster of `content` and `size`, its bearing `(1, 2)`, its bytes zero.

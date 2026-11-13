@@ -4,7 +4,7 @@ use crate::gpu::atlas::AtlasPool;
 use crate::gpu::atlas::atlas_format::AtlasFormat;
 use crate::gpu::atlas::atlas_textures::AtlasTextures;
 use crate::gpu::atlas::page_group::PageGroup;
-use crate::gpu::atlas::page_list::{MAX_PAGES, PageListConfig};
+use crate::gpu::atlas::page_list::MAX_PAGES;
 use crate::gpu::atlas::page_slots::PageSlots;
 use crate::gpu::atlas::row_texture::RowTexture;
 use crate::gpu::atlas::tenant::Tenant;
@@ -46,19 +46,15 @@ const fn alpha(page: u8) -> u8 {
 #[test]
 fn a_quad_reads_its_page_under_every_set_of_slots() {
     let gpu = headless_test_gpu();
-    let config = PageListConfig {
-        first_edge: u32::from(SIDE),
-        page_edge: u32::from(SIDE),
-        soft_bytes: 0,
-    };
-    let mut pool = AtlasPool::with_configs([config; 3], 16384);
+    let mut pool = AtlasPool::uniform(u32::from(SIDE), u32::from(SIDE), 0);
     pool.advance_to(1);
     let mut items = |format| -> Vec<u8> {
         (0..MAX_PAGES)
             .map(|_| {
                 let handle = pool
-                    .allocate(format, Tenant::Glyphs, U16Vec2::splat(SIDE))
-                    .unwrap();
+                    .allocate(format, Tenant::Glyphs, UVec2::splat(u32::from(SIDE)))
+                    .unwrap()
+                    .handle;
                 pool.placement(handle).unwrap().page
             })
             .collect()

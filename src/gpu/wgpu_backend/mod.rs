@@ -53,11 +53,11 @@
 use crate::common::tracy;
 use crate::diagnostics::gpu_pass_stats::{BatchKind, PassCounts};
 use crate::effect::effect_store::EffectModule;
-use crate::gpu::atlas::AtlasPool;
 use crate::gpu::atlas::atlas_textures::AtlasTextures;
 use crate::gpu::atlas::page_group::PageGroup;
 use crate::gpu::atlas::page_list::MAX_PAGES;
 use crate::gpu::atlas::row_texture::RowTexture;
+use crate::gpu::atlas::{AtlasPool, PoolConfig};
 use crate::gpu::backdrop::backdrops::{BackdropFrame, Backdrops};
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::pass_traffic::PassTraffic;
@@ -377,7 +377,10 @@ impl WgpuBackend {
         let blit = BlitPipeline::new(&gpu, &texture_binding);
         let text = TextBackend::new(&gpu, resources.text.clone());
         let icon = IconBackend::new(&gpu, resources.icons.clone());
-        let atlas = AtlasPool::new(gpu.max_texture_dim().get());
+        let atlas = AtlasPool::new(PoolConfig::of_device(
+            gpu.max_texture_dim().get(),
+            gpu.pass_traffic(),
+        ));
         let raster_group = PageGroup::new(
             &gpu,
             raster.layout(),
@@ -635,7 +638,7 @@ impl WgpuBackend {
 
         // After the frame's draws, before the tenants drain, so they learn of the decay's
         // evictions this submit.
-        self.atlas.end_submit(self.atlas_textures.move_budget());
+        self.atlas.end_submit();
         let frame = self.text.end_frame(&mut self.atlas);
         self.icon.end_frame(&mut self.atlas, frame);
         self.programs.quad.end_frame(&mut self.atlas);

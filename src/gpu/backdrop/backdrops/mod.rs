@@ -17,7 +17,7 @@
 
 use crate::gpu::atlas::AtlasPool;
 use crate::gpu::atlas::atlas_format::AtlasFormat;
-use crate::gpu::atlas::atlas_handle::AtlasHandle;
+use crate::gpu::atlas::atlas_handle::{AtlasHandle, Placement};
 use crate::gpu::atlas::atlas_textures::AtlasTextures;
 use crate::gpu::atlas::scratch_cache::ScratchId;
 use crate::gpu::atlas::tenant::Tenant;
@@ -39,7 +39,7 @@ use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::material::lens_optics::SPECTRUM_SAMPLES;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::backdrop_row::{BackdropRow, BackdropSource, MaterialLook};
-use glam::{U16Vec2, UVec2, Vec2};
+use glam::{UVec2, Vec2};
 use rustc_hash::FxHashMap;
 use std::ops::Range;
 
@@ -533,7 +533,7 @@ impl Backdrops {
             let groups = resources.groups.as_ref().expect("made above");
             if groups.scratch.get(slot).is_none_or(Option::is_none) {
                 let view = textures
-                    .scratch_view(RESULTS, id.idx)
+                    .scratch_view(id)
                     .expect("a held scratch was committed");
                 let group = resources.group(gpu, &self.layout, view);
                 let scratch = &mut resources.groups.as_mut().expect("made above").scratch;
@@ -628,14 +628,17 @@ impl Backdrops {
         }
         self.drop_result(at, pool);
         let size = size.map(|edge| edge.next_multiple_of(SLOT_GRANULE));
-        let held = if pool.list(RESULTS).prefers_scratch(size) {
-            Held::Scratch(pool.acquire_scratch(RESULTS, size).ok()?)
+        let (held, placed) = if pool.list(RESULTS).prefers_scratch(size) {
+            let id = pool.acquire_scratch(RESULTS, size).ok()?;
+            (Held::Scratch(id), Placed::scratch(id))
         } else {
-            let edges = U16Vec2::new(u16::try_from(size.x).ok()?, u16::try_from(size.y).ok()?);
-            Held::Item(pool.allocate(RESULTS, Tenant::Backdrops, edges).ok()?)
+            let allocation = pool.allocate(RESULTS, Tenant::Backdrops, size).ok()?;
+            (
+                Held::Item(allocation.handle),
+                Placed::page(allocation.placement),
+            )
         };
-        let slot = Slot { held, size };
-        Some((slot, place(slot, pool).expect("a new slot is placed")))
+        Some((Slot { held, size }, placed))
     }
 
     /// Drop backdrop `at`'s cached result, giving its texels back to `pool`.
@@ -689,7 +692,7 @@ impl Backdrops {
             .encode(encoder, &self.jobs[at.jobs.clone()], |dest| match dest {
                 ResultTexture::Page(page) => pages[usize::from(page)],
                 ResultTexture::Scratch(id) => textures
-                    .scratch_view(RESULTS, id.idx)
+                    .scratch_view(id)
                     .expect("a held scratch was committed"),
             });
     }
@@ -703,33 +706,38 @@ impl Backdrops {
     }
 }
 
-/// Where `slot`'s texels lie in `pool` now, `None` once the pool evicted them.
-fn place(slot: Slot, pool: &AtlasPool) -> Option<Placed> {
-    match slot.held {
-        Held::Item(handle) => {
-            let placement = pool.placement(handle)?;
-            Some(Placed {
-                texture: ResultTexture::Page(placement.page),
-                origin: placement.origin.as_uvec2(),
-            })
+impl Placed {
+    /// Texels on a page, at `placement`.
+    fn page(placement: Placement) -> Self {
+        Self {
+            texture: ResultTexture::Page(placement.page),
+            origin: placement.origin.as_uvec2(),
         }
-        Held::Scratch(id) => Some(Placed {
+    }
+
+    /// Texels at the origin of the scratch texture `id` holds.
+    const fn scratch(id: ScratchId) -> Self {
+        Self {
             texture: ResultTexture::Scratch(id),
             origin: UVec2::ZERO,
-        }),
+        }
     }
 }
 
-/// Give `slot`'s texels back to `pool`, unless it evicted them, their handle waiting for the
-/// drain, which finds no result holding it.
+/// Where `slot`'s texels lie in `pool` now, `None` once the pool evicted them.
+fn place(slot: Slot, pool: &AtlasPool) -> Option<Placed> {
+    match slot.held {
+        Held::Item(handle) => pool.placement(handle).map(Placed::page),
+        Held::Scratch(id) => Some(Placed::scratch(id)),
+    }
+}
+
+/// Give `slot`'s texels back to `pool`; an item it evicted already is nothing to give, its handle
+/// waiting for the drain, which finds no result holding it.
 fn release(slot: Slot, pool: &mut AtlasPool) {
     match slot.held {
-        Held::Item(handle) => {
-            if pool.placement(handle).is_some() {
-                pool.release(handle);
-            }
-        }
-        Held::Scratch(id) => pool.release_scratch(RESULTS, id),
+        Held::Item(handle) => pool.release(handle),
+        Held::Scratch(id) => pool.release_scratch(id),
     }
 }
 

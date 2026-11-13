@@ -8,10 +8,9 @@
 //!
 //! A shadow whose shown corners all read tables draws through the cheaper `fs_shadow_tables` ([`ShadowEntry`]), else `fs_shadow`.
 
-use crate::gpu::atlas::LIST_CONFIGS;
 use crate::gpu::atlas::atlas_format::AtlasFormat;
 use crate::gpu::atlas::atlas_handle::Placement;
-use crate::gpu::atlas::page_list::MAX_PAGES;
+use crate::gpu::atlas::page_list::{MAX_PAGES, PageListConfig};
 use crate::gpu::pipeline::quad_pipeline::cutout_placements::CutoutPlacing;
 use crate::primitives::geometry::corners;
 use crate::primitives::geometry::rect::Rect;
@@ -662,7 +661,7 @@ impl ShadowBox {
 }
 
 const _: () = {
-    let edge = LIST_CONFIGS[AtlasFormat::R8 as usize].page_edge;
+    let edge = PageListConfig::of(AtlasFormat::R8).page_edge;
     assert!(
         edge <= 1 << CutoutPlan::COORD_BITS,
         "a mask page's origins fit a code"

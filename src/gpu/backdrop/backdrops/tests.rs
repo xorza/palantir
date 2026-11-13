@@ -3,7 +3,6 @@ use crate::display::Display;
 use crate::gpu::atlas::AtlasPool;
 use crate::gpu::atlas::atlas_format::AtlasFormat;
 use crate::gpu::atlas::atlas_textures::AtlasTextures;
-use crate::gpu::atlas::page_list::PageListConfig;
 use crate::gpu::backdrop::backdrops::{
     BackdropFrame, BackdropSlot, Backdrops, Held, Kept, RESULTS, SpectrumCell, held_clear, place,
 };
@@ -49,12 +48,7 @@ fn captured(i: u32) -> BackdropRow {
 /// A half-float list of pages that open at `first_edge` and double to `page_edge`, past a soft
 /// budget of `soft_bytes`.
 fn pool(first_edge: u32, page_edge: u32, soft_bytes: u64) -> AtlasPool {
-    let config = PageListConfig {
-        first_edge,
-        page_edge,
-        soft_bytes,
-    };
-    AtlasPool::with_configs([config; 3], 16384)
+    AtlasPool::uniform(first_edge, page_edge, soft_bytes)
 }
 
 /// Backdrops over a pool and its textures, one display frame a prepare, as the backend runs them:
@@ -153,7 +147,7 @@ impl Rig {
 fn each_window_keeps_its_own_results() {
     let mut owners = RenderOwners::default();
     let (a, b) = (owners.reserve(), owners.reserve());
-    let mut rig = Rig::new(AtlasPool::new(16384));
+    let mut rig = Rig::new(AtlasPool::of_edge(16384));
     rig.prepare(a, &[]);
     assert!(
         rig.backdrops.resources.is_none(),
@@ -193,7 +187,7 @@ fn each_window_keeps_its_own_results() {
 #[test]
 fn a_backdrop_of_the_clear_frees_its_slot() {
     let owner = RenderOwners::default().reserve();
-    let mut rig = Rig::new(AtlasPool::new(16384));
+    let mut rig = Rig::new(AtlasPool::of_edge(16384));
     rig.prepare(owner, &[captured(0)]);
     let first = rig.slot(owner, 0).unwrap();
     rig.prepare(owner, &[row(0, BackdropSource::Clear)]);
@@ -326,12 +320,12 @@ fn a_held_result_the_pool_evicted_shows_the_clear() {
 /// own on the ladder. Under the starting constants, pages of 1024: a 400 × 300 result takes page 0;
 /// a 1936 × 1088 one a scratch texture of `2048 × 1536`, as 1936 rounds to 2048 and 1088 to the
 /// midpoint 1536; once its backdrop goes, a 1900 × 1000 result, `2048 × 1024` on the ladder, reuses
-/// the idle texture within twice its area; and once that one goes, the texture frees an expiry
-/// window later.
+/// the idle texture within twice its area; and once that one goes, the texture frees at the decay
+/// an expiry window later.
 #[test]
 fn a_large_result_takes_a_scratch_texture_of_its_own() {
     let owner = RenderOwners::default().reserve();
-    let mut rig = Rig::new(AtlasPool::new(16384));
+    let mut rig = Rig::new(AtlasPool::of_edge(16384));
     let pool = &mut rig.pool;
     let backdrops = &mut rig.backdrops;
     let (small, _) = backdrops
@@ -346,7 +340,7 @@ fn a_large_result_takes_a_scratch_texture_of_its_own() {
     };
     assert_eq!(placed.texture, ResultTexture::Scratch(id));
     assert_eq!(placed.origin, UVec2::ZERO);
-    assert_eq!(pool.scratch_size(RESULTS, id), Some(UVec2::new(2048, 1536)));
+    assert_eq!(pool.scratch_size(id), Some(UVec2::new(2048, 1536)));
     backdrops.cache.insert((owner, key(1)), Kept::Slot(large));
     backdrops.drop_result((owner, key(1)), pool);
     let (again, _) = backdrops
@@ -356,15 +350,14 @@ fn a_large_result_takes_a_scratch_texture_of_its_own() {
         panic!("a large result is scratch: {again:?}");
     };
     assert_eq!(reused.idx, id.idx, "the idle texture reused");
-    assert_eq!(
-        pool.scratch_size(RESULTS, reused),
-        Some(UVec2::new(2048, 1536))
-    );
+    assert_eq!(pool.scratch_size(reused), Some(UVec2::new(2048, 1536)));
     backdrops.cache.insert((owner, key(2)), Kept::Slot(again));
     backdrops.drop_result((owner, key(2)), pool);
     pool.advance_to(EXPIRY_FRAMES - 1);
+    pool.end_submit();
     assert_eq!(pool.list(RESULTS).scratch().texels(), 2048 * 1536);
     pool.advance_to(EXPIRY_FRAMES);
+    pool.end_submit();
     assert_eq!(pool.list(RESULTS).scratch().texels(), 0);
 }
 

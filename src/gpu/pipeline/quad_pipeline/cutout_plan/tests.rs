@@ -1,6 +1,5 @@
 use crate::gpu::atlas::AtlasPool;
 use crate::gpu::atlas::atlas_handle::Placement;
-use crate::gpu::atlas::page_list::PageListConfig;
 use crate::gpu::pipeline::quad_pipeline::QuadPipeline;
 use crate::gpu::pipeline::quad_pipeline::cutout_placements::{CutoutPlacements, CutoutPlacing};
 use crate::gpu::pipeline::quad_pipeline::cutout_plan::{
@@ -82,12 +81,7 @@ fn code_at(page: u8, x: u16, y: u16, side: u32) -> u32 {
 /// A pool whose mask list holds four pages of 256², none past its soft budget, so it opens a
 /// page only once nothing on the others is evictable.
 fn small_pool() -> AtlasPool {
-    let config = PageListConfig {
-        first_edge: 256,
-        page_edge: 256,
-        soft_bytes: 0,
-    };
-    AtlasPool::with_configs([config; 3], DEVICE_EDGE)
+    AtlasPool::uniform(256, 256, 0)
 }
 
 /// One window's plan, baking, over a backend's placements and pool of its own.
@@ -146,7 +140,7 @@ fn plan_in(quads: &[ShadowInstance], viewport: UVec2) -> Planner {
 
 /// The rows `quads` planned as a full repaint of a `viewport`, with baking on.
 fn plan_rows(quads: &Soa<QuadDrawRow>, viewport: UVec2) -> Planner {
-    plan_rows_over(quads, viewport, AtlasPool::new(DEVICE_EDGE))
+    plan_rows_over(quads, viewport, AtlasPool::of_edge(DEVICE_EDGE))
 }
 
 /// [`plan_rows`] over `pool`.
@@ -463,7 +457,7 @@ fn corners_without_a_table_keep_the_shaded_cutout() {
         },
         &mut CutoutPlacing {
             placements: &mut CutoutPlacements::default(),
-            pool: &mut AtlasPool::new(DEVICE_EDGE),
+            pool: &mut AtlasPool::of_edge(DEVICE_EDGE),
         },
     );
     assert_eq!(census, Census::Cur);
@@ -522,7 +516,7 @@ fn tables_take_the_pages_until_the_pool_is_full() {
 fn a_table_keeps_its_place_across_frames_and_windows() {
     let shadow = |r: f32| drop_shadow(Size::new(400.0, 300.0), r, 16.0);
     let mut placements = CutoutPlacements::default();
-    let mut pool = AtlasPool::new(DEVICE_EDGE);
+    let mut pool = AtlasPool::of_edge(DEVICE_EDGE);
     let mut placing = CutoutPlacing {
         placements: &mut placements,
         pool: &mut pool,

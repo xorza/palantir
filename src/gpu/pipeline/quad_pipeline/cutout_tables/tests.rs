@@ -1,7 +1,6 @@
 //! The bake into a mask page against the cutout it tabulates.
 
 use super::*;
-use crate::gpu::atlas::page_list::PageListConfig;
 use crate::gpu::atlas::tenant::Tenant;
 use crate::gpu::pipeline::quad_pipeline::QuadPipeline;
 use crate::gpu::pipeline::quad_pipeline::cutout_placements::CutoutPlacing;
@@ -85,13 +84,8 @@ fn corner_cutout(q: Q, r: f64, sigma: f64, reach: f64) -> f64 {
 fn a_baked_table_holds_the_cutout_it_tabulates() {
     let gpu = headless_test_gpu();
     let shader = QuadPipeline::SHADER.module(&gpu);
-    let config = PageListConfig {
-        first_edge: 128,
-        page_edge: 128,
-        soft_bytes: 0,
-    };
-    let mut pool = AtlasPool::with_configs([config; 3], gpu.max_texture_dim().get());
-    pool.allocate(AtlasFormat::R8, Tenant::Glyphs, U16Vec2::splat(16))
+    let mut pool = AtlasPool::uniform(128, 128, 0);
+    pool.allocate(AtlasFormat::R8, Tenant::Glyphs, UVec2::splat(16))
         .unwrap();
     let mut textures = AtlasTextures::new(&gpu);
     let mut tables = CutoutTables::new(&gpu, &shader, &textures);

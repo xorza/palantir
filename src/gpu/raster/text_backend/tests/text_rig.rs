@@ -1,7 +1,7 @@
 //! A text backend on the shared test device, and the frames driving it.
 
-use crate::gpu::atlas::AtlasPool;
 use crate::gpu::atlas::atlas_textures::AtlasTextures;
+use crate::gpu::atlas::{AtlasPool, PoolConfig};
 use crate::gpu::raster::text_backend::{TextBackend, TextBatchInput};
 use crate::gpu::test_gpu::{TestGpu, headless_test_gpu};
 use crate::primitives::geometry::urect::URect;
@@ -40,7 +40,10 @@ impl TextRig {
         let test_gpu = headless_test_gpu();
         let shaper = TextShaper::new();
         let backend = TextBackend::new(&test_gpu, shaper.clone());
-        let pool = AtlasPool::new(test_gpu.max_texture_dim().get());
+        let pool = AtlasPool::new(PoolConfig::of_device(
+            test_gpu.max_texture_dim().get(),
+            test_gpu.pass_traffic(),
+        ));
         let atlas = AtlasTextures::new(&test_gpu);
         Self {
             test_gpu,
@@ -113,7 +116,7 @@ impl TextRig {
     /// One frame boundary as `WgpuBackend::submit` drives it: the pool decays, the shared text
     /// clock moves on, and the pool's display frame with it.
     pub(super) fn tick(&mut self) {
-        self.pool.end_submit(self.atlas.move_budget());
+        self.pool.end_submit();
         self.backend.tick_frame(&mut self.pool);
         self.pool.advance_to(self.pool.frame() + 1);
     }

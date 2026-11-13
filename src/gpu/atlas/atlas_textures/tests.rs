@@ -3,7 +3,8 @@
 
 use super::*;
 use crate::common::expiry_window::EXPIRY_FRAMES;
-use crate::gpu::atlas::page_list::PageListConfig;
+use crate::gpu::atlas::PoolConfig;
+use crate::gpu::atlas::page_list::{MoveBudget, PageListConfig};
 use crate::gpu::atlas::tenant::Tenant;
 use crate::gpu::test_gpu::{TestGpu, headless_test_gpu};
 use glam::U16Vec2;
@@ -11,12 +12,36 @@ use std::ptr;
 
 /// A pool whose lists open at 32 and double to 64.
 fn pool() -> AtlasPool {
-    let config = PageListConfig {
-        first_edge: 32,
-        page_edge: 64,
-        soft_bytes: 1 << 20,
-    };
-    AtlasPool::with_configs([config; 3], 16384)
+    AtlasPool::uniform(32, 64, 1 << 20)
+}
+
+/// A pool whose lists open at `first_edge`, double to `page_edge` and evict past `soft_bytes`,
+/// moving within the budget of a device whose passes move `traffic`.
+fn moving_pool(
+    first_edge: u32,
+    page_edge: u32,
+    soft_bytes: u64,
+    traffic: PassTraffic,
+) -> AtlasPool {
+    budget_pool(first_edge, page_edge, soft_bytes, MoveBudget::of(traffic))
+}
+
+/// A pool as [`moving_pool`] makes it, whose display frames move within `move_budget`.
+fn budget_pool(
+    first_edge: u32,
+    page_edge: u32,
+    soft_bytes: u64,
+    move_budget: MoveBudget,
+) -> AtlasPool {
+    AtlasPool::new(PoolConfig {
+        lists: PerFormat::from_fn(|_| PageListConfig {
+            first_edge,
+            page_edge,
+            soft_bytes,
+        }),
+        device_edge: 16384,
+        move_budget,
+    })
 }
 
 /// Commit `pool` into `textures` on an encoder of its own, submitted and waited for.
@@ -52,7 +77,7 @@ fn a_grown_page_keeps_its_texels() {
     let gpu = headless_test_gpu();
     let mut pool = pool();
     let mut textures = AtlasTextures::new(&gpu);
-    pool.allocate(AtlasFormat::R8, Tenant::Glyphs, U16Vec2::splat(16))
+    pool.allocate(AtlasFormat::R8, Tenant::Glyphs, UVec2::splat(16))
         .unwrap();
     commit(&gpu, &mut textures, &mut pool);
     assert_eq!(textures.generation(AtlasFormat::R8), 1);
@@ -65,7 +90,7 @@ fn a_grown_page_keeps_its_texels() {
         &pattern,
     );
 
-    pool.allocate(AtlasFormat::R8, Tenant::Glyphs, U16Vec2::splat(32))
+    pool.allocate(AtlasFormat::R8, Tenant::Glyphs, UVec2::splat(32))
         .unwrap();
     assert_eq!(pool.list(AtlasFormat::R8).page(0).unwrap().edge(), 64);
     commit(&gpu, &mut textures, &mut pool);
@@ -99,23 +124,19 @@ fn a_grown_page_keeps_its_texels() {
 #[test]
 fn a_move_lands_its_texels_from_the_page_it_left() {
     let gpu = headless_test_gpu();
-    for route in [MoveRoute::Copy, MoveRoute::Draw] {
-        moves_land(&gpu, route);
+    for traffic in [PassTraffic::WholeTarget, PassTraffic::Drawn] {
+        moves_land(&gpu, traffic);
     }
 }
 
 /// [`a_move_lands_its_texels_from_the_page_it_left`], moving by `route`.
-fn moves_land(gpu: &TestGpu, route: MoveRoute) {
-    let config = PageListConfig {
-        first_edge: 32,
-        page_edge: 32,
-        soft_bytes: 1 << 20,
-    };
-    let mut pool = AtlasPool::with_configs([config; 3], 16384);
-    let mut textures = AtlasTextures::with_route(gpu, route);
+fn moves_land(gpu: &TestGpu, traffic: PassTraffic) {
+    let mut pool = moving_pool(32, 32, 1 << 20, traffic);
+    let mut textures = AtlasTextures::with_traffic(gpu, traffic);
     let insert = |pool: &mut AtlasPool, format| {
-        pool.allocate(format, Tenant::Glyphs, U16Vec2::splat(16))
+        pool.allocate(format, Tenant::Glyphs, UVec2::splat(16))
             .unwrap()
+            .handle
     };
     let items = AtlasFormat::ALL.map(|format| {
         let first: Vec<_> = (0..4).map(|_| insert(&mut pool, format)).collect();
@@ -151,7 +172,7 @@ fn moves_land(gpu: &TestGpu, route: MoveRoute) {
         pool.release(first[2]);
     }
     pool.advance_to(1);
-    pool.end_submit(route.budget());
+    pool.end_submit();
     let generations = AtlasFormat::ALL.map(|format| textures.generation(format));
     commit(gpu, &mut textures, &mut pool);
     for format in AtlasFormat::ALL {
@@ -178,7 +199,7 @@ fn moves_land(gpu: &TestGpu, route: MoveRoute) {
                 assert_eq!(
                     &read[at..at + texel],
                     want,
-                    "{format:?} by {route:?}: texel ({x}, {y})"
+                    "{format:?} by {traffic:?}: texel ({x}, {y})"
                 );
             }
         }
@@ -194,17 +215,17 @@ fn moves_land(gpu: &TestGpu, route: MoveRoute) {
 #[test]
 fn a_commit_lands_its_moves_in_the_order_they_were_made() {
     let gpu = headless_test_gpu();
-    let config = PageListConfig {
-        first_edge: 32,
-        page_edge: 32,
-        soft_bytes: 1 << 20,
+    let one = MoveBudget {
+        texels: u64::MAX,
+        moves: 1,
     };
-    for route in [MoveRoute::Copy, MoveRoute::Draw] {
-        let mut pool = AtlasPool::with_configs([config; 3], 16384);
-        let mut textures = AtlasTextures::with_route(&gpu, route);
+    for traffic in [PassTraffic::WholeTarget, PassTraffic::Drawn] {
+        let mut pool = budget_pool(32, 32, 1 << 20, one);
+        let mut textures = AtlasTextures::with_traffic(&gpu, traffic);
         let insert = |pool: &mut AtlasPool| {
-            pool.allocate(AtlasFormat::R8, Tenant::Glyphs, U16Vec2::splat(8))
+            pool.allocate(AtlasFormat::R8, Tenant::Glyphs, UVec2::splat(8))
                 .unwrap()
+                .handle
         };
         let first: Vec<_> = (0..16).map(|_| insert(&mut pool)).collect();
         let x = insert(&mut pool);
@@ -234,10 +255,7 @@ fn a_commit_lands_its_moves_in_the_order_they_were_made() {
             pool.pin(handle);
         }
         pool.advance_to(1);
-        pool.end_submit(MoveBudget {
-            texels: u64::MAX,
-            moves: 1,
-        });
+        pool.end_submit();
         assert_eq!(origin(&pool, x), (0, U16Vec2::ZERO));
         pool.purge();
         assert_eq!(pool.placement(x), None, "evicted, its move waiting");
@@ -248,7 +266,13 @@ fn a_commit_lands_its_moves_in_the_order_they_were_made() {
         let read = gpu.read_texture(textures.page_texture(AtlasFormat::R8, 0).unwrap());
         for (i, &texel) in read.iter().enumerate() {
             let want = if i % 32 < 8 && i / 32 < 8 { 0x22 } else { 0x33 };
-            assert_eq!(texel, want, "by {route:?}: texel ({}, {})", i % 32, i / 32);
+            assert_eq!(
+                texel,
+                want,
+                "by {traffic:?}: texel ({}, {})",
+                i % 32,
+                i / 32
+            );
         }
     }
 }
@@ -273,18 +297,14 @@ fn page_pattern(page: u32, edge: u32) -> Vec<u8> {
 #[test]
 fn a_drain_lands_on_two_pages() {
     let gpu = headless_test_gpu();
-    for route in [MoveRoute::Copy, MoveRoute::Draw] {
-        let config = PageListConfig {
-            first_edge: 64,
-            page_edge: 64,
-            soft_bytes: 1 << 20,
-        };
-        let mut pool = AtlasPool::with_configs([config; 3], 16384);
-        let mut textures = AtlasTextures::with_route(&gpu, route);
+    for traffic in [PassTraffic::WholeTarget, PassTraffic::Drawn] {
+        let mut pool = moving_pool(64, 64, 1 << 20, traffic);
+        let mut textures = AtlasTextures::with_traffic(&gpu, traffic);
         let items: Vec<_> = (0..34)
             .map(|_| {
-                pool.allocate(AtlasFormat::R8, Tenant::Glyphs, U16Vec2::splat(16))
+                pool.allocate(AtlasFormat::R8, Tenant::Glyphs, UVec2::splat(16))
                     .unwrap()
+                    .handle
             })
             .collect();
         commit(&gpu, &mut textures, &mut pool);
@@ -303,7 +323,7 @@ fn a_drain_lands_on_two_pages() {
             pool.release(handle);
         }
         pool.advance_to(1);
-        pool.end_submit(route.budget());
+        pool.end_submit();
         let moved: Vec<_> = pool
             .list(AtlasFormat::R8)
             .moves()
@@ -332,7 +352,7 @@ fn a_drain_lands_on_two_pages() {
                     assert_eq!(
                         read[(y * 64 + x) as usize],
                         want,
-                        "{route:?}: page {page} texel ({x}, {y})"
+                        "{traffic:?}: page {page} texel ({x}, {y})"
                     );
                 }
             }
@@ -348,18 +368,14 @@ fn a_drain_lands_on_two_pages() {
 #[test]
 fn a_move_reads_its_page_though_its_slot_opened_again() {
     let gpu = headless_test_gpu();
-    for route in [MoveRoute::Copy, MoveRoute::Draw] {
-        let config = PageListConfig {
-            first_edge: 32,
-            page_edge: 32,
-            soft_bytes: 1 << 20,
-        };
-        let mut pool = AtlasPool::with_configs([config; 3], 16384);
-        let mut textures = AtlasTextures::with_route(&gpu, route);
+    for traffic in [PassTraffic::WholeTarget, PassTraffic::Drawn] {
+        let mut pool = moving_pool(32, 32, 1 << 20, traffic);
+        let mut textures = AtlasTextures::with_traffic(&gpu, traffic);
         let items: Vec<_> = (0..5)
             .map(|_| {
-                pool.allocate(AtlasFormat::R8, Tenant::Glyphs, U16Vec2::splat(16))
+                pool.allocate(AtlasFormat::R8, Tenant::Glyphs, UVec2::splat(16))
                     .unwrap()
+                    .handle
             })
             .collect();
         commit(&gpu, &mut textures, &mut pool);
@@ -376,11 +392,12 @@ fn a_move_reads_its_page_though_its_slot_opened_again() {
         pool.release(items[1]);
         pool.release(items[2]);
         pool.advance_to(1);
-        pool.end_submit(route.budget());
+        pool.end_submit();
         assert!(pool.list(AtlasFormat::R8).page(1).is_none(), "closed");
         let wide = pool
-            .allocate(AtlasFormat::R8, Tenant::Glyphs, U16Vec2::splat(32))
-            .unwrap();
+            .allocate(AtlasFormat::R8, Tenant::Glyphs, UVec2::splat(32))
+            .unwrap()
+            .handle;
         assert_eq!(pool.placement(wide).unwrap().page, 1, "opened again");
         commit(&gpu, &mut textures, &mut pool);
         let first = gpu.read_texture(textures.page_texture(AtlasFormat::R8, 0).unwrap());
@@ -391,24 +408,15 @@ fn a_move_reads_its_page_though_its_slot_opened_again() {
                 } else {
                     page_texel(0, x, y)
                 };
-                assert_eq!(first[(y * 32 + x) as usize], want, "{route:?}: ({x}, {y})");
+                assert_eq!(
+                    first[(y * 32 + x) as usize],
+                    want,
+                    "{traffic:?}: ({x}, {y})"
+                );
             }
         }
         let again = gpu.read_texture(textures.page_texture(AtlasFormat::R8, 1).unwrap());
-        assert!(again.iter().all(|&texel| texel == 0), "{route:?}: empty");
-    }
-}
-
-/// A device whose passes move their whole target moves by copy, with a frame's 16 copies; any
-/// other by draw, with no count of moves, both stopping at 512² texels.
-#[test]
-fn the_route_follows_what_a_pass_moves() {
-    assert_eq!(MoveRoute::of(PassTraffic::WholeTarget), MoveRoute::Copy);
-    assert_eq!(MoveRoute::of(PassTraffic::Drawn), MoveRoute::Draw);
-    assert_eq!(MoveRoute::Copy.budget().moves, 16);
-    assert_eq!(MoveRoute::Draw.budget().moves, u32::MAX);
-    for route in [MoveRoute::Copy, MoveRoute::Draw] {
-        assert_eq!(route.budget().texels, 512 * 512);
+        assert!(again.iter().all(|&texel| texel == 0), "{traffic:?}: empty");
     }
 }
 
@@ -421,12 +429,13 @@ fn a_page_opened_again_in_its_slot_starts_empty() {
     let gpu = headless_test_gpu();
     let mut pool = pool();
     let mut textures = AtlasTextures::new(&gpu);
-    let side = U16Vec2::splat(64);
-    pool.allocate(AtlasFormat::R8, Tenant::Glyphs, U16Vec2::splat(40))
+    let side = UVec2::splat(64);
+    pool.allocate(AtlasFormat::R8, Tenant::Glyphs, UVec2::splat(40))
         .unwrap();
     let wide = pool
         .allocate(AtlasFormat::R8, Tenant::Glyphs, side)
-        .unwrap();
+        .unwrap()
+        .handle;
     assert_eq!(pool.placement(wide).unwrap().page, 1);
     commit(&gpu, &mut textures, &mut pool);
     fill(
@@ -451,7 +460,8 @@ fn a_page_opened_again_in_its_slot_starts_empty() {
 
     let again = pool
         .allocate(AtlasFormat::R8, Tenant::Glyphs, side)
-        .unwrap();
+        .unwrap()
+        .handle;
     assert_eq!(pool.placement(again).unwrap().page, 1);
     commit(&gpu, &mut textures, &mut pool);
     let read = gpu.read_texture(textures.page_texture(AtlasFormat::R8, 1).unwrap());
@@ -473,10 +483,10 @@ fn a_scratch_texture_follows_its_slot() {
         .acquire_scratch(AtlasFormat::R8, UVec2::splat(100))
         .unwrap();
     commit(&gpu, &mut textures, &mut pool);
-    assert!(textures.scratch_view(AtlasFormat::R8, id.idx).is_some());
+    assert!(textures.scratch_view(id).is_some());
     assert_eq!(textures.bytes(AtlasFormat::R8), 128 * 128);
     assert_eq!(textures.generation(AtlasFormat::R8), 1);
-    pool.release_scratch(AtlasFormat::R8, id);
+    pool.release_scratch(id);
     commit(&gpu, &mut textures, &mut pool);
     assert_eq!(
         textures.generation(AtlasFormat::R8),
@@ -484,8 +494,9 @@ fn a_scratch_texture_follows_its_slot() {
         "an idle texture stays"
     );
     pool.advance_to(EXPIRY_FRAMES);
+    pool.end_submit();
     commit(&gpu, &mut textures, &mut pool);
-    assert!(textures.scratch_view(AtlasFormat::R8, id.idx).is_none());
+    assert!(textures.scratch_view(id).is_none());
     assert_eq!(textures.bytes(AtlasFormat::R8), 0);
     assert_eq!(textures.generation(AtlasFormat::R8), 2);
 }
@@ -497,9 +508,9 @@ fn new_textures_take_every_open_page_at_the_first_commit() {
     let gpu = headless_test_gpu();
     let mut pool = pool();
     for format in AtlasFormat::ALL {
-        pool.allocate(format, Tenant::Glyphs, U16Vec2::splat(40))
+        pool.allocate(format, Tenant::Glyphs, UVec2::splat(40))
             .unwrap();
-        pool.allocate(format, Tenant::Glyphs, U16Vec2::splat(64))
+        pool.allocate(format, Tenant::Glyphs, UVec2::splat(64))
             .unwrap();
     }
     let mut textures = AtlasTextures::new(&gpu);

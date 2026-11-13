@@ -3,11 +3,11 @@
 
 use crate::gpu::atlas::AtlasPool;
 use crate::gpu::atlas::atlas_format::AtlasFormat;
-use crate::gpu::atlas::atlas_handle::AtlasHandle;
+use crate::gpu::atlas::atlas_handle::{Allocation, AtlasHandle};
 use crate::gpu::atlas::error::AtlasError;
 use crate::gpu::atlas::tenant::Tenant;
 use crate::gpu::pipeline::quad_pipeline::cutout_plan::{BakeTable, CutoutKey, CutoutPlan};
-use glam::U16Vec2;
+use glam::UVec2;
 use rustc_hash::FxHashMap;
 
 /// The table each cutout key holds in the pool's mask pages, which the backend lends each
@@ -49,27 +49,26 @@ impl CutoutPlacing<'_> {
     pub(crate) fn acquire(&mut self, key: CutoutKey, side: u32) -> Option<u32> {
         let placements = &mut *self.placements;
         if let Some(placed) = placements.keys.get(&key) {
-            if let Some(placement) = self.pool.placement(placed.handle) {
-                self.pool.pin(placed.handle);
+            if let Some(placement) = self.pool.pin(placed.handle) {
                 return Some(CutoutPlan::code(placement, side));
             }
             // Evicted, its handle waiting in the queue, which the drain passes over.
             placements.by_handle.remove(&placed.handle);
             placements.keys.remove(&key);
         }
-        let edge = u16::try_from(side).expect("a table's side is at most a page's");
-        let handle =
+        let Allocation { handle, placement } =
             match self
                 .pool
-                .allocate(AtlasFormat::R8, Tenant::CutoutTables, U16Vec2::splat(edge))
+                .allocate(AtlasFormat::R8, Tenant::CutoutTables, UVec2::splat(side))
             {
-                Ok(handle) => handle,
+                Ok(allocation) => allocation,
                 Err(AtlasError::Full) => return None,
                 Err(oversized @ AtlasError::Oversized { .. }) => {
                     unreachable!("a table fits a mask page by the plan's bound: {oversized}")
                 }
             };
-        self.pool.pin(handle);
+        let pinned = self.pool.pin(handle);
+        debug_assert_eq!(pinned, Some(placement), "a new table is placed");
         placements.keys.insert(
             key,
             PlacedTable {
@@ -79,7 +78,7 @@ impl CutoutPlacing<'_> {
             },
         );
         placements.by_handle.insert(handle, key);
-        Some(self.code(key))
+        Some(CutoutPlan::code(placement, side))
     }
 
     /// The [`CutoutPlan::code`] of `key`, which a plan holds a use of.
@@ -92,13 +91,10 @@ impl CutoutPlacing<'_> {
         CutoutPlan::code(placement, placed.side)
     }
 
-    /// Give back one use of `key`, which [`Self::acquire`] placed, and stamp it as drawn now, so
-    /// the clock takes the tables let go longest ago first.
+    /// Give back one use of `key`, which [`Self::acquire`] placed; the unpin stamps it as drawn
+    /// now, so the clock takes the tables let go longest ago first.
     pub(crate) fn release(&mut self, key: CutoutKey) {
-        let handle = self.placements.keys[&key].handle;
-        self.pool.unpin(handle);
-        let stamped = self.pool.stamp(handle);
-        debug_assert!(stamped.is_some(), "a table pinned until now is placed");
+        self.pool.unpin(self.placements.keys[&key].handle);
     }
 }
 
@@ -178,11 +174,10 @@ mod tests {
     use crate::gpu::atlas::AtlasPool;
     use crate::gpu::atlas::atlas_format::AtlasFormat;
     use crate::gpu::atlas::atlas_handle::Placement;
-    use crate::gpu::atlas::page_list::PageListConfig;
     use crate::gpu::atlas::tenant::Tenant;
     use crate::gpu::pipeline::quad_pipeline::cutout_placements::{CutoutPlacements, CutoutPlacing};
     use crate::gpu::pipeline::quad_pipeline::cutout_plan::{BakeTable, CutoutKey, CutoutPlan};
-    use glam::U16Vec2;
+    use glam::{U16Vec2, UVec2};
 
     fn key(r: f32) -> CutoutKey {
         CutoutKey::new(r, 2.0)
@@ -190,12 +185,7 @@ mod tests {
 
     /// A pool whose mask list holds one 64² page and evicts past nothing.
     fn pool() -> AtlasPool {
-        let config = PageListConfig {
-            first_edge: 64,
-            page_edge: 64,
-            soft_bytes: 0,
-        };
-        AtlasPool::with_configs([config; 3], 16384)
+        AtlasPool::uniform(64, 64, 0)
     }
 
     /// The code of a table of `side` at `(x, y)` of page 0.
@@ -242,11 +232,12 @@ mod tests {
 
         pool.advance_to(2);
         let glyph = pool
-            .allocate(AtlasFormat::R8, Tenant::Glyphs, U16Vec2::new(64, 32))
-            .unwrap();
+            .allocate(AtlasFormat::R8, Tenant::Glyphs, UVec2::new(64, 32))
+            .unwrap()
+            .handle;
         assert_eq!(pool.placement(glyph).unwrap().origin, U16Vec2::new(0, 32));
         assert!(
-            pool.allocate(AtlasFormat::R8, Tenant::Glyphs, U16Vec2::splat(32))
+            pool.allocate(AtlasFormat::R8, Tenant::Glyphs, UVec2::splat(32))
                 .is_ok(),
             "b's texels"
         );
@@ -275,8 +266,9 @@ mod tests {
         placing.release(key(1.0));
         pool.advance_to(2);
         let glyph = pool
-            .allocate(AtlasFormat::R8, Tenant::Glyphs, U16Vec2::splat(64))
-            .unwrap();
+            .allocate(AtlasFormat::R8, Tenant::Glyphs, UVec2::splat(64))
+            .unwrap()
+            .handle;
         pool.release(glyph);
         let mut placing = CutoutPlacing {
             placements: &mut placements,

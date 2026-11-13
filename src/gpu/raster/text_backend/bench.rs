@@ -12,12 +12,12 @@
 use crate::bench::backends::{Backend, Backends};
 use crate::bench::kind::{Kind, Scale};
 use crate::common::counters::CounterSet;
-use crate::gpu::atlas::atlas_format::AtlasFormat;
+use crate::gpu::atlas::atlas_format::{AtlasFormat, PerFormat};
 use crate::gpu::atlas::atlas_textures::AtlasTextures;
 use crate::gpu::atlas::page_group::PageGroup;
-use crate::gpu::atlas::page_list::PageListConfig;
+use crate::gpu::atlas::page_list::{MoveBudget, PageListConfig};
 use crate::gpu::atlas::row_texture::RowTexture;
-use crate::gpu::atlas::{AtlasPool, LIST_CONFIGS};
+use crate::gpu::atlas::{AtlasPool, PoolConfig};
 use crate::gpu::bench_gpu::{BenchGpu, TARGET_FORMAT, Timing};
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::pipeline::atlas_binding::AtlasSlots;
@@ -173,10 +173,14 @@ fn distinct_runs(store: &mut RecordStore, shaper: &TextShaper) -> Vec<TextDrawRo
 /// glyphs fill past it within [`CHURN_SCALE_CYCLE`] rungs and the pool evicts. At the starting
 /// 8 MiB, or the glyph atlas's own 4 MiB before the pool, the whole set fits one page under the
 /// budget, which ages nothing out, and no measured frame evicts.
-const fn bench_configs() -> [PageListConfig; 3] {
-    let mut configs = LIST_CONFIGS;
-    configs[AtlasFormat::R8 as usize].soft_bytes = 1 << 20;
-    configs
+fn bench_configs() -> PerFormat<PageListConfig> {
+    PerFormat::from_fn(|format| match format {
+        AtlasFormat::R8 => PageListConfig {
+            soft_bytes: 1 << 20,
+            ..PageListConfig::of(format)
+        },
+        AtlasFormat::Rgba8 | AtlasFormat::Rgba16F => PageListConfig::of(format),
+    })
 }
 
 /// Runs drawn at one raster scale, as one text batch.
@@ -228,7 +232,11 @@ impl Fixture {
             backend: TextBackend::new(&g.gpu, shaper),
             program,
             pipelines: RasterVariants::NONE,
-            pool: AtlasPool::with_configs(bench_configs(), g.gpu.max_texture_dim().get()),
+            pool: AtlasPool::new(PoolConfig {
+                lists: bench_configs(),
+                device_edge: g.gpu.max_texture_dim().get(),
+                move_budget: MoveBudget::of(g.gpu.pass_traffic()),
+            }),
             atlas,
             group,
             display_frame: 0,
@@ -293,7 +301,7 @@ impl Fixture {
         self.gpu.queue.submit([encoder.finish()]);
         self.belt.recall();
         self.gpu.wait();
-        self.pool.end_submit(self.atlas.move_budget());
+        self.pool.end_submit();
         self.backend.tick_frame(&mut self.pool);
     }
 

@@ -5,11 +5,12 @@ use crate::common::eviction_clock::{ClockSweep, Verdict};
 use crate::common::expiry_window::EXPIRY_FRAMES;
 use crate::gpu::atlas::Evictions;
 use crate::gpu::atlas::atlas_format::AtlasFormat;
-use crate::gpu::atlas::atlas_handle::{AtlasHandle, Placement};
+use crate::gpu::atlas::atlas_handle::{Allocation, AtlasHandle, Placement};
 use crate::gpu::atlas::error::AtlasError;
 use crate::gpu::atlas::page_slots::PageSlots;
-use crate::gpu::atlas::scratch_cache::{ScratchCache, ScratchId};
+use crate::gpu::atlas::scratch_cache::ScratchCache;
 use crate::gpu::atlas::tenant::Tenant;
+use crate::gpu::device::pass_traffic::PassTraffic;
 use crate::gpu::resource::shelf_packer::ShelfPacker;
 use glam::{U16Vec2, UVec2};
 
@@ -25,6 +26,31 @@ pub(crate) struct PageListConfig {
     pub(crate) page_edge: u32,
     /// The bytes of pages and scratch past which the list evicts before it grows.
     pub(crate) soft_bytes: u64,
+}
+
+impl PageListConfig {
+    /// `format`'s starting constants: soft budgets the sum of the budgets the tenants held before
+    /// the pool, page edges whose four pages are the cap one tenant held, until the bench hosts'
+    /// memory study tunes them (`.notes/research/2026-11-12-atlas-pool-measurements.md`).
+    pub(crate) const fn of(format: AtlasFormat) -> Self {
+        match format {
+            AtlasFormat::R8 => Self {
+                first_edge: 256,
+                page_edge: 2048,
+                soft_bytes: 8 << 20,
+            },
+            AtlasFormat::Rgba8 => Self {
+                first_edge: 256,
+                page_edge: 1024,
+                soft_bytes: 8 << 20,
+            },
+            AtlasFormat::Rgba16F => Self {
+                first_edge: 256,
+                page_edge: 1024,
+                soft_bytes: 32 << 20,
+            },
+        }
+    }
 }
 
 /// A drain under way, one a list at most: the page it empties, which takes no allocation and no
@@ -84,6 +110,16 @@ impl MoveBudget {
         texels: 512 * 512,
         moves: u32::MAX,
     };
+
+    /// A display frame's on a device whose passes move `traffic`: by copy commands where a pass
+    /// moves its whole target, as a draw onto a page would load and store all of it, by draw
+    /// elsewhere (`src/gpu/AGENTS.md`, Atlases).
+    pub(crate) const fn of(traffic: PassTraffic) -> Self {
+        match traffic {
+            PassTraffic::WholeTarget => Self::COPIES,
+            PassTraffic::Drawn => Self::DRAWN,
+        }
+    }
 
     /// Whether the frame's moves are spent: no move left, or the texels taken.
     const fn is_spent(&self) -> bool {
@@ -269,18 +305,17 @@ pub(crate) struct PageList {
     /// Where the clock resumes.
     hand: u32,
     /// The display frame a whole turn of the clock found nothing evictable in: every item stays
-    /// exempt for the rest of that frame, so no insert walks the slab again.
+    /// exempt for the rest of that frame, as within a frame no item turns evictable, so no insert
+    /// walks the slab again.
     dry_frame: Option<u64>,
     /// [`Self::evict_shelf`]'s tally, every page that holds the item one after another, kept so a
     /// starving insert allocates nothing.
     shelf_uses: Vec<ShelfUse>,
     /// The last item [`Self::evict_shelf`] found no shelf for. Cleared wherever a shelf can turn
-    /// evictable: an item freed, which can empty a page's bottom shelf or a kept item's shelf; an
-    /// unpin; a move; a page grown or opened.
+    /// evictable: an item freed, which can empty a page's bottom shelf or a kept item's shelf; a
+    /// move; a page grown or opened.
     shelf_dry: Option<ShelfDry>,
     scratch: ScratchCache,
-    /// The device's largest texture edge, which no scratch texture passes.
-    device_edge: u32,
     /// Where the age-out resumes.
     age_hand: u32,
     /// The display frame since which the list's one page has had a smaller page to shrink to, or
@@ -349,8 +384,7 @@ impl PageList {
             dry_frame: None,
             shelf_uses: Vec::new(),
             shelf_dry: None,
-            scratch: ScratchCache::default(),
-            device_edge,
+            scratch: ScratchCache::new(format, device_edge),
             age_hand: 0,
             sparse_since: None,
             draining: None,
@@ -417,18 +451,17 @@ impl PageList {
     pub(crate) fn allocate(
         &mut self,
         tenant: Tenant,
-        size: U16Vec2,
+        size: UVec2,
         frame: u64,
         evictions: &mut Evictions,
-    ) -> Result<AtlasHandle, AtlasError> {
+    ) -> Result<Allocation, AtlasError> {
         let edge = self.config.page_edge;
-        if u32::from(size.max_element()) > edge {
-            return Err(AtlasError::Oversized {
-                size: size.as_uvec2(),
-                edge,
-            });
+        if size.max_element() > edge {
+            return Err(AtlasError::Oversized { size, edge });
         }
         assert!(size.x > 0 && size.y > 0, "an item holds a texel");
+        // The page edge holds to what a packer counts (`Self::new`).
+        let size = size.as_u16vec2();
         let placement = loop {
             if let Some(placement) = self.place(size) {
                 break placement;
@@ -448,7 +481,10 @@ impl PageList {
             }
             return Err(AtlasError::Full);
         };
-        Ok(self.store(tenant, placement, frame))
+        Ok(Allocation {
+            handle: self.store(tenant, placement, frame),
+            placement,
+        })
     }
 
     /// The rectangle of the first page with room for `size` that is not draining.
@@ -691,64 +727,80 @@ impl PageList {
             .push(u32::try_from(idx).expect("a slab counts its slots in u32"));
     }
 
-    /// The slot `handle` names, where it still holds the item.
-    fn live(&self, handle: AtlasHandle) -> Option<usize> {
+    /// The slot `handle` names, where it still holds the item: its generation alone tells, as a
+    /// slot freed moves it and a slot filled keeps it.
+    fn live_idx(&self, handle: AtlasHandle) -> Option<usize> {
         debug_assert_eq!(handle.format, self.format, "a handle of another list");
         let idx = handle.idx as usize;
-        let entry = self.entries.get(idx)?;
-        (entry.generation == handle.generation && entry.placement.is_some()).then_some(idx)
+        let entry = self
+            .entries
+            .get(idx)
+            .filter(|entry| entry.generation == handle.generation)?;
+        debug_assert!(entry.placement.is_some(), "a live slot holds its item");
+        Some(idx)
+    }
+
+    /// The entry of [`Self::live_idx`].
+    fn live(&self, handle: AtlasHandle) -> Option<&Entry> {
+        self.live_idx(handle).map(|idx| &self.entries[idx])
+    }
+
+    /// The entry of [`Self::live_idx`], to change.
+    fn live_mut(&mut self, handle: AtlasHandle) -> Option<&mut Entry> {
+        let idx = self.live_idx(handle)?;
+        Some(&mut self.entries[idx])
     }
 
     /// Where `handle`'s item sits, `None` once it went.
     pub(crate) fn placement(&self, handle: AtlasHandle) -> Option<Placement> {
-        let idx = self.live(handle)?;
-        self.entries[idx].placement
+        self.live(handle)?.placement
     }
 
     /// Mark `handle`'s item drawn at display frame `frame`, so no eviction takes it this frame or
     /// the next, and say where it sits; `None` once it went.
     pub(crate) fn stamp(&mut self, handle: AtlasHandle, frame: u64) -> Option<Placement> {
-        let idx = self.live(handle)?;
-        let entry = &mut self.entries[idx];
+        let entry = self.live_mut(handle)?;
         debug_assert!(entry.last_use <= frame, "the display frames ran backwards");
         entry.last_use = frame;
         entry.placement
     }
 
-    /// Give `handle`'s item back.
+    /// Give `handle`'s item back; nothing where it went already, as an eviction may take an item
+    /// any frame before its tenant drains its queue, and the generation keeps a stale handle from
+    /// freeing another item.
     ///
     /// # Panics
     ///
-    /// If the item went already, or a pin holds it.
+    /// If a pin holds the item.
     pub(crate) fn release(&mut self, handle: AtlasHandle) {
-        let idx = self.live(handle).expect("a released item is held");
-        assert_eq!(self.entries[idx].pins, 0, "a pinned item released");
-        self.free_slot(idx);
+        let Some(entry) = self.live(handle) else {
+            return;
+        };
+        assert_eq!(entry.pins, 0, "a pinned item released");
+        self.free_slot(handle.idx as usize);
     }
 
-    /// Keep `handle`'s item from every eviction until a matching [`Self::unpin`].
+    /// Keep `handle`'s item from every eviction until a matching [`Self::unpin`], and say where it
+    /// sits; `None`, and no pin, once it went.
+    pub(crate) fn pin(&mut self, handle: AtlasHandle) -> Option<Placement> {
+        let entry = self.live_mut(handle)?;
+        entry.pins += 1;
+        entry.placement
+    }
+
+    /// Take back one pin of `handle`'s item, which counts as drawn at display frame `frame`, so the
+    /// clock takes the items let go longest ago first. As a stamp, it leaves the latches: the item
+    /// is not evictable within the grace, so nothing turns evictable within a frame.
     ///
     /// # Panics
     ///
-    /// If the item went.
-    pub(crate) fn pin(&mut self, handle: AtlasHandle) {
-        let idx = self.live(handle).expect("a pinned item is held");
-        self.entries[idx].pins += 1;
-    }
-
-    /// Take back one pin of `handle`'s item; it may be evictable at once, so the dry latch opens:
-    /// within a frame nothing else makes an item evictable.
-    ///
-    /// # Panics
-    ///
-    /// If the item went or holds no pin.
-    pub(crate) fn unpin(&mut self, handle: AtlasHandle) {
-        let idx = self.live(handle).expect("an unpinned item is held");
-        let pins = &mut self.entries[idx].pins;
-        assert!(*pins > 0, "an item unpinned more than pinned");
-        *pins -= 1;
-        self.dry_frame = None;
-        self.shelf_dry = None;
+    /// If the item went or holds no pin: a pinned item cannot go.
+    pub(crate) fn unpin(&mut self, handle: AtlasHandle, frame: u64) {
+        let entry = self.live_mut(handle).expect("an unpinned item is held");
+        assert!(entry.pins > 0, "an item unpinned more than pinned");
+        entry.pins -= 1;
+        debug_assert!(entry.last_use <= frame, "the display frames ran backwards");
+        entry.last_use = frame;
     }
 
     /// Close page `idx`, which holds no item and is not draining, so its slot takes the next page
@@ -777,33 +829,26 @@ impl PageList {
         self.moves.clear();
     }
 
+    /// The textures of their own the list hands items too large for a page.
     pub(crate) const fn scratch(&self) -> &ScratchCache {
         &self.scratch
     }
 
-    /// A texture of its own for an item of `size`.
-    pub(crate) fn acquire_scratch(&mut self, size: UVec2) -> Result<ScratchId, AtlasError> {
-        self.scratch.acquire(size, self.device_edge)
-    }
-
-    /// Give back the texture `id` holds at display frame `frame`.
-    pub(crate) fn release_scratch(&mut self, id: ScratchId, frame: u64) {
-        self.scratch.release(id, frame);
-    }
-
-    /// Drop the scratch textures idle for an expiry window at display frame `frame`.
-    pub(crate) fn expire(&mut self, frame: u64) {
-        self.scratch.expire(frame);
+    /// [`Self::scratch`], to acquire from and release to.
+    pub(crate) const fn scratch_mut(&mut self) -> &mut ScratchCache {
+        &mut self.scratch
     }
 
     /// Return what the list holds past its need, once a display frame, at display frame `frame`
-    /// (`src/gpu/AGENTS.md`, Atlases): age out what idled past the age the list's pressure sets
-    /// into `evictions`; with one page that had a smaller one to shrink to, or none to close to,
-    /// for an expiry window, shrink or close it; with several, drain the emptiest whose items fit
-    /// the others'; move a drain's items within `budget`, for the GPU half to take
-    /// ([`Self::moves`]); and close the page it emptied. No drain is planned while moves wait for
-    /// the commit, so no page a move lands on drains before its texture takes the move.
+    /// (`src/gpu/AGENTS.md`, Atlases): drop the scratch textures idle an expiry window; age out
+    /// what idled past the age the list's pressure sets into `evictions`; with one page that had a
+    /// smaller one to shrink to, or none to close to, for an expiry window, shrink or close it;
+    /// with several, drain the emptiest whose items fit the others'; move a drain's items within
+    /// `budget`, for the GPU half to take ([`Self::moves`]); and close the page it emptied. No
+    /// drain is planned while moves wait for the commit, so no page a move lands on drains before
+    /// its texture takes the move.
     pub(crate) fn decay(&mut self, frame: u64, budget: &mut MoveBudget, evictions: &mut Evictions) {
+        self.scratch.expire(frame);
         self.age_out(frame, evictions);
         if self.draining.is_none() && self.moves.is_empty() {
             match self.only_page().map(|idx| (idx, self.shrink_target(idx))) {
@@ -1101,10 +1146,6 @@ pub(crate) mod internals {
     use crate::gpu::atlas::page_list::PageList;
     #[cfg(test)]
     use crate::gpu::atlas::page_list::PageListConfig;
-    #[cfg(test)]
-    use crate::gpu::atlas::scratch_cache::ScratchId;
-    #[cfg(test)]
-    use glam::UVec2;
 
     impl Page {
         /// The texels its items fill.
@@ -1124,19 +1165,14 @@ pub(crate) mod internals {
             self.draining.map(|drain| usize::from(drain.page))
         }
 
-        /// The size of the texture `id` holds, `None` once released.
-        pub(crate) fn scratch_size(&self, id: ScratchId) -> Option<UVec2> {
-            self.scratch.size(id)
-        }
-
         /// The display frame `handle`'s item was last drawn in, `None` once it went.
         pub(crate) fn last_use(&self, handle: AtlasHandle) -> Option<u64> {
-            self.live(handle).map(|idx| self.entries[idx].last_use)
+            self.live(handle).map(|entry| entry.last_use)
         }
 
         /// The pins on `handle`'s item, `None` once it went.
         pub(crate) fn pins(&self, handle: AtlasHandle) -> Option<u32> {
-            self.live(handle).map(|idx| self.entries[idx].pins)
+            self.live(handle).map(|entry| entry.pins)
         }
     }
 }

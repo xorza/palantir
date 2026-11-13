@@ -265,8 +265,8 @@ impl PagePair {
                         format: self.format,
                         source: &self.source_view,
                         dest: &self.dest_view,
-                        rects: moves,
                     },
+                    moves.iter().copied(),
                 );
             }
         }

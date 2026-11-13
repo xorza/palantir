@@ -7,7 +7,7 @@ use crate::gpu::atlas::atlas_handle::{AtlasHandle, Placement};
 use crate::gpu::atlas::page_list::{DrainCount, Move, MoveBudget, PageList};
 use crate::gpu::atlas::page_slots::PageSlots;
 use crate::gpu::atlas::tenant::Tenant;
-use glam::U16Vec2;
+use glam::{U16Vec2, UVec2};
 
 /// A frame's budget past anything these lists move.
 const ROOMY: MoveBudget = MoveBudget {
@@ -16,12 +16,13 @@ const ROOMY: MoveBudget = MoveBudget {
 };
 
 /// `n` items of `side`² for glyphs, at frame 0.
-fn insert(list: &mut PageList, n: usize, side: u16) -> Vec<AtlasHandle> {
+fn insert(list: &mut PageList, n: usize, side: u32) -> Vec<AtlasHandle> {
     let mut evictions = Evictions::default();
     (0..n)
         .map(|_| {
             list.allocate(Tenant::Glyphs, square(side), 0, &mut evictions)
                 .unwrap()
+                .handle
         })
         .collect()
 }
@@ -75,7 +76,7 @@ fn the_age_out_follows_the_pressure() {
     assert!(list.page(1).is_none(), "the emptied page closed");
     assert_eq!(evicted(&mut list, 102), 0);
     assert!(list.page(0).is_none(), "the first page drained");
-    assert_eq!(list.pages.iter().flatten().count(), 1, "one page left");
+    assert_eq!(list.only_page(), Some(2), "one page left");
     assert_eq!(list.live_page_bytes(), 8 * 8 * 8);
     assert_eq!(evicted(&mut list, 10_000), 0);
     assert!(list.placement(items[0]).is_some(), "pinned");
@@ -103,7 +104,7 @@ fn a_list_on_one_page_under_its_budget_ages_nothing_out() {
     assert_eq!(decay(&mut list, 10_000, ROOMY).evicted.len(), 0);
     let _ = insert(&mut list, 1, 16);
     assert_eq!(list.page(0).unwrap().edge(), 64, "grown in place");
-    assert_eq!(list.pages.iter().flatten().count(), 1);
+    assert_eq!(list.only_page(), Some(0));
     assert_eq!(decay(&mut list, 20_000, ROOMY).evicted.len(), 0);
 
     let mut at_budget = super::list(32, 64, 1024);
@@ -271,8 +272,9 @@ fn a_drain_that_finds_no_room_stalls_until_its_count_moves() {
     let first = insert(&mut list, 4, 32);
     let mut evictions = Evictions::default();
     let thin = list
-        .allocate(Tenant::Glyphs, U16Vec2::new(8, 48), 0, &mut evictions)
-        .unwrap();
+        .allocate(Tenant::Glyphs, UVec2::new(8, 48), 0, &mut evictions)
+        .unwrap()
+        .handle;
     assert_eq!(at(&list, thin).0, 1);
     for &handle in &first[1..] {
         list.release(handle);
@@ -355,9 +357,10 @@ fn no_drain_starts_while_moves_wait_for_the_commit() {
 #[test]
 fn a_shrink_opens_the_smallest_page_its_items_pack_into() {
     let mut evictions = Evictions::default();
-    let mut insert = |list: &mut PageList, w: u16, h: u16| {
-        list.allocate(Tenant::Glyphs, U16Vec2::new(w, h), 0, &mut evictions)
+    let mut insert = |list: &mut PageList, w: u32, h: u32| {
+        list.allocate(Tenant::Glyphs, UVec2::new(w, h), 0, &mut evictions)
             .unwrap()
+            .handle
     };
     let mut list = list(64, 512, 1 << 30);
     let filler = insert(&mut list, 400, 400);

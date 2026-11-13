@@ -12,12 +12,13 @@ pub(crate) mod counters;
 pub(crate) mod packed_metadata;
 
 use crate::common::expiry_wheel::ExpiryWheel;
+use crate::gpu::atlas::AtlasPool;
 use crate::gpu::atlas::atlas_format::AtlasFormat;
-use crate::gpu::atlas::atlas_handle::AtlasHandle;
+use crate::gpu::atlas::atlas_handle::{Allocation, AtlasHandle};
 use crate::gpu::atlas::atlas_textures::AtlasTextures;
 use crate::gpu::atlas::error::AtlasError;
+use crate::gpu::atlas::page_list::PageListConfig;
 use crate::gpu::atlas::tenant::Tenant;
-use crate::gpu::atlas::{AtlasPool, LIST_CONFIGS};
 use crate::gpu::debug_marker;
 use crate::gpu::pipeline::raster_pipeline::raster_quad::U_BITS;
 use crate::gpu::raster::raster_atlas::atlas_slot::{
@@ -56,8 +57,8 @@ const UNALLOCATED_KEEP_FRAMES: u64 = 120;
 // A quad packs a raster's origin in `U_BITS` a coordinate, so no page of a raster list passes it.
 const _: () = {
     let edge = 1 << U_BITS;
-    assert!(LIST_CONFIGS[AtlasFormat::R8 as usize].page_edge <= edge);
-    assert!(LIST_CONFIGS[AtlasFormat::Rgba8 as usize].page_edge <= edge);
+    assert!(PageListConfig::of(AtlasFormat::R8).page_edge <= edge);
+    assert!(PageListConfig::of(AtlasFormat::Rgba8).page_edge <= edge);
 };
 
 /// The pool's list a raster of `content` lives in. Here rather than on [`ContentType`]
@@ -177,22 +178,22 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
             metadata, content, ..
         } = raster;
         let format = format_of(content);
-        let handle = match pool.allocate(format, self.tenant, metadata.size) {
-            Ok(handle) => handle,
-            Err(AtlasError::Oversized { size, edge }) => {
-                self.counters.oversized.bump();
-                tracing::warn!(
-                    ?key,
-                    width = size.x,
-                    height = size.y,
-                    edge,
-                    "skipping raster past the atlas page edge",
-                );
-                return Some(self.insert_unallocated(key));
-            }
-            Err(AtlasError::Full) => return None,
-        };
-        let placement = pool.placement(handle).expect("a new raster is live");
+        let Allocation { handle, placement } =
+            match pool.allocate(format, self.tenant, metadata.size.as_uvec2()) {
+                Ok(allocation) => allocation,
+                Err(AtlasError::Oversized { size, edge }) => {
+                    self.counters.oversized.bump();
+                    tracing::warn!(
+                        ?key,
+                        width = size.x,
+                        height = size.y,
+                        edge,
+                        "skipping raster past the atlas page edge",
+                    );
+                    return Some(self.insert_unallocated(key));
+                }
+                Err(AtlasError::Full) => return None,
+            };
         self.enqueue_upload(format, placement.page, placement.origin, raster);
         let idx = self.store(
             key,
@@ -349,10 +350,9 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
             }
             if let Some(raster) = slots[idx as usize].raster() {
                 by_handle.remove(&raster.handle);
-                // Evicted already, its handle waiting in the queue, where the drain passes it.
-                if pool.placement(raster.handle).is_some() {
-                    pool.release(raster.handle);
-                }
+                // Evicted already, its handle waiting in the queue, where the drain passes it, a
+                // release does nothing.
+                pool.release(raster.handle);
             }
             free_slot(slots, free, idx);
             false
