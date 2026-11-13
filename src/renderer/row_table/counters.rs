@@ -29,8 +29,12 @@ counter_snapshot! {
     evictions: u32,
     /// Capacity doublings.
     growths: u32,
-    /// Capacity halvings, each at the end of an idle expiry window.
-    halvings: u32,
+    /// Rows a decay or a purge took out, idle past the expiry window or undrawn.
+    expiries: u32,
+    /// Rows moved into an expired row's place, each baked at the next flush.
+    moves: u32,
+    /// Capacity drops, each to the smallest rung that holds twice the rows.
+    shrinks: u32,
     /// LUT rows handed to the GPU, summed over flushes: each flush's dirty runs, with clean gaps
     /// of up to `MERGE_GAP_ROWS` folded in, so compare with [`Self::bakes`].
     rows_uploaded: u32,

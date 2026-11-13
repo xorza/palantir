@@ -15,7 +15,7 @@ pub(crate) struct GpuFill {
     pub(crate) color: RgbaF16,
     /// Low byte is the kind tag; bits 8..16 carry `Spread` for gradients.
     pub(crate) kind: FillKind,
-    /// Atlas row for a gradient or ramp, else [`LutRow::FALLBACK`].
+    /// The row of a gradient or ramp, else [`LutRow::FALLBACK`].
     pub(crate) lut_row: LutRow,
 }
 

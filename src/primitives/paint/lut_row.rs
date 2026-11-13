@@ -1,4 +1,4 @@
-//! Row index into the gradient row texture. In primitives so the shape store, record store and renderer all depend *down* on one definition (as [`FillKind`](crate::primitives::packed::fill_kind::FillKind)); the texture itself is a renderer resource ([`crate::renderer::row_table`]).
+//! Row index into the gradient row texture. In primitives so the shape store, record store and renderer all depend *down* on one definition (as [`FillKind`](crate::primitives::packed::fill_kind::FillKind)); the table that hands rows out is [`crate::renderer::row_table`].
 
 use bytemuck::{Pod, Zeroable};
 

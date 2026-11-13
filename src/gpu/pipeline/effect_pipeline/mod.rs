@@ -33,7 +33,8 @@ use crate::renderer::render_buffer::effect_draw_row::{EffectInstance, EffectKey}
 use crate::renderer::render_buffer::shape_form::ShapeForm;
 use crate::renderer::render_buffer::template_cover::TemplateCover;
 
-/// The layouts every effect's pipeline builds over: the frame group, which holds the gradient rows a material's box reads, the images at [`IMAGES_GROUP`]
+/// The layouts every effect's pipeline builds over: the frame group, which holds the gradient rows
+/// a material's box reads, the images at [`IMAGES_GROUP`]
 /// for an effect that binds any, a backdrop effect's backdrop results at [`BACKDROPS_GROUP`], the
 /// parameter words at [`WORDS_GROUP`], and the immediates every pipeline declares.
 #[derive(Debug)]

@@ -136,12 +136,12 @@ impl AtlasPool {
         self.lists[format].allocate(tenant, size, self.frame, &mut self.evictions)
     }
 
-    /// Return what the lists hold past their need, at the end of the first submit of each display
-    /// frame, after every draw of it: the evictions wait in their tenants' queues, and the moves
-    /// in their lists for the GPU half's next commit, ahead of every upload, bake and draw, so the
-    /// next build of any window reads the new placements (`src/gpu/AGENTS.md`, Atlases). As
-    /// WebRender runs its compaction once a frame. The moves spend the device's budget across the
-    /// lists.
+    /// Return what the lists and the rows hold past their need, at the end of the first submit of
+    /// each display frame, after every draw of it: the evictions wait in their tenants' queues, and
+    /// the moves in their lists for the GPU half's next commit, ahead of every upload, bake and
+    /// draw, so the next build of any window reads the new placements (`src/gpu/AGENTS.md`,
+    /// Atlases). As WebRender runs its compaction once a frame. The moves spend the device's budget
+    /// across the lists.
     pub(crate) fn end_submit(&mut self) {
         if self.decayed == Some(self.frame) {
             return;
@@ -155,19 +155,22 @@ impl AtlasPool {
             let format = AtlasFormat::ALL[(first + at) % AtlasFormat::COUNT];
             self.lists[format].decay(self.frame, &mut budget, &mut self.evictions);
         }
+        self.rows.decay();
     }
 
-    /// Give back all the lists can at once, as the system runs short of memory: every item no
-    /// one pins and this display frame did not draw, idle scratch, and pages a drain empties
-    /// with no budget. Between frames alone, as the moves and the closed pages wait for the GPU
-    /// half's next commit, which the caller records at once. Whether moves wait, after which the
-    /// caller commits and purges again, as a drain that follows them could take the page they land
-    /// on; at most [`MAX_PAGES`](page_list::MAX_PAGES) and one more rounds.
+    /// Give back all the lists and the rows can at once, as the system runs short of memory: every
+    /// item no one pins and this display frame did not draw, idle scratch, pages a drain empties
+    /// with no budget, and every row this frame did not draw. Between frames alone, as the moves and
+    /// the closed pages wait for the GPU half's next commit, which the caller records at once.
+    /// Whether moves wait, after which the caller commits and purges again, as a drain that follows
+    /// them could take the page they land on; at most [`MAX_PAGES`](page_list::MAX_PAGES) and one
+    /// more rounds.
     pub(crate) fn purge(&mut self) -> bool {
         let mut more = false;
         for (_, list) in self.lists.iter_mut() {
             more |= list.purge(self.frame, &mut self.evictions);
         }
+        self.rows.purge();
         more
     }
 

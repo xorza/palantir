@@ -109,10 +109,12 @@ impl HostDevice {
         frames.deliver_screenshot(&self.backend);
         frames.forget_evicted_backdrops(&mut self.backend);
         let report = frames.record(spec, app);
+        let frame = self.backend.next_frame(frames.render_owner());
         frames.build_paint(
             BuildCtx {
                 frontend: &mut cpu.frontend,
-                placing: self.backend.begin_build(frames.render_owner()),
+                placing: self.backend.cutout_placing(),
+                frame,
             },
             report,
         )

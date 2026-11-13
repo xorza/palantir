@@ -59,6 +59,7 @@ impl WindowFrames {
                 placements: &mut CutoutPlacements::default(),
                 pool: &mut AtlasPool::of_edge(DEVICE_EDGE),
             },
+            frame: 0,
         };
         self.build_paint(ctx, report)
     }
@@ -1048,6 +1049,7 @@ mod cutout_census_tests {
                     placements: &mut placements,
                     pool: &mut pool,
                 },
+                frame: 0,
             };
             let frame = frames.build_paint(ctx, report);
             frames.damage_base = DamageBase::Prev;
@@ -1466,6 +1468,7 @@ mod escalation_tests {
                 placements: &mut CutoutPlacements::default(),
                 pool: &mut AtlasPool::of_edge(super::DEVICE_EDGE),
             },
+            frame: 0,
         };
         let job = frames.build_painted(ctx, facts.path(plan), facts);
         assert_eq!(

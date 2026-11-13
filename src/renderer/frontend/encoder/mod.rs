@@ -64,7 +64,6 @@ impl Encoder {
             }
             Damage::Full => None,
         };
-        rows.begin_frame();
         let mut gradients = self
             .gradients
             .begin(scene.forest.record_store.gradients.records.as_slice(), rows);

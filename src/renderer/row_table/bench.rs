@@ -1,4 +1,4 @@
-//! Register-path scaling benchmark for the gradient rows.
+//! Register-path scaling benchmark for the gradient row table.
 //!
 //! Tests **flatness, not speed**: `register` must not get more expensive as
 //! the table grows. Each arm runs at two capacities; compare the ratio
@@ -17,21 +17,14 @@
 //! Both assert against
 //! [`RowTableCounters`](super::counters::RowTableCounters) first, so
 //! a fixture that stops doing what its name says fails loudly.
-//!
-//! - `gap_row/*`: one clean row a flush folds into a run, baked again from its ramp as the flush
-//!   does with no CPU mirror, against the copy a mirror made. Per row.
 
 use crate::bench::backends::Backend;
-use crate::bench::case_group::CaseGroup;
 use crate::bench::kind::{Kind, Scale};
 use crate::common::counters::CounterSet;
-use crate::primitives::paint::brush::gradient::Interpolation;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
-use crate::renderer::row_table::bake::{self, LUT_ROW_TEXELS, LutRowTexels};
-use crate::renderer::row_table::{MERGE_GAP_ROWS, RowTable, RowTableConfig};
+use crate::renderer::row_table::{RowTable, RowTableConfig};
 use criterion::{Criterion, Throughput};
 use std::hint::black_box;
 
@@ -147,56 +140,5 @@ pub(crate) fn atomic(c: &mut Criterion) {
             },
         );
     }
-    gap_row(&mut group);
     group.finish();
-}
-
-/// Where a flush finds the bytes of a clean row it folds into a run.
-#[derive(Clone, Copy, Debug)]
-enum GapSource {
-    /// The CPU mirror, which holds every row baked.
-    Mirror,
-    /// A bake of the row's ramp.
-    Bake,
-}
-
-/// `atomic/gradient_atlas/cpu/gap_row/<mirror|bake>/<oklab|linear>`: one clean row of a
-/// [`MERGE_GAP_ROWS`] gap staged, copied from the mirror or baked again from its ramp in that
-/// interpolation. Each case first checks that both give the same bytes.
-fn gap_row(group: &mut CaseGroup<'_>) {
-    for (interpolation, space) in [
-        (Interpolation::Oklab, "oklab"),
-        (Interpolation::Linear, "linear"),
-    ] {
-        for (source, name) in [(GapSource::Mirror, "mirror"), (GapSource::Bake, "bake")] {
-            group.bench_function(Backend::Cpu.case(&format!("gap_row/{name}/{space}")), |b| {
-                let ramps: Vec<ColorRamp> = (1..=MERGE_GAP_ROWS)
-                    .map(|seed| gradient_for(seed).with_interpolation(interpolation))
-                    .collect();
-                let mut mirror: Vec<LutRowTexels> =
-                    vec![[RgbaF16::TRANSPARENT; LUT_ROW_TEXELS]; ramps.len()];
-                for (ramp, row) in ramps.iter().zip(&mut mirror) {
-                    bake::row(ramp, row);
-                }
-                let mut staged = [RgbaF16::TRANSPARENT; LUT_ROW_TEXELS];
-                for (ramp, row) in ramps.iter().zip(&mirror) {
-                    bake::row(ramp, &mut staged);
-                    assert_eq!(
-                        &staged, row,
-                        "{space}: a bake again gives the mirror's bytes"
-                    );
-                }
-                let mut i = 0usize;
-                b.iter(|| {
-                    let at = i % ramps.len();
-                    i = i.wrapping_add(1);
-                    match source {
-                        GapSource::Mirror => staged.copy_from_slice(&mirror[at]),
-                        GapSource::Bake => bake::row(&ramps[at], &mut staged),
-                    }
-                    black_box(&staged);
-                });
-            });
-        }
-    }
 }

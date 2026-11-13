@@ -12,11 +12,10 @@ use crate::bench::kind::{Kind, Scale};
 use crate::gpu::atlas::atlas_format::AtlasFormat;
 use crate::gpu::atlas::atlas_textures::move_draw::{MoveDraw, MoveRect, MoveRun};
 use crate::gpu::atlas::atlas_textures::texture_format;
-use crate::gpu::atlas::row_texture;
 use crate::gpu::bench_gpu::{BenchGpu, Timing};
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_wait::GpuWait;
-use crate::gpu::resource::gpu_ctx::GpuCtx;
+use crate::gpu::resource::gpu_ctx::{GpuCtx, RowCopy};
 use crate::gpu::resource::upload_staging::UploadStaging;
 use crate::gpu::surface::texel_readback::TexelReadback;
 use crate::gpu::texel;
@@ -127,12 +126,13 @@ fn gradient_upload(c: &mut Criterion, backends: &Backends, backend: Backend) {
                         .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
                     // Frame 0 throughout: a staging case ends no expiry window.
                     let mut ctx = GpuCtx::new(&gpu, belt, &mut encoder, 0);
-                    let copies = runs.iter().map(|run| {
-                        let bytes = &source
-                            [(run.start * ROW_BYTES) as usize..(run.end * ROW_BYTES) as usize];
-                        (run.clone(), bytes)
-                    });
-                    ctx.copy_rows(row_texture::row_copies(texture, copies));
+                    ctx.copy_rows(runs.iter().map(|run| RowCopy {
+                        texture,
+                        origin: UVec2::new(0, run.start),
+                        size: UVec2::new(LUT_ROW_TEXELS as u32, run.end - run.start),
+                        rows: &source
+                            [(run.start * ROW_BYTES) as usize..(run.end * ROW_BYTES) as usize],
+                    }));
                     belt.finish();
                     gpu.queue.submit([encoder.finish()]);
                     belt.recall();

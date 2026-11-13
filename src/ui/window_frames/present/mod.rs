@@ -144,12 +144,17 @@ impl Fitted {
 }
 
 /// What a frame that paints builds with, past its record: the frontend every window composes
-/// through, and the backend's pool with the placements its shadow cutouts plan in, whose row table
-/// its gradients take rows in.
+/// through, the backend's pool with the placements its shadow cutouts plan in, whose row table its
+/// gradients take rows in, and the display frame its submit will belong to, which a build that
+/// paints moves the pool to first. Refused: the pool moved before every build, which a still frame
+/// left a frame ahead of the last it drew, so a purge took what that frame drew; the pool left on
+/// the last submit's frame, where an insert met that frame's dry latch and a release stamped a
+/// frame early.
 #[derive(Debug)]
 pub(crate) struct BuildCtx<'f, 'p> {
     pub(crate) frontend: &'f mut Frontend,
     pub(crate) placing: CutoutPlacing<'p>,
+    pub(crate) frame: u64,
 }
 
 /// The CPU half's result: the report, and what the GPU half does.
@@ -352,6 +357,7 @@ impl WindowFrames {
         first: PaintPath,
         facts: PresentFacts,
     ) -> PaintJob<'f> {
+        ctx.placing.pool.advance_to(ctx.frame);
         let mut fitted = if matches!(first.plan.damage, Damage::Full) {
             self.build_whole(&mut ctx, first.plan);
             Fitted::whole(first)

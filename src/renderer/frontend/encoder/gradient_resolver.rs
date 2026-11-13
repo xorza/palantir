@@ -1,6 +1,7 @@
 //! The per-frame memo from a recorded gradient to its table row.
 
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
+use crate::primitives::paint::lut_row::LutRow;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
 use crate::renderer::row_table::RowTable;
@@ -11,22 +12,24 @@ use crate::shape::record_store::recorded_gradients::GradientId;
 /// Resolves each recorded gradient to its table row at most once per frame.
 #[derive(Debug, Default)]
 pub(super) struct GradientResolver {
-    resolved: Vec<Option<ResolvedGradient>>,
+    /// Each recorded gradient's row, once this frame resolved it; its axis and kind stay in the
+    /// record.
+    resolved: Vec<Option<LutRow>>,
 }
 
 impl GradientResolver {
-    /// Opens the frame's pass over `gradients`, registering them in `table`, forgetting last
+    /// Opens the frame's pass over `gradients`, registering them in `rows`, forgetting last
     /// frame's rows (another window may have evicted them).
     pub(super) fn begin<'a>(
         &'a mut self,
         gradients: &'a [RecordedGradient],
-        table: &'a mut RowTable,
+        rows: &'a mut RowTable,
     ) -> GradientPass<'a> {
         self.resolved.clear();
         self.resolved.resize(gradients.len(), None);
         GradientPass {
             gradients,
-            table,
+            rows,
             resolved: &mut self.resolved,
         }
     }
@@ -36,8 +39,8 @@ impl GradientResolver {
 #[derive(Debug)]
 pub(super) struct GradientPass<'a> {
     gradients: &'a [RecordedGradient],
-    table: &'a mut RowTable,
-    resolved: &'a mut Vec<Option<ResolvedGradient>>,
+    rows: &'a mut RowTable,
+    resolved: &'a mut Vec<Option<LutRow>>,
 }
 
 impl GradientPass<'_> {
@@ -54,17 +57,13 @@ impl GradientPass<'_> {
 
     pub(super) fn resolve(&mut self, id: GradientId) -> ResolvedGradient {
         let idx = id.0 as usize;
-        if let Some(resolved) = self.resolved[idx] {
-            return resolved;
-        }
         let gradient = &self.gradients[idx];
-        let resolved = ResolvedGradient {
+        let lut_row = *self.resolved[idx].get_or_insert_with(|| self.rows.register(&gradient.ramp));
+        ResolvedGradient {
             axis: gradient.axis,
-            lut_row: self.table.register(&gradient.ramp),
+            lut_row,
             kind: gradient.kind,
-        };
-        self.resolved[idx] = Some(resolved);
-        resolved
+        }
     }
 }
 
@@ -89,7 +88,7 @@ pub(crate) mod internals {
 
         /// The table's `register` calls so far, which a memoized repeat leaves alone.
         pub(crate) fn registrations(&self) -> u32 {
-            self.table.registrations()
+            self.rows.registrations()
         }
     }
 }

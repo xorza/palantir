@@ -1,5 +1,5 @@
-//! A purge between frames, as the system warns of low memory, gives the glyphs and the backdrop
-//! results no frame drew back, and the next frame paints as before it.
+//! A purge between frames, as the system warns of low memory, gives the glyphs, the backdrop
+//! results and the gradient rows no frame drew back, and the next frame paints as before it.
 
 use glam::UVec2;
 use image::RgbaImage;
@@ -9,8 +9,10 @@ use crate::gpu::test_gpu::{TestGpu, headless_test_gpu};
 use crate::host::offscreen::OffscreenHost;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::primitives::paint::material::Material;
 use crate::primitives::paint::paint::Paint;
 use crate::shape::Shape;
@@ -49,6 +51,45 @@ fn a_purge_keeps_the_last_frames_glyphs_and_paints_as_before() {
     assert!(0 < kept && kept < both, "kept {kept} of {both} bytes");
     host.frame(target.as_target(), &mut |ui: &mut Ui| scene(ui, "Hi"));
     assert_eq!(mask_live(&host), kept, "nothing rasterized again");
+    assert!(
+        target.read_back() == before,
+        "the purge changed what paints"
+    );
+}
+
+/// `count` gradients in a row, the first `count` of one sequence.
+fn gradients(ui: &mut Ui, count: u32) {
+    for i in 0..count {
+        let [r, g, _, _] = (40 * i).to_le_bytes();
+        ui.add_shape(
+            Shape::rect().at(Rect::new(4.0 + 12.0 * i as f32, 4.0, 10.0, 10.0)),
+            LinearGradient::horizontal([SrgbaU8::rgb(r, g, 9).into(), RgbaF32::WHITE]),
+        );
+    }
+}
+
+/// A purge takes the gradient rows the last frame did not draw, and the row texture follows at
+/// once: a frame of 20 gradients grows the table from its 16 first rows to 32, a frame of the first
+/// alone keeps them, and the purge leaves that one's row and the fallback, 4 KiB live, in a table
+/// and a texture of 16 rows, 32 KiB; the next frame of the one paints as before the purge.
+#[test]
+fn a_purge_takes_the_undrawn_gradient_rows() {
+    let gpu = headless_test_gpu();
+    let mut host = OffscreenHost::builder(gpu.handles())
+        .shaper(TextShaper::test_mono())
+        .build();
+    let target = gpu.target("palantir.test.purge.rows", UVec2::new(260, 20));
+    let rows = |host: &OffscreenHost| {
+        let rows = host.atlas_memory().uses[4];
+        (rows.live_bytes.unwrap(), rows.bytes)
+    };
+    host.frame(target.as_target(), &mut |ui: &mut Ui| gradients(ui, 20));
+    assert_eq!(rows(&host), (21 * 2048, 32 * 2048));
+    host.frame(target.as_target(), &mut |ui: &mut Ui| gradients(ui, 1));
+    let before = target.read_back();
+    host.device.backend_mut().purge_atlases();
+    assert_eq!(rows(&host), (2 * 2048, 16 * 2048));
+    host.frame(target.as_target(), &mut |ui: &mut Ui| gradients(ui, 1));
     assert!(
         target.read_back() == before,
         "the purge changed what paints"

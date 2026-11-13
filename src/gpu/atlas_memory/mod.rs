@@ -38,7 +38,7 @@ impl AtlasUse {
     }
 }
 
-/// Every atlas of one device, and the CPU mirror of its gradient rows, in a fixed order.
+/// Every atlas of one device, in a fixed order.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct AtlasMemory {
     pub(crate) uses: [AtlasUse; Self::LEN],
@@ -47,8 +47,8 @@ pub(crate) struct AtlasMemory {
 impl AtlasMemory {
     /// The rows a report holds: the pool's mask pages, which glyphs, icons and shadow cutouts
     /// share, its color pages, which glyphs and icons share, its half-float pages and scratch,
-    /// which backdrop results take, the blur's textures, gradient rows and their CPU staging.
-    pub(crate) const LEN: usize = 6;
+    /// which backdrop results take, the blur's textures, and the gradient rows.
+    pub(crate) const LEN: usize = 5;
 }
 
 /// The bytes of `texture`: every mip level of every layer, a block a texel.

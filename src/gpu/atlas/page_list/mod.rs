@@ -1,7 +1,7 @@
 //! [`PageList`]: the pages of one texel format, the items packed on them, and the textures of
 //! their own it hands items too large for a page.
 
-use crate::common::eviction_clock::{self, ClockSweep, Verdict};
+use crate::common::eviction_clock::{self, AGE_EVICTIONS_MAX, AGE_SCAN_MAX, ClockSweep, Verdict};
 use crate::common::expiry_window::EXPIRY_FRAMES;
 use crate::gpu::atlas::Evictions;
 use crate::gpu::atlas::atlas_format::AtlasFormat;
@@ -149,14 +149,6 @@ const fn age_threshold(ratio: u64) -> u64 {
         _ => 1,
     }
 }
-
-/// The evictions one display frame's age-out takes below four times the soft budget, WebRender's
-/// `MAX_EVICTIONS_PER_FRAME`, which keeps a frame of many from a stutter.
-const AGE_EVICTIONS_MAX: u32 = 32;
-
-/// The slab slots one display frame's age-out walks, from where the last stopped, so its cost a
-/// frame holds however many items the list keeps; a slab of more takes more frames to walk.
-const AGE_SCAN_MAX: usize = 1024;
 
 /// One page: its packer, whose edge is the page's, the texels its items fill, which opening of its
 /// slot it is, and what its last drain that found no room counted.

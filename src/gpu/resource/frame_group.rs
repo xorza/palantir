@@ -62,14 +62,18 @@ impl FrameGroup {
         clips: &[RoundedClip],
     ) {
         self.clips.upload_instances(ctx, clips);
+        self.follow(ctx.gpu, rows);
+    }
+
+    /// Bind `rows` and the pool's buffer, making the group again where either changed, so a
+    /// texture the purge replaced leaves the group at once.
+    pub(crate) fn follow(&mut self, gpu: &Gpu, rows: RowView<'_>) {
         let bound = Bound {
             rows: rows.generation,
             clips: self.clips.capacity(),
         };
         if bound != self.bound {
-            self.group = self
-                .binding
-                .frame_group(ctx.gpu, rows.view, &self.clips.buffer);
+            self.group = self.binding.frame_group(gpu, rows.view, &self.clips.buffer);
             self.bound = bound;
         }
     }

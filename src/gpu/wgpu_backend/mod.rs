@@ -836,9 +836,8 @@ impl WgpuBackend {
         let owner = stream.owner();
         let mut ctx = GpuCtx::new(&self.gpu, &mut self.staging, encoder, frame);
 
-        if let Some(rows) = self.atlas.rows_mut().flush() {
-            self.gradient.upload(&mut ctx, rows);
-        }
+        self.gradient
+            .upload(&mut ctx, self.atlas.rows_mut().flush());
         self.frame_group
             .upload(&mut ctx, self.gradient.row_view(), &buffer.rounded_clips);
 
@@ -1289,11 +1288,12 @@ impl WgpuBackend {
 
     /// Give back all the atlas pool can at once, as the system runs short of memory, between two
     /// frames: the pool purges, and its textures follow at once on an encoder of their own, the
-    /// purge's moves first, so the textures it freed leave every group that binds them and their
-    /// memory returns at the device's next maintain, with no frame to wait for. A purge whose
-    /// drain moved items commits them and purges again, a submission a round, as the move draw
-    /// writes each commit's rectangles from the start of one buffer. Every tenant drops what it
-    /// took at once, as a window's next frame decides what its backdrops hold before any submit.
+    /// purge's moves first and the row texture last, so the textures it freed leave every group
+    /// that binds them and their memory returns at the device's next maintain, with no frame to
+    /// wait for. A purge whose drain moved items commits them and purges again, a submission a
+    /// round, as the move draw writes each commit's rectangles from the start of one buffer. Every
+    /// tenant drops what it took at once, as a window's next frame decides what its backdrops hold
+    /// before any submit.
     pub(crate) fn purge_atlases(&mut self) {
         let mut more = true;
         for _ in 0..=MAX_PAGES {
@@ -1306,12 +1306,23 @@ impl WgpuBackend {
                     });
             self.atlas_textures
                 .commit(&self.gpu, &mut encoder, &mut self.atlas);
-            self.gpu.queue.submit(iter::once(encoder.finish()));
             if !more {
+                let mut ctx = GpuCtx::new(
+                    &self.gpu,
+                    &mut self.staging,
+                    &mut encoder,
+                    self.atlas.frame(),
+                );
+                self.gradient
+                    .upload(&mut ctx, self.atlas.rows_mut().flush());
+                self.staging.finish_and_recall_on_submit(&encoder);
+                self.gpu.queue.submit(iter::once(encoder.finish()));
                 break;
             }
+            self.gpu.queue.submit(iter::once(encoder.finish()));
         }
         debug_assert!(!more, "a purge lands within MAX_PAGES + 1 rounds");
+        self.frame_group.follow(&self.gpu, self.gradient.row_view());
         self.drop_evicted();
         self.raster_group.follow(&self.gpu, &self.atlas_textures);
         self.programs
@@ -1320,13 +1331,10 @@ impl WgpuBackend {
         self.backdrops.drop_groups();
     }
 
-    /// Begin the build of `owner`'s next frame: the pool moves to the display frame its submit
-    /// will belong to, so what the build registers and places is drawn in that frame, and the
-    /// placing its build writes in. Refused: the pool left on the last submit's frame, where an
-    /// insert met that frame's dry latch and a release stamped a frame early.
-    pub(crate) fn begin_build(&mut self, owner: RenderOwnerId) -> CutoutPlacing<'_> {
-        self.atlas.advance_to(self.frames.next(owner));
-        self.cutout_placing()
+    /// The display frame `owner`'s next submit will belong to, which a build of it that paints
+    /// moves the pool to first.
+    pub(crate) fn next_frame(&self, owner: RenderOwnerId) -> u64 {
+        self.frames.next(owner)
     }
 
     /// Where the mask pages hold each key's table, with the pool they live in: a frame's build
@@ -1398,7 +1406,7 @@ pub(crate) mod internals {
     use crate::gpu::atlas::atlas_format::AtlasFormat;
     #[cfg(test)]
     use crate::gpu::atlas::page_list::MAX_PAGES;
-    use crate::gpu::atlas_memory::{AtlasMemory, AtlasUse};
+    use crate::gpu::atlas_memory::AtlasMemory;
     #[cfg(test)]
     use crate::gpu::device::backbuffer_out::BackbufferOut;
     #[cfg(test)]
@@ -1438,22 +1446,13 @@ pub(crate) mod internals {
                 "half-float pages and scratch",
             );
             let blur = self.backdrops.blur_memory();
-            let gradient = self.atlas.rows();
-            let live_rows = gradient.live_rows();
-            let staging = AtlasUse {
-                name: "gradient staging (CPU)",
-                textures: 0,
-                bytes: gradient.staging_bytes(),
-                live_bytes: None,
-            };
             AtlasMemory {
                 uses: [
                     masks,
                     colors,
                     results,
                     blur,
-                    self.gradient.memory(live_rows),
-                    staging,
+                    self.gradient.memory(self.atlas.rows().live_rows()),
                 ],
             }
         }

@@ -7,6 +7,14 @@
 /// (`src/gpu/AGENTS.md`, Atlases).
 pub(crate) const GRACE_FRAMES: u64 = 1;
 
+/// The items one display frame's age-out takes below four times the soft budget, WebRender's
+/// `MAX_EVICTIONS_PER_FRAME`, which keeps a frame of many from a stutter.
+pub(crate) const AGE_EVICTIONS_MAX: u32 = 32;
+
+/// The slots one display frame's age-out walks, from where the last stopped, so its cost a frame
+/// holds however many items the allocator keeps; one of more takes more frames to walk.
+pub(crate) const AGE_SCAN_MAX: usize = 1024;
+
 /// What the clock makes of one slot.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Verdict {

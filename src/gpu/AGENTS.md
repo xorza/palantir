@@ -134,12 +134,17 @@ Facts and sources: `.notes/research/2026-11-12-atlas-pools.md` and
   belongs to, and the rows age as the lists' items do, with the clock and the one-frame grace:
   under the soft rows the table doubles, over them a ramp takes the row of one no frame drew in
   the grace, and with none it doubles to its ceiling, past which a ramp takes the magenta row 0.
-  A row keeps its id while it lives; the table halves at the start of a frame that ends an idle
-  expiry window under a quarter used, its live rows renumbered and baked again from their ramps.
-  A host with no device counts a display frame a compose. Refused: an epoch a flush ends, which
-  two windows end twice a round, so each evicted the rows the other draws, and which a host that
-  never flushes never ends; a CPU mirror of the texture, 2 KiB a row, kept only to fill a run's
-  gaps, which a bake from the ramp fills with the same bytes.
+  The table starts at 16 rows. A row keeps its id while it lives; above the soft rows the decay,
+  once a display frame with the lists', takes rows idle past an expiry window, the last row moving
+  into each place and baked again there, at most 32 moves a frame as the lists' age-out, and with
+  a quarter or less held drops the capacity to the smallest rung that holds twice the rows, which
+  keep their ids, so the texture copies them. A host with no device counts a display frame a
+  compose. Refused: an epoch a flush ends, which two windows end twice a round, so each evicted
+  the rows the other draws, and which a host that never flushes never ends; a halving that
+  renumbered every live row and baked them all in one frame; 256 first rows, 512 KiB for an app
+  with one gradient; a CPU mirror of the texture, 2 KiB a row, kept only to fill a run's gaps,
+  which a bake from the ramp fills with the same bytes, and a staging copy of each flush, which a
+  bake into the belt row by row spares.
 - **Eviction is a clock with a one-frame grace and pins.** Nothing drawn this display frame or the
   last goes, which keeps a working set a little past budget from evicting what the next frame
   draws again, WebRender's least age at full pressure; a pin, a cutout table a plan holds, keeps
@@ -175,7 +180,8 @@ Facts and sources: `.notes/research/2026-11-12-atlas-pools.md` and
   V3D's 43 µs a copy, where 64 took 2.4 ms. Both stop at 512² texels a frame.
 - **The system's memory warnings purge the pool on every platform**, between frames: everything no
   one pins and the last frame did not draw goes, scratch held or idle that frame did not draw
-  goes, as one full-window glass holds tens of MiB, and the pages drain and shrink
+  goes, as one full-window glass holds tens of MiB, every gradient row that frame did not draw
+  goes and the table compacts and shrinks, and the pages drain and shrink
   with no budget, committed at once, round after round as each drain's moves land before the next
   is planned, so the memory returns with no frame to wait for; a stutter traded for
   the process not being killed, as Chromium's memory-pressure listeners and GLib's

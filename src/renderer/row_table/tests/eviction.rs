@@ -4,23 +4,10 @@
 use crate::common::counters::CounterSet;
 use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
 use crate::renderer::row_table::tests::support::{
-    assert_real_row, distinct_grad, fill_rows, fresh_row,
+    assert_real_row, baked, distinct_grad, fill_rows, magenta, ramp, runs, table,
 };
 use crate::renderer::row_table::*;
 use std::collections::HashSet;
-
-fn ramp(i: u32) -> ColorRamp {
-    distinct_grad(i).ramp
-}
-
-/// A table of `first`, `soft` and `max` rows.
-fn table(first: u32, soft: u32, max: u32) -> RowTable {
-    RowTable::new(RowTableConfig {
-        first_rows: first,
-        soft_rows: soft,
-        max_rows: max,
-    })
-}
 
 /// One step of a script: the display frame, and the ramps registered in it.
 #[derive(Debug)]
@@ -76,6 +63,8 @@ fn run(mut table: RowTable, steps: &[Step]) -> Outcome {
 /// - A dropped build: ramps registered at frame 5, one hit again under another window's build that
 ///   names frame 4, stay at 5, in the grace through frame 6, where a new ramp takes the fallback of
 ///   a table at its ceiling; at 7 it evicts row 1.
+/// - A ceiling no power of two: a table of 4 rows capped at 12 doubles to 8, then to 12, and its
+///   12th ramp takes the fallback.
 #[test]
 fn a_full_table_grows_evicts_or_falls_back_by_script() {
     let step = |frame, ramps| Step { frame, ramps };
@@ -150,6 +139,18 @@ fn a_full_table_grows_evicts_or_falls_back_by_script() {
                 fallbacks: 1,
             },
         ),
+        (
+            "a ceiling no power of two",
+            table(4, 4, 12),
+            vec![step(0, 0..11), step(0, 11..12)],
+            Outcome {
+                last_rows: vec![0],
+                capacity: 12,
+                evictions: 0,
+                growths: 2,
+                fallbacks: 1,
+            },
+        ),
     ];
     for (name, table, steps, want) in cases {
         assert_eq!(run(table, &steps), want, "{name}");
@@ -186,15 +187,15 @@ fn a_dry_frame_turns_the_clock_once() {
     );
 }
 
-/// A full table whose rows were all drawn at frame 0 takes, at frame 2, the one row no later frame
-/// drew, never row 0; the evicted ramp leaves the index with its row; a survivor keeps its row; and
-/// the evicted ramp, registered again, bakes into another row.
+/// A table full at its soft rows, every row drawn at frame 0, takes at frame 2 the one row no later
+/// frame drew, never row 0; the evicted ramp leaves the index with its row; a survivor keeps its
+/// row; and the evicted ramp, registered again, bakes into another row.
 #[test]
 fn an_eviction_takes_the_idle_row_and_its_index_entry() {
     let mut table = RowTable::default();
-    let rows = fill_rows(&mut table, INITIAL_ROWS - 1);
+    let rows = fill_rows(&mut table, SOFT_ROWS - 1);
     table.advance_to(2);
-    for i in 1..INITIAL_ROWS - 1 {
+    for i in 1..SOFT_ROWS - 1 {
         table.register(&ramp(i));
     }
     let evictions = table.counters.counts().evictions;
@@ -207,60 +208,53 @@ fn an_eviction_takes_the_idle_row_and_its_index_entry() {
         "the evicted ramp left the index"
     );
     assert_eq!(table.resident_row(&ramp(999_900)), Some(newcomer));
-    assert_eq!(table.index_len(), (INITIAL_ROWS - 1) as usize);
+    assert_eq!(table.index_len(), (SOFT_ROWS - 1) as usize);
     assert_eq!(
         table.register(&ramp(1)),
         rows[1],
         "a survivor keeps its row"
     );
-    let magenta = RgbaF16::new(1.0, 0.0, 1.0, 1.0);
-    assert!(table.row_texels(0).iter().all(|&t| t == magenta));
+    assert!(table.row_texels(0).iter().all(|&t| t == magenta()));
 
     table.advance_to(4);
     let reborn = table.register(&ramp(0));
     assert_ne!(reborn, rows[0]);
-    let mut expected = fresh_row();
-    bake::row(&ramp(0), &mut expected);
-    assert_eq!(table.row_texels(reborn.0), expected);
+    assert_eq!(table.row_texels(reborn.0), baked(&ramp(0)));
 }
 
 /// A hit stamps its row: all 255 ramps registered again at frame 2 keep every row from eviction,
-/// so a 256th grows the table rather than alias one.
+/// so a 256th grows the table past its soft rows rather than alias one.
 #[test]
 fn a_hit_keeps_its_row_from_eviction() {
     let mut table = RowTable::default();
-    let original = fill_rows(&mut table, INITIAL_ROWS - 1);
+    let original = fill_rows(&mut table, SOFT_ROWS - 1);
     table.advance_to(2);
     for (i, row) in (0..).zip(&original) {
         assert_eq!(table.register(&ramp(i)), *row);
         assert_eq!(table.last_use(*row), 2);
     }
     let overflow = table.register(&ramp(999_900));
-    assert_eq!(table.capacity(), INITIAL_ROWS * 2);
+    assert_eq!(table.capacity(), SOFT_ROWS * 2);
     assert!(!original.contains(&overflow));
 }
 
-/// A 256th ramp in the frame that drew the 255 grows the table: every resident row id is already
-/// in this frame's draw payloads. The flush owes the rows baked, no more: the magenta row 0, the
-/// 255 filled and the overflow at 256, `0..257`, as the backend copies the rest into its taller
-/// texture.
+/// A 256th ramp in the frame that drew the 255 grows the table past its soft rows: every resident
+/// row id is already in this frame's draw payloads. The flush owes the rows baked, no more: the
+/// magenta row 0, the 255 filled and the overflow at 256, `0..257`, as the backend copies the rest
+/// into its taller texture.
 #[test]
-#[expect(
-    clippy::single_range_in_vec_init,
-    reason = "a flush of one run is a one-run slice"
-)]
 fn a_full_table_grows_within_a_frame() {
     let mut table = RowTable::default();
-    let mut rows: HashSet<_> = fill_rows(&mut table, INITIAL_ROWS - 1)
-        .into_iter()
-        .collect();
+    let mut rows: HashSet<_> = fill_rows(&mut table, SOFT_ROWS - 1).into_iter().collect();
     let overflow = table.register(&ramp(999_900));
-    assert_eq!(table.capacity(), INITIAL_ROWS * 2);
+    assert_eq!(table.capacity(), SOFT_ROWS * 2);
     assert!(rows.insert(overflow), "row {} aliased", overflow.0);
     assert_real_row(&table, overflow);
-    let flushed = table.flush().expect("growth must dirty the table");
-    assert_eq!(flushed.runs(), [0..INITIAL_ROWS + 1]);
-    assert_eq!(flushed.total_rows, INITIAL_ROWS * 2);
+    assert_eq!(table.flush().capacity, SOFT_ROWS * 2);
+    assert_eq!(runs(&mut table), [], "the flush cleared them");
+    let mut fresh = RowTable::default();
+    fill_rows(&mut fresh, SOFT_ROWS);
+    assert_eq!(runs(&mut fresh), [(0, SOFT_ROWS + 1)]);
 }
 
 /// Growth leaves lookup alone: every resident ramp still resolves to its row with the texels it
@@ -268,11 +262,11 @@ fn a_full_table_grows_within_a_frame() {
 #[test]
 fn growth_leaves_resident_rows_and_their_texels() {
     let mut table = RowTable::default();
-    let resident: Vec<LinearGradient> = (0..(INITIAL_ROWS - 1)).map(distinct_grad).collect();
+    let resident: Vec<LinearGradient> = (0..(SOFT_ROWS - 1)).map(distinct_grad).collect();
     let before: Vec<u32> = resident.iter().map(|g| table.register(&g.ramp).0).collect();
     let texels = table.row_texels(before[0]);
     table.register(&ramp(999_900));
-    assert_eq!(table.capacity(), INITIAL_ROWS * 2);
+    assert_eq!(table.capacity(), SOFT_ROWS * 2);
     let bakes = table.counters.counts().bakes;
     for (g, &row) in resident.iter().zip(&before) {
         assert_eq!(table.resident_row(&g.ramp), Some(LutRow(row)));
@@ -280,5 +274,21 @@ fn growth_leaves_resident_rows_and_their_texels() {
     }
     assert_eq!(table.counters.counts().bakes, bakes, "no duplicate bake");
     assert_eq!(table.row_texels(before[0]), texels);
-    assert_eq!(table.index_len(), INITIAL_ROWS as usize);
+    assert_eq!(table.index_len(), SOFT_ROWS as usize);
+}
+
+/// The index holds room for two entries a row, so ten thousand registrations a frame apart, each
+/// evicting into a table of 16 rows, leave its capacity where the table set it: hashbrown
+/// rehashes in place where an eviction's tombstones fill it, as half or more of it is free.
+#[test]
+fn eviction_churn_never_resizes_the_index() {
+    let mut table = table(16, 16, 16);
+    let capacity = table.index.capacity();
+    for i in 0..10_000 {
+        table.advance_to(2 * u64::from(i));
+        let row = table.register(&ramp(i));
+        assert_real_row(&table, row);
+        assert_eq!(table.index.capacity(), capacity, "registration {i}");
+    }
+    assert_eq!(table.counters.counts().evictions, 10_000 - 15);
 }

@@ -6,14 +6,13 @@
 
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::resource::frame_group::RowView;
-use crate::gpu::resource::gpu_ctx::{GpuCtx, RowCopy};
+use crate::gpu::resource::gpu_ctx::{GpuCtx, Staged};
 use crate::gpu::texel;
 use crate::gpu::texel::TargetSpec;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::row_table::FlushedRows;
 use crate::renderer::row_table::bake::LUT_ROW_TEXELS;
 use glam::UVec2;
-use std::ops::Range;
 
 /// Bytes per uploaded LUT row, derived from the CPU `RgbaF16` row store.
 const ROW_PITCH: u32 = (LUT_ROW_TEXELS * size_of::<RgbaF16>()) as u32;
@@ -28,7 +27,7 @@ const _: () = assert!(
 #[derive(Debug)]
 pub(crate) struct RowTexture {
     /// 256 cols × N rows of `Rgba16Float` linear values (8-bit would band dark stops).
-    /// [`Self::upload`] fills it and replaces it when the table grew or halved.
+    /// [`Self::upload`] fills it and replaces it when the table grew or shrank.
     texture: wgpu::Texture,
     /// The view the frame group binds, made again with the texture.
     view: wgpu::TextureView,
@@ -52,19 +51,6 @@ fn create_texture(gpu: &Gpu, rows: u32) -> wgpu::Texture {
     )
 }
 
-/// `runs`, each a range of `texture`'s rows with their bytes, as one copy a run.
-pub(crate) fn row_copies<'a>(
-    texture: &'a wgpu::Texture,
-    runs: impl Iterator<Item = (Range<u32>, &'a [u8])> + Clone,
-) -> impl Iterator<Item = RowCopy<'a>> + Clone {
-    runs.map(move |(run, rows)| RowCopy {
-        texture,
-        origin: UVec2::new(0, run.start),
-        size: UVec2::new(LUT_ROW_TEXELS as u32, run.end - run.start),
-        rows,
-    })
-}
-
 impl RowTexture {
     /// The texture at `rows` rows, the table's height.
     pub(crate) fn new(gpu: &Gpu, rows: u32) -> Self {
@@ -78,7 +64,7 @@ impl RowTexture {
     }
 
     /// The view the frame group binds, and which texture it views, which changes where the table
-    /// grows or halves.
+    /// grows or shrinks.
     pub(crate) const fn row_view(&self) -> RowView<'_> {
         RowView {
             view: &self.view,
@@ -86,30 +72,79 @@ impl RowTexture {
         }
     }
 
-    /// Syncs the row table to the GPU: the dirty `rows` stage once in the belt and copy one per
-    /// run ([`GpuCtx::copy_rows`]), on the frame's encoder ahead of every pass. A table that
-    /// grew or halved replaces the texture and its view first: a grown one's takes the old one's
-    /// rows by a copy on the GPU, as resident rows keep their ids; a halved one's takes none, as
-    /// `rows` holds every row the halving kept. Called from `WgpuBackend::submit`, before the frame
-    /// group binds the view.
+    /// Follow the table to the GPU, on the frame's encoder ahead of every pass: a table of another
+    /// height replaces the texture and its view first, the new one taking the rows both hold by a
+    /// copy on the GPU, as the held rows keep their ids; then each dirty run's rows, baked into a
+    /// row on the stack and written once into the belt, copy in one copy a run. A grow and a shrink
+    /// take the one path, also on a frame with no dirty row. Called from `WgpuBackend::submit`
+    /// before the frame group binds the view, and after a purge. A lost device declines the
+    /// staging, and then nothing is copied.
     pub(crate) fn upload(&mut self, ctx: &mut GpuCtx<'_>, rows: FlushedRows<'_>) {
         let height = self.texture.height();
-        if height != rows.total_rows {
-            let made = create_texture(ctx.gpu, rows.total_rows);
-            if height < rows.total_rows {
-                ctx.encoder.copy_texture_to_texture(
-                    self.texture.as_image_copy(),
-                    made.as_image_copy(),
-                    self.texture.size(),
-                );
-            }
+        if height != rows.capacity {
+            let made = create_texture(ctx.gpu, rows.capacity);
+            ctx.encoder.copy_texture_to_texture(
+                self.texture.as_image_copy(),
+                made.as_image_copy(),
+                wgpu::Extent3d {
+                    width: LUT_ROW_TEXELS as u32,
+                    height: height.min(rows.capacity),
+                    depth_or_array_layers: 1,
+                },
+            );
             self.texture = made;
             self.view = self
                 .texture
                 .create_view(&wgpu::TextureViewDescriptor::default());
             self.generation += 1;
         }
-        ctx.copy_rows(row_copies(&self.texture, rows.copies()));
+        let staged: u32 = rows.runs().iter().map(|run| run.end - run.start).sum();
+        let Some(Staged {
+            mut view,
+            buffer,
+            offset,
+            encoder,
+        }) = ctx.stage(
+            u64::from(staged) * u64::from(ROW_PITCH),
+            u64::from(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT),
+        )
+        else {
+            return;
+        };
+        let mut texels = [RgbaF16::TRANSPARENT; LUT_ROW_TEXELS];
+        let mut at = 0;
+        for run in rows.runs() {
+            let start = at;
+            for id in run.clone() {
+                rows.bake(id, &mut texels);
+                view.slice(at..at + ROW_PITCH as usize)
+                    .copy_from_slice(bytemuck::cast_slice(&texels));
+                at += ROW_PITCH as usize;
+            }
+            encoder.copy_buffer_to_texture(
+                wgpu::TexelCopyBufferInfo {
+                    buffer,
+                    layout: wgpu::TexelCopyBufferLayout {
+                        offset: offset + start as u64,
+                        bytes_per_row: Some(ROW_PITCH),
+                        rows_per_image: Some(run.end - run.start),
+                    },
+                },
+                wgpu::TexelCopyTextureInfo {
+                    origin: wgpu::Origin3d {
+                        x: 0,
+                        y: run.start,
+                        z: 0,
+                    },
+                    ..self.texture.as_image_copy()
+                },
+                wgpu::Extent3d {
+                    width: LUT_ROW_TEXELS as u32,
+                    height: run.end - run.start,
+                    depth_or_array_layers: 1,
+                },
+            );
+        }
     }
 }
 
@@ -137,90 +172,76 @@ mod tests {
     use crate::gpu::atlas::row_texture::{ROW_PITCH, RowTexture};
     use crate::gpu::test_gpu::{TestGpu, headless_test_gpu};
     use crate::primitives::paint::color::rgba_f16::RgbaF16;
-    use crate::renderer::row_table::bake::{self, LUT_ROW_TEXELS};
-    use crate::renderer::row_table::tests::support::distinct_grad;
-    use crate::renderer::row_table::{INITIAL_ROWS, RowTable};
+    use crate::renderer::row_table::RowTable;
+    use crate::renderer::row_table::bake::LutRowTexels;
+    use crate::renderer::row_table::tests::support::{baked, magenta, ramp, table};
 
-    /// Upload what `table` baked since its last flush into `texture` on a frame's encoder of its
-    /// own, and wait for it.
-    fn upload(gpu: &TestGpu, table: &mut RowTable, texture: &mut RowTexture) {
-        let rows = table.flush().expect("rows were baked");
-        gpu.frame(|ctx| texture.upload(ctx, rows));
+    /// Upload what `table` owes into `texture` on a frame's encoder of its own, wait for it, and
+    /// read back each row.
+    fn upload_and_read(
+        gpu: &TestGpu,
+        table: &mut RowTable,
+        texture: &mut RowTexture,
+    ) -> Vec<LutRowTexels> {
+        gpu.frame(|ctx| texture.upload(ctx, table.flush()));
+        assert_eq!(texture.texture.height(), table.capacity());
+        let texels = gpu.read_texture(&texture.texture);
+        let (rows, rest) = texels.as_chunks::<{ ROW_PITCH as usize }>();
+        assert!(rest.is_empty(), "the texture reads back whole rows");
+        rows.iter()
+            .map(|row| {
+                let mut out = [RgbaF16::TRANSPARENT; 256];
+                out.copy_from_slice(bytemuck::cast_slice(row));
+                out
+            })
+            .collect()
     }
 
-    /// A grown table's texture takes the rows its old one held by a copy on the GPU: the 255 rows
-    /// the first upload took read back as baked in the doubled texture, after the frame registers
-    /// them all again and adds one, which the second upload takes alone. Two idle windows later,
-    /// with frames that register the added ramp alone, the table halves: the texture is made again
-    /// at 256 rows with no copy, and the flush gives it row 0's magenta and the added ramp at row
-    /// 1, every other row zero.
+    /// The texture follows the table by one path. Ramps 0 to 2 fill a table of 4 rows; ramps 3 to
+    /// 5 in the same frame grow it to 8, and the texture made again takes rows 0 to 3 by a copy
+    /// and the new rows by their bakes. Frames that draw ramp 5 alone, to an expiry window on, let
+    /// the decay take the other five, ramp 5 moving to row 1, and drop the capacity to 4: the
+    /// texture made again keeps row 0's magenta by the copy, as no flush owes row 0 again. A frame
+    /// that adds ramps 6 and 7, then a purge in one that draws ramp 7 alone, moves ramp 7 to row 1.
     #[test]
-    fn a_grown_table_copies_the_rows_it_held() {
+    fn the_texture_follows_a_grow_a_shrink_and_a_purge() {
         let gpu = headless_test_gpu();
-        let mut table = RowTable::default();
+        let mut table = table(4, 4, 16);
         let mut texture = RowTexture::new(&gpu, table.capacity());
-        let filled = INITIAL_ROWS - 1;
-        let rows: Vec<u32> = (0..filled)
-            .map(|i| table.register(&distinct_grad(i).ramp).0)
-            .collect();
-        upload(&gpu, &mut table, &mut texture);
-        for i in 0..filled {
-            assert_eq!(
-                table.register(&distinct_grad(i).ramp).0,
-                rows[i as usize],
-                "a resident row keeps its id"
-            );
-        }
-        let added = table.register(&distinct_grad(filled).ramp).0;
-        assert_eq!(table.capacity(), INITIAL_ROWS * 2);
-        upload(&gpu, &mut table, &mut texture);
-        assert_eq!(texture.texture.height(), INITIAL_ROWS * 2);
-
-        let texels = gpu.read_texture(&texture.texture);
-        let row_texels = |row: u32| {
-            let at = (row * ROW_PITCH) as usize;
-            bytemuck::cast_slice::<u8, RgbaF16>(&texels[at..at + ROW_PITCH as usize]).to_vec()
-        };
-        let baked = |i: u32| {
-            let mut out = [RgbaF16::TRANSPARENT; LUT_ROW_TEXELS];
-            bake::row(&distinct_grad(i).ramp, &mut out);
-            out.to_vec()
-        };
-        for i in 0..=filled {
-            let row = if i < filled { rows[i as usize] } else { added };
-            assert_eq!(row_texels(row), baked(i), "ramp {i} at row {row}");
-        }
-
-        let generation = texture.generation;
-        // Two windows of frames at most: the first ends with the 255 ramps' frame inside it.
-        for frame in 1..2 * EXPIRY_FRAMES {
-            table.advance_to(frame);
-            table.begin_frame();
-            if table.capacity() == INITIAL_ROWS {
-                break;
+        let ramps = |table: &mut RowTable, ramps: std::ops::Range<u32>| {
+            for i in ramps {
+                table.register(&ramp(i));
             }
-            table.register(&distinct_grad(filled).ramp);
-            let _ = table.flush();
-        }
-        upload(&gpu, &mut table, &mut texture);
-        assert_eq!(texture.texture.height(), INITIAL_ROWS);
-        assert_eq!(texture.generation, generation + 1);
-        let texels = gpu.read_texture(&texture.texture);
-        let row_texels = |row: u32| {
-            let at = (row * ROW_PITCH) as usize;
-            bytemuck::cast_slice::<u8, RgbaF16>(&texels[at..at + ROW_PITCH as usize]).to_vec()
         };
-        assert_eq!(
-            row_texels(0),
-            vec![RgbaF16::new(1.0, 0.0, 1.0, 1.0); LUT_ROW_TEXELS]
-        );
-        assert_eq!(row_texels(1), baked(filled), "the added ramp at row 1");
-        for row in 2..INITIAL_ROWS {
-            assert_eq!(
-                row_texels(row),
-                vec![RgbaF16::TRANSPARENT; LUT_ROW_TEXELS],
-                "row {row}"
-            );
+        ramps(&mut table, 0..3);
+        let read = upload_and_read(&gpu, &mut table, &mut texture);
+        assert_eq!(read.len(), 4);
+        ramps(&mut table, 3..6);
+        let generation = texture.generation;
+        let read = upload_and_read(&gpu, &mut table, &mut texture);
+        assert_eq!(texture.generation, generation + 1);
+        let want: Vec<LutRowTexels> = [[magenta(); 256]]
+            .into_iter()
+            .chain((0..6).map(|i| baked(&ramp(i))))
+            .collect();
+        assert_eq!(read[..7], want, "grown");
+
+        for frame in 1..=EXPIRY_FRAMES + 1 {
+            table.advance_to(frame);
+            ramps(&mut table, 5..6);
+            table.decay();
         }
+        assert_eq!(table.capacity(), 4);
+        let read = upload_and_read(&gpu, &mut table, &mut texture);
+        assert_eq!(read[..2], [[magenta(); 256], baked(&ramp(5))], "shrunk");
+
+        table.advance_to(EXPIRY_FRAMES + 5);
+        ramps(&mut table, 6..8);
+        upload_and_read(&gpu, &mut table, &mut texture);
+        table.advance_to(EXPIRY_FRAMES + 6);
+        ramps(&mut table, 7..8);
+        table.purge();
+        let read = upload_and_read(&gpu, &mut table, &mut texture);
+        assert_eq!(read[..2], [[magenta(); 256], baked(&ramp(7))], "purged");
     }
 }

@@ -1,6 +1,5 @@
 //! When a frame is asked for again, and what a paint-only one may skip.
 
-use crate::common::expiry_window::EXPIRY_FRAMES;
 use crate::damage::Damage;
 use crate::diagnostics::DebugOverlayConfig;
 use crate::display::user_scale::UserScale;
@@ -22,7 +21,7 @@ use crate::primitives::preference::Preference;
 use crate::primitives::reduction::Reduction;
 use crate::renderer::frontend::encoder::Encoder;
 use crate::renderer::render_plan::RenderPlan;
-use crate::renderer::row_table::{INITIAL_ROWS, RowTable};
+use crate::renderer::row_table::{RowTable, SOFT_ROWS};
 use crate::scene::layer::Layer;
 use crate::scene::plane::Plane;
 use crate::shape::Shape;
@@ -382,7 +381,7 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
 
     b.frame(|ui| {
         Panel::hstack().size(20.0).show(ui, |ui| {
-            for idx in 0..INITIAL_ROWS - 1 {
+            for idx in 0..SOFT_ROWS - 1 {
                 ui.add_shape(
                     Shape::rect().at(Rect::new(0.0, 0.0, 8.0, 8.0)),
                     LinearGradient::horizontal([
@@ -400,7 +399,7 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
     let b_rows: HashSet<LutRow> = rows(b.frames(), &mut encoder, &mut table)
         .into_iter()
         .collect();
-    assert_eq!(b_rows.len(), (INITIAL_ROWS - 1) as usize);
+    assert_eq!(b_rows.len(), (SOFT_ROWS - 1) as usize);
     assert!(b_rows.contains(&original_row));
     table.advance_to(4);
 
@@ -410,72 +409,6 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
     assert_ne!(
         resolved_row, original_row,
         "PaintOnly must resolve retained gradient content after its old row is reused",
-    );
-}
-
-/// The encode starts each frame of the shared row table, so a window's frames halve it once the
-/// other window's ramps go idle: window b's 300 gradients take the table to 512 rows at display
-/// frame 0; window a then paints its one gradient a frame each, and by the end of the second expiry
-/// window the table holds 256 rows, a's ramp renumbered to row 1.
-#[test]
-fn an_idle_row_table_halves_through_the_encode() {
-    fn row(frames: &WindowFrames, encoder: &mut Encoder, table: &mut RowTable) -> LutRow {
-        let plan = RenderPlan {
-            clear: frames.ui().theme().window_bg,
-            damage: Damage::Full,
-        };
-        let rows: Vec<LutRow> = encoder
-            .capture(frames.ui().frame_scene(), plan, table)
-            .calls
-            .iter()
-            .filter_map(|command| match command {
-                PaintCall::Fill(payload) if payload.paint.fill.lut_row != LutRow::FALLBACK => {
-                    Some(payload.paint.fill.lut_row)
-                }
-                _ => None,
-            })
-            .collect();
-        rows[0]
-    }
-
-    let shared = UiResources::isolated_mono();
-    let mut encoder = Encoder::default();
-    let mut table = RowTable::default();
-    let mut a = support::ui_with_shared(&shared);
-    let mut b = support::ui_with_shared(&shared);
-    b.frame(|ui| {
-        Panel::hstack().size(20.0).show(ui, |ui| {
-            for idx in 0..300u32 {
-                ui.add_shape(
-                    Shape::rect().at(Rect::new(0.0, 0.0, 8.0, 8.0)),
-                    LinearGradient::horizontal([
-                        RgbaF32::from_srgba8(SrgbaU8::rgb(idx as u8, (idx >> 8) as u8, 7)),
-                        RgbaF32::WHITE,
-                    ]),
-                );
-            }
-        });
-    });
-    a.frame(|ui| {
-        ui.add_shape(
-            Shape::rect().at(Rect::new(0.0, 0.0, 8.0, 8.0)),
-            LinearGradient::horizontal([RgbaF32::hex(0xff0000), RgbaF32::hex(0x0000ff)]),
-        );
-    });
-    let _ = row(b.frames(), &mut encoder, &mut table);
-    assert_eq!(table.capacity(), 2 * INITIAL_ROWS);
-    table.advance_to(1);
-    let first = row(a.frames(), &mut encoder, &mut table);
-    assert_eq!(first, LutRow(301), "after b's 300");
-    for frame in 2..2 * EXPIRY_FRAMES {
-        table.advance_to(frame);
-        let _ = row(a.frames(), &mut encoder, &mut table);
-    }
-    assert_eq!(table.capacity(), INITIAL_ROWS);
-    assert_eq!(
-        row(a.frames(), &mut encoder, &mut table),
-        LutRow(1),
-        "a's ramp renumbered"
     );
 }
 

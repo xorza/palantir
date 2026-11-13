@@ -12,57 +12,20 @@ pub(crate) type LutRowTexels = [RgbaF16; LUT_ROW_TEXELS];
 const _: () = assert!(size_of::<RgbaF16>() == 8);
 const _: () = assert!(size_of::<LutRowTexels>() == 2048);
 
-/// Bake `ramp` into one row of texels.
+/// Bake `ramp` into one row of texels, `t` rising texel by texel, so the stop search resumes where
+/// the last texel left it.
 pub(crate) fn row(ramp: &ColorRamp, out: &mut LutRowTexels) {
     debug_assert!(
         ramp.stops.is_ascending(),
         "GradientStops must arrive sorted"
     );
-    for (texel, color) in out.iter_mut().zip(RampTexels::new(ramp)) {
-        *texel = color;
+    let colors = RampColors::of(ramp);
+    let mut upper = 1;
+    for (idx, texel) in out.iter_mut().enumerate() {
+        let t = idx as f32 / (LUT_ROW_TEXELS - 1) as f32;
+        *texel = colors.at(t, &mut upper).to_f16();
     }
 }
-
-/// A ramp's colors plus a cursor, yielding one row of texels in order. An
-/// iterator because the resume-in-place search needs `t` never to decrease.
-#[derive(Debug)]
-struct RampTexels<'a> {
-    colors: RampColors<'a>,
-    /// Index of the segment's upper stop.
-    upper: usize,
-    texel: usize,
-}
-
-impl<'a> RampTexels<'a> {
-    fn new(ramp: &'a ColorRamp) -> Self {
-        Self {
-            colors: RampColors::of(ramp),
-            upper: 1,
-            texel: 0,
-        }
-    }
-}
-
-impl Iterator for RampTexels<'_> {
-    type Item = RgbaF16;
-
-    fn next(&mut self) -> Option<RgbaF16> {
-        let texel = self.texel;
-        if texel == LUT_ROW_TEXELS {
-            return None;
-        }
-        self.texel += 1;
-        let t = texel as f32 / (LUT_ROW_TEXELS - 1) as f32;
-        Some(self.colors.at(t, &mut self.upper).to_f16())
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        let left = LUT_ROW_TEXELS - self.texel;
-        (left, Some(left))
-    }
-}
-
-impl ExactSizeIterator for RampTexels<'_> {}
 
 #[cfg(test)]
 mod tests;

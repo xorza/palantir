@@ -22,7 +22,7 @@ use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
-use crate::renderer::row_table::INITIAL_ROWS;
+use crate::renderer::row_table::SOFT_ROWS;
 use crate::shape::Shape;
 use crate::ui::Ui;
 use crate::ui::app::App;
@@ -86,9 +86,10 @@ fn each_depth_builds_what_it_names() {
 }
 
 /// A window that composes and paints nothing counts a display frame a compose, so its row table
-/// evicts the ramps no frame drew in the grace rather than grow: 300 frames of a new ramp each
-/// leave the table at its 256 first rows and on frame 300. Counted by flushes, as before, its
-/// ramps stayed in one epoch and the 256th grew the table, on to the fallback at its ceiling.
+/// evicts the ramps no frame drew in the grace rather than grow past its soft rows: 300 frames of a
+/// new ramp each leave the table at its 256 soft rows and on frame 300. Counted by flushes, as
+/// before, its ramps stayed in one epoch and the 256th grew the table, on to the fallback at its
+/// ceiling.
 #[test]
 fn a_composing_window_evicts_its_idle_rows() {
     let mut h = Harness::builder(UVec2::new(64, 32))
@@ -106,7 +107,7 @@ fn a_composing_window_evicts_its_idle_rows() {
     }
     let rows = h.paint.rows_mut();
     assert_eq!(rows.frame(), 300, "a display frame a compose");
-    assert_eq!(rows.capacity(), INITIAL_ROWS);
+    assert_eq!(rows.capacity(), SOFT_ROWS);
 }
 
 /// A frame that opens and closes windows records each command, in order, and runs on.

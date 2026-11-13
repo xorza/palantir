@@ -13,13 +13,29 @@ pub(super) struct DirtyRows {
 }
 
 impl DirtyRows {
-    /// Track `rows` rows; rows past the old count start clean.
+    /// Track `rows` rows; rows past the old count start clean, and none past the new is dirty.
     pub(super) fn resize(&mut self, rows: u32) {
-        self.bits.resize(rows.div_ceil(u64::BITS) as usize, 0);
+        let words = rows.div_ceil(u64::BITS) as usize;
+        debug_assert!(
+            self.bits.iter().skip(words).all(|&word| word == 0),
+            "a row past the new count is dirty"
+        );
+        self.bits.resize(words, 0);
     }
 
     pub(super) fn mark(&mut self, row: u32) {
         self.bits[(row / u64::BITS) as usize] |= 1 << (row % u64::BITS);
+    }
+
+    /// Mark `row` clean, as no flush owes a row that holds no ramp.
+    pub(super) fn clear(&mut self, row: u32) {
+        self.bits[(row / u64::BITS) as usize] &= !(1 << (row % u64::BITS));
+    }
+
+    /// Give back what the bits and the runs hold past their need.
+    pub(super) fn shrink_to_fit(&mut self) {
+        self.bits.shrink_to_fit();
+        self.runs.shrink_to_fit();
     }
 
     /// The dirty rows as sorted runs, a gap of up to `merge_gap` clean rows folded into the run
