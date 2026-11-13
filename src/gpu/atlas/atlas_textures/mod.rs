@@ -3,10 +3,10 @@
 
 pub(crate) mod move_draw;
 
+use crate::gpu::atlas::AtlasPool;
 use crate::gpu::atlas::atlas_format::AtlasFormat;
 use crate::gpu::atlas::atlas_textures::move_draw::{MoveDraw, MoveRect, MoveRun};
 use crate::gpu::atlas::page_list::{MAX_PAGES, Move, MoveBudget, PageList};
-use crate::gpu::atlas::{AtlasPool, ListCommit};
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::pass_traffic::PassTraffic;
 use crate::gpu::surface::owned_target::TargetSpec;
@@ -97,18 +97,19 @@ impl ListTextures {
 
     /// Make the textures follow `list`, recording on `encoder`: a page opened makes its texture, a
     /// page grown in its slot makes a larger one and copies the old texels into its top-left; then
-    /// `mover` moves each of `moves` from the page it left to its new one; then a page closed
-    /// drops its texture, and a scratch slot makes or drops its texture as its size comes and
-    /// goes. A move's source is the texture of the page opening it left, whether its slot still
-    /// holds that opening or closed it, or took another, this commit.
+    /// `mover` moves each of the list's moves from the page it left to its new one, in the order
+    /// they were made, as a later one may land where an item moved and then evicted lay; then a
+    /// page closed drops its texture, and a scratch slot makes or drops its texture as its size
+    /// comes and goes. A move's source is the texture of the page opening it left, whether its
+    /// slot still holds that opening or closed it, or took another, this commit.
     fn commit(
         &mut self,
         gpu: &Gpu,
         encoder: &mut wgpu::CommandEncoder,
         list: &PageList,
-        moves: impl Iterator<Item = Move>,
         mover: &mut Mover,
     ) {
+        let moves = list.moves();
         let mut previous = std::mem::replace(&mut self.pages, [const { None }; MAX_PAGES]);
         for (idx, held) in previous.iter_mut().enumerate() {
             let Some(page) = list.page(idx) else {
@@ -162,32 +163,40 @@ impl ListTextures {
                     encoder.copy_texture_to_texture(
                         wgpu::TexelCopyTextureInfo {
                             origin: texel::origin(m.from.origin.as_uvec2()),
-                            ..source(&m).bound.texture.as_image_copy()
+                            ..source(m).bound.texture.as_image_copy()
                         },
                         wgpu::TexelCopyTextureInfo {
                             origin: texel::origin(m.to.origin.as_uvec2()),
-                            ..dest(&m).bound.texture.as_image_copy()
+                            ..dest(m).bound.texture.as_image_copy()
                         },
                         texel::extent(m.from.size.as_uvec2()),
                     );
                 }
             }
-            Mover::Draw { draw, runs, rects } => {
-                runs.clear();
-                runs.extend(moves);
-                runs.sort_unstable_by_key(|m| (m.from_epoch, m.to.page));
-                for run in
-                    runs.chunk_by(|a, b| (a.from_epoch, a.to.page) == (b.from_epoch, b.to.page))
-                {
-                    let to = dest(&run[0]);
+            Mover::Draw { draw, rects } => {
+                // One page drains at a time and no drain is planned over waiting moves, so a
+                // commit's moves leave one page: a run a destination page, in the moves' order.
+                debug_assert!(
+                    moves.iter().all(|m| m.from_epoch == moves[0].from_epoch),
+                    "a commit's moves leave one page"
+                );
+                for page in 0..MAX_PAGES {
+                    let mut landing = moves
+                        .iter()
+                        .filter(|m| usize::from(m.to.page) == page)
+                        .peekable();
+                    let Some(&first) = landing.peek() else {
+                        continue;
+                    };
+                    let to = dest(first);
                     rects.clear();
-                    rects.extend(run.iter().map(|&m| MoveRect::of(m, to.bound.size().x)));
+                    rects.extend(landing.map(|&m| MoveRect::of(m, to.bound.size().x)));
                     draw.record(
                         gpu,
                         encoder,
                         MoveRun {
                             format: self.format,
-                            source: &source(&run[0]).bound.view,
+                            source: &source(first).bound.view,
                             dest: &to.bound.view,
                             rects,
                         },
@@ -239,15 +248,13 @@ impl MoveRoute {
     }
 }
 
-/// What a commit moves items with: copy commands, or [`MoveDraw`] and the scratch it groups a
-/// commit's moves in, kept across commits.
+/// What a commit moves items with: copy commands, or [`MoveDraw`] and the scratch one run's
+/// rectangles gather in, kept across commits.
 #[derive(Debug)]
 enum Mover {
     Copy,
     Draw {
         draw: MoveDraw,
-        /// A commit's moves, sorted into runs of one source and one destination.
-        runs: Vec<Move>,
         /// One run's rectangles.
         rects: Vec<MoveRect>,
     },
@@ -276,7 +283,6 @@ impl AtlasTextures {
                 MoveRoute::Copy => Mover::Copy,
                 MoveRoute::Draw => Mover::Draw {
                     draw: MoveDraw::new(gpu),
-                    runs: Vec::new(),
                     rects: Vec::new(),
                 },
             },
@@ -304,9 +310,9 @@ impl AtlasTextures {
             draw.begin();
         }
         for (textures, format) in self.lists.iter_mut().zip(AtlasFormat::ALL) {
-            let ListCommit { list, moves } = pool.commit_list(format);
-            textures.commit(gpu, encoder, list, moves, &mut self.mover);
+            textures.commit(gpu, encoder, pool.list(format), &mut self.mover);
         }
+        pool.forget_moves();
     }
 
     /// The views of `format`'s pages by page index, a closed page's the 1 × 1 stand-in.

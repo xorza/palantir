@@ -268,6 +268,35 @@ fn a_steadily_drawn_row_holds_one_ticket_not_one_per_frame() {
     );
 }
 
+/// A row dropped as stale and encoded again holds one ticket, whatever the cycles: the dropped row's ticket fires on the row in its place, which its own ticket keeps, and goes. Five cycles file six tickets; one window of steady redraw later one is left, and the row dies a window after its last use.
+#[test]
+fn a_row_dropped_as_stale_and_encoded_again_holds_one_ticket() {
+    const CYCLES: u64 = 5;
+    let mut cache = EncodedCache::default();
+    cache.insert(key(0), 0..4, 0);
+    for frame in 1..=CYCLES {
+        cache.drop_stale(&key(0));
+        assert_eq!(cache.map.len(), 0);
+        cache.insert(key(0), 0..4, frame);
+        cache.sweep(frame);
+    }
+    assert_eq!(cache.expiry.pending(), 1 + CYCLES as usize);
+
+    let window = CYCLES + ENCODED_CACHE_KEEP_FRAMES + 1;
+    for frame in CYCLES + 1..=window {
+        cache.map.get_mut(&key(0)).unwrap().last_use = frame;
+        cache.sweep(frame);
+    }
+    assert_eq!(cache.map.len(), 1, "the drawn row stays");
+    assert_eq!(cache.expiry.pending(), 1, "the dropped rows' tickets went");
+
+    for frame in window + 1..=window + ENCODED_CACHE_KEEP_FRAMES + 1 {
+        cache.sweep(frame);
+    }
+    assert!(cache.map.is_empty(), "idle a window, the row goes");
+    assert_eq!(cache.expiry.pending(), 0);
+}
+
 /// Quantifies the problem a probation tier would solve: a drag asks for each re-keyed run once, yet each lives the full `ENCODED_CACHE_KEEP_FRAMES`, settling the population at `runs × (KEEP + 1)`. A retention question, not a per-frame cost.
 #[test]
 fn a_gesture_frame_retains_a_full_keep_window_of_single_use_rows() {

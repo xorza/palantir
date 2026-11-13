@@ -57,7 +57,9 @@ fn pool(first_edge: u32, page_edge: u32, soft_bytes: u64) -> AtlasPool {
     AtlasPool::with_configs([config; 3], 16384)
 }
 
-/// Backdrops over a pool and its textures, one display frame a prepare, as the backend runs them.
+/// Backdrops over a pool and its textures, one display frame a prepare, as the backend runs them:
+/// the prepare, the pool's commit, the follow, and the drain of the pool's evictions that ends a
+/// submit.
 #[derive(Debug)]
 struct Rig {
     gpu: TestGpu,
@@ -112,6 +114,7 @@ impl Rig {
             textures.commit(ctx.gpu, ctx.encoder, pool);
             backdrops.follow(ctx.gpu, textures);
         });
+        backdrops.end_frame(pool);
     }
 
     /// Skip `frames` display frames no frame of these backdrops prepares in.

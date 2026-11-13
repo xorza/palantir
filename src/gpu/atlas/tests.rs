@@ -115,7 +115,8 @@ fn the_pool_agrees_with_a_model_over_a_seeded_run() {
             8 | 9 => {
                 pool.advance_to(pool.frame() + 1);
                 pool.end_submit(MoveBudget::COPIES);
-                let moves: Vec<_> = pool.commit_list(AtlasFormat::R8).moves.collect();
+                let moves = pool.list(AtlasFormat::R8).moves().to_vec();
+                pool.forget_moves();
                 for m in &moves {
                     assert!(
                         moves.iter().all(|other| other.to.page != m.from.page),
@@ -314,7 +315,8 @@ fn a_burst_past_one_page_decays_within_the_bounds() {
             first_eviction.get_or_insert(frame);
         }
         evicted_total += evicted;
-        let moves: Vec<_> = pool.commit_list(AtlasFormat::R8).moves.collect();
+        let moves = pool.list(AtlasFormat::R8).moves().to_vec();
+        pool.forget_moves();
         let texels: u64 = moves.iter().map(|m| m.from.texels()).sum();
         assert!(moves.len() <= 16, "frame {frame}: {} moves", moves.len());
         assert!(texels <= 512 * 512, "frame {frame}: {texels} texels moved");

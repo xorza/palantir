@@ -77,7 +77,8 @@ fn packed_metadata_checks_every_wire_boundary() {
 
 /// A mask raster files in the pool's mask list and a color one in its color list, each at the
 /// origin of its first page, with its bearing and content; a touch finds each, and each queues its
-/// upload for its own list. A raster past a page is refused and counted.
+/// upload for its own list. A raster past a page is counted and takes a slot that draws nothing,
+/// which a touch hits, so its rasterizer runs once.
 #[test]
 fn a_raster_files_in_its_list_and_a_touch_finds_it() {
     let mut pool = pool();
@@ -129,15 +130,17 @@ fn a_raster_files_in_its_list_and_a_touch_finds_it() {
             (AtlasFormat::Rgba8, UVec2::new(4, 4))
         ]
     );
-    assert_eq!(
-        atlas.insert(
+    let wide = atlas
+        .insert(
             &mut pool,
             key(4),
-            raster(ContentType::Mask, U16Vec2::new(33, 1), &mut pixels)
-        ),
-        None
-    );
+            raster(ContentType::Mask, U16Vec2::new(33, 1), &mut pixels),
+        )
+        .expect("a raster past the page takes a slot");
     assert_eq!(atlas.counters.oversized.count(), 1);
+    assert_eq!(atlas.placement(&pool, wide), None, "which draws nothing");
+    assert_eq!(atlas.touch(&mut pool, &key(4)), Some(wide), "and hits");
+    assert_eq!(atlas.pending_copies.len(), 2, "with no upload");
 }
 
 /// With every mask page full of glyphs no frame drew this frame or the last, two icons evict two

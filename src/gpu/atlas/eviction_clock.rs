@@ -4,7 +4,7 @@
 /// What the clock makes of one slot.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Verdict {
-    /// Not a candidate: free, exempt, or on a page that takes no allocation.
+    /// Not a candidate: free or exempt.
     Skip,
     /// Evictable, but freeing it makes no room for the item: on a shelf that does not take it.
     Refuse,
@@ -13,7 +13,7 @@ pub(super) enum Verdict {
 }
 
 /// One turn of the clock: the victim it found, whether it passed an evictable slot it refused,
-/// where the hand stopped and how far it walked.
+/// and where the hand stopped.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct ClockSweep {
     pub(super) victim: Option<u32>,
@@ -22,7 +22,6 @@ pub(super) struct ClockSweep {
     pub(super) refused: bool,
     /// Where the next turn resumes: past the victim, whose slot is about to be refilled.
     pub(super) hand: u32,
-    pub(super) examined: u32,
 }
 
 impl ClockSweep {
@@ -34,12 +33,11 @@ impl ClockSweep {
                 victim: None,
                 refused: false,
                 hand: 0,
-                examined: 0,
             };
         }
         let mut at = hand as usize % len;
         let mut refused = false;
-        for examined in 1..=len {
+        for _ in 0..len {
             let idx = at;
             at = if at + 1 == len { 0 } else { at + 1 };
             match judge(idx) {
@@ -50,7 +48,6 @@ impl ClockSweep {
                         victim: Some(idx as u32),
                         refused,
                         hand: at as u32,
-                        examined: examined as u32,
                     };
                 }
             }
@@ -59,7 +56,6 @@ impl ClockSweep {
             victim: None,
             refused,
             hand: at as u32,
-            examined: len as u32,
         }
     }
 }
@@ -69,8 +65,7 @@ mod tests {
     use crate::gpu::atlas::eviction_clock::{ClockSweep, Verdict};
 
     /// The walk resumes at the hand and wraps once: over `[Skip, Take, Refuse, Take]` from 2 it
-    /// refuses 2, takes 3 and parks at 0, two slots walked; from 0 it skips 0, takes 1 and parks
-    /// at 2.
+    /// refuses 2, takes 3 and parks at 0; from 0 it skips 0, takes 1 and parks at 2.
     /// A turn with nothing to take walks every slot, parks where it began and says whether it
     /// refused one; an empty slab walks none.
     #[test]
@@ -83,7 +78,6 @@ mod tests {
                 victim: Some(3),
                 refused: true,
                 hand: 0,
-                examined: 2
             }
         );
         assert_eq!(
@@ -92,7 +86,6 @@ mod tests {
                 victim: Some(1),
                 refused: false,
                 hand: 2,
-                examined: 2
             }
         );
         assert_eq!(
@@ -102,7 +95,6 @@ mod tests {
                 victim: None,
                 refused: true,
                 hand: 2,
-                examined: 3
             }
         );
         assert!(
@@ -115,7 +107,6 @@ mod tests {
                 victim: None,
                 refused: false,
                 hand: 0,
-                examined: 0
             }
         );
     }

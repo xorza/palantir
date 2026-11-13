@@ -7,7 +7,7 @@
 //! grow or a move needs no re-encode.
 
 use crate::common::block_arena::BlockArena;
-use crate::common::expiry_wheel::ExpiryWheel;
+use crate::common::expiry_wheel::{ExpiryWheel, TicketSeq};
 use rustc_hash::FxHashMap;
 use std::collections::hash_map::Entry;
 
@@ -29,6 +29,9 @@ struct EncodedEntry {
     text: Span,
     text_len: u32,
     last_use: u64,
+    /// The row's ticket in [`EncodedCache::expiry`]: a row dropped as stale leaves its own behind,
+    /// which fires under the key of the row encoded in its place and must not re-file.
+    ticket_seq: TicketSeq,
 }
 
 /// Bytes of source text one [`TextChunk`] holds.
@@ -126,16 +129,21 @@ impl EncodedCache {
             });
         }
         if stale {
-            // The pool evicted one of this run's rasters, so the template is dead. Drop the
-            // row now, or a y-culled run would pay the failed lookup every frame.
-            if let Some(dead) = self.map.remove(&run_key.key) {
-                self.arena.release(dead.span);
-                self.texts.release(dead.text);
-            }
+            self.drop_stale(&run_key.key);
             return false;
         }
         entry.last_use = cur_frame;
         true
+    }
+
+    /// Drop `key`'s row, one of whose rasters the pool evicted, so its template is dead: now, or
+    /// a y-culled run would pay the failed lookup every frame. Its ticket stays in the wheel and
+    /// fires on no row, or on a row of another ticket.
+    fn drop_stale(&mut self, key: &EncodedKey) {
+        if let Some(dead) = self.map.remove(key) {
+            self.arena.release(dead.span);
+            self.texts.release(dead.text);
+        }
     }
 
     pub(super) fn start_row(&mut self) {
@@ -160,13 +168,12 @@ impl EncodedCache {
         let arena = &mut self.arena;
         let texts = &mut self.texts;
         let probe = &mut self.counters;
-        // No stamp check: `last_use` only moves a deadline out, so every ticket that
-        // fires is live.
-        self.expiry.retire(cur_frame, |key, _| {
-            // Gone already: `emit_cached` drops a row whose slot was reused, leaving its ticket.
-            // `get`, not `entry`, which reserves on a vacant key and could rehash the map on a
-            // frame that encodes nothing.
-            let row = map.get(&key)?;
+        self.expiry.retire(cur_frame, |key, seq| {
+            // Gone already: `emit_cached` drops a row whose slot was reused, leaving its ticket,
+            // which then fires on no row, or on the row encoded in its place, whose own ticket
+            // keeps it. `get`, not `entry`, which reserves on a vacant key and could rehash the
+            // map on a frame that encodes nothing.
+            let row = map.get(&key).filter(|row| row.ticket_seq == seq)?;
             // A hit files no ticket; re-read the real `last_use` and re-file a live row.
             let dies_at = dies_at(row.last_use);
             if dies_at > cur_frame {
@@ -240,11 +247,13 @@ impl EncodedCache {
             Entry::Occupied(mut row) => {
                 arena.release(row.get().span);
                 texts.release(row.get().text);
+                let ticket_seq = row.get().ticket_seq;
                 row.insert(EncodedEntry {
                     span: arena.store(pending),
                     text: texts.store(text_scratch),
                     text_len,
                     last_use: frame,
+                    ticket_seq,
                 });
             }
             // A new row owes the wheel its first ticket; this is the only place one is filed.
@@ -254,8 +263,8 @@ impl EncodedCache {
                     text: texts.store(text_scratch),
                     text_len,
                     last_use: frame,
+                    ticket_seq: expiry.schedule(key, dies_at(frame)),
                 });
-                expiry.schedule(key, dies_at(frame));
             }
         }
         pending.clear();

@@ -656,6 +656,7 @@ impl WgpuBackend {
         let frame = self.text.end_frame(&mut self.atlas);
         self.icon.end_frame(&mut self.atlas, frame);
         self.programs.quad.end_frame(&mut self.atlas);
+        self.backdrops.end_frame(&mut self.atlas);
     }
 
     /// Where a pass loads and stores its whole target, the canvas a partial frame paints the size
@@ -1286,9 +1287,12 @@ impl WgpuBackend {
     /// Give back all the atlas pool can at once, as the system runs short of memory, between two
     /// frames: the pool purges, and its textures follow at once on an encoder of their own, the
     /// purge's moves first, so the textures it freed leave every group that binds them and their
-    /// memory returns at the device's next maintain, with no frame to wait for.
+    /// memory returns at the device's next maintain, with no frame to wait for. The backdrops it
+    /// took reach their windows' ledgers now, as a window's next frame decides what it holds
+    /// before any submit; the rasters and tables it took read as stale at their next lookup.
     pub(crate) fn purge_atlases(&mut self) {
         self.atlas.purge();
+        self.backdrops.end_frame(&mut self.atlas);
         let mut encoder = self
             .gpu
             .device
@@ -1301,7 +1305,7 @@ impl WgpuBackend {
         self.programs
             .quad
             .follow_cutouts(&self.gpu, &self.atlas_textures);
-        self.backdrops.follow(&self.gpu, &self.atlas_textures);
+        self.backdrops.drop_groups();
         self.gpu.queue.submit(iter::once(encoder.finish()));
     }
 

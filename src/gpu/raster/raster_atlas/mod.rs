@@ -163,8 +163,10 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
     }
 
     /// File a freshly rasterized raster under `key` in the pool, queueing its pixels for
-    /// [`Self::flush_pending_uploads`]. `None` where the pool refuses it: past a page, which
-    /// [`AtlasCounters::oversized`] counts, or full this frame.
+    /// [`Self::flush_pending_uploads`]. One past a page takes a slot that draws nothing, which
+    /// [`AtlasCounters::oversized`] counts: no later frame fits it either, so its key is a hit
+    /// and the rasterizer runs once, as for a raster past the packed metadata. `None` where the
+    /// pool is full this frame, the one refusal a later frame clears.
     pub(super) fn insert(
         &mut self,
         pool: &mut AtlasPool,
@@ -177,9 +179,16 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
         let format = format_of(content);
         let handle = match pool.allocate(format, self.tenant, metadata.size) {
             Ok(handle) => handle,
-            Err(AtlasError::Oversized { .. }) => {
+            Err(AtlasError::Oversized { size, edge }) => {
                 self.counters.oversized.bump();
-                return None;
+                tracing::warn!(
+                    ?key,
+                    width = size.x,
+                    height = size.y,
+                    edge,
+                    "skipping raster past the atlas page edge",
+                );
+                return Some(self.insert_unallocated(key));
             }
             Err(AtlasError::Full) => return None,
         };

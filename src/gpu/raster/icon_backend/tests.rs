@@ -1,8 +1,10 @@
 //! The unload path: what dropping an [`IconSet`] costs the backend to forget, and when. Needs a device.
 
 mod gpu {
+    use crate::common::counters::CounterSet;
     use crate::gpu::atlas::AtlasPool;
     use crate::gpu::atlas::atlas_format::AtlasFormat;
+    use crate::gpu::atlas::page_list::PageListConfig;
     use crate::gpu::device::gpu::Gpu;
     use crate::gpu::raster::icon_backend::IconBackend;
     use crate::gpu::test_gpu::headless_test_gpu;
@@ -12,7 +14,10 @@ mod gpu {
     use crate::icons::icon_table::IconTable;
     use crate::primitives::identity::icon_id::IconId;
     use crate::primitives::identity::icon_set_id::IconSetId;
-    use glam::Vec2;
+    use crate::primitives::paint::color::rgba_f16::RgbaF16;
+    use crate::renderer::render_buffer::clip_chain::ClipChain;
+    use crate::renderer::render_buffer::icon_draw_row::IconDrawRow;
+    use glam::{IVec2, UVec2, Vec2};
     use std::rc::Rc;
 
     /// A backend over `icons`; see the text suite's peer.
@@ -85,6 +90,48 @@ mod gpu {
         assert!(
             icons.resident_ids().is_empty(),
             "and the registry freed the slot",
+        );
+    }
+
+    /// An icon whose raster passes a page takes a slot that draws nothing: on pages of 8², a 16²
+    /// raster is cached and counted once, and its batch draws no quad, this frame or the next,
+    /// which rasterizes nothing again.
+    #[test]
+    fn an_icon_past_a_page_draws_nothing_and_rasterizes_once() {
+        let gpu = headless_test_gpu();
+        let icons = IconRegistry::default();
+        let mut backend = icon_backend(&gpu, &icons);
+        let config = PageListConfig {
+            first_edge: 8,
+            page_edge: 8,
+            soft_bytes: 1 << 20,
+        };
+        let mut pool = AtlasPool::with_configs([config; 3], 16384);
+        let mut frame = 0u64;
+        let set = load(&icons);
+        let row = IconDrawRow {
+            key: IconRasterKey::for_box(set.handle(IconId::new(0)).icon, Vec2::splat(16.0)),
+            origin: IVec2::ZERO,
+            size: UVec2::splat(16),
+            color: RgbaF16::WHITE,
+            desaturate: false,
+            spin: None,
+            clip: ClipChain::NONE,
+        };
+        for _ in 0..2 {
+            backend.prepare_batch(&mut pool, 0, &[row]);
+            assert_eq!(backend.pass.instance_count(), 0, "no quad");
+            assert_eq!(backend.pass.atlas.cached_len(), 1, "the key is cached");
+            assert_eq!(
+                backend.pass.atlas.counters.counts().oversized,
+                1,
+                "rasterized once"
+            );
+            tick(&mut backend, &mut pool, &mut frame);
+        }
+        assert!(
+            pool.list(AtlasFormat::R8).page(0).is_none(),
+            "no page opened"
         );
     }
 

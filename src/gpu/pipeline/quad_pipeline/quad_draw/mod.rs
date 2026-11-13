@@ -6,7 +6,8 @@ use crate::renderer::render_buffer::fill_form::FillForm;
 use crate::renderer::render_buffer::quad_draw_row::QuadKey;
 
 /// The pipeline a quad instance draws through, and so what it binds: a fill's form, or a
-/// shadow's entry, which also reads the cutout tables.
+/// shadow's entry, which also reads the cutout tables on the mask pages, whose open slots its
+/// pipeline is built for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum QuadDraw {
     Fill(FillForm),
@@ -15,8 +16,9 @@ pub(crate) enum QuadDraw {
 
 impl QuadDraw {
     /// Every draw, in [`Self::idx`] order: the fills, then the shadows.
-    pub(crate) const ALL: [Self; FillForm::ALL.len() + 3] = {
-        let mut all = [Self::Shadow(ShadowEntry::General); FillForm::ALL.len() + 3];
+    pub(crate) const ALL: [Self; FillForm::ALL.len() + ShadowEntry::COUNT] = {
+        let mut all =
+            [Self::Shadow(ShadowEntry::General); FillForm::ALL.len() + ShadowEntry::COUNT];
         let mut at = 0;
         while at < FillForm::ALL.len() {
             all[at] = Self::Fill(FillForm::ALL[at]);
@@ -36,15 +38,6 @@ impl QuadDraw {
             Self::Shadow(ShadowEntry::Tables) => fills + 1,
             Self::Shadow(ShadowEntry::TablesWide) => fills + 2,
         }
-    }
-
-    /// Whether it reads the cutout tables on the mask pages, whose open slots its pipeline is
-    /// built for.
-    pub(crate) const fn reads_cutouts(self) -> bool {
-        matches!(
-            self,
-            Self::Shadow(ShadowEntry::Tables | ShadowEntry::TablesWide)
-        )
     }
 
     const fn bit(self) -> u16 {

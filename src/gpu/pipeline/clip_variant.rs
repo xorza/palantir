@@ -44,26 +44,29 @@ impl ClipVariant {
     /// Build the half `clipping` binds, where it is not built: `recipe`, its override constants
     /// and `PALANTIR_CLIPS`, the clipping half labeled `{label}.clipped`.
     pub(crate) fn ensure(&mut self, gpu: &Gpu, clipping: Clipping, recipe: &PipelineRecipe<'_>) {
+        // Every frame's census asks, so a built half returns before the label and the constants
+        // allocate.
+        if self.is_built(clipping) {
+            return;
+        }
         let (slot, clips, label) = match clipping {
             Clipping::Off => (&mut self.off, 0.0, recipe.label.to_owned()),
             Clipping::On => (&mut self.on, 1.0, format!("{}.clipped", recipe.label)),
         };
-        if slot.is_none() {
-            let constants: Vec<(&str, f64)> = recipe
-                .constants
-                .iter()
-                .copied()
-                .chain([(CLIPS, clips)])
-                .collect();
-            *slot = Some(
-                PipelineRecipe {
-                    label: &label,
-                    constants: &constants,
-                    ..recipe.clone()
-                }
-                .build(gpu),
-            );
-        }
+        let constants: Vec<(&str, f64)> = recipe
+            .constants
+            .iter()
+            .copied()
+            .chain([(CLIPS, clips)])
+            .collect();
+        *slot = Some(
+            PipelineRecipe {
+                label: &label,
+                constants: &constants,
+                ..recipe.clone()
+            }
+            .build(gpu),
+        );
     }
 
     /// Whether the half `clipping` binds is built.

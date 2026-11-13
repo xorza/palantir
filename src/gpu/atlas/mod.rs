@@ -17,7 +17,7 @@ pub(crate) mod tenant;
 use crate::gpu::atlas::atlas_format::AtlasFormat;
 use crate::gpu::atlas::atlas_handle::{AtlasHandle, Placement};
 use crate::gpu::atlas::error::AtlasError;
-use crate::gpu::atlas::page_list::{DecayCtx, Move, MoveBudget, PageList, PageListConfig};
+use crate::gpu::atlas::page_list::{MoveBudget, PageList, PageListConfig};
 use crate::gpu::atlas::page_slots::AtlasSlots;
 use crate::gpu::atlas::scratch_cache::ScratchId;
 use crate::gpu::atlas::tenant::Tenant;
@@ -64,18 +64,9 @@ impl Evictions {
 pub(crate) struct AtlasPool {
     lists: [PageList; 3],
     frame: u64,
-    /// The display frame the lists last decayed in.
-    decayed: u64,
+    /// The display frame the lists last decayed in, `None` before the first.
+    decayed: Option<u64>,
     evictions: Evictions,
-    /// Each list's drains' moves since the GPU half last took them, by [`AtlasFormat`].
-    moves: [Vec<Move>; 3],
-}
-
-/// One list and the moves its drains made, as the GPU half's commit takes them.
-#[derive(Debug)]
-pub(crate) struct ListCommit<'a> {
-    pub(crate) list: &'a PageList,
-    pub(crate) moves: Drain<'a, Move>,
 }
 
 impl AtlasPool {
@@ -91,9 +82,8 @@ impl AtlasPool {
             lists: AtlasFormat::ALL
                 .map(|format| PageList::new(format, configs[format as usize], device_edge)),
             frame: 0,
-            decayed: 0,
+            decayed: None,
             evictions: Evictions::default(),
-            moves: Default::default(),
         }
     }
 
@@ -140,25 +130,18 @@ impl AtlasPool {
 
     /// Return what the lists hold past their need, at the end of the first submit of each display
     /// frame, after every draw of it: the evictions wait in their tenants' queues, and the moves
-    /// for the GPU half's next commit, ahead of every upload, bake and draw, so the next build of
-    /// any window reads the new placements (`src/gpu/AGENTS.md`, Atlases). As WebRender
-    /// runs its compaction once a frame. The moves take at most `budget`, the GPU half's for its
-    /// device ([`atlas_textures::MoveRoute::budget`]).
+    /// in their lists for the GPU half's next commit, ahead of every upload, bake and draw, so the
+    /// next build of any window reads the new placements (`src/gpu/AGENTS.md`, Atlases). As
+    /// WebRender runs its compaction once a frame. The moves spend `budget`, the GPU half's for
+    /// its device ([`atlas_textures::MoveRoute::budget`]), across the lists.
     pub(crate) fn end_submit(&mut self, budget: MoveBudget) {
-        if self.decayed == self.frame {
+        if self.decayed == Some(self.frame) {
             return;
         }
-        self.decayed = self.frame;
+        self.decayed = Some(self.frame);
         let mut budget = budget;
-        for (list, moves) in self.lists.iter_mut().zip(&mut self.moves) {
-            list.decay(
-                self.frame,
-                DecayCtx {
-                    budget: &mut budget,
-                    evictions: &mut self.evictions,
-                    moves,
-                },
-            );
+        for list in &mut self.lists {
+            list.decay(self.frame, &mut budget, &mut self.evictions);
         }
     }
 
@@ -167,21 +150,15 @@ impl AtlasPool {
     /// with no budget. Between frames alone, as the moves and the closed pages wait for the GPU
     /// half's next commit, which the caller records at once.
     pub(crate) fn purge(&mut self) {
-        for (list, moves) in self.lists.iter_mut().zip(&mut self.moves) {
-            list.purge(self.frame, &mut self.evictions, moves);
+        for list in &mut self.lists {
+            list.purge(self.frame, &mut self.evictions);
         }
     }
 
-    /// `format`'s list and the moves its drains made since the GPU half last took them, which
-    /// it takes now.
-    #[expect(
-        clippy::iter_with_drain,
-        reason = "the pool keeps its buffer for the next moves, which `into_iter` would drop"
-    )]
-    pub(crate) fn commit_list(&mut self, format: AtlasFormat) -> ListCommit<'_> {
-        ListCommit {
-            list: &self.lists[format as usize],
-            moves: self.moves[format as usize].drain(..),
+    /// Forget every list's moves, which the GPU half's commit recorded.
+    pub(crate) fn forget_moves(&mut self) {
+        for list in &mut self.lists {
+            list.forget_moves();
         }
     }
 
@@ -260,7 +237,7 @@ pub(crate) mod internals {
 
         /// Whether the lists decayed in the current display frame.
         pub(crate) const fn has_decayed(&self) -> bool {
-            self.decayed == self.frame
+            matches!(self.decayed, Some(frame) if frame == self.frame)
         }
     }
 }

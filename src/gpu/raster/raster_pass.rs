@@ -41,8 +41,8 @@ pub(super) struct RasterPassConfig {
     pub(super) initial_instances: usize,
 }
 
-/// What one [`RasterPass::insert_raster`] managed to do with an image. The failures
-/// are kept apart because only one is transient.
+/// What one [`RasterPass::insert_raster`] managed to do with an image: a slot, one that draws
+/// nothing for an image no frame can place, or the one failure a later frame clears.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Rasterized {
     Slot(u32),
@@ -134,9 +134,9 @@ impl<K: Copy + Eq + Hash + Debug> RasterPass<K> {
     }
 
     /// File a freshly rasterized image under `key` and return its slot. An image
-    /// whose extents or bearing overflow [`PackedMetadata`], or that covers no
-    /// pixels, takes a slot owning no rectangle, so the key is a hit forever and
-    /// the rasterizer runs once.
+    /// whose extents or bearing overflow [`PackedMetadata`], that covers no
+    /// pixels, or that passes a page takes a slot owning no rectangle, so the key
+    /// is a hit forever and the rasterizer runs once.
     pub(super) fn insert_raster(
         &mut self,
         pool: &mut AtlasPool,

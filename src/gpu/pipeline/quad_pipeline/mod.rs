@@ -60,28 +60,40 @@ const FILL_LABELS: [&str; FillForm::ALL.len()] = [
     "palantir.quad.pipeline.triangle_gradient",
 ];
 
-/// Every quad pipeline one swapchain format needs: one per [`QuadDraw`], a fill's form or a
-/// shadow's entry, and for a shadow that reads the cutout tables one per set of open slots of the
-/// mask pages they lie on.
+/// Every quad pipeline one swapchain format needs: one a fill's form, which reads no page, and
+/// one a shadow's entry for each set of open slots of the mask pages its cutout tables lie on.
 #[derive(Debug)]
 pub(crate) struct QuadVariants {
-    /// Each draw's pipelines, by [`QuadDraw::idx`], then by [`slots_idx`]. The shadows read the
-    /// baked cutouts ([`CutoutTables`]), apart from `fs` to keep the blur integral out of other
-    /// quads.
-    draws: [[ClipVariant; PageSlots::COUNT]; QuadDraw::ALL.len()],
-}
-
-/// Where `draw`'s pipeline over the open mask `slots` sits among its own: at their
-/// [`PageSlots::idx`] for a draw that reads the cutout tables, at 0 for one that reads no page.
-const fn slots_idx(draw: QuadDraw, slots: PageSlots) -> usize {
-    if draw.reads_cutouts() { slots.idx() } else { 0 }
+    /// Each fill's pipeline, by [`FillForm::idx`].
+    fills: [ClipVariant; FillForm::ALL.len()],
+    /// Each shadow entry's pipelines, by [`ShadowEntry`], then by the open mask slots'
+    /// [`PageSlots::idx`]. Every entry reads the baked cutouts ([`CutoutTables`]), the general one
+    /// for the corners of a shadow that hold a table beside one that holds none; apart from `fs`
+    /// to keep the blur integral out of other quads.
+    shadows: [[ClipVariant; PageSlots::COUNT]; ShadowEntry::COUNT],
 }
 
 impl QuadVariants {
     /// No pipeline built.
     pub(crate) const NONE: Self = Self {
-        draws: [const { [const { ClipVariant::NONE }; PageSlots::COUNT] }; QuadDraw::ALL.len()],
+        fills: [const { ClipVariant::NONE }; FillForm::ALL.len()],
+        shadows: [const { [const { ClipVariant::NONE }; PageSlots::COUNT] }; ShadowEntry::COUNT],
     };
+
+    /// `draw`'s pipelines over the open mask `slots`.
+    const fn variant(&self, draw: QuadDraw, slots: PageSlots) -> &ClipVariant {
+        match draw {
+            QuadDraw::Fill(form) => &self.fills[form.idx() as usize],
+            QuadDraw::Shadow(entry) => &self.shadows[entry as usize][slots.idx()],
+        }
+    }
+
+    const fn variant_mut(&mut self, draw: QuadDraw, slots: PageSlots) -> &mut ClipVariant {
+        match draw {
+            QuadDraw::Fill(form) => &mut self.fills[form.idx() as usize],
+            QuadDraw::Shadow(entry) => &mut self.shadows[entry as usize][slots.idx()],
+        }
+    }
 
     /// The pipeline a quad of `draw` draws through in a frame of `clipping` over the open mask
     /// `slots`, which the frame's census built.
@@ -91,7 +103,7 @@ impl QuadVariants {
         clipping: Clipping,
         slots: PageSlots,
     ) -> &Pipeline {
-        self.draws[draw.idx() as usize][slots_idx(draw, slots)].get(clipping)
+        self.variant(draw, slots).get(clipping)
     }
 }
 
@@ -324,7 +336,7 @@ impl QuadPipeline {
         } = target;
         let instance = [Some(INSTANCE_LAYOUT)];
         let label = draw_label(draw);
-        let variant = &mut variants.draws[draw.idx() as usize][slots_idx(draw, slots.mask)];
+        let variant = variants.variant_mut(draw, slots.mask);
         match draw {
             QuadDraw::Fill(form) => {
                 variant.ensure(
@@ -605,10 +617,10 @@ pub(crate) mod internals {
     use crate::gpu::pipeline::clip_variant::Clipping;
     use crate::gpu::pipeline::quad_pipeline::QuadPipeline;
     #[cfg(test)]
+    use crate::gpu::pipeline::quad_pipeline::QuadVariants;
+    #[cfg(test)]
     use crate::gpu::pipeline::quad_pipeline::quad_draw::QuadDraw;
     use crate::gpu::pipeline::quad_pipeline::quad_draw::ShapeCells;
-    #[cfg(test)]
-    use crate::gpu::pipeline::quad_pipeline::{QuadVariants, slots_idx};
 
     #[cfg(test)]
     impl QuadVariants {
@@ -620,7 +632,7 @@ pub(crate) mod internals {
             clipping: Clipping,
             slots: PageSlots,
         ) -> bool {
-            self.draws[draw.idx() as usize][slots_idx(draw, slots)].is_built(clipping)
+            self.variant(draw, slots).is_built(clipping)
         }
     }
 
@@ -687,9 +699,11 @@ mod tests {
         assert_eq!(spans.outlines.len, 0);
     }
 
-    /// A shadow that reads the cutout tables builds a pipeline for each set of open mask slots, the
-    /// set it is asked for alone, and every set compiles: after the sets up to one, those and no
-    /// later ones are built. A fill reads no page, so its one pipeline serves every set.
+    /// A shadow builds a pipeline for each set of open mask slots, the set it is asked for alone,
+    /// and every set compiles: after the sets up to one, those and no later ones are built. So do
+    /// the wide entry and the general one, which reads the tables its shadow's other corners hold:
+    /// built over slot 0, neither is built over slot 1 until asked. A fill reads no page, so its
+    /// one pipeline serves every set.
     #[test]
     fn a_table_shadow_builds_one_pipeline_a_set_of_mask_slots() {
         use crate::gpu::atlas::atlas_textures::AtlasTextures;
@@ -727,6 +741,18 @@ mod tests {
                     "built through {slots:?}, asking {other:?}"
                 );
             }
+        }
+        let second = PageSlots::new(0b10);
+        for entry in [ShadowEntry::TablesWide, ShadowEntry::General] {
+            let shadow = QuadDraw::Shadow(entry);
+            program.ensure_draw(&mut variants, &gpu, target(PageSlots::FIRST), shadow);
+            assert!(variants.is_built(shadow, Clipping::Off, PageSlots::FIRST));
+            assert!(
+                !variants.is_built(shadow, Clipping::Off, second),
+                "{entry:?} over slot 0 reads no table on slot 1"
+            );
+            program.ensure_draw(&mut variants, &gpu, target(second), shadow);
+            assert!(variants.is_built(shadow, Clipping::Off, second));
         }
         program.ensure_draw(&mut variants, &gpu, target(PageSlots::FIRST), fill);
         for slots in PageSlots::all() {

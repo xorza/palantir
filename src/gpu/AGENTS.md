@@ -78,7 +78,9 @@ Facts and sources: `.notes/research/2026-11-12-atlas-pools.md` and
   tenant's own headroom.
 - **An allocation is a handle; a move rewrites its placement and nothing else.** Every tenant
   reads its placement at the lookup that draws it, so a drain needs no tenant's help; only an
-  eviction moves a handle's generation.
+  eviction moves a handle's generation. Each tenant drops what the pool evicted at the end of the
+  submit; the backdrops after a purge too, as a window decides what its backdrops hold before its
+  next submit, where a raster or a table reads as stale at its lookup.
 - **A list binds up to four pages together, the page in the instance**, as Skia's
   `kMaxMultitexturePages`, so a draw never splits by page; a closed page binds a 1 × 1 stand-in.
   The first page doubles from its first edge to the page edge; past it the list adds pages.
@@ -88,7 +90,8 @@ Facts and sources: `.notes/research/2026-11-12-atlas-pools.md` and
   picks a page by a chain of branches an override decides wherever it can
   (`palantir_reads_slot`), so over one open page it loads and never branches, in any slot, as
   Skia keys its text program on the atlas's active pages (`GrBitmapTextGeoProc`'s
-  `numTextureSamplers`). A choice among four compiled in full on V3D: the raster fragment 196 →
+  `numTextureSamplers`). Every pipeline whose shader can reach a page is one, the general shadow
+  among them, which reads the tables its shadow's other corners hold. A choice among four compiled in full on V3D: the raster fragment 196 →
   943 instructions at half the threads, the board's whole repaints +2.7 to +3.1 %. Refused: a
   `switch` over the four; the slots through the last open one, which a shrink defeats, as it
   leaves a list's one page in slot 1; a draw a page, which splits a run of glyphs on two pages
@@ -127,10 +130,14 @@ Facts and sources: `.notes/research/2026-11-12-atlas-pools.md` and
   as WebRender's `bytes_allocated`, and nothing ages under the budget on one page, grown or not,
   as WebRender ages under its threshold only across several textures (refused: a grown page aged
   under the budget, which evicted every glyph of a 512-scale zoom just before its scale came back,
-  `cache_churn` +40 to +83 %); the emptiest page whose items fit the others drains into them, at
-  most 512² texels a frame as WebRender's compaction; one page under a quarter full for an expiry
-  window drains into a page that holds twice its items, landing at half as a `Vec` halves. A page is a source or a destination in one frame, never both, and no
-  drain starts while moves wait for the commit, so no page closes under a move. Refused: Skia's
+  `cache_churn` +40 to +83 %); the emptiest page whose items fit the others drains into them, until
+  a frame has moved 512² texels as WebRender's compaction, whose last move may pass them, so an
+  item of more still moves; one page a smaller one holds twice over for an expiry window, an eighth
+  full at most, drains into the smallest page that holds twice its items' texels and packs them,
+  landing at half or under as a `Vec` halves. One page drains at a time, a source or a destination
+  in one frame and never both, and no drain starts while moves wait for the commit, so no page
+  closes under a move; the commit lands the moves in the order they were made, as a purge may land
+  one where an item it evicted had just moved. Refused: Skia's
   compaction by eviction, which rasterizes a page's visible items again in one frame; a repack in
   one frame, which moves the whole live set at once.
 - **Moves go by one instanced draw a destination page, or by copy commands where a pass moves its
@@ -139,7 +146,7 @@ Facts and sources: `.notes/research/2026-11-12-atlas-pools.md` and
   handheld, and ties at 16 and wins past 64 on the Apple laptop. Where it moves the whole target, a
   draw loads and stores the whole destination page, 2.2 to 5.1 ms on V3D at 2048², so copies win
   below about 64 there, and a frame takes 16 copies, about 0.7 ms at V3D's 43 µs a copy, where 64
-  took 2.4 ms. Both within 512² texels a frame.
+  took 2.4 ms. Both stop at 512² texels a frame.
 - **The system's memory warnings purge the pool on every platform**, between frames: everything no
   one pins and the last frame did not draw goes, idle scratch goes, and the pages drain with no
   budget, committed at once so the memory returns with no frame to wait for; a stutter traded for

@@ -185,8 +185,76 @@ fn moves_land(gpu: &TestGpu, route: MoveRoute) {
     }
 }
 
+/// A commit lands its moves in the order they were made, by copy and by draw alike, as a later
+/// one may land where an earlier one's item lay. Sixteen 8² items fill a 32² page and two more, `x`
+/// and `y`, open a second; four of the first page's go, and a decay under a budget of one move
+/// drains `x` to the first freed place, (0, 0). A purge before the commit evicts `x`, the one
+/// item no one pins, and goes on with the drain, which lands `y` on the same place. The commit
+/// holds both moves, and the place reads `y`'s texels, every other texel of the page its own.
+#[test]
+fn a_commit_lands_its_moves_in_the_order_they_were_made() {
+    let gpu = headless_test_gpu();
+    let config = PageListConfig {
+        first_edge: 32,
+        page_edge: 32,
+        soft_bytes: 1 << 20,
+    };
+    for route in [MoveRoute::Copy, MoveRoute::Draw] {
+        let mut pool = AtlasPool::with_configs([config; 3], 16384);
+        let mut textures = AtlasTextures::with_route(&gpu, route);
+        let insert = |pool: &mut AtlasPool| {
+            pool.allocate(AtlasFormat::R8, Tenant::Glyphs, U16Vec2::splat(8))
+                .unwrap()
+        };
+        let first: Vec<_> = (0..16).map(|_| insert(&mut pool)).collect();
+        let x = insert(&mut pool);
+        let y = insert(&mut pool);
+        let origin = |pool: &AtlasPool, handle| {
+            let placement = pool.placement(handle).unwrap();
+            (placement.page, placement.origin)
+        };
+        assert_eq!(origin(&pool, x), (1, U16Vec2::ZERO));
+        assert_eq!(origin(&pool, y), (1, U16Vec2::new(8, 0)));
+        commit(&gpu, &mut textures, &mut pool);
+        let page = |idx| textures.page_texture(AtlasFormat::R8, idx).unwrap();
+        fill(&gpu, page(0), 32, &[0x33; 32 * 32]);
+        let second: Vec<u8> = (0..32 * 32)
+            .map(|i| match (i % 32, i / 32) {
+                (0..8, 0..8) => 0x11,
+                (8..16, 0..8) => 0x22,
+                _ => 0,
+            })
+            .collect();
+        fill(&gpu, page(1), 32, &second);
+
+        for &handle in &first[..4] {
+            pool.release(handle);
+        }
+        for &handle in first[4..].iter().chain([&y]) {
+            pool.pin(handle);
+        }
+        pool.advance_to(1);
+        pool.end_submit(MoveBudget {
+            texels: u64::MAX,
+            moves: 1,
+        });
+        assert_eq!(origin(&pool, x), (0, U16Vec2::ZERO));
+        pool.purge();
+        assert_eq!(pool.placement(x), None, "evicted, its move waiting");
+        assert_eq!(origin(&pool, y), (0, U16Vec2::ZERO));
+        assert_eq!(pool.list(AtlasFormat::R8).moves().len(), 2);
+        commit(&gpu, &mut textures, &mut pool);
+        assert!(pool.list(AtlasFormat::R8).moves().is_empty());
+        let read = gpu.read_texture(textures.page_texture(AtlasFormat::R8, 0).unwrap());
+        for (i, &texel) in read.iter().enumerate() {
+            let want = if i % 32 < 8 && i / 32 < 8 { 0x22 } else { 0x33 };
+            assert_eq!(texel, want, "by {route:?}: texel ({}, {})", i % 32, i / 32);
+        }
+    }
+}
+
 /// A device whose passes move their whole target moves by copy, with a frame's 16 copies; any
-/// other by draw, with no count of moves, both within 512² texels.
+/// other by draw, with no count of moves, both stopping at 512² texels.
 #[test]
 fn the_route_follows_what_a_pass_moves() {
     assert_eq!(MoveRoute::of(PassTraffic::WholeTarget), MoveRoute::Copy);

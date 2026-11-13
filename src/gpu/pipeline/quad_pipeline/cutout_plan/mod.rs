@@ -81,6 +81,11 @@ pub(crate) enum ShadowEntry {
     General,
 }
 
+impl ShadowEntry {
+    /// How many entries there are.
+    pub(crate) const COUNT: usize = 3;
+}
+
 /// One shadow corner: cutout radius, the region where the cutout is nonzero, and the arc center with reflection signs.
 #[derive(Clone, Copy, Debug)]
 struct CutoutCorner {

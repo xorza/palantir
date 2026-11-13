@@ -212,8 +212,8 @@ pub(crate) struct BlurBreak {
 /// idle.
 ///
 /// Past its soft budget the pool evicts results no frame read this display frame or the last, from
-/// any window, and the drain lists them ([`Self::evicted`]) for each window's backdrop ledger to
-/// drop. A result that finds no room shows its fill over the clear and captures again.
+/// any window, and each submit's end lists them ([`Self::evicted`]) for each window's backdrop
+/// ledger to drop. A result that finds no room shows its fill over the clear and captures again.
 #[derive(Debug)]
 pub(crate) struct Backdrops {
     cache: FxHashMap<(RenderOwnerId, BackdropKey), Kept>,
@@ -226,7 +226,7 @@ pub(crate) struct Backdrops {
     /// The texture each of [`Self::slots`] reads, whose group its composite binds; `None` for one
     /// that shows its clear.
     slot_reads: Vec<Option<ResultTexture>>,
-    /// The handles the pool evicted, drained, retained.
+    /// The handles the pool evicted, as [`Self::end_frame`] drains them.
     drained: Vec<AtlasHandle>,
     /// The layout of the group a backdrop's composite reads its result through
     /// ([`TextureBinding::backdrops`]); the group itself waits for a backdrop.
@@ -517,7 +517,6 @@ impl Backdrops {
             };
             self.push_slot(row, shown);
         }
-        self.drain_evictions(pool);
         let resources = self.resources.as_mut().expect("made above");
         if !self.jobs.is_empty() {
             resources
@@ -607,9 +606,21 @@ impl Backdrops {
         });
     }
 
+    /// Drop the composite groups, as a purge freed textures they bind; the next frame's
+    /// [`Self::follow`] makes them again over what its results lie in. Not a follow, which makes
+    /// the last frame's scratch groups, over textures the purge may have dropped.
+    pub(crate) fn drop_groups(&mut self) {
+        if let Some(resources) = &mut self.resources {
+            resources.groups = None;
+        }
+    }
+
     /// Drop the results the pool evicted since the last drain, and list each for its window's
-    /// ledger.
-    fn drain_evictions(&mut self, pool: &mut AtlasPool) {
+    /// ledger: at the end of each submit, after the pool's decay, and after a purge, so a window's
+    /// next frame captures again what either took, as the other tenants drop their keys. Refused:
+    /// the drain in [`Self::prepare`] alone, after the frame's ledger decided, which showed a
+    /// result the decay or a purge took as its clear for a frame.
+    pub(crate) fn end_frame(&mut self, pool: &mut AtlasPool) {
         self.drained.clear();
         self.drained.extend(pool.drain_evicted(Tenant::Backdrops));
         if self.drained.is_empty() {

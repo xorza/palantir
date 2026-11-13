@@ -210,7 +210,7 @@ fn a_draining_page_takes_no_allocation_until_an_insert_needs_it() {
     for &handle in &first[1..] {
         list.release(handle);
     }
-    list.set_state(0, PageState::Draining);
+    list.begin_drain(0);
     let passed: Vec<(u8, U16Vec2)> = (0..3)
         .map(|_| {
             let handle = insert(&mut list);
@@ -227,7 +227,7 @@ fn a_draining_page_takes_no_allocation_until_an_insert_needs_it() {
     );
     let cancelled = insert(&mut list);
     assert_eq!(at(&list, cancelled), (0, U16Vec2::new(16, 0)));
-    assert_eq!(list.page(0).unwrap().state(), PageState::Open);
+    assert_eq!(list.draining(), None);
     assert_eq!(at(&list, first[0]), (0, U16Vec2::ZERO));
 }
 

@@ -62,11 +62,10 @@ impl IconBackend {
             let Some(idx) = self.slot(pool, row.key) else {
                 continue;
             };
-            let slot = self
-                .pass
-                .atlas
-                .placement(pool, idx)
-                .expect("an icon raster is at least 1x1, so its slot owns a rectangle");
+            // A raster past a page takes a slot that draws nothing, as a glyph's does.
+            let Some(slot) = self.pass.atlas.placement(pool, idx) else {
+                continue;
+            };
             let mut quad = RasterQuad {
                 clip: row.clip,
                 ..slot.quad_sized(row.origin, row.size, row.color)

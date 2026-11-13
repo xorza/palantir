@@ -27,14 +27,15 @@ pub(crate) struct PageListConfig {
     pub(crate) soft_bytes: u64,
 }
 
-/// What a page takes.
+/// A drain under way, one a list at most: the page it empties, which takes no allocation and no
+/// move into it, so it is never a source and a destination in one frame, and where its walk of the
+/// slab resumes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum PageState {
-    /// Allocations, and a drain's moves into it.
-    Open,
-    /// A drain's source: no allocation and no move into it, so it empties and goes, and is never a
-    /// source and a destination in one frame.
-    Draining,
+struct Drain {
+    page: u8,
+    /// The slab slot the next moves resume at. No item sits on the page behind it, as the page
+    /// takes none while it drains, so a frame's drain walks what it moves and not the slab again.
+    hand: u32,
 }
 
 /// One item a drain moved, from the page of opening `from_epoch` to another, which the GPU half
@@ -49,7 +50,10 @@ pub(crate) struct Move {
 
 /// What a display frame's moves may still take, across the lists: WebRender's compaction
 /// `area_threshold` of texels, 512², and a count of moves, which on a device that moves by copy
-/// commands each cost the driver's fixed overhead.
+/// commands each cost the driver's fixed overhead. The texels are spent, not fitted: the move that
+/// passes them goes and ends the frame's moves, as WebRender's `try_compaction` counts a move
+/// before it compares, so an item of more texels than a whole frame's still moves and its drain
+/// ends. Refused: a move held to what is left, which kept such an item's page draining for good.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct MoveBudget {
     pub(crate) texels: u64,
@@ -72,13 +76,13 @@ impl MoveBudget {
         moves: u32::MAX,
     };
 
-    /// Take `texels` in one move, `false` where the budget holds them no more.
+    /// Take one move of `texels`, `false` once the moves or the texels are spent.
     const fn take(&mut self, texels: u64) -> bool {
-        if self.moves == 0 || self.texels < texels {
+        if self.moves == 0 || self.texels == 0 {
             return false;
         }
         self.moves -= 1;
-        self.texels -= texels;
+        self.texels = self.texels.saturating_sub(texels);
         true
     }
 }
@@ -89,14 +93,6 @@ impl MoveBudget {
 enum Pace {
     Frame(u64),
     Purge,
-}
-
-/// What a list's decay writes into, beside the list.
-#[derive(Debug)]
-pub(crate) struct DecayCtx<'a> {
-    pub(crate) budget: &'a mut MoveBudget,
-    pub(crate) evictions: &'a mut Evictions,
-    pub(crate) moves: &'a mut Vec<Move>,
 }
 
 /// WebRender's age at which an item idle under a pressure of `ratio`, the bytes a list's items fill
@@ -123,12 +119,11 @@ const AGE_EVICTIONS_MAX: u32 = 32;
 /// frame holds however many items the list keeps; a slab of more takes more frames to walk.
 const AGE_SCAN_MAX: usize = 1024;
 
-/// One page: its packer, whose edge is the page's, what it takes, the texels its items fill, and
-/// which opening of its slot it is.
+/// One page: its packer, whose edge is the page's, the texels its items fill, and which opening
+/// of its slot it is.
 #[derive(Debug)]
 pub(crate) struct Page {
     packer: ShelfPacker,
-    state: PageState,
     live_texels: u64,
     /// The list's count of pages opened when this one opened, so the GPU half tells a page grown
     /// in its slot, whose texels it copies, from another opened there since, whose it does not.
@@ -136,10 +131,9 @@ pub(crate) struct Page {
 }
 
 impl Page {
-    fn new(edge: u32, state: PageState, epoch: u32) -> Self {
+    fn new(edge: u32, epoch: u32) -> Self {
         Self {
             packer: ShelfPacker::new(edge_u16(edge)),
-            state,
             live_texels: 0,
             epoch,
         }
@@ -151,10 +145,6 @@ impl Page {
 
     pub(crate) fn edge(&self) -> u32 {
         u32::from(self.packer.edge())
-    }
-
-    const fn takes_allocations(&self) -> bool {
-        !matches!(self.state, PageState::Draining)
     }
 
     /// Whether an item of `size` fits inside the page's edge at all.
@@ -175,11 +165,16 @@ struct Entry {
 }
 
 impl Entry {
-    /// Whether no eviction may take it at display frame `frame`: pinned, or drawn this frame or
-    /// the last, the one-frame grace that keeps a working set a little past budget from evicting
-    /// what the next frame draws again, as WebRender's least age at full pressure.
-    const fn is_exempt(&self, frame: u64) -> bool {
-        self.pins > 0 || self.last_use + 1 >= frame
+    /// The frames past its last draw an item stays out of the clock's reach: one, so nothing
+    /// drawn this frame or the last goes, the grace that keeps a working set a little past budget
+    /// from evicting what the next frame draws again, as WebRender's least age at full pressure.
+    const GRACE_FRAMES: u64 = 1;
+
+    /// Whether no one pins it and no frame drew it in the `age` frames before display frame
+    /// `frame`, nor in `frame`: what an eviction may take, the clock at an age of
+    /// [`Self::GRACE_FRAMES`], the age-out at its pressure's, a purge at none.
+    const fn is_idle(&self, frame: u64, age: u64) -> bool {
+        self.pins == 0 && self.last_use + age < frame
     }
 }
 
@@ -232,13 +227,18 @@ pub(crate) struct PageList {
     device_edge: u32,
     /// Where the age-out resumes.
     age_hand: u32,
-    /// The display frame since which the list's one page has held under a quarter of its texels,
-    /// `None` while it holds more or the list has other pages.
+    /// The display frame since which the list's one page has had a smaller page to shrink to,
+    /// `None` while it has none or the list has other pages.
     sparse_since: Option<u64>,
-    /// The last drain that found no room for an item, so the same drain is not tried again
-    /// every frame while nothing it counts changed: the free texels fit its items, but not
-    /// their shapes.
+    draining: Option<Drain>,
+    /// What the last drain that found no room for an item counted, or the last shrink no smaller
+    /// page packs, so the same drain is not planned again while nothing it counts changed: the
+    /// free texels fit its items, but not their shapes.
     stalled: Option<DrainCount>,
+    /// The drains' moves the GPU half has yet to take ([`Self::forget_moves`]). No drain is
+    /// planned while one waits, so no page a move lands on drains, and closes, before its texture
+    /// took the move.
+    moves: Vec<Move>,
 }
 
 /// What a drain of a page counts: the page, by opening, the texels its items fill and the free
@@ -300,7 +300,9 @@ impl PageList {
             device_edge,
             age_hand: 0,
             sparse_since: None,
+            draining: None,
             stalled: None,
+            moves: Vec::new(),
         }
     }
 
@@ -391,10 +393,11 @@ impl PageList {
         Ok(self.store(tenant, placement, frame))
     }
 
-    /// The rectangle of the first page that takes allocations and has room for `size`.
+    /// The rectangle of the first page with room for `size` that is not draining.
     fn place(&mut self, size: U16Vec2) -> Option<Placement> {
+        let draining = self.draining.map(|drain| usize::from(drain.page));
         for (idx, page) in self.pages.iter_mut().enumerate() {
-            let Some(page) = page.as_mut().filter(|page| page.takes_allocations()) else {
+            let Some(page) = page.as_mut().filter(|_| draining != Some(idx)) else {
                 continue;
             };
             if let Some(origin) = page.packer.allocate(size) {
@@ -410,19 +413,16 @@ impl PageList {
         None
     }
 
-    /// Whether a page that takes allocations holds `size` at its edge now, so an eviction can
-    /// make room for it.
+    /// Whether a page holds `size` at its edge now, so an eviction can make room for it.
     fn holds_now(&self, size: U16Vec2) -> bool {
-        self.pages
-            .iter()
-            .flatten()
-            .any(|page| page.takes_allocations() && page.holds(size))
+        self.pages.iter().flatten().any(|page| page.holds(size))
     }
 
-    /// Grow within `budget`: double the first page below the page edge that takes allocations,
+    /// Grow within `budget`, with no page draining: double the first page below the page edge,
     /// else open a page, at the first edge where the list has none and the page edge after; `false`
     /// where the budget or the slots refuse.
     fn grow(&mut self, size: U16Vec2, budget: Budget) -> bool {
+        debug_assert!(self.draining.is_none(), "an insert cancels a drain first");
         let limit = match budget {
             Budget::Soft => self.config.soft_bytes,
             Budget::Hard => u64::MAX,
@@ -434,7 +434,7 @@ impl PageList {
             .pages
             .iter_mut()
             .flatten()
-            .find(|page| page.takes_allocations() && page.edge() < page_edge)
+            .find(|page| page.edge() < page_edge)
         {
             let edge = page.edge();
             let added = (u64::from(edge * 2).pow(2) - u64::from(edge).pow(2)) * texel;
@@ -459,15 +459,22 @@ impl PageList {
         if bytes + u64::from(edge).pow(2) * texel > limit {
             return false;
         }
-        self.pages[slot] = Some(Page::new(edge, PageState::Open, self.opened));
-        self.opened = self.opened.checked_add(1).expect("a list opened 2³² pages");
+        self.open_page(slot, edge);
         true
     }
 
-    /// Evict toward room for `size` at display frame `frame`: an evictable item on a shelf that
-    /// takes it, chosen by the clock; with none, every item on one shelf, so its rows serve
-    /// another height. How many went, `0` where none could.
+    /// Open a page of `edge` in `slot`, which holds none.
+    fn open_page(&mut self, slot: usize, edge: u32) {
+        debug_assert!(self.pages[slot].is_none(), "a page opens in a free slot");
+        self.pages[slot] = Some(Page::new(edge, self.opened));
+        self.opened = self.opened.checked_add(1).expect("a list opened 2³² pages");
+    }
+
+    /// Evict toward room for `size` at display frame `frame`, with no page draining: an evictable
+    /// item on a shelf that takes it, chosen by the clock; with none, every item on one shelf, so
+    /// its rows serve another height. How many went, `0` where none could.
     fn evict_for(&mut self, size: U16Vec2, frame: u64, evictions: &mut Evictions) -> u32 {
+        debug_assert!(self.draining.is_none(), "an insert cancels a drain first");
         if self.dry_frame == Some(frame) {
             return 0;
         }
@@ -480,7 +487,7 @@ impl PageList {
             let page = pages[placement.page as usize]
                 .as_ref()
                 .expect("an item sits on an open page");
-            if !page.takes_allocations() || entry.is_exempt(frame) {
+            if !entry.is_idle(frame, Entry::GRACE_FRAMES) {
                 return Verdict::Skip;
             }
             let shelf = page.packer.shelf_height(placement.origin.y);
@@ -503,17 +510,14 @@ impl PageList {
     }
 
     /// With no victim on a shelf that takes `size`, every item of one shelf whose items are all
-    /// evictable, on a page that takes allocations and holds `size`: the shortest tall enough,
+    /// evictable, on a page that holds `size`: the shortest tall enough,
     /// for the item to reuse, else a page's bottom shelf, whose rows go back to its page. `0`
     /// where no shelf qualifies, as emptying a short one in the middle frees nothing usable.
     fn evict_shelf(&mut self, size: U16Vec2, frame: u64, evictions: &mut Evictions) -> u32 {
         let mut tall: Option<(u16, usize, u16)> = None;
         let mut bottom: Option<(usize, u16)> = None;
         for (page_idx, page) in self.pages.iter().enumerate() {
-            let Some(page) = page
-                .as_ref()
-                .filter(|page| page.takes_allocations() && page.holds(size))
-            else {
+            let Some(page) = page.as_ref().filter(|page| page.holds(size)) else {
                 continue;
             };
             let shelves = page.packer.shelves();
@@ -526,7 +530,7 @@ impl PageList {
                     continue;
                 };
                 let shelf_use = &mut uses[page.packer.shelf_at(placement.origin.y)];
-                if entry.is_exempt(frame) {
+                if !entry.is_idle(frame, Entry::GRACE_FRAMES) {
                     *shelf_use = ShelfUse::Kept;
                 } else if *shelf_use == ShelfUse::Empty {
                     *shelf_use = ShelfUse::Evictable;
@@ -660,7 +664,8 @@ impl PageList {
         self.entries[idx].pins += 1;
     }
 
-    /// Take back one pin of `handle`'s item; it may be evictable at once, so the dry latch opens.
+    /// Take back one pin of `handle`'s item; it may be evictable at once, so the dry latch opens:
+    /// within a frame nothing else makes an item evictable.
     ///
     /// # Panics
     ///
@@ -673,25 +678,30 @@ impl PageList {
         self.dry_frame = None;
     }
 
-    /// Set what page `idx` takes, as a drain begins and ends; the dry latch opens, as a page that
-    /// takes allocations again brings its items back to the clock.
-    ///
-    /// # Panics
-    ///
-    /// If no page is open at `idx`.
-    pub(crate) const fn set_state(&mut self, idx: usize, state: PageState) {
-        self.pages[idx].as_mut().expect("an open page").state = state;
-        self.dry_frame = None;
-    }
-
-    /// Close page `idx`, which holds no item, so its slot takes the next page opened.
+    /// Close page `idx`, which holds no item and is not draining, so its slot takes the next page
+    /// opened.
     ///
     /// # Panics
     ///
     /// If no page is open at `idx`, or an item sits on it.
     pub(crate) fn close_page(&mut self, idx: usize) {
+        debug_assert!(
+            self.draining
+                .is_none_or(|drain| usize::from(drain.page) != idx),
+            "a drain ends before its page closes"
+        );
         let page = self.pages[idx].take().expect("an open page");
         assert_eq!(page.live_texels, 0, "a page closed under its items");
+    }
+
+    /// The drains' moves the GPU half has yet to take, in the order they were made.
+    pub(crate) fn moves(&self) -> &[Move] {
+        &self.moves
+    }
+
+    /// Forget the moves, which the GPU half recorded.
+    pub(crate) fn forget_moves(&mut self) {
+        self.moves.clear();
     }
 
     pub(crate) const fn scratch(&self) -> &ScratchCache {
@@ -715,43 +725,30 @@ impl PageList {
 
     /// Return what the list holds past its need, once a display frame, at display frame `frame`
     /// (`src/gpu/AGENTS.md`, Atlases): age out what idled past the age the list's
-    /// pressure sets into `evictions`; with one page under a quarter full for an expiry window,
-    /// open a smaller one to drain into; with several, drain the emptiest whose items fit the
-    /// others'; move a drain's items within `budget` into `moves`; and close the page it emptied.
-    pub(crate) fn decay(&mut self, frame: u64, ctx: DecayCtx<'_>) {
-        let DecayCtx {
-            budget,
-            evictions,
-            moves,
-        } = ctx;
+    /// pressure sets into `evictions`; with one page that had a smaller one to shrink to for an
+    /// expiry window, open it to drain into; with several, drain the emptiest whose items fit the
+    /// others'; move a drain's items within `budget`, for the GPU half to take
+    /// ([`Self::moves`]); and close the page it emptied.
+    pub(crate) fn decay(&mut self, frame: u64, budget: &mut MoveBudget, evictions: &mut Evictions) {
         self.age_out(frame, evictions);
-        if !self.is_draining() && moves.is_empty() {
+        if self.draining.is_none() && self.moves.is_empty() {
             self.plan_drain(Pace::Frame(frame));
         }
-        self.drain(budget, moves);
-    }
-
-    /// Whether a page is draining.
-    fn is_draining(&self) -> bool {
-        self.pages
-            .iter()
-            .flatten()
-            .any(|page| !page.takes_allocations())
+        self.drain(budget);
     }
 
     /// Give back all the list can at once, as the system runs short of memory, at display frame
     /// `frame`: evict every item no one pins and this frame did not draw into `evictions`, drop the
-    /// idle scratch, and drain with no budget, a sparse page shrinking at once, into `moves`, until
-    /// no drain is left to start. A stutter traded for the process not being killed
+    /// idle scratch, and drain with no budget, a sparse page shrinking at once, until no drain is
+    /// left to start. A stutter traded for the process not being killed
     /// (`src/gpu/AGENTS.md`, Atlases).
-    pub(crate) fn purge(&mut self, frame: u64, evictions: &mut Evictions, moves: &mut Vec<Move>) {
+    pub(crate) fn purge(&mut self, frame: u64, evictions: &mut Evictions) {
         for idx in 0..self.entries.len() {
             let entry = &self.entries[idx];
-            if entry.placement.is_some() && entry.pins == 0 && entry.last_use < frame {
+            if entry.placement.is_some() && entry.is_idle(frame, 0) {
                 self.evict(idx, evictions);
             }
         }
-        self.dry_frame = None;
         self.scratch.purge();
         let mut budget = MoveBudget {
             texels: u64::MAX,
@@ -761,16 +758,16 @@ impl PageList {
         // rounds are at most the pages, one more for a shrink's new page. A round that moved an
         // item ends the purge, as the next drain could take the page it landed on.
         for _ in 0..=MAX_PAGES {
-            if !self.is_draining() {
-                if !moves.is_empty() {
+            if self.draining.is_none() {
+                if !self.moves.is_empty() {
                     break;
                 }
                 self.plan_drain(Pace::Purge);
             }
-            if !self.is_draining() {
+            if self.draining.is_none() {
                 break;
             }
-            self.drain(&mut budget, moves);
+            self.drain(&mut budget);
         }
     }
 
@@ -807,23 +804,22 @@ impl PageList {
             let idx = self.age_hand as usize % len;
             self.age_hand = u32::try_from((idx + 1) % len).expect("a slab counts its slots in u32");
             let entry = &self.entries[idx];
-            // Idle past the age, and outside the grace: the last frame is `frame - 1`.
-            if entry.placement.is_some() && entry.pins == 0 && entry.last_use + age < frame {
+            // Every age is at least the grace: the last frame is `frame - 1`.
+            if entry.placement.is_some() && entry.is_idle(frame, age) {
                 self.evict(idx, evictions);
                 evicted += 1;
             }
         }
-        if evicted > 0 {
-            self.dry_frame = None;
-        }
     }
 
     /// Start a drain at `pace`, where no move waits for the commit, so no page a move lands on
-    /// drains before its texture takes the move: with one page under a quarter full for an expiry
-    /// window, or at once in a purge, past the first edge, a page at the smallest power-of-two edge from the first that
-    /// holds twice its items' texels opens beside it, and it drains into that; with several pages,
-    /// the emptiest whose items fit half the others' free texels drains, so packing slack leaves
-    /// room. Neither where no page is open, or the list has no free slot.
+    /// drains before its texture takes the move. With one page, where a smaller power-of-two
+    /// edge from the first holds twice its items' texels, so an eighth of its own at most, for an
+    /// expiry window, or at once in a purge: a page at the smallest such edge that packs its items
+    /// opens beside it, and it drains into that, landing at half or under as a `Vec` halves. With
+    /// several pages, the emptiest whose items fit half the others' free texels drains, so packing
+    /// slack leaves room. Neither where no page is open, or while what the drain counts is what
+    /// the last that stalled, or found no page to shrink to, counted.
     fn plan_drain(&mut self, pace: Pace) {
         let open = self.pages.iter().flatten().count();
         if open == 1 {
@@ -833,9 +829,13 @@ impl PageList {
                 .enumerate()
                 .find_map(|(idx, page)| page.as_ref().map(|page| (idx, page)))
                 .expect("one page is open");
-            let area = u64::from(page.edge()).pow(2);
-            let sparse = page.edge() > self.config.first_edge && page.live_texels * 4 < area;
-            if !sparse {
+            let page_edge = page.edge();
+            let mut edge = self.config.first_edge;
+            while u64::from(edge).pow(2) < 2 * page.live_texels {
+                edge *= 2;
+            }
+            let count = self.drain_count(idx);
+            if edge >= page_edge || self.stalled == Some(count) {
                 self.sparse_since = None;
                 return;
             }
@@ -846,27 +846,26 @@ impl PageList {
                 }
             }
             self.sparse_since = None;
-            let mut edge = self.config.first_edge;
-            while u64::from(edge).pow(2) < 2 * page.live_texels {
+            // Once a window, not a frame. The texels alone would open a page a wide item or a mix
+            // of heights does not pack into, whose drain stalls and drains back, each window again.
+            while !self.packs_into(edge) {
                 edge *= 2;
-            }
-            if edge >= page.edge() {
-                return;
+                if edge >= page_edge {
+                    // No smaller page packs its items, until they change.
+                    self.stalled = Some(count);
+                    return;
+                }
             }
             let slot = self
                 .pages
                 .iter()
                 .position(Option::is_none)
                 .expect("a list of one page has free slots");
-            self.pages[slot] = Some(Page::new(edge, PageState::Open, self.opened));
-            self.opened = self.opened.checked_add(1).expect("a list opened 2³² pages");
-            self.set_state(idx, PageState::Draining);
+            self.open_page(slot, edge);
+            self.begin_drain(idx);
             return;
         }
         self.sparse_since = None;
-        if open < 2 {
-            return;
-        }
         let emptiest = self
             .pages
             .iter()
@@ -879,8 +878,18 @@ impl PageList {
         };
         let count = self.drain_count(idx);
         if count.live_texels * 2 <= count.others_free && self.stalled != Some(count) {
-            self.set_state(idx, PageState::Draining);
+            self.begin_drain(idx);
         }
+    }
+
+    /// Whether a fresh page of `edge` takes every item of the list, placed in the slab's order as
+    /// a drain into it places them.
+    fn packs_into(&self, edge: u32) -> bool {
+        let mut trial = ShelfPacker::new(edge_u16(edge));
+        self.entries
+            .iter()
+            .filter_map(|entry| entry.placement)
+            .all(|placement| trial.allocate(placement.size).is_some())
     }
 
     /// What a drain of page `idx`, which is open, counts.
@@ -894,62 +903,74 @@ impl PageList {
         }
     }
 
+    /// Begin the drain of page `idx`, which is open.
+    fn begin_drain(&mut self, idx: usize) {
+        debug_assert!(self.draining.is_none(), "one page drains at a time");
+        self.draining = Some(Drain {
+            page: u8::try_from(idx).expect("a list holds few pages"),
+            hand: 0,
+        });
+    }
+
     /// Move the draining page's items onto the others within `budget`, each placed as an insert
     /// would, and close the page once it holds none. A move that finds no room cancels the drain
     /// and stalls it until what it counts changes.
-    fn drain(&mut self, budget: &mut MoveBudget, moves: &mut Vec<Move>) {
-        let Some(source) = self
-            .pages
-            .iter()
-            .position(|page| page.as_ref().is_some_and(|page| !page.takes_allocations()))
-        else {
+    fn drain(&mut self, budget: &mut MoveBudget) {
+        let Some(Drain { page, hand }) = self.draining else {
             return;
         };
-        let from_epoch = self.pages[source].as_ref().expect("found above").epoch;
-        for idx in 0..self.entries.len() {
-            let Some(from) = self.entries[idx]
+        let source = usize::from(page);
+        let from_epoch = self.pages[source]
+            .as_ref()
+            .expect("a draining page is open")
+            .epoch;
+        let mut resume = self.entries.len();
+        for at in hand as usize..self.entries.len() {
+            let Some(from) = self.entries[at]
                 .placement
-                .filter(|placement| usize::from(placement.page) == source)
+                .filter(|placement| placement.page == page)
             else {
                 continue;
             };
             if !budget.take(from.texels()) {
+                resume = at;
                 break;
             }
             let Some(to) = self.place(from.size) else {
+                self.draining = None;
                 self.stalled = Some(self.drain_count(source));
-                self.cancel_drain();
                 return;
             };
             let page = self.pages[source].as_mut().expect("the source is open");
             page.packer.deallocate(from.origin, from.size.x);
             page.live_texels -= from.texels();
-            self.entries[idx].placement = Some(to);
-            moves.push(Move {
+            self.entries[at].placement = Some(to);
+            self.moves.push(Move {
                 from,
                 from_epoch,
                 to,
             });
         }
-        if self.pages[source]
+        let live = self.pages[source]
             .as_ref()
-            .is_some_and(|page| page.live_texels == 0)
-        {
+            .expect("the source is open")
+            .live_texels;
+        if live == 0 {
+            self.draining = None;
             self.close_page(source);
+        } else {
+            debug_assert!(resume < self.entries.len(), "a whole walk empties the page");
+            self.draining = Some(Drain {
+                page,
+                hand: u32::try_from(resume).expect("a slab counts its slots in u32"),
+            });
         }
     }
 
-    /// Give a draining page its allocations back, `true` where one was draining.
-    fn cancel_drain(&mut self) -> bool {
-        let Some(idx) = self
-            .pages
-            .iter()
-            .position(|page| page.as_ref().is_some_and(|page| !page.takes_allocations()))
-        else {
-            return false;
-        };
-        self.set_state(idx, PageState::Open);
-        true
+    /// End a drain with its page kept, which takes allocations again, `true` where one was under
+    /// way.
+    const fn cancel_drain(&mut self) -> bool {
+        self.draining.take().is_some()
     }
 }
 
@@ -966,7 +987,7 @@ pub(crate) mod internals {
     #[cfg(test)]
     use crate::gpu::atlas::page_list::PageList;
     #[cfg(test)]
-    use crate::gpu::atlas::page_list::{PageListConfig, PageState};
+    use crate::gpu::atlas::page_list::PageListConfig;
     #[cfg(test)]
     use crate::gpu::atlas::scratch_cache::ScratchId;
     #[cfg(test)]
@@ -977,17 +998,17 @@ pub(crate) mod internals {
         pub(crate) const fn live_texels(&self) -> u64 {
             self.live_texels
         }
-
-        #[cfg(test)]
-        pub(crate) const fn state(&self) -> PageState {
-            self.state
-        }
     }
 
     #[cfg(test)]
     impl PageList {
         pub(crate) const fn config(&self) -> PageListConfig {
             self.config
+        }
+
+        /// The page a drain empties, `None` where none is under way.
+        pub(crate) fn draining(&self) -> Option<usize> {
+            self.draining.map(|drain| usize::from(drain.page))
         }
 
         /// The size of the texture `id` holds, `None` once released.
