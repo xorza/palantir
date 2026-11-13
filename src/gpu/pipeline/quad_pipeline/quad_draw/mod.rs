@@ -38,6 +38,15 @@ impl QuadDraw {
         }
     }
 
+    /// Whether it reads the cutout tables on the mask pages, whose open slots its pipeline is
+    /// built for.
+    pub(crate) const fn reads_cutouts(self) -> bool {
+        matches!(
+            self,
+            Self::Shadow(ShadowEntry::Tables | ShadowEntry::TablesWide)
+        )
+    }
+
     const fn bit(self) -> u16 {
         1 << self.idx()
     }

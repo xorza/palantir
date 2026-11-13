@@ -7,6 +7,7 @@ use crate::gpu::atlas::atlas_format::AtlasFormat;
 use crate::gpu::atlas::atlas_handle::{AtlasHandle, Placement};
 use crate::gpu::atlas::error::AtlasError;
 use crate::gpu::atlas::eviction_clock::{ClockSweep, Verdict};
+use crate::gpu::atlas::page_slots::PageSlots;
 use crate::gpu::atlas::scratch_cache::{ScratchCache, ScratchId};
 use crate::gpu::atlas::tenant::Tenant;
 use crate::gpu::resource::shelf_packer::ShelfPacker;
@@ -37,7 +38,7 @@ pub(crate) enum PageState {
 }
 
 /// One item a drain moved, from the page of opening `from_epoch` to another, which the GPU half
-/// copies at the next commit, ahead of every upload, bake and draw: its handle stays, and its
+/// moves at the next commit, ahead of every upload, bake and draw: its handle stays, and its
 /// tenant reads the new placement at its next lookup.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct Move {
@@ -47,28 +48,36 @@ pub(crate) struct Move {
 }
 
 /// What a display frame's moves may still take, across the lists: WebRender's compaction
-/// `area_threshold` of texels, 512², and a count of copy commands, as each costs its driver's
-/// fixed overhead (2.8 µs on an Apple laptop, `.notes/research/2026-11-12-atlas-pool-measurements.md`),
-/// so 64 hold a frame's moves near 0.2 ms there.
+/// `area_threshold` of texels, 512², and a count of moves, which on a device that moves by copy
+/// commands each cost the driver's fixed overhead.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct MoveBudget {
     pub(crate) texels: u64,
-    pub(crate) copies: u32,
+    pub(crate) moves: u32,
 }
 
 impl MoveBudget {
-    /// One display frame's.
-    pub(crate) const FRAME: Self = Self {
+    /// A display frame's on a device that moves by copy commands: 16, as a copy costs 43 µs on
+    /// V3D, so they hold a frame's moves near 0.7 ms there, where 64 took 2.4 ms
+    /// (`.notes/research/2026-11-12-atlas-pool-measurements.md`, "Moves and pages").
+    pub(crate) const COPIES: Self = Self {
         texels: 512 * 512,
-        copies: 64,
+        moves: 16,
     };
 
-    /// Take `texels` in one copy, `false` where the budget holds them no more.
+    /// A display frame's on a device that moves by one draw a destination page: the texels alone,
+    /// as the rectangles ride in the draw's instances.
+    pub(crate) const DRAWN: Self = Self {
+        texels: 512 * 512,
+        moves: u32::MAX,
+    };
+
+    /// Take `texels` in one move, `false` where the budget holds them no more.
     const fn take(&mut self, texels: u64) -> bool {
-        if self.copies == 0 || self.texels < texels {
+        if self.moves == 0 || self.texels < texels {
             return false;
         }
-        self.copies -= 1;
+        self.moves -= 1;
         self.texels -= texels;
         true
     }
@@ -90,8 +99,8 @@ pub(crate) struct DecayCtx<'a> {
     pub(crate) moves: &'a mut Vec<Move>,
 }
 
-/// WebRender's age at which an item idle under a pressure of `ratio`, a list's bytes over its
-/// soft budget in whole multiples, goes (`TextureCache::should_continue_evicting`): 400 frames
+/// WebRender's age at which an item idle under a pressure of `ratio`, the bytes a list's items fill
+/// over its soft budget in whole multiples, goes (`TextureCache::should_continue_evicting`): 400 frames
 /// at none, halving with each multiple, 1 past six.
 const fn age_threshold(ratio: u64) -> u64 {
     match ratio {
@@ -295,6 +304,21 @@ impl PageList {
         }
     }
 
+    /// The slots a draw of the list's items reads: its open pages', slot 0 where none is open.
+    pub(crate) fn slots(&self) -> PageSlots {
+        let bits = self
+            .pages
+            .iter()
+            .enumerate()
+            .filter(|(_, page)| page.is_some())
+            .fold(0, |bits, (idx, _)| bits | (1 << idx));
+        if bits == 0 {
+            PageSlots::FIRST
+        } else {
+            PageSlots::new(bits)
+        }
+    }
+
     /// The page at `idx`, `None` where none is open.
     pub(crate) const fn page(&self, idx: usize) -> Option<&Page> {
         self.pages[idx].as_ref()
@@ -309,6 +333,17 @@ impl PageList {
             .map(|page| u64::from(page.edge()).pow(2))
             .sum();
         (pages + self.scratch.texels()) * u64::from(self.format.texel_bytes())
+    }
+
+    /// The bytes the items on the list's pages fill.
+    fn live_page_bytes(&self) -> u64 {
+        let texels: u64 = self
+            .pages
+            .iter()
+            .flatten()
+            .map(|page| page.live_texels)
+            .sum();
+        texels * u64::from(self.format.texel_bytes())
     }
 
     /// Whether an item of `size` is better a texture of its own, wider or taller than half a page,
@@ -720,7 +755,7 @@ impl PageList {
         self.scratch.purge();
         let mut budget = MoveBudget {
             texels: u64::MAX,
-            copies: u32::MAX,
+            moves: u32::MAX,
         };
         // A drain ends with its page closed or stalled, so each round closes a page or stops: the
         // rounds are at most the pages, one more for a shrink's new page. A round that moved an
@@ -741,18 +776,24 @@ impl PageList {
 
     /// Evict the items no one pins and no frame drew for WebRender's age at the list's pressure,
     /// at most [`AGE_EVICTIONS_MAX`] below four times the soft budget, walking at most
-    /// [`AGE_SCAN_MAX`] slots. Only past the budget or past the list's first page, as WebRender
-    /// ages its cache only past its threshold or across several textures: a list at its first
-    /// page under budget keeps what it holds.
+    /// [`AGE_SCAN_MAX`] slots. The pressure is the bytes the pages' items fill over the soft
+    /// budget, as WebRender's `bytes_allocated` counts its entries, not its textures; and nothing
+    /// ages below the budget on one page, grown in place or not, as WebRender's
+    /// `should_continue_evicting` ages below its threshold only across several textures. Refused:
+    /// the pages' bytes as the pressure and a grown page aged under the budget, which evicted each
+    /// glyph of a zoom over 512 scales just before its scale came back, though the set fit
+    /// (`.notes/research/2026-11-12-atlas-pool-measurements.md`). Cost: a burst that grew the one
+    /// page keeps its items, at most a page at the page edge, until they fill the budget or a
+    /// second page opens.
     fn age_out(&mut self, frame: u64, evictions: &mut Evictions) {
-        let bytes = self.bytes();
+        let live = self.live_page_bytes();
         let soft = self.config.soft_bytes;
-        if bytes < soft && !self.is_past_first_page() {
+        if live < soft && self.pages.iter().flatten().count() < 2 {
             return;
         }
-        let ratio = bytes.checked_div(soft).unwrap_or(u64::MAX);
+        let ratio = live.checked_div(soft).unwrap_or(u64::MAX);
         let age = age_threshold(ratio);
-        let evictions_max = if soft == 0 || bytes > 4 * soft {
+        let evictions_max = if soft == 0 || live > 4 * soft {
             u32::MAX
         } else {
             AGE_EVICTIONS_MAX
@@ -774,16 +815,6 @@ impl PageList {
         }
         if evicted > 0 {
             self.dry_frame = None;
-        }
-    }
-
-    /// Whether the list holds more than its first page at its first edge.
-    fn is_past_first_page(&self) -> bool {
-        let mut pages = self.pages.iter().flatten();
-        match (pages.next(), pages.next()) {
-            (Some(page), None) => page.edge() > self.config.first_edge,
-            (Some(_), Some(_)) => true,
-            (None, _) => false,
         }
     }
 

@@ -218,3 +218,25 @@ build, so each comparison runs one binary. The spikes are measurement code, not 
   placement's rewrite**: the replay with the cached instance in place of `placed_at` moves them
   within ±1 %. About 0.7 ns a glyph, in `AtlasPool::stamp` and the replay loop; not profiled
   further.
+
+## The fixes against the pool (2026-11-13)
+
+`d8d3f02ae` against the working tree that builds the page-reading pipelines for their pages,
+binds a composite's one result texture, ages a list only at its budget or across pages, moves by
+draw where a pass moves only what it draws, and folds gradient gaps up to 3 rows; bench profile,
+thin LTO, ABBA as above, the second pair's change. The text churn cases are left out: the bench
+now runs them at a 1 MiB mask budget, so they compare with no earlier run.
+
+- **The board** (V3D, `V3D_DEBUG=shaderdb`): the raster fragment 943 → 200 instructions, the
+  turned raster 689 → 274, the composite 1340 → 619, the pre-pool count. `main_pass/scrolling`
+  −2.9 %, `main_pass/partial` −2.9 %; whole repaints `scrolling` −2.7 %, `resizing` −2.7 %,
+  `alternating` −2.7 %, `theming` −2.6 %, the partial ones within ±0.6 %. Backdrops:
+  `modal/scrolling` 107.8 → 100.0 ms, −7.2 %; glass −5.1 to −8.0 %; `stacked` −5.6 %; the slides
+  −5.5 %; `cards_apart` −4.2 %; the rest −1.3 to −3.8 %, the cached within ±1 %.
+- **The apple**: `modal/scrolling` −4.7 %, `main_pass/partial` −7.3 %, `main_pass/scrolling`
+  −1.5 %, glass −1.3 to −1.8 %, the other backdrops −0.2 to −2.3 %, the frames −0.2 to −1.4 %;
+  `blur/moving` and `blur/sliding` moved by ±12 % between legs, noise.
+- **The handheld**: every case within its floor, glass −0.8 to −3.3 %.
+- **The age-out at the starting budget**: with the age-out off, as one page under the budget now
+  is, `cache_churn/frame` 328 → 281 µs and `cache_churn/prepare` 47.6 → 7.1 µs on the apple, where
+  the pool's base took 283 and 34.6 (the spike above).

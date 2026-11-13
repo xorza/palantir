@@ -5,11 +5,15 @@
 //!
 //! - **Results live in the pool's half-float list.** A result within half a page shares the pages,
 //!   one larger takes a scratch texture of its own, rounded on the scratch ladder, reused and
-//!   expired as the pool's scratch is (`src/gpu/AGENTS.md`, Atlases); a
-//!   composite reads either through its group, the four pages and one scratch texture, so a draw
-//!   splits at each large backdrop. The pool evicts the results no frame read this display frame or
-//!   the last, past its soft budget. Refused: the results atlas of its own, which doubled to the
-//!   device's edge for one full-window glass and copied every result back when it shrank.
+//!   expired as the pool's scratch is (`src/gpu/AGENTS.md`, Atlases). The pool evicts the results
+//!   no frame read this display frame or the last, past its soft budget. Refused: the results
+//!   atlas of its own, which doubled to the device's edge for one full-window glass and copied
+//!   every result back when it shrank.
+//! - **A composite binds the one texture its result lies in**, a page or a scratch texture, so a
+//!   draw splits where its result's texture changes, as WebRender binds each batch's textures.
+//!   Refused: every page and the scratch texture in one group, a choice among five in the shader,
+//!   which V3D compiles in full, the B-spline five times: 619 → 1340 instructions, and the board's
+//!   `modal/scrolling` +6.9 % (`.notes/research/2026-11-12-atlas-pool-measurements.md`).
 
 use crate::gpu::atlas::AtlasPool;
 use crate::gpu::atlas::atlas_format::AtlasFormat;
@@ -43,8 +47,7 @@ use std::ops::Range;
 /// How a backdrop's composite finds its result and, for a material, holds and covers it, as
 /// `effect/backdrop.wgsl` declares `PalantirBackdrop`: the result's texel coordinate of the
 /// lattice's first texel, the physical px of a texel, or 0 for a backdrop that shows `clear`; the
-/// rect it reads, `(min, max)`; the material's look ([`MaterialLook`]); and the texture its result
-/// lies in, a page by index or [`SCRATCH_TEXTURE`].
+/// rect it reads, `(min, max)`; and the material's look ([`MaterialLook`]).
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, bytemuck::Pod, bytemuck::Zeroable)]
 struct BackdropSlot {
@@ -60,28 +63,21 @@ struct BackdropSlot {
     border_width: f32,
     fill_kind: u32,
     fill_lut_row: u32,
-    texture: u32,
+    /// WGSL rounds the struct's size up to its 16-byte alignment.
+    pad: f32,
 }
-
-/// [`BackdropSlot::texture`] of a result in the scratch texture its composite's group binds, past
-/// the pages.
-const SCRATCH_TEXTURE: u32 = MAX_PAGES as u32;
 
 impl BackdropSlot {
     /// How `row`'s composite finds `shown`, its result where it lies this frame.
     fn of(row: &BackdropRow, shown: Shown) -> Self {
-        let (offset, lattice, clear, texture) = match shown {
+        let (offset, lattice, clear) = match shown {
             Shown::Result(placed) => {
                 let capture = row.capture;
                 let apron = UVec2::splat(capture.plan.apron());
                 let offset = (placed.origin + apron).as_vec2() - capture.region.min.as_vec2();
-                let texture = match placed.texture {
-                    ResultTexture::Page(page) => u32::from(page),
-                    ResultTexture::Scratch(_) => SCRATCH_TEXTURE,
-                };
-                (offset, capture.plan.lattice() as f32, [0.0; 3], texture)
+                (offset, capture.plan.lattice() as f32, [0.0; 3])
             }
-            Shown::Clear(clear) => (Vec2::ZERO, 0.0, clear, 0),
+            Shown::Clear(clear) => (Vec2::ZERO, 0.0, clear),
         };
         let look = row.look.unwrap_or(MaterialLook::PLAIN);
         let lanes = |color: RgbaF16| {
@@ -106,7 +102,7 @@ impl BackdropSlot {
             border_width: look.border_width,
             fill_kind: look.fill.kind.0,
             fill_lut_row: look.fill.lut_row.0,
-            texture,
+            pad: 0.0,
         }
     }
 }
@@ -227,8 +223,9 @@ pub(crate) struct Backdrops {
     jobs: Vec<BlurJob>,
     breaks: Vec<BlurBreak>,
     slots: Vec<BackdropSlot>,
-    /// The scratch texture each of [`Self::slots`] reads, the group its composite binds.
-    slot_scratch: Vec<Option<ScratchId>>,
+    /// The texture each of [`Self::slots`] reads, whose group its composite binds; `None` for one
+    /// that shows its clear.
+    slot_reads: Vec<Option<ResultTexture>>,
     /// The handles the pool evicted, drained, retained.
     drained: Vec<AtlasHandle>,
     /// The layout of the group a backdrop's composite reads its result through
@@ -251,13 +248,15 @@ struct BackdropResources {
     groups: Option<CompositeGroups>,
 }
 
-/// The groups a backdrop's composite reads its result through: the one over the pages, which a
-/// result on a page reads, and one for each scratch slot a result has read, over the pages too, by
-/// slot: a slot's texture changes only with the list's generation, which makes them all again, so
-/// they are as many as the slots, however often a result takes one again.
+/// The groups a backdrop's composite reads its result through, one over each texture a result can
+/// lie in: the stand-in, for a composite that shows its clear; each open page; and each scratch slot
+/// a result has read, by slot. A texture changes only with the list's generation, which makes them
+/// all again, so the scratch groups are as many as the slots, however often a result takes one
+/// again.
 #[derive(Debug)]
 struct CompositeGroups {
-    pages: wgpu::BindGroup,
+    absent: wgpu::BindGroup,
+    pages: [Option<wgpu::BindGroup>; MAX_PAGES],
     scratch: Vec<Option<wgpu::BindGroup>>,
     /// The generation of the list's views the groups bind.
     generation: u64,
@@ -269,72 +268,71 @@ struct CompositeGroups {
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct BackdropGroups<'a> {
     groups: &'a CompositeGroups,
-    slot_scratch: &'a [Option<ScratchId>],
+    slot_reads: &'a [Option<ResultTexture>],
 }
 
 impl BackdropGroups<'_> {
-    /// The scratch texture backdrop `idx`'s result lies in, which splits its composite's draw.
-    pub(crate) const fn scratch_of(&self, idx: u32) -> Option<ScratchId> {
-        self.slot_scratch[idx as usize]
+    /// The texture backdrop `idx`'s composite reads, `None` for one that shows its clear: a draw
+    /// splits where it changes.
+    pub(crate) const fn read_of(&self, idx: u32) -> Option<ResultTexture> {
+        self.slot_reads[idx as usize]
     }
 
-    /// The group a composite reads a result through: over the pages, and `scratch`.
-    pub(crate) fn group(&self, scratch: Option<ScratchId>) -> &wgpu::BindGroup {
-        scratch.map_or(&self.groups.pages, |id| {
-            self.groups.scratch[id.idx as usize]
-                .as_ref()
-                .expect("a scratch result's group was made at the follow")
-        })
+    /// The group a composite that reads `read` binds.
+    pub(crate) fn group(&self, read: Option<ResultTexture>) -> &wgpu::BindGroup {
+        let made = "a result's group was made at the follow";
+        match read {
+            None => &self.groups.absent,
+            Some(ResultTexture::Page(page)) => {
+                self.groups.pages[usize::from(page)].as_ref().expect(made)
+            }
+            Some(ResultTexture::Scratch(id)) => {
+                self.groups.scratch[id.idx as usize].as_ref().expect(made)
+            }
+        }
     }
 }
 
 /// What the group a backdrop's composite reads its result through binds.
 #[derive(Clone, Copy, Debug)]
 struct CompositeParts<'a> {
-    pages: [&'a wgpu::TextureView; MAX_PAGES],
-    scratch: &'a wgpu::TextureView,
+    result: &'a wgpu::TextureView,
     slots: &'a DynamicBuffer<BackdropSlot>,
     sampler: &'a wgpu::Sampler,
     spectrum: &'a wgpu::Buffer,
 }
 
-/// The group over the result pages and one scratch texture, the sampler, the slot table and the
-/// spectrum, as `effect/backdrop.wgsl` declares them.
+/// The group over one result texture, the sampler, the slot table and the spectrum, as
+/// `effect/backdrop.wgsl` declares them.
 fn composite_group(
     gpu: &Gpu,
     layout: &wgpu::BindGroupLayout,
     parts: CompositeParts<'_>,
 ) -> wgpu::BindGroup {
     let CompositeParts {
-        pages,
-        scratch,
+        result,
         slots,
         sampler,
         spectrum,
     } = parts;
-    let view = |binding: usize, view| wgpu::BindGroupEntry {
-        binding: binding as u32,
-        resource: wgpu::BindingResource::TextureView(view),
-    };
     gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some("palantir.backdrop.composite"),
         layout,
         entries: &[
-            view(0, pages[0]),
-            view(1, pages[1]),
-            view(2, pages[2]),
-            view(3, pages[3]),
-            view(MAX_PAGES, scratch),
             wgpu::BindGroupEntry {
-                binding: MAX_PAGES as u32 + 1,
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(result),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
                 resource: wgpu::BindingResource::Sampler(sampler),
             },
             wgpu::BindGroupEntry {
-                binding: MAX_PAGES as u32 + 2,
+                binding: 2,
                 resource: slots.buffer.as_entire_binding(),
             },
             wgpu::BindGroupEntry {
-                binding: MAX_PAGES as u32 + 3,
+                binding: 3,
                 resource: spectrum.as_entire_binding(),
             },
         ],
@@ -360,28 +358,18 @@ impl BackdropResources {
         }
     }
 
-    /// The group over `textures`' pages and `scratch`, or the stand-in where there is none.
+    /// The group over `result`.
     fn group(
         &self,
         gpu: &Gpu,
         layout: &wgpu::BindGroupLayout,
-        textures: &AtlasTextures,
-        scratch: Option<ScratchId>,
+        result: &wgpu::TextureView,
     ) -> wgpu::BindGroup {
-        let scratch = scratch.map_or_else(
-            || textures.absent_view(RESULTS),
-            |id| {
-                textures
-                    .scratch_view(RESULTS, id.idx)
-                    .expect("a held scratch was committed")
-            },
-        );
         composite_group(
             gpu,
             layout,
             CompositeParts {
-                pages: textures.views(RESULTS),
-                scratch,
+                result,
                 slots: &self.slot_buffer,
                 sampler: &self.sampler,
                 spectrum: &self.spectrum,
@@ -399,7 +387,7 @@ impl Backdrops {
             jobs: Vec::new(),
             breaks: Vec::new(),
             slots: Vec::new(),
-            slot_scratch: Vec::new(),
+            slot_reads: Vec::new(),
             drained: Vec::new(),
             layout: binding.backdrops().clone(),
             resources: None,
@@ -412,7 +400,7 @@ impl Backdrops {
         let groups = self.resources.as_ref()?.groups.as_ref()?;
         Some(BackdropGroups {
             groups,
-            slot_scratch: &self.slot_scratch,
+            slot_reads: &self.slot_reads,
         })
     }
 
@@ -437,7 +425,7 @@ impl Backdrops {
         self.jobs.clear();
         self.breaks.clear();
         self.slots.clear();
-        self.slot_scratch.clear();
+        self.slot_reads.clear();
         if buffer.backdrops.is_empty() && self.resources.is_none() {
             return;
         }
@@ -467,7 +455,7 @@ impl Backdrops {
                     let size = capture.region.size + UVec2::splat(2 * capture.plan.apron());
                     let Some((slot, placed)) = self.slot_for(at, size, pool) else {
                         self.evicted.push(at);
-                        self.push_slot(row, Shown::Clear(held_clear), None);
+                        self.push_slot(row, Shown::Clear(held_clear));
                         continue;
                     };
                     let job = self.jobs.len();
@@ -505,7 +493,7 @@ impl Backdrops {
                 BackdropSource::Hidden => {
                     // Its quad was pruned, so no fragment reads its slot.
                     self.slots.push(BackdropSlot::default());
-                    self.slot_scratch.push(None);
+                    self.slot_reads.push(None);
                     continue;
                 }
                 BackdropSource::Held => {
@@ -527,14 +515,7 @@ impl Backdrops {
                     }
                 }
             };
-            let scratch = match shown {
-                Shown::Result(Placed {
-                    texture: ResultTexture::Scratch(id),
-                    ..
-                }) => Some(id),
-                Shown::Result(_) | Shown::Clear(_) => None,
-            };
-            self.push_slot(row, shown, scratch);
+            self.push_slot(row, shown);
         }
         self.drain_evictions(pool);
         let resources = self.resources.as_mut().expect("made above");
@@ -570,7 +551,7 @@ impl Backdrops {
     }
 
     /// Make the composite groups follow `textures`, after the pool's commit: again over every
-    /// view where a view of the list or the slot table moved, and one for each scratch texture
+    /// texture where a view of the list or the slot table moved, and one for each scratch texture
     /// this frame's results lie in that has none.
     pub(crate) fn follow(&mut self, gpu: &Gpu, textures: &AtlasTextures) {
         let Some(resources) = &mut self.resources else {
@@ -583,18 +564,30 @@ impl Backdrops {
             .as_ref()
             .is_none_or(|groups| groups.generation != generation || groups.capacity != capacity);
         if stale {
+            let layout = &self.layout;
             resources.groups = Some(CompositeGroups {
-                pages: resources.group(gpu, &self.layout, textures, None),
+                absent: resources.group(gpu, layout, textures.absent_view(RESULTS)),
+                pages: std::array::from_fn(|idx| {
+                    textures
+                        .page_view(RESULTS, idx)
+                        .map(|view| resources.group(gpu, layout, view))
+                }),
                 scratch: Vec::new(),
                 generation,
                 capacity,
             });
         }
-        for &id in self.slot_scratch.iter().flatten() {
+        for read in self.slot_reads.iter().flatten() {
+            let ResultTexture::Scratch(id) = *read else {
+                continue;
+            };
             let slot = id.idx as usize;
             let groups = resources.groups.as_ref().expect("made above");
             if groups.scratch.get(slot).is_none_or(Option::is_none) {
-                let group = resources.group(gpu, &self.layout, textures, Some(id));
+                let view = textures
+                    .scratch_view(RESULTS, id.idx)
+                    .expect("a held scratch was committed");
+                let group = resources.group(gpu, &self.layout, view);
                 let scratch = &mut resources.groups.as_mut().expect("made above").scratch;
                 if scratch.len() <= slot {
                     scratch.resize_with(slot + 1, || None);
@@ -604,10 +597,14 @@ impl Backdrops {
         }
     }
 
-    /// File `row`'s slot of the table, showing `shown`, read through `scratch`'s group.
-    fn push_slot(&mut self, row: &BackdropRow, shown: Shown, scratch: Option<ScratchId>) {
+    /// File `row`'s slot of the table, showing `shown`, its composite reading the texture `shown`
+    /// lies in.
+    fn push_slot(&mut self, row: &BackdropRow, shown: Shown) {
         self.slots.push(BackdropSlot::of(row, shown));
-        self.slot_scratch.push(scratch);
+        self.slot_reads.push(match shown {
+            Shown::Result(placed) => Some(placed.texture),
+            Shown::Clear(_) => None,
+        });
     }
 
     /// Drop the results the pool evicted since the last drain, and list each for its window's

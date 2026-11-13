@@ -1,5 +1,6 @@
 //! A format's pipelines, built on the first frame that draws through each.
 
+use crate::gpu::atlas::page_slots::PageSlots;
 use crate::gpu::pipeline::clip_variant::Clipping;
 use crate::gpu::pipeline::quad_pipeline::cutout_plan::ShadowEntry;
 use crate::gpu::pipeline::quad_pipeline::quad_draw::QuadDraw;
@@ -87,7 +88,7 @@ fn a_pipeline_waits_for_the_first_frame_that_draws_through_it() {
             .backend()
             .format_pipelines(TargetFormat::RGBA8_SRGB)
             .quad
-            .is_built(draw, clipping)
+            .is_built(draw, clipping, PageSlots::FIRST)
     };
 
     host.frame(target.as_target(), &mut |ui: &mut Ui| {

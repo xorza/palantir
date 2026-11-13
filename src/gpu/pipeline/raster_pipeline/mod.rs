@@ -7,8 +7,9 @@ pub(crate) mod raster_quad;
 
 use crate::gpu::atlas::atlas_format::AtlasFormat;
 use crate::gpu::atlas::page_group;
+use crate::gpu::atlas::page_slots::{AtlasSlots, PageSlots};
 use crate::gpu::device::gpu::Gpu;
-use crate::gpu::pipeline::clip_variant::ClipVariant;
+use crate::gpu::pipeline::clip_variant::{ClipVariant, Clipping};
 use crate::gpu::pipeline::instanced_pipeline::VariantTarget;
 use crate::gpu::pipeline::pipeline_recipe::{self, Pipeline, PipelineRecipe};
 use crate::gpu::pipeline::raster_pipeline::raster_quad::{
@@ -19,21 +20,46 @@ use crate::gpu::pipeline::shader_body::{ShaderBody, ShaderConstant};
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::primitives::wgsl;
 
-/// The two pipeline pairs one swapchain format draws raster quads with.
+/// The two pipeline pairs one swapchain format draws raster quads with, for each pair of mask and
+/// color [`PageSlots`], at [`slots_idx`].
 #[derive(Debug)]
 pub(crate) struct RasterVariants {
     /// Unturned quads, drawn texel for texel.
-    pub(crate) flat: ClipVariant,
+    flat: [ClipVariant; SLOT_PAIRS],
     /// [`SpunRasterQuad`]s, turned and filtered.
-    pub(crate) spun: ClipVariant,
+    spun: [ClipVariant; SLOT_PAIRS],
+}
+
+/// Each pair of a mask list's open slots and a color list's.
+const SLOT_PAIRS: usize = PageSlots::COUNT * PageSlots::COUNT;
+
+/// The place of `slots`' pair in a [`RasterVariants`] array.
+const fn slots_idx(slots: AtlasSlots) -> usize {
+    slots.mask.idx() * PageSlots::COUNT + slots.color.idx()
 }
 
 impl RasterVariants {
     /// No pipeline built.
     pub(crate) const NONE: Self = Self {
-        flat: ClipVariant::NONE,
-        spun: ClipVariant::NONE,
+        flat: [const { ClipVariant::NONE }; SLOT_PAIRS],
+        spun: [const { ClipVariant::NONE }; SLOT_PAIRS],
     };
+
+    /// The pair a frame of `clipping` over `slots` binds, which its census built, drawing through
+    /// `atlas`, the pool's atlas group.
+    pub(crate) const fn pair<'a>(
+        &'a self,
+        clipping: Clipping,
+        slots: AtlasSlots,
+        atlas: &'a wgpu::BindGroup,
+    ) -> RasterPipelinePair<'a> {
+        let idx = slots_idx(slots);
+        RasterPipelinePair {
+            flat: self.flat[idx].get(clipping),
+            spun: self.spun[idx].get(clipping),
+            atlas,
+        }
+    }
 }
 
 /// The pipelines and the atlas group one raster draw binds.
@@ -58,7 +84,7 @@ impl RasterPipeline {
     pub(crate) const SHADER: ShaderBody = ShaderBody {
         label: "palantir.raster.shader",
         wgsl: include_str!("shader.wgsl"),
-        includes: &[wgsl::FRAME],
+        includes: &[wgsl::FRAME, wgsl::ATLAS_SLOTS],
         constants: SHADER_CONSTANTS,
     };
 
@@ -85,12 +111,18 @@ impl RasterPipeline {
 
     /// Build the halves of `variants` `target` binds, where they are not built: the only
     /// format-dependent part here, for unturned quads, and for the [`SpunRasterQuad`]s a paint
-    /// animation turns.
+    /// animation turns, each pinned to the target's open mask and color slots.
     pub(crate) fn ensure(&self, variants: &mut RasterVariants, gpu: &Gpu, target: VariantTarget) {
-        variants.flat.ensure(
+        let idx = slots_idx(target.slots);
+        let constants = [
+            ("MASK_SLOTS", f64::from(target.slots.mask.bits())),
+            ("COLOR_SLOTS", f64::from(target.slots.color.bits())),
+        ];
+        variants.flat[idx].ensure(
             gpu,
             target.clipping,
             &PipelineRecipe {
+                constants: &constants,
                 vertex_buffers: &[Some(RasterQuad::LAYOUT)],
                 topology: wgpu::PrimitiveTopology::TriangleStrip,
                 ..PipelineRecipe::color(
@@ -101,10 +133,11 @@ impl RasterPipeline {
                 )
             },
         );
-        variants.spun.ensure(
+        variants.spun[idx].ensure(
             gpu,
             target.clipping,
             &PipelineRecipe {
+                constants: &constants,
                 vertex_buffers: &[Some(SpunRasterQuad::LAYOUT)],
                 topology: wgpu::PrimitiveTopology::TriangleStrip,
                 vertex_entry: "vs_spun",
@@ -141,3 +174,6 @@ const SHADER_CONSTANTS: &[ShaderConstant] = &[
     ShaderConstant::uint("FLAG_DESATURATE", FLAG_DESATURATE),
     ShaderConstant::uint("FLAG_COLOR", FLAG_COLOR),
 ];
+
+#[cfg(test)]
+mod tests;

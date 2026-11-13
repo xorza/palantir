@@ -3,19 +3,20 @@
 //! - `atomic/gradient_upload`: one more copy against one more staged row, which sets
 //!   `MERGE_GAP_ROWS`.
 //! - `atomic/atlas_move`: rectangles moved from one atlas page to another, a copy command each
-//!   against one instanced draw, which picks how the atlas pool moves items (`src/gpu/AGENTS.md`, Atlases).
+//!   against the pool's one instanced draw ([`MoveDraw`]), the two routes a device moves items
+//!   by (`src/gpu/AGENTS.md`, Atlases).
 //! - `atomic/atlas_page`: a page made and first written, what a pool pays to open one.
 
 use crate::bench::backends::{Backend, Backends};
 use crate::bench::kind::{Kind, Scale};
+use crate::gpu::atlas::atlas_format::AtlasFormat;
+use crate::gpu::atlas::atlas_textures::move_draw::{MoveDraw, MoveRect, MoveRun};
+use crate::gpu::atlas::atlas_textures::texture_format;
 use crate::gpu::atlas::row_table;
 use crate::gpu::bench_gpu::{BenchGpu, Timing};
-use crate::gpu::device::gpu::{FilledBuffer, Gpu};
+use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_wait::GpuWait;
 use crate::gpu::frame::gpu_ctx::GpuCtx;
-use crate::gpu::pipeline::pipeline_recipe::{self, PipelineRecipe, vertex_attr};
-use crate::gpu::pipeline::shader_body::{ShaderBody, ShaderConstant};
-use crate::gpu::resource::texture_binding::{self, Filtering};
 use crate::gpu::resource::upload_staging::UploadStaging;
 use crate::gpu::surface::owned_target::TargetSpec;
 use crate::gpu::surface::texel_readback::TexelReadback;
@@ -24,7 +25,6 @@ use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::cpu_gradient_atlas::bake::LUT_ROW_TEXELS;
 use criterion::{Criterion, Throughput};
 use glam::UVec2;
-use std::mem::offset_of;
 use std::ops::Range;
 
 /// The cases of this file.
@@ -146,10 +146,10 @@ fn gradient_upload(c: &mut Criterion, backends: &Backends, backend: Backend) {
 
 /// The atlas pool's page formats, each with its part of a case's id: the
 /// masks, the color pages as `Rgba8Unorm`, and the backdrop results.
-const PAGE_FORMATS: [(wgpu::TextureFormat, &str); 3] = [
-    (wgpu::TextureFormat::R8Unorm, "r8"),
-    (wgpu::TextureFormat::Rgba8Unorm, "rgba8"),
-    (wgpu::TextureFormat::Rgba16Float, "rgba16f"),
+const PAGE_FORMATS: [(AtlasFormat, &str); 3] = [
+    (AtlasFormat::R8, "r8"),
+    (AtlasFormat::Rgba8, "rgba8"),
+    (AtlasFormat::Rgba16F, "rgba16f"),
 ];
 
 /// The edge of the pages a move runs between, the largest page the proposal opens.
@@ -180,84 +180,29 @@ impl Mover {
     }
 }
 
-/// One rectangle a move takes, as [`MOVE_SHADER`] reads it: its origin on the source page, its
-/// origin on the destination page and its size, in texels.
-#[repr(C)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, bytemuck::Pod, bytemuck::Zeroable)]
-struct Move {
-    src: [u32; 2],
-    dst: [u32; 2],
-    size: [u32; 2],
-}
-
-const MOVE_ATTRS: [wgpu::VertexAttribute; 3] = [
-    vertex_attr(0, wgpu::VertexFormat::Uint32x2, offset_of!(Move, src)),
-    vertex_attr(1, wgpu::VertexFormat::Uint32x2, offset_of!(Move, dst)),
-    vertex_attr(2, wgpu::VertexFormat::Uint32x2, offset_of!(Move, size)),
-];
-
-/// The draw that moves rectangles, as WebRender's `ps_copy` copies texture-cache items: a quad over
-/// each destination rectangle, whose fragments load the source texel at the same offset.
-const MOVE_SHADER: ShaderBody = ShaderBody {
-    label: "palantir.bench.atlas_move",
-    wgsl: "
-const PAGE: f32 = /*{PAGE}*/;
-
-@group(0) @binding(0) var source: texture_2d<f32>;
-
-struct MoveIn {
-    @builtin(vertex_index) idx: u32,
-    @location(0) src: vec2<u32>,
-    @location(1) dst: vec2<u32>,
-    @location(2) size: vec2<u32>,
-}
-
-struct MoveOut {
-    @builtin(position) position: vec4<f32>,
-    @location(0) @interpolate(flat) offset: vec2<i32>,
-}
-
-@vertex
-fn vs(in: MoveIn) -> MoveOut {
-    let corner = vec2<u32>(in.idx & 1u, (in.idx >> 1u) & 1u);
-    let at = vec2<f32>(in.dst + in.size * corner) / PAGE;
-    var out: MoveOut;
-    out.position = vec4<f32>(at.x * 2.0 - 1.0, 1.0 - at.y * 2.0, 0.0, 1.0);
-    out.offset = vec2<i32>(in.src) - vec2<i32>(in.dst);
-    return out;
-}
-
-@fragment
-fn fs(in: MoveOut) -> @location(0) vec4<f32> {
-    return textureLoad(source, vec2<i32>(in.position.xy) + in.offset, 0);
-}
-",
-    includes: &[],
-    constants: &[ShaderConstant::float("PAGE", MOVE_PAGE as f32)],
-};
-
-/// Two pages of one format, the source filled with a pattern, and the draw that moves between them.
+/// Two pages of one format, the source filled with a pattern, and the pool's draw that moves
+/// between them.
 #[derive(Debug)]
 struct PagePair {
-    format: wgpu::TextureFormat,
+    format: AtlasFormat,
     source: wgpu::Texture,
+    source_view: wgpu::TextureView,
     dest: wgpu::Texture,
     dest_view: wgpu::TextureView,
-    group: wgpu::BindGroup,
-    pipeline: wgpu::RenderPipeline,
+    draw: MoveDraw,
     /// Zeros for a whole page, which clear the destination before a case checks its move.
     zeros: Vec<u8>,
 }
 
 impl PagePair {
-    fn new(gpu: &Gpu, format: wgpu::TextureFormat) -> Self {
+    fn new(gpu: &Gpu, format: AtlasFormat) -> Self {
         let page = |label| {
             texel::texture_2d(
                 gpu,
                 TargetSpec {
                     label,
                     size: UVec2::splat(MOVE_PAGE),
-                    format,
+                    format: texture_format(format),
                     usage: wgpu::TextureUsages::TEXTURE_BINDING
                         | wgpu::TextureUsages::RENDER_ATTACHMENT
                         | wgpu::TextureUsages::COPY_SRC
@@ -267,67 +212,33 @@ impl PagePair {
         };
         let source = page("palantir.bench.atlas_move.source");
         let dest = page("palantir.bench.atlas_move.dest");
-        let bytes = (MOVE_PAGE * MOVE_PAGE * texel_bytes(format)) as usize;
+        let bytes = (MOVE_PAGE * MOVE_PAGE * format.texel_bytes()) as usize;
         // Every byte apart from its neighbors, and no f16 a NaN, whose bits a draw may not keep:
         // a byte below 0x7c in each half's high byte keeps the exponent off its all-ones. Some
         // halves are subnormal, so a GPU that flushes them in a draw fails the check, which then
         // says the draw does not move results exactly there.
         let pattern: Vec<u8> = (0..bytes).map(|i| (i % 0x7b) as u8).collect();
         write_page(gpu, &source, &pattern);
-        let layout = gpu
-            .device
-            .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("palantir.bench.atlas_move.bgl"),
-                entries: &[texture_binding::texture_entry(0, Filtering::Loaded)],
-            });
-        let group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("palantir.bench.atlas_move.bg"),
-            layout: &layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: wgpu::BindingResource::TextureView(
-                    &source.create_view(&wgpu::TextureViewDescriptor::default()),
-                ),
-            }],
-        });
-        let shader = MOVE_SHADER.module(gpu);
-        let pipeline_layout =
-            pipeline_recipe::pipeline_layout(gpu, "palantir.bench.atlas_move.pl", &[Some(&layout)]);
-        let pipeline = PipelineRecipe {
-            vertex_buffers: &[Some(pipeline_recipe::vertex_layout(
-                size_of::<Move>(),
-                wgpu::VertexStepMode::Instance,
-                &MOVE_ATTRS,
-            ))],
-            topology: wgpu::PrimitiveTopology::TriangleStrip,
-            blend: None,
-            ..PipelineRecipe::color(
-                "palantir.bench.atlas_move",
-                &shader,
-                &pipeline_layout,
-                format,
-            )
-        }
-        .build(gpu)
-        .pipeline;
+        let view =
+            |texture: &wgpu::Texture| texture.create_view(&wgpu::TextureViewDescriptor::default());
         Self {
             format,
-            dest_view: dest.create_view(&wgpu::TextureViewDescriptor::default()),
+            source_view: view(&source),
+            dest_view: view(&dest),
             source,
             dest,
-            group,
-            pipeline,
+            draw: MoveDraw::new(gpu),
             zeros: vec![0; bytes],
         }
     }
 
     /// Record `moves` by `mover` on `encoder`.
     fn record(
-        &self,
+        &mut self,
+        gpu: &Gpu,
         encoder: &mut wgpu::CommandEncoder,
         mover: Mover,
-        moves: &[Move],
-        instances: &wgpu::Buffer,
+        moves: &[MoveRect],
     ) {
         match mover {
             Mover::Copy => {
@@ -346,28 +257,16 @@ impl PagePair {
                 }
             }
             Mover::Draw => {
-                let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                    label: Some("palantir.bench.atlas_move.pass"),
-                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                        view: &self.dest_view,
-                        depth_slice: None,
-                        resolve_target: None,
-                        ops: wgpu::Operations {
-                            load: wgpu::LoadOp::Load,
-                            store: wgpu::StoreOp::Store,
-                        },
-                    })],
-                    depth_stencil_attachment: None,
-                    timestamp_writes: None,
-                    occlusion_query_set: None,
-                    multiview_mask: None,
-                });
-                pass.set_pipeline(&self.pipeline);
-                pass.set_bind_group(0, &self.group, &[]);
-                pass.set_vertex_buffer(0, instances.slice(..));
-                pass.draw(
-                    0..4,
-                    0..u32::try_from(moves.len()).expect("a move count fits u32"),
+                self.draw.begin();
+                self.draw.record(
+                    gpu,
+                    encoder,
+                    MoveRun {
+                        format: self.format,
+                        source: &self.source_view,
+                        dest: &self.dest_view,
+                        rects: moves,
+                    },
                 );
             }
         }
@@ -379,18 +278,18 @@ impl PagePair {
     /// # Panics
     ///
     /// Panics where a destination texel differs from its source.
-    fn check(&self, bench: &BenchGpu, mover: Mover, moves: &[Move], instances: &wgpu::Buffer) {
+    fn check(&mut self, bench: &BenchGpu, mover: Mover, moves: &[MoveRect]) {
         let gpu = &bench.gpu;
         write_page(gpu, &self.dest, &self.zeros);
         let mut encoder = gpu
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-        self.record(&mut encoder, mover, moves, instances);
+        self.record(gpu, &mut encoder, mover, moves);
         gpu.queue.submit([encoder.finish()]);
         bench.wait();
         let source = read_page(gpu, &self.source);
         let dest = read_page(gpu, &self.dest);
-        let texel = texel_bytes(self.format) as usize;
+        let texel = self.format.texel_bytes() as usize;
         let row = MOVE_PAGE as usize * texel;
         for m in moves {
             let width = m.size[0] as usize * texel;
@@ -441,7 +340,7 @@ fn read_page(gpu: &Gpu, page: &wgpu::Texture) -> Vec<u8> {
 
 /// `count` rectangles of `side`: the `i`th from the `i`th cell of a grid on the source page to the
 /// `count - 1 - i`th on the destination, so each lands elsewhere.
-fn moves(side: u32, count: u32) -> Vec<Move> {
+fn moves(side: u32, count: u32) -> Vec<MoveRect> {
     let cols = MOVE_PAGE / side;
     assert!(
         count <= cols * cols,
@@ -449,10 +348,11 @@ fn moves(side: u32, count: u32) -> Vec<Move> {
     );
     let cell = |i: u32| [i % cols * side, i / cols * side];
     (0..count)
-        .map(|i| Move {
+        .map(|i| MoveRect {
             src: cell(i),
             dst: cell(count - 1 - i),
             size: [side, side],
+            dest_edge: MOVE_PAGE,
         })
         .collect()
 }
@@ -479,25 +379,17 @@ fn atlas_move(c: &mut Criterion, backends: &Backends, backend: Backend) {
                             pages = None;
                             pages = Some(PagePair::new(gpu, format));
                         }
-                        let pair = pages.as_ref().expect("made above");
+                        let pair = pages.as_mut().expect("made above");
                         let moves = moves(side, count);
-                        let instances = gpu.create_filled_buffer(
-                            FilledBuffer {
-                                label: "palantir.bench.atlas_move.instances",
-                                size: size_of_val(moves.as_slice()) as u64,
-                                usage: wgpu::BufferUsages::VERTEX,
-                            },
-                            &[bytemuck::cast_slice(&moves)],
-                        );
                         if !checked {
-                            pair.check(bench, mover, &moves, &instances);
+                            pair.check(bench, mover, &moves);
                             checked = true;
                         }
                         b.iter(|| {
                             let mut encoder = gpu
                                 .device
                                 .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-                            pair.record(&mut encoder, mover, &moves, &instances);
+                            pair.record(gpu, &mut encoder, mover, &moves);
                             gpu.queue.submit([encoder.finish()]);
                             bench.wait();
                         });
@@ -527,14 +419,14 @@ fn atlas_page(c: &mut Criterion, backends: &Backends, backend: Backend) {
                 let bench = backends.device(Timing::Bare);
                 let gpu = &bench.gpu;
                 let raster =
-                    vec![0x55u8; (FIRST_WRITE * FIRST_WRITE * texel_bytes(format)) as usize];
+                    vec![0x55u8; (FIRST_WRITE * FIRST_WRITE * format.texel_bytes()) as usize];
                 b.iter(|| {
                     let page = texel::texture_2d(
                         gpu,
                         TargetSpec {
                             label: "palantir.bench.atlas_page",
                             size: UVec2::splat(edge),
-                            format,
+                            format: texture_format(format),
                             usage: wgpu::TextureUsages::TEXTURE_BINDING
                                 | wgpu::TextureUsages::RENDER_ATTACHMENT
                                 | wgpu::TextureUsages::COPY_SRC
@@ -546,7 +438,7 @@ fn atlas_page(c: &mut Criterion, backends: &Backends, backend: Backend) {
                         &raster,
                         wgpu::TexelCopyBufferLayout {
                             offset: 0,
-                            bytes_per_row: Some(FIRST_WRITE * texel_bytes(format)),
+                            bytes_per_row: Some(FIRST_WRITE * format.texel_bytes()),
                             rows_per_image: None,
                         },
                         texel::extent(UVec2::splat(FIRST_WRITE)),

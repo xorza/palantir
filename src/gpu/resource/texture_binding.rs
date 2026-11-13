@@ -27,8 +27,8 @@ pub(crate) struct TextureBinding {
     /// baseline grants. Refused: a group per image, which needs five.
     images: [wgpu::BindGroupLayout; MAX_IMAGE_SLOTS as usize],
     /// The group a backdrop's composite reads its result through, a material's and an app's
-    /// backdrop effect's alike: the four result pages and a scratch texture, their sampler, the
-    /// slot table and the spectrum a lens spreads.
+    /// backdrop effect's alike: the texture its result lies in, a sampler, the slot table and the
+    /// spectrum a lens spreads.
     backdrops: wgpu::BindGroupLayout,
     /// The frame group every color pipeline reads at
     /// [`FRAME_GROUP`](crate::primitives::wgsl::FRAME_GROUP): the gradient atlas, its sampler and
@@ -76,13 +76,9 @@ impl TextureBinding {
                 label: Some("palantir.backdrop.composite.bgl"),
                 entries: &[
                     texture_entry(0, Filtering::Filtered),
-                    texture_entry(1, Filtering::Filtered),
-                    texture_entry(2, Filtering::Filtered),
-                    texture_entry(3, Filtering::Filtered),
-                    texture_entry(4, Filtering::Filtered),
-                    sampler_entry(5),
-                    storage(6),
-                    storage(7),
+                    sampler_entry(1),
+                    storage(2),
+                    storage(3),
                 ],
             });
         let frame = gpu

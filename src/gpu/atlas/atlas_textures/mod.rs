@@ -1,10 +1,14 @@
 //! [`AtlasTextures`]: the pool's GPU half, the textures behind its pages and scratch slots, made
 //! to follow the CPU half at each commit.
 
+pub(crate) mod move_draw;
+
 use crate::gpu::atlas::atlas_format::AtlasFormat;
-use crate::gpu::atlas::page_list::{MAX_PAGES, Move, PageList};
+use crate::gpu::atlas::atlas_textures::move_draw::{MoveDraw, MoveRect, MoveRun};
+use crate::gpu::atlas::page_list::{MAX_PAGES, Move, MoveBudget, PageList};
 use crate::gpu::atlas::{AtlasPool, ListCommit};
 use crate::gpu::device::gpu::Gpu;
+use crate::gpu::device::pass_traffic::PassTraffic;
 use crate::gpu::surface::owned_target::TargetSpec;
 use crate::gpu::texel;
 use glam::UVec2;
@@ -21,8 +25,7 @@ pub(crate) const fn texture_format(format: AtlasFormat) -> wgpu::TextureFormat {
 }
 
 /// What every page and scratch texture takes: a draw reads it, a raster writes into it, a bake,
-/// a blur or a move renders into it, and a grow copies out of it. Render use on every format, as
-/// M2 picks the move mechanism per device and may pick a draw.
+/// a blur or a move renders into it, and a grow or a move copies out of it.
 const USAGE: wgpu::TextureUsages = wgpu::TextureUsages::TEXTURE_BINDING
     .union(wgpu::TextureUsages::RENDER_ATTACHMENT)
     .union(wgpu::TextureUsages::COPY_SRC)
@@ -94,7 +97,7 @@ impl ListTextures {
 
     /// Make the textures follow `list`, recording on `encoder`: a page opened makes its texture, a
     /// page grown in its slot makes a larger one and copies the old texels into its top-left; then
-    /// each of `moves` copies its item from the page it left to its new one; then a page closed
+    /// `mover` moves each of `moves` from the page it left to its new one; then a page closed
     /// drops its texture, and a scratch slot makes or drops its texture as its size comes and
     /// goes. A move's source is the texture of the page opening it left, whether its slot still
     /// holds that opening or closed it, or took another, this commit.
@@ -104,6 +107,7 @@ impl ListTextures {
         encoder: &mut wgpu::CommandEncoder,
         list: &PageList,
         moves: impl Iterator<Item = Move>,
+        mover: &mut Mover,
     ) {
         let mut previous = std::mem::replace(&mut self.pages, [const { None }; MAX_PAGES]);
         for (idx, held) in previous.iter_mut().enumerate() {
@@ -138,33 +142,58 @@ impl ListTextures {
             });
             self.generation += 1;
         }
-        for Move {
-            from,
-            from_epoch,
-            to,
-        } in moves
-        {
-            let at = usize::from(from.page);
-            let source = [&self.pages[at], &previous[at]]
+        let source = |m: &Move| {
+            let at = usize::from(m.from.page);
+            [&self.pages[at], &previous[at]]
                 .into_iter()
                 .flatten()
-                .find(|texture| texture.epoch == from_epoch)
-                .expect("a move's source page was committed");
-            let dest = self.pages[usize::from(to.page)]
+                .find(|texture| texture.epoch == m.from_epoch)
+                .expect("a move's source page was committed")
+        };
+        let dest = |m: &Move| {
+            self.pages[usize::from(m.to.page)]
                 .as_ref()
-                .expect("a move lands on an open page");
-            debug_assert_eq!(from.size, to.size, "a move keeps its item's size");
-            encoder.copy_texture_to_texture(
-                wgpu::TexelCopyTextureInfo {
-                    origin: texel::origin(from.origin.as_uvec2()),
-                    ..source.bound.texture.as_image_copy()
-                },
-                wgpu::TexelCopyTextureInfo {
-                    origin: texel::origin(to.origin.as_uvec2()),
-                    ..dest.bound.texture.as_image_copy()
-                },
-                texel::extent(from.size.as_uvec2()),
-            );
+                .expect("a move lands on an open page")
+        };
+        match mover {
+            Mover::Copy => {
+                for m in moves {
+                    debug_assert_eq!(m.from.size, m.to.size, "a move keeps its item's size");
+                    encoder.copy_texture_to_texture(
+                        wgpu::TexelCopyTextureInfo {
+                            origin: texel::origin(m.from.origin.as_uvec2()),
+                            ..source(&m).bound.texture.as_image_copy()
+                        },
+                        wgpu::TexelCopyTextureInfo {
+                            origin: texel::origin(m.to.origin.as_uvec2()),
+                            ..dest(&m).bound.texture.as_image_copy()
+                        },
+                        texel::extent(m.from.size.as_uvec2()),
+                    );
+                }
+            }
+            Mover::Draw { draw, runs, rects } => {
+                runs.clear();
+                runs.extend(moves);
+                runs.sort_unstable_by_key(|m| (m.from_epoch, m.to.page));
+                for run in
+                    runs.chunk_by(|a, b| (a.from_epoch, a.to.page) == (b.from_epoch, b.to.page))
+                {
+                    let to = dest(&run[0]);
+                    rects.clear();
+                    rects.extend(run.iter().map(|&m| MoveRect::of(m, to.bound.size().x)));
+                    draw.record(
+                        gpu,
+                        encoder,
+                        MoveRun {
+                            format: self.format,
+                            source: &source(&run[0]).bound.view,
+                            dest: &to.bound.view,
+                            rects,
+                        },
+                    );
+                }
+            }
         }
         drop(previous);
         let slots = list.scratch().slots();
@@ -183,19 +212,84 @@ impl ListTextures {
     }
 }
 
+/// How a device moves a drain's items between pages: by copy commands where a pass moves its
+/// whole target, as a draw onto a page would load and store all of it, and by one draw a
+/// destination page elsewhere, WebRender's two routes (`src/gpu/AGENTS.md`, Atlases).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum MoveRoute {
+    Copy,
+    Draw,
+}
+
+impl MoveRoute {
+    /// The route of a device whose passes move `traffic`.
+    pub(crate) const fn of(traffic: PassTraffic) -> Self {
+        match traffic {
+            PassTraffic::WholeTarget => Self::Copy,
+            PassTraffic::Drawn => Self::Draw,
+        }
+    }
+
+    /// What a display frame's moves may take on it.
+    pub(crate) const fn budget(self) -> MoveBudget {
+        match self {
+            Self::Copy => MoveBudget::COPIES,
+            Self::Draw => MoveBudget::DRAWN,
+        }
+    }
+}
+
+/// What a commit moves items with: copy commands, or [`MoveDraw`] and the scratch it groups a
+/// commit's moves in, kept across commits.
+#[derive(Debug)]
+enum Mover {
+    Copy,
+    Draw {
+        draw: MoveDraw,
+        /// A commit's moves, sorted into runs of one source and one destination.
+        runs: Vec<Move>,
+        /// One run's rectangles.
+        rects: Vec<MoveRect>,
+    },
+}
+
 /// The textures behind every list of an [`AtlasPool`], made again by its constructor on a new
 /// device and filled again by the tenants, as every device object is
 /// (`src/gpu/AGENTS.md`, Device loss).
 #[derive(Debug)]
 pub(crate) struct AtlasTextures {
     lists: [ListTextures; 3],
+    mover: Mover,
 }
 
 impl AtlasTextures {
+    /// The textures of a device, which moves items by its [`MoveRoute`].
     pub(crate) fn new(gpu: &Gpu) -> Self {
+        Self::with_route(gpu, MoveRoute::of(gpu.pass_traffic()))
+    }
+
+    /// The textures of a device, moving items by `route`.
+    fn with_route(gpu: &Gpu, route: MoveRoute) -> Self {
         Self {
             lists: AtlasFormat::ALL.map(|format| ListTextures::new(gpu, format)),
+            mover: match route {
+                MoveRoute::Copy => Mover::Copy,
+                MoveRoute::Draw => Mover::Draw {
+                    draw: MoveDraw::new(gpu),
+                    runs: Vec::new(),
+                    rects: Vec::new(),
+                },
+            },
         }
+    }
+
+    /// What a display frame's moves may take on this device, which the pool's decay takes.
+    pub(crate) const fn move_budget(&self) -> MoveBudget {
+        let route = match self.mover {
+            Mover::Copy => MoveRoute::Copy,
+            Mover::Draw { .. } => MoveRoute::Draw,
+        };
+        route.budget()
     }
 
     /// Make every texture follow `pool`, a grow's and the drains' copies recorded on `encoder`,
@@ -206,9 +300,12 @@ impl AtlasTextures {
         encoder: &mut wgpu::CommandEncoder,
         pool: &mut AtlasPool,
     ) {
+        if let Mover::Draw { draw, .. } = &mut self.mover {
+            draw.begin();
+        }
         for (textures, format) in self.lists.iter_mut().zip(AtlasFormat::ALL) {
             let ListCommit { list, moves } = pool.commit_list(format);
-            textures.commit(gpu, encoder, list, moves);
+            textures.commit(gpu, encoder, list, moves, &mut self.mover);
         }
     }
 
@@ -226,6 +323,13 @@ impl AtlasTextures {
     /// them makes its group again when it differs from the one it made the group at.
     pub(crate) const fn generation(&self, format: AtlasFormat) -> u64 {
         self.lists[format as usize].generation
+    }
+
+    /// The view of `format`'s page `idx`, `None` where none is open.
+    pub(crate) fn page_view(&self, format: AtlasFormat, idx: usize) -> Option<&wgpu::TextureView> {
+        self.lists[format as usize].pages[idx]
+            .as_ref()
+            .map(|page| &page.bound.view)
     }
 
     /// The texture of `format`'s page `idx`, `None` where none is open.

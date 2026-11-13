@@ -57,10 +57,13 @@ pub(crate) const DEFAULT_MAX_ATLAS_ROWS: u32 = 2048;
 /// [`LutRow::FALLBACK`] paints magenta, without repainting what other draws captured.
 pub(crate) const MAX_ATLAS_ROWS: u32 = 4096;
 
-/// Clean rows a flush folds into the run around them rather than start another copy: a copy
-/// costs about as much as 52 staged rows (`.notes/research/2026-10-27-gpu-upload-and-binder.md`,
-/// "A copy against a staged gradient row"), so a gap up to 48 is cheaper to upload than to skip.
-pub(crate) const MERGE_GAP_ROWS: u32 = 48;
+/// Clean rows a flush folds into the run around them rather than start another copy. A folded row
+/// is baked again from its ramp and staged, 0.9 to 12.7 µs on the bench hosts, against a copy's
+/// 4.6 to 45 µs, so folding pays up to a gap of 0.9 to 7.2 rows by host and interpolation. 3 holds
+/// the worst a gap loses on any host lowest, about 20 µs: the board's linear rows split at a gap of
+/// 4, the handheld's Oklab rows folded at 3
+/// (`.notes/research/2026-11-12-atlas-pool-measurements.md`, "The gradient flush").
+pub(crate) const MERGE_GAP_ROWS: u32 = 3;
 
 /// One row's bookkeeping: the ramp a flush bakes it from, and when a frame last registered it.
 #[derive(Clone, Debug, Default)]

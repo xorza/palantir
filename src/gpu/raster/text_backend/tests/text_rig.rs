@@ -113,7 +113,7 @@ impl TextRig {
     /// One frame boundary as `WgpuBackend::submit` drives it: the pool decays, the shared text
     /// clock moves on, and the pool's display frame with it.
     pub(super) fn tick(&mut self) {
-        self.pool.end_submit();
+        self.pool.end_submit(self.atlas.move_budget());
         self.backend.tick_frame(&mut self.pool);
         self.pool.advance_to(self.pool.frame() + 1);
     }

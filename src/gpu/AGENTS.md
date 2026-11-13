@@ -84,6 +84,16 @@ Facts and sources: `.notes/research/2026-11-12-atlas-pools.md` and
   The first page doubles from its first edge to the page edge; past it the list adds pages.
   Refused: a texture array, which gains no layer without copying every layer; binding arrays,
   native only; fixed pages from the start, which charge a light app a whole page.
+- **A pipeline that reads a list's pages is built for its open slots** (`PageSlots`): the shader
+  picks a page by a chain of branches an override decides wherever it can
+  (`palantir_reads_slot`), so over one open page it loads and never branches, in any slot, as
+  Skia keys its text program on the atlas's active pages (`GrBitmapTextGeoProc`'s
+  `numTextureSamplers`). A choice among four compiled in full on V3D: the raster fragment 196 →
+  943 instructions at half the threads, the board's whole repaints +2.7 to +3.1 %. Refused: a
+  `switch` over the four; the slots through the last open one, which a shrink defeats, as it
+  leaves a list's one page in slot 1; a draw a page, which splits a run of glyphs on two pages
+  into a draw at each change. Cost: a page opening or closing builds the pipelines over the new
+  set at the frame that changes it, once for each set a session meets.
 - **Color pages store `Rgba8Unorm` and the raster shader decodes sRGB**, so a move copies their
   bytes exactly on every backend, as WebRender keeps color as plain RGBA. Refused: sRGB pages,
   which GL and WebGL give no linear view of. Cost: a color pixel may move by one step.
@@ -92,9 +102,13 @@ Facts and sources: `.notes/research/2026-11-12-atlas-pools.md` and
   shading. Cost: a table texel errs half an 8-bit step more, which the bake's test bounds.
 - **An item past half a page takes a scratch texture of its own, on Skia's `GetApproxSize`
   ladder, reused within twice its area as Chromium's `ResourcePool`, expired after an expiry
-  window.** Only per-draw tenants take one: a large backdrop's composite binds it in a group of its
-  own, so its draw splits from its neighbors'. Refused: exact sizes, which make a texture each
+  window.** Only per-draw tenants take one. Refused: exact sizes, which make a texture each
   frame of a growing animation.
+- **A backdrop's composite binds the one texture its result lies in**, a page or a scratch
+  texture, so a draw splits where that texture changes, as WebRender binds each batch's
+  textures: the composite reads one texture, as before the pool. Refused: the pages and a scratch
+  texture in one group and a choice among five in the shader, the B-spline five times, which V3D
+  compiled in full (619 → 1340 instructions, the board's `modal/scrolling` +6.9 %).
 - **Gradient rows are a row table, not atlas items**, per-paint data every color pipeline reads
   branch-free through the frame group, as WebRender keeps gradient stops in its GPU cache. A row
   keeps its id while it lives; the table doubles when full and halves at the start of a frame that
@@ -107,18 +121,25 @@ Facts and sources: `.notes/research/2026-11-12-atlas-pools.md` and
   an item from every eviction. Under the soft budget a list grows; over it, it evicts; with nothing
   evictable it grows to four pages; past them it refuses.
 - **Decay is WebRender's: age out, then drain, then free, once a display frame** at the end of its
-  first submit, the GPU's copies first in the next commit, ahead of every upload, bake and draw.
+  first submit, the GPU's moves first in the next commit, ahead of every upload, bake and draw.
   The age shortens with the list's pressure as WebRender's `should_continue_evicting` table, at
-  most 32 evictions a frame below four times the budget; the emptiest page whose items fit the
-  others drains into them, at most 512² texels a frame as WebRender's compaction; one page under a
-  quarter full for an expiry window drains into a page that holds twice its items, landing at
-  half as a `Vec` halves. A page is a source or a destination in one frame, never both, and no
+  most 32 evictions a frame below four times the budget; the pressure is the bytes the items fill,
+  as WebRender's `bytes_allocated`, and nothing ages under the budget on one page, grown or not,
+  as WebRender ages under its threshold only across several textures (refused: a grown page aged
+  under the budget, which evicted every glyph of a 512-scale zoom just before its scale came back,
+  `cache_churn` +40 to +83 %); the emptiest page whose items fit the others drains into them, at
+  most 512² texels a frame as WebRender's compaction; one page under a quarter full for an expiry
+  window drains into a page that holds twice its items, landing at half as a `Vec` halves. A page is a source or a destination in one frame, never both, and no
   drain starts while moves wait for the commit, so no page closes under a move. Refused: Skia's
   compaction by eviction, which rasterizes a page's visible items again in one frame; a repack in
   one frame, which moves the whole live set at once.
-- **Moves go by copy commands, a frame's few within a budget of copies.** An instanced draw a
-  destination page is the other route WebRender keeps; a device whose copies cost past a draw
-  takes it once the move bench measures it (`.notes/TODO.md`).
+- **Moves go by one instanced draw a destination page, or by copy commands where a pass moves its
+  whole target** (`MoveRoute`, from `PassTraffic`), WebRender's two routes. Where a pass moves
+  only what it draws, a draw wins at every count measured: 16 glyphs 107 µs against 222 on the
+  handheld, and ties at 16 and wins past 64 on the Apple laptop. Where it moves the whole target, a
+  draw loads and stores the whole destination page, 2.2 to 5.1 ms on V3D at 2048², so copies win
+  below about 64 there, and a frame takes 16 copies, about 0.7 ms at V3D's 43 µs a copy, where 64
+  took 2.4 ms. Both within 512² texels a frame.
 - **The system's memory warnings purge the pool on every platform**, between frames: everything no
   one pins and the last frame did not draw goes, idle scratch goes, and the pages drain with no
   budget, committed at once so the memory returns with no frame to wait for; a stutter traded for

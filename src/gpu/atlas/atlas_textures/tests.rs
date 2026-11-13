@@ -89,61 +89,112 @@ fn a_grown_page_keeps_its_texels() {
     assert_eq!(textures.generation(AtlasFormat::R8), 2, "nothing changed");
 }
 
-/// A drain's move copies its item's texels to its new place byte for byte at the next commit,
-/// though the page it left closed in the same decay: four 16² items fill a 32² page and a fifth
-/// opens a second; with two of the first page's gone, the decay drains the second into the first's
-/// free (16, 0) and closes it. The commit copies the second page's top-left 16² there, keeps every
-/// other texel of the first page, and drops the second page's texture, one change of view.
+/// A drain's move lands its item's texels at its new place byte for byte at the next commit, by
+/// copy and by draw alike, though the page it left closed in the same decay: in each format's list
+/// four 16² items fill a 32² page and a fifth opens a second; with two of the first page's gone,
+/// the decay drains the second into the first's free (16, 0) and closes it. One commit moves each
+/// list's second page's top-left 16² there, three runs of one submission, keeps every other texel
+/// of the first page, and drops the second page's texture, one change of view a list. Every byte
+/// differs from its neighbors and no half-float is a NaN, whose bits a draw may not keep.
 #[test]
-fn a_move_copies_its_texels_from_the_page_it_left() {
+fn a_move_lands_its_texels_from_the_page_it_left() {
     let gpu = headless_test_gpu();
+    for route in [MoveRoute::Copy, MoveRoute::Draw] {
+        moves_land(&gpu, route);
+    }
+}
+
+/// [`a_move_lands_its_texels_from_the_page_it_left`], moving by `route`.
+fn moves_land(gpu: &TestGpu, route: MoveRoute) {
     let config = PageListConfig {
         first_edge: 32,
         page_edge: 32,
         soft_bytes: 1 << 20,
     };
     let mut pool = AtlasPool::with_configs([config; 3], 16384);
-    let mut textures = AtlasTextures::new(&gpu);
-    let insert = |pool: &mut AtlasPool| {
-        pool.allocate(AtlasFormat::R8, Tenant::Glyphs, U16Vec2::splat(16))
+    let mut textures = AtlasTextures::with_route(gpu, route);
+    let insert = |pool: &mut AtlasPool, format| {
+        pool.allocate(format, Tenant::Glyphs, U16Vec2::splat(16))
             .unwrap()
     };
-    let first: Vec<_> = (0..4).map(|_| insert(&mut pool)).collect();
-    let fifth = insert(&mut pool);
-    commit(&gpu, &mut textures, &mut pool);
-    let patterns: [Vec<u8>; 2] = [0, 1].map(|page| {
-        (0..32 * 32u32)
-            .map(|i| (i % 251) as u8 ^ (page * 0x80))
-            .collect()
+    let items = AtlasFormat::ALL.map(|format| {
+        let first: Vec<_> = (0..4).map(|_| insert(&mut pool, format)).collect();
+        let fifth = insert(&mut pool, format);
+        (first, fifth)
     });
-    for (page, pattern) in patterns.iter().enumerate() {
-        fill(
-            &gpu,
-            textures.page_texture(AtlasFormat::R8, page).unwrap(),
-            32,
-            pattern,
-        );
-    }
-    pool.release(first[1]);
-    pool.release(first[2]);
-    pool.advance_to(1);
-    pool.end_submit();
-    assert_eq!(pool.placement(fifth).unwrap().page, 0);
-    assert!(pool.list(AtlasFormat::R8).page(1).is_none());
-    let generation = textures.generation(AtlasFormat::R8);
-    commit(&gpu, &mut textures, &mut pool);
-    assert_eq!(textures.generation(AtlasFormat::R8), generation + 1);
-    assert!(textures.page_texture(AtlasFormat::R8, 1).is_none());
-    let read = gpu.read_texture(textures.page_texture(AtlasFormat::R8, 0).unwrap());
-    for y in 0..32usize {
-        for x in 0..32usize {
-            let want = if (16..32).contains(&x) && y < 16 {
-                patterns[1][y * 32 + x - 16]
-            } else {
-                patterns[0][y * 32 + x]
-            };
-            assert_eq!(read[y * 32 + x], want, "texel ({x}, {y})");
+    commit(gpu, &mut textures, &mut pool);
+    let row = |format: AtlasFormat| 32 * format.texel_bytes() as usize;
+    // Every byte below 0x7c keeps each half's exponent off its all-ones.
+    let patterns = AtlasFormat::ALL.map(|format| {
+        [0, 1].map(|page| {
+            (0..32 * row(format))
+                .map(|i| ((i + page * 13 + format as usize * 29) % 0x7b) as u8)
+                .collect::<Vec<u8>>()
+        })
+    });
+    for format in AtlasFormat::ALL {
+        for (page, pattern) in patterns[format as usize].iter().enumerate() {
+            let texture = textures.page_texture(format, page).unwrap();
+            gpu.queue.write_texture(
+                texture.as_image_copy(),
+                pattern,
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(row(format) as u32),
+                    rows_per_image: None,
+                },
+                texture.size(),
+            );
         }
+        let (first, _) = &items[format as usize];
+        pool.release(first[1]);
+        pool.release(first[2]);
+    }
+    pool.advance_to(1);
+    pool.end_submit(route.budget());
+    let generations = AtlasFormat::ALL.map(|format| textures.generation(format));
+    commit(gpu, &mut textures, &mut pool);
+    for format in AtlasFormat::ALL {
+        let (_, fifth) = items[format as usize];
+        assert_eq!(pool.placement(fifth).unwrap().page, 0);
+        assert!(pool.list(format).page(1).is_none());
+        assert_eq!(
+            textures.generation(format),
+            generations[format as usize] + 1
+        );
+        assert!(textures.page_texture(format, 1).is_none());
+        let read = gpu.read_texture(textures.page_texture(format, 0).unwrap());
+        let texel = format.texel_bytes() as usize;
+        let row = row(format);
+        let [kept, moved] = &patterns[format as usize];
+        for y in 0..32usize {
+            for x in 0..32usize {
+                let at = y * row + x * texel;
+                let want = if (16..32).contains(&x) && y < 16 {
+                    &moved[y * row + (x - 16) * texel..][..texel]
+                } else {
+                    &kept[at..][..texel]
+                };
+                assert_eq!(
+                    &read[at..at + texel],
+                    want,
+                    "{format:?} by {route:?}: texel ({x}, {y})"
+                );
+            }
+        }
+    }
+}
+
+/// A device whose passes move their whole target moves by copy, with a frame's 16 copies; any
+/// other by draw, with no count of moves, both within 512² texels.
+#[test]
+fn the_route_follows_what_a_pass_moves() {
+    assert_eq!(MoveRoute::of(PassTraffic::WholeTarget), MoveRoute::Copy);
+    assert_eq!(MoveRoute::of(PassTraffic::Drawn), MoveRoute::Draw);
+    assert_eq!(MoveRoute::Copy.budget().moves, 16);
+    assert_eq!(MoveRoute::Draw.budget().moves, u32::MAX);
+    for route in [MoveRoute::Copy, MoveRoute::Draw] {
+        assert_eq!(route.budget().texels, 512 * 512);
     }
 }
 

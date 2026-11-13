@@ -381,17 +381,17 @@ impl EffectPipeline {
             .as_ref()
             .expect("a frame uploads before it draws");
         rec.vertex(0, &self.instances.buffer);
-        // A backdrop whose result has a scratch texture of its own reads it through a group of its
-        // own, so its draw splits from its neighbors'.
+        // A backdrop's composite reads the texture its result lies in through a group over it
+        // alone, so a draw splits where that texture changes.
         let key = |i: u32| {
             let key = keys[i as usize];
-            let scratch = (modules[key.effect.idx()].kind == KindId::Backdrop)
-                .then(|| backdrops?.scratch_of(instances[i as usize].backdrop_idx))
+            let read = (modules[key.effect.idx()].kind == KindId::Backdrop)
+                .then(|| backdrops?.read_of(instances[i as usize].backdrop_idx))
                 .flatten();
-            (key, self.images[i as usize], scratch)
+            (key, self.images[i as usize], read)
         };
         for run in Runs::new(items, key) {
-            let (key, images, scratch) = run.key;
+            let (key, images, read) = run.key;
             let images_group = if images.ids().is_empty() {
                 None
             } else {
@@ -409,7 +409,7 @@ impl EffectPipeline {
             if kind == KindId::Backdrop {
                 let backdrops =
                     backdrops.expect("a frame with a backdrop effect prepares its backdrops");
-                rec.group_once(BACKDROPS_GROUP, backdrops.group(scratch));
+                rec.group_once(BACKDROPS_GROUP, backdrops.group(read));
             }
             self.indices
                 .draw(rec, key.form, key.cover, run.instances.u32_range());

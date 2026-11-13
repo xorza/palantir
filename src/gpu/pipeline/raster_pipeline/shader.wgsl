@@ -56,8 +56,13 @@ const FLAG_RESAMPLE: u32 = FLAG_MASK + 1u;
 
 // The atlas pages, past the frame group: four of each kind, a closed page bound
 // as a 1 × 1 stand-in. Every read is a `textureLoad` by texel, so there is no
-// sampler, and a branch on a flat page picks the texture, as Skia picks among
-// its glyph pages (`GrAtlasedShaderHelpers`).
+// sampler, and a chain of branches on a flat page picks the texture, as Skia
+// picks among its glyph pages (`GrAtlasedShaderHelpers`). The pipeline pins the
+// open slots of each kind, `PageSlots`, so the compiler drops every branch it
+// can decide (`palantir_reads_slot`): over one open page, a load and no branch,
+// where V3D compiles every arm of a choice among four.
+override MASK_SLOTS: u32 = 15u;
+override COLOR_SLOTS: u32 = 15u;
 const ATLAS_GROUP: u32 = /*{ATLAS_GROUP}*/;
 @group(ATLAS_GROUP) @binding(0) var mask_page0: texture_2d<f32>;
 @group(ATLAS_GROUP) @binding(1) var mask_page1: texture_2d<f32>;
@@ -68,25 +73,25 @@ const ATLAS_GROUP: u32 = /*{ATLAS_GROUP}*/;
 @group(ATLAS_GROUP) @binding(6) var color_page2: texture_2d<f32>;
 @group(ATLAS_GROUP) @binding(7) var color_page3: texture_2d<f32>;
 
-// The coverage at `at` of mask page `page`.
+// The coverage at `at` of mask page `page`, one of the `MASK_SLOTS`.
 fn mask_load(page: u32, at: vec2<i32>) -> f32 {
-    switch page {
-        case 1u: { return textureLoad(mask_page1, at, 0).x; }
-        case 2u: { return textureLoad(mask_page2, at, 0).x; }
-        case 3u: { return textureLoad(mask_page3, at, 0).x; }
-        default: { return textureLoad(mask_page0, at, 0).x; }
-    }
+    if (palantir_reads_slot(MASK_SLOTS, 0u, page)) { return textureLoad(mask_page0, at, 0).x; }
+    if (palantir_reads_slot(MASK_SLOTS, 1u, page)) { return textureLoad(mask_page1, at, 0).x; }
+    if (palantir_reads_slot(MASK_SLOTS, 2u, page)) { return textureLoad(mask_page2, at, 0).x; }
+    return textureLoad(mask_page3, at, 0).x;
+}
+
+// The texel at `at` of color page `page`, one of the `COLOR_SLOTS`, as stored.
+fn color_texel(page: u32, at: vec2<i32>) -> vec4<f32> {
+    if (palantir_reads_slot(COLOR_SLOTS, 0u, page)) { return textureLoad(color_page0, at, 0); }
+    if (palantir_reads_slot(COLOR_SLOTS, 1u, page)) { return textureLoad(color_page1, at, 0); }
+    if (palantir_reads_slot(COLOR_SLOTS, 2u, page)) { return textureLoad(color_page2, at, 0); }
+    return textureLoad(color_page3, at, 0);
 }
 
 // The straight linear RGBA at `at` of color page `page`, its sRGB bytes decoded.
 fn color_load(page: u32, at: vec2<i32>) -> vec4<f32> {
-    var s: vec4<f32>;
-    switch page {
-        case 1u: { s = textureLoad(color_page1, at, 0); }
-        case 2u: { s = textureLoad(color_page2, at, 0); }
-        case 3u: { s = textureLoad(color_page3, at, 0); }
-        default: { s = textureLoad(color_page0, at, 0); }
-    }
+    let s = color_texel(page, at);
     return vec4<f32>(palantir_srgb_to_linear(s.rgb), s.a);
 }
 

@@ -5,13 +5,14 @@ use super::{at, list, square};
 use crate::gpu::atlas::Evictions;
 use crate::gpu::atlas::atlas_handle::{AtlasHandle, Placement};
 use crate::gpu::atlas::page_list::{DecayCtx, DrainCount, Move, MoveBudget, PageList, PageState};
+use crate::gpu::atlas::page_slots::PageSlots;
 use crate::gpu::atlas::tenant::Tenant;
 use glam::U16Vec2;
 
 /// A frame's budget past anything these lists move.
 const ROOMY: MoveBudget = MoveBudget {
     texels: u64::MAX,
-    copies: u32::MAX,
+    moves: u32::MAX,
 };
 
 /// `n` items of `side`² for glyphs, at frame 0.
@@ -49,60 +50,81 @@ fn decay(list: &mut PageList, frame: u64, mut budget: MoveBudget) -> Decayed {
     }
 }
 
-/// The age-out follows WebRender's table over the list's pressure. 40 items of 8² on 32² pages,
-/// sixteen a page, take three pages, 3072 bytes; one is pinned and one drawn at frame 50.
+/// The age-out follows WebRender's table over the list's pressure, the bytes its items fill over
+/// its soft budget. 40 items of 8² on 32² pages, sixteen a page, take three pages and fill 2560
+/// bytes; one is pinned and one drawn at frame 50.
 ///
-/// Under a soft budget of 1024 the pressure is 3: an item goes once idle past 50 frames, 32 a
-/// frame. At frame 50 none is past it; at 51 the clock takes the 32 slots after the two kept ones,
-/// which empty the second page, and the drain closes it. At 52 nothing is idle past the age of
-/// 100 two pages set, and the first page, now the emptiest, drains its two kept items into the
-/// third and closes: one page of 1024 bytes, a pressure of 1 and an age of 200, so the third
-/// page's other six go at frame 201, not at 101.
+/// Under a soft budget of 1024 the pressure is 2: an item goes once idle past 100 frames, 32 a
+/// frame. At frame 100 none is past it; at 101 the clock takes the 32 slots after the two kept
+/// ones, which empty the second page, and the drain closes it. At 102 the first page, now the
+/// emptiest, drains its two kept items into the third and closes: the one page left fills 512
+/// bytes, under the budget, and keeps its six idle items at frame 10 000.
 ///
-/// Under a budget of 512 the pressure is 6, past four times it: the age is 5 and no cap holds, so
-/// all 38 go at frame 6.
+/// Under a budget of 512 the pressure is 5, past four times it: the age is 10 and no cap holds, so
+/// all 38 go at frame 11.
 #[test]
 fn the_age_out_follows_the_pressure() {
     let setup = |soft: u64| {
         let mut list = list(32, 32, soft);
         let items = insert(&mut list, 40, 8);
         assert_eq!(list.bytes(), 3 * 32 * 32);
+        assert_eq!(list.live_page_bytes(), 40 * 8 * 8);
         list.pin(items[0]);
         list.stamp(items[1], 50).unwrap();
         (list, items)
     };
     let (mut list, items) = setup(1024);
     let evicted = |list: &mut PageList, frame| decay(list, frame, ROOMY).evicted.len();
-    assert_eq!(evicted(&mut list, 50), 0);
-    assert_eq!(evicted(&mut list, 51), 32);
+    assert_eq!(evicted(&mut list, 100), 0);
+    assert_eq!(evicted(&mut list, 101), 32);
     assert!(list.page(1).is_none(), "the emptied page closed");
-    assert_eq!(evicted(&mut list, 52), 0);
+    assert_eq!(evicted(&mut list, 102), 0);
+    assert!(list.page(0).is_none(), "the first page drained");
     assert_eq!(list.pages.iter().flatten().count(), 1, "one page left");
-    assert_eq!(evicted(&mut list, 101), 0);
-    assert_eq!(evicted(&mut list, 201), 6);
+    assert_eq!(list.live_page_bytes(), 8 * 8 * 8);
+    assert_eq!(evicted(&mut list, 10_000), 0);
     assert!(list.placement(items[0]).is_some(), "pinned");
     assert!(list.placement(items[1]).is_some(), "drawn at 50");
+    assert!(
+        list.placement(items[39]).is_some(),
+        "idle on one page under the budget"
+    );
 
     let (mut list, items) = setup(512);
-    assert_eq!(evicted(&mut list, 5), 0);
-    assert_eq!(evicted(&mut list, 6), 38, "uncapped past four times");
+    assert_eq!(evicted(&mut list, 10), 0);
+    assert_eq!(evicted(&mut list, 11), 38, "uncapped past four times");
     assert!(list.placement(items[0]).is_some());
 }
 
-/// A list on its first page at its first edge and under its budget ages nothing out, however
-/// idle: a 32² page of four 16² items under a budget of a page.
+/// A list on one page under its budget ages nothing out, however idle, at its first edge or grown
+/// in place: four 16² items fill a 32² page, and a fifth grows it to 64². Under a budget of a
+/// mebibyte none goes at frame 10 000 or 20 000. Under a budget of 1024 bytes the fifth finds no
+/// item to evict, all drawn at frame 0, and grows the page past the budget; the five fill 1280
+/// bytes, a pressure of 1 and an age of 200, so all five go at frame 201.
 #[test]
-fn a_list_at_its_first_page_ages_nothing_out() {
+fn a_list_on_one_page_under_its_budget_ages_nothing_out() {
     let mut list = list(32, 64, 1 << 20);
     let _ = insert(&mut list, 4, 16);
     assert_eq!(decay(&mut list, 10_000, ROOMY).evicted.len(), 0);
+    let _ = insert(&mut list, 1, 16);
+    assert_eq!(list.page(0).unwrap().edge(), 64, "grown in place");
+    assert_eq!(list.pages.iter().flatten().count(), 1);
+    assert_eq!(decay(&mut list, 20_000, ROOMY).evicted.len(), 0);
+
+    let mut at_budget = super::list(32, 64, 1024);
+    let _ = insert(&mut at_budget, 5, 16);
+    assert_eq!(at_budget.bytes(), 64 * 64);
+    assert_eq!(at_budget.live_page_bytes(), 5 * 16 * 16);
+    assert_eq!(decay(&mut at_budget, 200, ROOMY).evicted.len(), 0);
+    assert_eq!(decay(&mut at_budget, 201, ROOMY).evicted.len(), 5);
 }
 
 /// The emptiest page drains into the others once its items fit half their free texels, and closes
 /// once empty; its items keep their handles, a pinned one among them. Four 16² items fill the
 /// first 32² page and a fifth opens the second; while the first is full nothing drains. Two of the
 /// first page's go: its 512 free texels hold the second page's 256 twice, so the second drains,
-/// its one pinned item moving to the first page's free (16, 0), and closes.
+/// its one pinned item moving to the first page's free (16, 0), and closes: the open slots fall
+/// from 0 and 1 to 0.
 #[test]
 fn the_emptiest_page_drains_into_the_others() {
     let mut list = list(32, 32, 1 << 20);
@@ -111,6 +133,7 @@ fn the_emptiest_page_drains_into_the_others() {
     list.pin(fifth);
     assert!(decay(&mut list, 1, ROOMY).moves.is_empty(), "no room");
     assert!(list.page(1).is_some());
+    assert_eq!(list.slots(), PageSlots::new(0b11));
     list.release(first[1]);
     list.release(first[2]);
     let moves = decay(&mut list, 2, ROOMY).moves;
@@ -124,6 +147,7 @@ fn the_emptiest_page_drains_into_the_others() {
     );
     assert_eq!(at(&list, fifth), (0, U16Vec2::new(16, 0)));
     assert!(list.page(1).is_none(), "closed once empty");
+    assert_eq!(list.slots(), PageSlots::FIRST);
     assert_eq!(list.page(0).unwrap().live_texels(), 3 * 16 * 16);
 }
 
@@ -140,7 +164,7 @@ const fn placement(page: u8, x: u16, y: u16) -> Placement {
 /// draining page to another, so no page is a source and a destination in one frame. Sixteen 16²
 /// items fill the first 64² page, four more open the second; thirteen of the first go, leaving its
 /// three, 768 texels, the emptiest, which fit half the second's 3072 free. Under a budget of texels
-/// short of one item the drain starts and moves nothing; under a budget of two copies it moves two,
+/// short of one item the drain starts and moves nothing; under a budget of two moves it moves two,
 /// and the next frame the third, and the page closes.
 #[test]
 fn a_drain_moves_within_the_budget_frame_by_frame() {
@@ -153,11 +177,11 @@ fn a_drain_moves_within_the_budget_frame_by_frame() {
     }
     let two = MoveBudget {
         texels: u64::MAX,
-        copies: 2,
+        moves: 2,
     };
     let under = MoveBudget {
         texels: 16 * 16 - 1,
-        copies: u32::MAX,
+        moves: u32::MAX,
     };
     assert!(decay(&mut list, 1, under).moves.is_empty());
     assert_eq!(list.page(0).unwrap().state(), PageState::Draining);
@@ -176,7 +200,8 @@ fn a_drain_moves_within_the_budget_frame_by_frame() {
 /// take the first page from 32 through 64 to 128; three go, and the two left, 2048 texels, are
 /// under a quarter of 128². Sparse from frame 1, the window ends at frame 120: a 64² page,
 /// `2 · 2048 = 4096` texels, opens in the next slot, the two items move there, and the 128² page
-/// closes. A list whose items fill a quarter never shrinks.
+/// closes, which leaves slot 1 the one open slot, as a draw reads it. A list whose items fill a
+/// quarter never shrinks.
 #[test]
 fn a_sparse_page_shrinks_to_twice_its_items_after_a_window() {
     let mut list = list(32, 128, 1 << 20);
@@ -195,6 +220,7 @@ fn a_sparse_page_shrinks_to_twice_its_items_after_a_window() {
     assert_eq!(page.edge(), 64);
     assert_eq!(page.live_texels() * 2, 64 * 64, "half full");
     assert_eq!(at(&list, items[0]), (1, U16Vec2::ZERO));
+    assert_eq!(list.slots(), PageSlots::new(0b10));
 
     let mut full = super::list(32, 128, 1 << 20);
     let items = insert(&mut full, 5, 32);
@@ -238,7 +264,7 @@ fn a_drain_that_finds_no_room_stalls_until_its_count_moves() {
     );
     let none = MoveBudget {
         texels: u64::MAX,
-        copies: 0,
+        moves: 0,
     };
     let _ = decay(&mut list, 2, none);
     assert_eq!(

@@ -9,6 +9,7 @@ pub(crate) mod error;
 mod eviction_clock;
 pub(crate) mod page_group;
 pub(crate) mod page_list;
+pub(crate) mod page_slots;
 pub(crate) mod row_table;
 pub(crate) mod scratch_cache;
 pub(crate) mod tenant;
@@ -17,6 +18,7 @@ use crate::gpu::atlas::atlas_format::AtlasFormat;
 use crate::gpu::atlas::atlas_handle::{AtlasHandle, Placement};
 use crate::gpu::atlas::error::AtlasError;
 use crate::gpu::atlas::page_list::{DecayCtx, Move, MoveBudget, PageList, PageListConfig};
+use crate::gpu::atlas::page_slots::AtlasSlots;
 use crate::gpu::atlas::scratch_cache::ScratchId;
 use crate::gpu::atlas::tenant::Tenant;
 use glam::{U16Vec2, UVec2};
@@ -100,6 +102,14 @@ impl AtlasPool {
         &self.lists[format as usize]
     }
 
+    /// The open slots a frame's raster and shadow draws read now.
+    pub(crate) fn slots(&self) -> AtlasSlots {
+        AtlasSlots {
+            mask: self.list(AtlasFormat::R8).slots(),
+            color: self.list(AtlasFormat::Rgba8).slots(),
+        }
+    }
+
     /// Move to display frame `frame`, and drop the scratch textures idle for an expiry window.
     ///
     /// # Panics
@@ -132,13 +142,14 @@ impl AtlasPool {
     /// frame, after every draw of it: the evictions wait in their tenants' queues, and the moves
     /// for the GPU half's next commit, ahead of every upload, bake and draw, so the next build of
     /// any window reads the new placements (`src/gpu/AGENTS.md`, Atlases). As WebRender
-    /// runs its compaction once a frame.
-    pub(crate) fn end_submit(&mut self) {
+    /// runs its compaction once a frame. The moves take at most `budget`, the GPU half's for its
+    /// device ([`atlas_textures::MoveRoute::budget`]).
+    pub(crate) fn end_submit(&mut self, budget: MoveBudget) {
         if self.decayed == self.frame {
             return;
         }
         self.decayed = self.frame;
-        let mut budget = MoveBudget::FRAME;
+        let mut budget = budget;
         for (list, moves) in self.lists.iter_mut().zip(&mut self.moves) {
             list.decay(
                 self.frame,

@@ -1,5 +1,6 @@
 //! [`InstancedPipeline`]: what the mesh, image and curve families share.
 
+use crate::gpu::atlas::page_slots::AtlasSlots;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::frame::gpu_ctx::GpuCtx;
 use crate::gpu::pipeline::clip_variant::Clipping;
@@ -30,12 +31,13 @@ pub(crate) struct InstancedSpec<'a> {
     pub(crate) capacity: usize,
 }
 
-/// What a pipeline is built for: the target's color format, and whether the frame's draws name
-/// rounded clips.
+/// What a pipeline is built for: the target's color format, whether the frame's draws name
+/// rounded clips, and the open page slots of the pool's lists they read.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct VariantTarget {
     pub(crate) format: wgpu::TextureFormat,
     pub(crate) clipping: Clipping,
+    pub(crate) slots: AtlasSlots,
 }
 
 impl<I: bytemuck::Pod> InstancedPipeline<I> {

@@ -9,6 +9,7 @@ pub(crate) mod quad_draw;
 use crate::common::span::Span;
 use crate::gpu::atlas::AtlasPool;
 use crate::gpu::atlas::atlas_textures::AtlasTextures;
+use crate::gpu::atlas::page_slots::PageSlots;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::frame::gpu_ctx::GpuCtx;
 use crate::gpu::pipeline::clip_variant::{ClipVariant, Clipping};
@@ -60,24 +61,37 @@ const FILL_LABELS: [&str; FillForm::ALL.len()] = [
 ];
 
 /// Every quad pipeline one swapchain format needs: one per [`QuadDraw`], a fill's form or a
-/// shadow's entry.
+/// shadow's entry, and for a shadow that reads the cutout tables one per set of open slots of the
+/// mask pages they lie on.
 #[derive(Debug)]
 pub(crate) struct QuadVariants {
-    /// Each draw's pipeline, by [`QuadDraw::idx`]. The shadows read the baked cutouts
-    /// ([`CutoutTables`]), apart from `fs` to keep the blur integral out of other quads.
-    draws: [ClipVariant; QuadDraw::ALL.len()],
+    /// Each draw's pipelines, by [`QuadDraw::idx`], then by [`slots_idx`]. The shadows read the
+    /// baked cutouts ([`CutoutTables`]), apart from `fs` to keep the blur integral out of other
+    /// quads.
+    draws: [[ClipVariant; PageSlots::COUNT]; QuadDraw::ALL.len()],
+}
+
+/// Where `draw`'s pipeline over the open mask `slots` sits among its own: at their
+/// [`PageSlots::idx`] for a draw that reads the cutout tables, at 0 for one that reads no page.
+const fn slots_idx(draw: QuadDraw, slots: PageSlots) -> usize {
+    if draw.reads_cutouts() { slots.idx() } else { 0 }
 }
 
 impl QuadVariants {
     /// No pipeline built.
     pub(crate) const NONE: Self = Self {
-        draws: [ClipVariant::NONE; QuadDraw::ALL.len()],
+        draws: [const { [const { ClipVariant::NONE }; PageSlots::COUNT] }; QuadDraw::ALL.len()],
     };
 
-    /// The pipeline a quad of `draw` draws through in a frame of `clipping`, which the frame's
-    /// census built.
-    pub(crate) const fn get(&self, draw: QuadDraw, clipping: Clipping) -> &Pipeline {
-        self.draws[draw.idx() as usize].get(clipping)
+    /// The pipeline a quad of `draw` draws through in a frame of `clipping` over the open mask
+    /// `slots`, which the frame's census built.
+    pub(crate) const fn get(
+        &self,
+        draw: QuadDraw,
+        clipping: Clipping,
+        slots: PageSlots,
+    ) -> &Pipeline {
+        self.draws[draw.idx() as usize][slots_idx(draw, slots)].get(clipping)
     }
 }
 
@@ -184,6 +198,7 @@ impl QuadPipeline {
         wgsl: include_str!("quad.wgsl"),
         includes: &[
             wgsl::FRAME,
+            wgsl::ATLAS_SLOTS,
             wgsl::GRADIENT_LUT,
             wgsl::GRADIENT_FILL,
             include_str!("paint.wgsl"),
@@ -302,10 +317,14 @@ impl QuadPipeline {
         target: VariantTarget,
         draw: QuadDraw,
     ) {
-        let VariantTarget { format, clipping } = target;
+        let VariantTarget {
+            format,
+            clipping,
+            slots,
+        } = target;
         let instance = [Some(INSTANCE_LAYOUT)];
         let label = draw_label(draw);
-        let variant = &mut variants.draws[draw.idx() as usize];
+        let variant = &mut variants.draws[draw.idx() as usize][slots_idx(draw, slots.mask)];
         match draw {
             QuadDraw::Fill(form) => {
                 variant.ensure(
@@ -350,6 +369,7 @@ impl QuadPipeline {
                                 f64::from(u8::from(self.shadow_cells == ShapeCells::Template)),
                             ),
                             ("TABLES_SERIES", f64::from(u8::from(series))),
+                            ("CUTOUT_SLOTS", f64::from(slots.mask.bits())),
                         ],
                         vertex_buffers: &[
                             Some(SHADOW_INSTANCE_LAYOUT),
@@ -580,19 +600,27 @@ const SHADER_CONSTANTS: &[ShaderConstant] = &[
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
     #[cfg(test)]
+    use crate::gpu::atlas::page_slots::PageSlots;
+    #[cfg(test)]
     use crate::gpu::pipeline::clip_variant::Clipping;
     use crate::gpu::pipeline::quad_pipeline::QuadPipeline;
     #[cfg(test)]
-    use crate::gpu::pipeline::quad_pipeline::QuadVariants;
-    #[cfg(test)]
     use crate::gpu::pipeline::quad_pipeline::quad_draw::QuadDraw;
     use crate::gpu::pipeline::quad_pipeline::quad_draw::ShapeCells;
+    #[cfg(test)]
+    use crate::gpu::pipeline::quad_pipeline::{QuadVariants, slots_idx};
 
     #[cfg(test)]
     impl QuadVariants {
-        /// Whether the half of `draw`'s pipelines `clipping` binds is built.
-        pub(crate) const fn is_built(&self, draw: QuadDraw, clipping: Clipping) -> bool {
-            self.draws[draw.idx() as usize].is_built(clipping)
+        /// Whether the half of `draw`'s pipelines over the open mask `slots` `clipping` binds is
+        /// built.
+        pub(crate) const fn is_built(
+            &self,
+            draw: QuadDraw,
+            clipping: Clipping,
+            slots: PageSlots,
+        ) -> bool {
+            self.draws[draw.idx() as usize][slots_idx(draw, slots)].is_built(clipping)
         }
     }
 
@@ -657,6 +685,53 @@ mod tests {
         assert!(tail.is_empty());
         assert_eq!(spans.clear, None);
         assert_eq!(spans.outlines.len, 0);
+    }
+
+    /// A shadow that reads the cutout tables builds a pipeline for each set of open mask slots, the
+    /// set it is asked for alone, and every set compiles: after the sets up to one, those and no
+    /// later ones are built. A fill reads no page, so its one pipeline serves every set.
+    #[test]
+    fn a_table_shadow_builds_one_pipeline_a_set_of_mask_slots() {
+        use crate::gpu::atlas::atlas_textures::AtlasTextures;
+        use crate::gpu::atlas::page_slots::{AtlasSlots, PageSlots};
+        use crate::gpu::pipeline::clip_variant::Clipping;
+        use crate::gpu::pipeline::instanced_pipeline::VariantTarget;
+        use crate::gpu::pipeline::quad_pipeline::QuadVariants;
+        use crate::gpu::pipeline::quad_pipeline::cutout_plan::ShadowEntry;
+        use crate::gpu::pipeline::quad_pipeline::quad_draw::QuadDraw;
+        use crate::gpu::resource::texture_binding::TextureBinding;
+        use crate::gpu::surface::render_target::TargetFormat;
+        use crate::gpu::test_gpu::headless_test_gpu;
+        use crate::renderer::render_buffer::fill_form::FillForm;
+
+        let gpu = headless_test_gpu();
+        let program =
+            QuadPipeline::new(&gpu, &TextureBinding::new(&gpu), &AtlasTextures::new(&gpu));
+        let mut variants = QuadVariants::NONE;
+        let tables = QuadDraw::Shadow(ShadowEntry::Tables);
+        let fill = QuadDraw::Fill(FillForm::BOX_SOLID);
+        let target = |mask| VariantTarget {
+            format: TargetFormat::RGBA8_SRGB.get(),
+            clipping: Clipping::Off,
+            slots: AtlasSlots {
+                mask,
+                color: PageSlots::FIRST,
+            },
+        };
+        for slots in PageSlots::all() {
+            program.ensure_draw(&mut variants, &gpu, target(slots), tables);
+            for other in PageSlots::all() {
+                assert_eq!(
+                    variants.is_built(tables, Clipping::Off, other),
+                    other.idx() <= slots.idx(),
+                    "built through {slots:?}, asking {other:?}"
+                );
+            }
+        }
+        program.ensure_draw(&mut variants, &gpu, target(PageSlots::FIRST), fill);
+        for slots in PageSlots::all() {
+            assert!(variants.is_built(fill, Clipping::Off, slots));
+        }
     }
 
     /// Each fill form's pipeline is labeled by its own shape and brush, so a capture names the

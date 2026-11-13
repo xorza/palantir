@@ -30,12 +30,8 @@ const CONTRACT: &str = include_str!("contract.wgsl");
 const BACKDROP: &str = include_str!("backdrop.wgsl");
 
 /// The bindings the backdrop contract declares, which an app's text names not.
-const BACKDROP_BINDINGS: [&str; 8] = [
-    "palantir_results_page0",
-    "palantir_results_page1",
-    "palantir_results_page2",
-    "palantir_results_page3",
-    "palantir_results_scratch",
+const BACKDROP_BINDINGS: [&str; 4] = [
+    "palantir_results",
     "palantir_results_sampler",
     "palantir_backdrops",
     "palantir_spectrum",

@@ -32,6 +32,9 @@ pub(crate) const SDF: &str = include_str!("sdf.wgsl");
 /// The frame group's bindings, the gradient LUT atlas and the rounded clips, and
 /// `palantir_clip_coverage`, with the markers `FRAME_GROUP` and `CLIP_DEPTH_BITS`.
 pub(crate) const FRAME: &str = include_str!("frame.wgsl");
+/// `palantir_reads_slot`: which of a list's page bindings a read of a page takes, among the open
+/// slots a pipeline pins.
+pub(crate) const ATLAS_SLOTS: &str = include_str!("atlas_slots.wgsl");
 /// A read of the gradient LUT atlas, whose bindings [`FRAME`] declares.
 pub(crate) const GRADIENT_LUT: &str = include_str!("gradient_lut.wgsl");
 /// A gradient fill's color at a point, with the spread and kind constants it reads.

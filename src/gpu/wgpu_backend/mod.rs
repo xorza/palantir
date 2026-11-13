@@ -56,6 +56,7 @@ use crate::effect::effect_store::EffectModule;
 use crate::gpu::atlas::AtlasPool;
 use crate::gpu::atlas::atlas_textures::AtlasTextures;
 use crate::gpu::atlas::page_group::PageGroup;
+use crate::gpu::atlas::page_slots::AtlasSlots;
 use crate::gpu::atlas::row_table::RowTable;
 use crate::gpu::backdrop::backdrops::{BackdropFrame, Backdrops};
 use crate::gpu::device::gpu::Gpu;
@@ -213,6 +214,8 @@ struct FrameDraw<'a> {
     /// The blit into the target's format, which presents the backbuffer.
     blit: &'a wgpu::RenderPipeline,
     buffer: &'a RenderBuffer,
+    /// The open page slots its raster and shadow draws read, which their pipelines are built for.
+    slots: AtlasSlots,
     /// The surface's, which every pass but a main pass on a damage canvas pushes as it is.
     viewport: ViewportPush,
     /// The surface pixel the main pass's target pixel 0 is: zero, but on a damage canvas, where
@@ -599,7 +602,9 @@ impl WgpuBackend {
             surface_view.is_some(),
             "a view of the target exactly where a pass writes it"
         );
-        self.ensure_pipelines(format, buffer);
+        // After the upload, whose inserts open the pages this frame's draws read.
+        let slots = self.atlas.slots();
+        self.ensure_pipelines(format, buffer, slots);
         let effects = self.effect_store.read();
         let main_pass = self.run_steps(
             FrameSteps {
@@ -613,6 +618,7 @@ impl WgpuBackend {
                     effect_modules: &effects.modules,
                     blit: self.blit.get(format.get()),
                     buffer,
+                    slots,
                     viewport: ViewportPush::for_buffer(buffer),
                     origin: frame_target.origin(),
                 },
@@ -646,7 +652,7 @@ impl WgpuBackend {
 
         // After the frame's draws, before the tenants drain, so they learn of the decay's
         // evictions this submit.
-        self.atlas.end_submit();
+        self.atlas.end_submit(self.atlas_textures.move_budget());
         let frame = self.text.end_frame(&mut self.atlas);
         self.icon.end_frame(&mut self.atlas, frame);
         self.programs.quad.end_frame(&mut self.atlas);
@@ -677,7 +683,7 @@ impl WgpuBackend {
 
     /// The pipelines this frame draws through and the set of `format` lacks, built before its
     /// passes borrow it: the pre-clear and the overlays draw solid quads.
-    fn ensure_pipelines(&mut self, format: TargetFormat, buffer: &RenderBuffer) {
+    fn ensure_pipelines(&mut self, format: TargetFormat, buffer: &RenderBuffer, slots: AtlasSlots) {
         self.pipelines
             .get_mut(&format)
             .expect("a window notes its target's format before it records")
@@ -701,6 +707,7 @@ impl WgpuBackend {
                     },
                     curves: !buffer.curves.is_empty(),
                     rasters: !buffer.texts.is_empty() || !buffer.icons.is_empty(),
+                    slots,
                 },
             );
     }
@@ -976,7 +983,7 @@ impl WgpuBackend {
             quad: &self.programs.quad,
             pipeline: draw
                 .fmt
-                .for_frame(Clipping::Off, draw.effects)
+                .for_frame(Clipping::Off, draw.slots, draw.effects)
                 .quad(QuadDraw::Fill(FillForm::BOX_SOLID)),
             frame_group: self.frame_group.group(),
             viewport: draw.viewport,
@@ -1090,7 +1097,9 @@ impl WgpuBackend {
             targets: &self.gpu_view_targets,
         };
         // Read at a raster draw, as a frame that draws none builds no raster pipeline.
-        let pipelines = draw.fmt.for_frame(clipping(buffer), draw.effects);
+        let pipelines = draw
+            .fmt
+            .for_frame(clipping(buffer), draw.slots, draw.effects);
         let raster_group = self.raster_group.group();
         let raster = move || pipelines.raster(raster_group);
         schedule.for_each_step(&mut |step| match step {

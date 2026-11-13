@@ -33,10 +33,12 @@ fn at(list: &PageList, handle: AtlasHandle) -> (u8, U16Vec2) {
 /// first shelf's new columns at (64, 0). A 100² item takes no 32-texel shelf, and the 128 page's
 /// 64 unclaimed rows cannot hold it, so page 1 opens at the page edge and takes it at (0, 0).
 /// The list holds `2 · 128² = 32768` bytes, its items `5 · 32² = 5120` texels on page 0 and
-/// `100² = 10000` on page 1. An item past the page edge is refused.
+/// `100² = 10000` on page 1. An item past the page edge is refused. Its open slots read 0 while it
+/// holds none and one page, and 0 and 1 once the second opens.
 #[test]
 fn a_list_packs_doubles_its_first_page_then_opens_pages() {
     let mut list = list(64, 128, 1 << 20);
+    assert_eq!(list.slots(), PageSlots::FIRST, "no page open");
     let mut evictions = Evictions::default();
     let mut alloc = |list: &mut PageList, size| {
         list.allocate(Tenant::Glyphs, size, 0, &mut evictions)
@@ -55,8 +57,10 @@ fn a_list_packs_doubles_its_first_page_then_opens_pages() {
         ]
     );
     assert_eq!(list.page(0).unwrap().edge(), 128);
+    assert_eq!(list.slots(), PageSlots::FIRST);
     let big = alloc(&mut list, square(100));
     assert_eq!(at(&list, big), (1, U16Vec2::ZERO));
+    assert_eq!(list.slots(), PageSlots::new(0b11));
     assert_eq!(list.page(1).unwrap().edge(), 128);
     assert_eq!(list.bytes(), 2 * 128 * 128);
     assert_eq!(

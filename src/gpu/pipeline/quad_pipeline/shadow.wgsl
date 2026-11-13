@@ -49,9 +49,11 @@ const NO_CUTOUT_TABLE: u32 = /*{NO_CUTOUT_TABLE}*/;
 
 // Baked corner cutouts, one square table per `(r, σ)` in the pool's mask
 // pages, a closed page bound as a 1 × 1 stand-in. Read by `textureLoad`
-// and filtered by hand, as the table's texels are its nodes, and a branch
-// on a flat page picks the texture, as the raster shader picks its pages.
+// and filtered by hand, as the table's texels are its nodes, and a chain of
+// branches on a flat page picks the texture among the `CUTOUT_SLOTS` the
+// pipeline pins (`palantir_reads_slot`), as the raster shader picks its pages.
 // Bound to the shadow pipeline only.
+override CUTOUT_SLOTS: u32 = 15u;
 @group(1) @binding(0) var cutout_page0: texture_2d<f32>;
 @group(1) @binding(1) var cutout_page1: texture_2d<f32>;
 @group(1) @binding(2) var cutout_page2: texture_2d<f32>;
@@ -479,15 +481,13 @@ fn cutout_side(table: u32) -> u32 {
     return ((table >> CUTOUT_SIDE_SHIFT) & mask) + 1u;
 }
 
-// The four texels from `at` to `at + (1, 1)` of mask page `page`, as
-// `(at, +x, +y, +xy)`.
+// The four texels from `at` to `at + (1, 1)` of mask page `page`, one of the
+// `CUTOUT_SLOTS`, as `(at, +x, +y, +xy)`.
 fn cutout_texels(page: u32, at: vec2<u32>) -> vec4<f32> {
-    switch page {
-        case 1u: { return cutout_quad(cutout_page1, at); }
-        case 2u: { return cutout_quad(cutout_page2, at); }
-        case 3u: { return cutout_quad(cutout_page3, at); }
-        default: { return cutout_quad(cutout_page0, at); }
-    }
+    if (palantir_reads_slot(CUTOUT_SLOTS, 0u, page)) { return cutout_quad(cutout_page0, at); }
+    if (palantir_reads_slot(CUTOUT_SLOTS, 1u, page)) { return cutout_quad(cutout_page1, at); }
+    if (palantir_reads_slot(CUTOUT_SLOTS, 2u, page)) { return cutout_quad(cutout_page2, at); }
+    return cutout_quad(cutout_page3, at);
 }
 
 fn cutout_quad(page: texture_2d<f32>, at: vec2<u32>) -> vec4<f32> {

@@ -6,8 +6,7 @@ use crate::gpu::atlas::atlas_textures::AtlasTextures;
 use crate::gpu::atlas::page_list::PageListConfig;
 use crate::gpu::backdrop::backdrop_blur::ResultTexture;
 use crate::gpu::backdrop::backdrops::{
-    BackdropFrame, BackdropSlot, Backdrops, Held, Kept, RESULTS, SCRATCH_TEXTURE, SpectrumCell,
-    held_clear, place,
+    BackdropFrame, BackdropSlot, Backdrops, Held, Kept, RESULTS, SpectrumCell, held_clear, place,
 };
 use crate::gpu::backdrop::tests::CLEAR;
 use crate::gpu::pipeline::shader_body::ShaderBody;
@@ -262,12 +261,10 @@ fn the_backdrop_buffers_lie_as_the_shader_reads_them() {
         ("border_width", offset_of!(BackdropSlot, border_width)),
         ("fill_kind", offset_of!(BackdropSlot, fill_kind)),
         ("fill_lut_row", offset_of!(BackdropSlot, fill_lut_row)),
-        ("texture", offset_of!(BackdropSlot, texture)),
     ];
     assert_eq!(offset_of!(BackdropSlot, clear), 16);
     assert_eq!(offset_of!(BackdropSlot, reads), 32);
     assert_eq!(offset_of!(BackdropSlot, fill_kind), 100);
-    assert_eq!(offset_of!(BackdropSlot, texture), 108);
     assert_eq!(size_of::<BackdropSlot>(), 112);
     contract.assert_struct_layout("PalantirBackdrop", size_of::<BackdropSlot>(), &members);
 }
@@ -368,13 +365,12 @@ fn a_large_result_takes_a_scratch_texture_of_its_own() {
     assert_eq!(pool.list(RESULTS).scratch().texels(), 0);
 }
 
-/// A frame with a result on a page and one in a scratch texture files each slot's texture, the
-/// page's index or [`SCRATCH_TEXTURE`], and reads the scratch one through a group of its own. A
-/// 40² surface region at σ 2 on pages of 64 takes a slot of 48², past half a page. The large
-/// backdrop showing the clear and capturing again, three times over, takes its idle texture back
-/// each time under a new id, and its composite keeps the one group of that slot. The large
-/// backdrop showing the clear and capturing again, three times over, takes its idle texture back
-/// each time under a new id, and its composite keeps the one group of that slot.
+/// A frame with a result on a page and one in a scratch texture reads each through a group over
+/// its own texture: page 0's, and the scratch slot's, two groups apart. A 40² surface region at
+/// σ 2 on pages of 64 takes a slot of 48², past half a page. A backdrop that shows its clear reads
+/// none, through the stand-in's group. The large backdrop showing the clear and capturing again,
+/// three times over, takes its idle texture back each time under a new id, and its composite
+/// keeps the one group of that slot.
 #[test]
 fn a_scratch_result_reads_through_a_group_of_its_own() {
     let owner = RenderOwners::default().reserve();
@@ -382,15 +378,21 @@ fn a_scratch_result_reads_through_a_group_of_its_own() {
     let large = BackdropRow::fixture(5, URect::new(100, 20, 40, 40), BlurPlan::new(2.0))
         .with_source(BackdropSource::Capture { barrier: 2 });
     rig.prepare(owner, &[captured(0), large]);
-    let slots = &rig.backdrops.slots;
-    assert_eq!([slots[0].texture, slots[1].texture], [0, SCRATCH_TEXTURE]);
     let Some((ResultTexture::Scratch(id), _)) = rig.slot(owner, 5) else {
         panic!("the large result is scratch");
     };
     let groups = rig.backdrops.groups().unwrap();
-    assert_eq!(groups.scratch_of(0), None);
-    assert_eq!(groups.scratch_of(1), Some(id));
-    assert!(!std::ptr::eq(groups.group(None), groups.group(Some(id))));
+    let page = Some(ResultTexture::Page(0));
+    let scratch = Some(ResultTexture::Scratch(id));
+    assert_eq!(groups.read_of(0), page);
+    assert_eq!(groups.read_of(1), scratch);
+    let [absent, on_page, in_scratch] = [None, page, scratch].map(|read| groups.group(read));
+    assert!(!std::ptr::eq(absent, on_page));
+    assert!(!std::ptr::eq(on_page, in_scratch));
+    assert!(!std::ptr::eq(absent, in_scratch));
+    rig.prepare(owner, &[captured(0).with_source(BackdropSource::Clear)]);
+    assert_eq!(rig.backdrops.groups().unwrap().read_of(0), None);
+    rig.prepare(owner, &[captured(0), large]);
     assert_eq!(
         rig.pool.list(AtlasFormat::Rgba16F).scratch().texels(),
         64 * 64

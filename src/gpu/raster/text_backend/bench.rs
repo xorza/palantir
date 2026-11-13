@@ -24,9 +24,7 @@ use crate::gpu::frame::gpu_ctx::GpuCtx;
 use crate::gpu::pipeline::clip_variant::Clipping;
 use crate::gpu::pipeline::instanced_pipeline::VariantTarget;
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
-use crate::gpu::pipeline::raster_pipeline::{
-    RASTER_FORMATS, RasterPipeline, RasterPipelinePair, RasterVariants,
-};
+use crate::gpu::pipeline::raster_pipeline::{RASTER_FORMATS, RasterPipeline, RasterVariants};
 use crate::gpu::pipeline::viewport_push::ViewportPush;
 use crate::gpu::raster::text_backend::encode::cache::internals::{ChurnBench, SweepBench};
 use crate::gpu::raster::text_backend::{TextBackend, TextBatchInput};
@@ -56,7 +54,7 @@ const PHYSICAL: UVec2 = UVec2::new(1280, 800);
 const BASE_SCALE: f32 = 2.0;
 const WARM_SCALE_CYCLE: u32 = 5;
 
-/// Rungs the churn arms cycle through, enough to put the mask list past its soft budget, where the pool evicts to recycle rectangles; eviction begins between rung 250 and 500. The only arm coverage of that regime, which `Fixture::assert_evicting` checks.
+/// Rungs the churn arms cycle through, enough to put the mask list past its soft budget, where the pool evicts to recycle rectangles; eviction begins at rung 142, and a measured frame evicts about 26 glyphs. The only arm coverage of that regime, which `Fixture::assert_evicting` checks.
 const CHURN_SCALE_CYCLE: u32 = 512;
 const CHURN_IDX_STRIDE: u32 = 37;
 
@@ -170,11 +168,13 @@ fn distinct_runs(store: &mut RecordStore, shaper: &TextShaper) -> Vec<TextDrawRo
         .collect()
 }
 
-/// The pool's starting constants with the mask list's soft budget at 4 MiB, the glyph atlas's own
-/// before the pool, so the churn arms reach eviction within [`CHURN_SCALE_CYCLE`] rungs.
+/// The pool's starting constants with the mask list's soft budget at 1 MiB, so the churn arms'
+/// glyphs fill past it within [`CHURN_SCALE_CYCLE`] rungs and the pool evicts. At the starting
+/// 8 MiB, or the glyph atlas's own 4 MiB before the pool, the whole set fits one page under the
+/// budget, which ages nothing out, and no measured frame evicts.
 const fn bench_configs() -> [PageListConfig; 3] {
     let mut configs = LIST_CONFIGS;
-    configs[AtlasFormat::R8 as usize].soft_bytes = 4 << 20;
+    configs[AtlasFormat::R8 as usize].soft_bytes = 1 << 20;
     configs
 }
 
@@ -190,6 +190,8 @@ struct Batch<'a> {
 #[derive(Debug)]
 struct Fixture {
     backend: TextBackend,
+    program: RasterPipeline,
+    /// Built for the pool's open slots at each frame's commit.
     pipelines: RasterVariants,
     pool: AtlasPool,
     atlas: AtlasTextures,
@@ -213,15 +215,6 @@ impl Fixture {
         let program = RasterPipeline::new(&g.gpu, &textures);
         // The frame group the raster pipelines take first, which their glyphs read no clip of.
         let frame = FrameGroup::new(&g.gpu, textures, &RowTable::new(&g.gpu, 1));
-        let mut pipelines = RasterVariants::NONE;
-        program.ensure(
-            &mut pipelines,
-            &g.gpu,
-            VariantTarget {
-                format: TARGET_FORMAT.get(),
-                clipping: Clipping::Off,
-            },
-        );
         let atlas = AtlasTextures::new(&g.gpu);
         let group = PageGroup::new(
             &g.gpu,
@@ -232,7 +225,8 @@ impl Fixture {
         );
         Self {
             backend: TextBackend::new(&g.gpu, shaper),
-            pipelines,
+            program,
+            pipelines: RasterVariants::NONE,
             pool: AtlasPool::with_configs(bench_configs(), g.gpu.max_texture_dim().get()),
             atlas,
             group,
@@ -281,6 +275,15 @@ impl Fixture {
                 );
             }
             self.atlas.commit(ctx.gpu, ctx.encoder, &mut self.pool);
+            self.program.ensure(
+                &mut self.pipelines,
+                ctx.gpu,
+                VariantTarget {
+                    format: TARGET_FORMAT.get(),
+                    clipping: Clipping::Off,
+                    slots: self.pool.slots(),
+                },
+            );
             self.group.follow(ctx.gpu, &self.atlas);
             self.backend.flush(&mut ctx, &self.atlas);
         }
@@ -289,7 +292,7 @@ impl Fixture {
         self.gpu.queue.submit([encoder.finish()]);
         self.belt.recall();
         self.gpu.wait();
-        self.pool.end_submit();
+        self.pool.end_submit(self.atlas.move_budget());
         self.backend.tick_frame(&mut self.pool);
     }
 
@@ -327,11 +330,9 @@ impl Fixture {
             },
         );
         rec.group(FRAME_GROUP, self.frame.group());
-        let pipelines = RasterPipelinePair {
-            flat: self.pipelines.flat.get(Clipping::Off),
-            spun: self.pipelines.spun.get(Clipping::Off),
-            atlas: self.group.group(),
-        };
+        let pipelines = self
+            .pipelines
+            .pair(Clipping::Off, self.pool.slots(), self.group.group());
         for idx in 0..batches {
             self.backend.render_batch(&mut rec, idx, pipelines);
         }
