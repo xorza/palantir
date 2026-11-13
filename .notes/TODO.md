@@ -5,7 +5,6 @@
 - build-in colors
 - optimal resolve strategies
 - material for texts and strokes?
-- some benches as tests where we dont need performance to save build time?
 
 - atlas pool: the move bench and the frame A/B on the Windows AMD iGPU
 
