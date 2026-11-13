@@ -12,7 +12,7 @@ use crate::bench::kind::{Kind, Scale};
 use crate::gpu::atlas::atlas_format::AtlasFormat;
 use crate::gpu::atlas::atlas_textures::move_draw::{MoveDraw, MoveRect, MoveRun};
 use crate::gpu::atlas::atlas_textures::texture_format;
-use crate::gpu::atlas::row_table;
+use crate::gpu::atlas::row_texture;
 use crate::gpu::bench_gpu::{BenchGpu, Timing};
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_wait::GpuWait;
@@ -132,7 +132,7 @@ fn gradient_upload(c: &mut Criterion, backends: &Backends, backend: Backend) {
                             [(run.start * ROW_BYTES) as usize..(run.end * ROW_BYTES) as usize];
                         (run.clone(), bytes)
                     });
-                    ctx.copy_rows(row_table::row_copies(texture, copies));
+                    ctx.copy_rows(row_texture::row_copies(texture, copies));
                     belt.finish();
                     gpu.queue.submit([encoder.finish()]);
                     belt.recall();

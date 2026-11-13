@@ -57,7 +57,7 @@ use crate::gpu::atlas::AtlasPool;
 use crate::gpu::atlas::atlas_textures::AtlasTextures;
 use crate::gpu::atlas::page_group::PageGroup;
 use crate::gpu::atlas::page_slots::AtlasSlots;
-use crate::gpu::atlas::row_table::RowTable;
+use crate::gpu::atlas::row_texture::RowTexture;
 use crate::gpu::backdrop::backdrops::{BackdropFrame, Backdrops};
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::pass_traffic::PassTraffic;
@@ -131,7 +131,7 @@ pub(crate) struct WgpuBackend {
     /// The display frame every submit's per-frame scratch ages against.
     frames: DisplayFrames,
     /// Shared gradient LUT atlas, whose group is the frame group every color pipeline reads.
-    gradient: RowTable,
+    gradient: RowTexture,
     /// The atlas pool's page lists, which glyphs and icons allocate from, and the textures behind
     /// them (`src/gpu/AGENTS.md`, Atlases).
     atlas: AtlasPool,
@@ -380,7 +380,7 @@ impl WgpuBackend {
         let image_store = Rc::clone(resources.image_store);
         let effect_store = Rc::clone(resources.effect_store);
         let texture_binding = resources.texture_binding;
-        let gradient = RowTable::new(&gpu, resources.gradient_rows);
+        let gradient = RowTexture::new(&gpu, resources.gradient_rows);
         let frame_group = FrameGroup::new(&gpu, texture_binding.clone(), &gradient);
         let backdrops = Backdrops::new(&texture_binding);
         let atlas_textures = AtlasTextures::new(&gpu);

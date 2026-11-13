@@ -6,7 +6,7 @@ use crate::gpu::atlas::atlas_textures::AtlasTextures;
 use crate::gpu::atlas::page_group::PageGroup;
 use crate::gpu::atlas::page_list::{MAX_PAGES, PageListConfig};
 use crate::gpu::atlas::page_slots::{AtlasSlots, PageSlots};
-use crate::gpu::atlas::row_table::RowTable;
+use crate::gpu::atlas::row_texture::RowTexture;
 use crate::gpu::atlas::tenant::Tenant;
 use crate::gpu::device::gpu::FilledBuffer;
 use crate::gpu::pipeline::clip_variant::Clipping;
@@ -90,7 +90,7 @@ fn a_quad_reads_its_page_under_every_set_of_slots() {
 
     let binding = TextureBinding::new(&gpu);
     let program = RasterPipeline::new(&gpu, &binding);
-    let frame = FrameGroup::new(&gpu, binding, &RowTable::new(&gpu, 1));
+    let frame = FrameGroup::new(&gpu, binding, &RowTexture::new(&gpu, 1));
     let group = PageGroup::new(
         &gpu,
         program.layout(),

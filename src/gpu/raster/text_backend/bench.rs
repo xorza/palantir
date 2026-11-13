@@ -16,7 +16,7 @@ use crate::gpu::atlas::atlas_format::AtlasFormat;
 use crate::gpu::atlas::atlas_textures::AtlasTextures;
 use crate::gpu::atlas::page_group::PageGroup;
 use crate::gpu::atlas::page_list::PageListConfig;
-use crate::gpu::atlas::row_table::RowTable;
+use crate::gpu::atlas::row_texture::RowTexture;
 use crate::gpu::atlas::{AtlasPool, LIST_CONFIGS};
 use crate::gpu::bench_gpu::{BenchGpu, TARGET_FORMAT, Timing};
 use crate::gpu::device::gpu::Gpu;
@@ -214,7 +214,7 @@ impl Fixture {
         let textures = TextureBinding::new(&g.gpu);
         let program = RasterPipeline::new(&g.gpu, &textures);
         // The frame group the raster pipelines take first, which their glyphs read no clip of.
-        let frame = FrameGroup::new(&g.gpu, textures, &RowTable::new(&g.gpu, 1));
+        let frame = FrameGroup::new(&g.gpu, textures, &RowTexture::new(&g.gpu, 1));
         let atlas = AtlasTextures::new(&g.gpu);
         let group = PageGroup::new(
             &g.gpu,

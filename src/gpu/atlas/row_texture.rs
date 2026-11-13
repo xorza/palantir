@@ -1,4 +1,4 @@
-//! [`RowTable`]: the pool's row table, the texture of the gradient LUT rows, owned by
+//! [`RowTexture`]: the texture of the pool's gradient LUT rows, owned by
 //! [`WgpuBackend`](crate::gpu::wgpu_backend::WgpuBackend), whose group is the frame group every
 //! color pipeline reads at [`FRAME_GROUP`](crate::primitives::wgsl::FRAME_GROUP): rows, not atlas
 //! items, as every color pipeline reads them branch-free (`src/gpu/AGENTS.md`,
@@ -26,7 +26,7 @@ const _: () = assert!(
 /// The texture the frontend's gradient atlas uploads into, which the frame group binds.
 /// Format-independent.
 #[derive(Debug)]
-pub(crate) struct RowTable {
+pub(crate) struct RowTexture {
     /// LUT atlas texture: 256 cols × N rows of `Rgba16Float` linear values (8-bit
     /// would band dark stops). [`Self::upload`] fills it and replaces it when the CPU atlas grew
     /// or halved.
@@ -66,7 +66,7 @@ pub(crate) fn row_copies<'a>(
     })
 }
 
-impl RowTable {
+impl RowTexture {
     /// The texture at `rows` rows, the CPU atlas's height.
     pub(crate) fn new(gpu: &Gpu, rows: u32) -> Self {
         let texture = create_texture(gpu, rows);
@@ -117,10 +117,10 @@ impl RowTable {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
-    use crate::gpu::atlas::row_table::{ROW_PITCH, RowTable};
+    use crate::gpu::atlas::row_texture::{ROW_PITCH, RowTexture};
     use crate::gpu::atlas_memory::{self, AtlasUse};
 
-    impl RowTable {
+    impl RowTexture {
         /// The texture's memory against `live_rows`, the rows the frontend's atlas holds a ramp in.
         pub(crate) fn memory(&self, live_rows: u32) -> AtlasUse {
             AtlasUse {
@@ -136,7 +136,7 @@ pub(crate) mod internals {
 #[cfg(test)]
 mod tests {
     use crate::common::expiry_window::EXPIRY_FRAMES;
-    use crate::gpu::atlas::row_table::{ROW_PITCH, RowTable};
+    use crate::gpu::atlas::row_texture::{ROW_PITCH, RowTexture};
     use crate::gpu::test_gpu::{TestGpu, headless_test_gpu};
     use crate::primitives::paint::color::rgba_f16::RgbaF16;
     use crate::renderer::cpu_gradient_atlas::bake::{self, LUT_ROW_TEXELS};
@@ -145,7 +145,7 @@ mod tests {
 
     /// Upload what `cpu` baked since its last flush into `atlas` on a frame's encoder of its own,
     /// and wait for it.
-    fn upload(gpu: &TestGpu, cpu: &mut CpuGradientAtlas, atlas: &mut RowTable) {
+    fn upload(gpu: &TestGpu, cpu: &mut CpuGradientAtlas, atlas: &mut RowTexture) {
         let rows = cpu.flush().expect("rows were baked");
         gpu.frame(|ctx| atlas.upload(ctx, rows));
     }
@@ -160,7 +160,7 @@ mod tests {
     fn a_grown_atlas_copies_the_rows_it_held() {
         let gpu = headless_test_gpu();
         let mut cpu = CpuGradientAtlas::default();
-        let mut atlas = RowTable::new(&gpu, cpu.capacity());
+        let mut atlas = RowTexture::new(&gpu, cpu.capacity());
         let filled = INITIAL_ATLAS_ROWS - 1;
         let rows: Vec<u32> = (0..filled)
             .map(|i| cpu.register(&distinct_grad(i).ramp).0)
