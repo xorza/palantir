@@ -59,6 +59,18 @@ How palantir draws, from the renderer's instance streams through wgpu: the decis
   renderers batches in order. Refused: groups, text batches and tier batches in three tables
   anchored by group index, which the schedule merged back into one order by a cursor each, an
   order the composer had already decided.
+- **A run carries the scissor its draws need, and a clip closes no group**: a draw takes its
+  clip's scissor only where the clip cuts it, as Skia's Ganesh sets one only for a draw its clip
+  does not hold (`GrClip::IsInsideClip`). A quad joins a run of its form under its clip, or, where
+  its clip cuts no quad of the group, any run whose scissor holds what it shades, so a field's
+  quads join the runs around it and a scroll's stay together under its edge; a tier draw joins its
+  open run while that run's scissor cuts it as its own clip does; a text batch keeps its bounds as
+  its scissor, as a turned run clips to them; an occluder covers what its clip shows. Each run
+  holds the bounds of what it paints, so a damage walk skips a run it misses and keeps a scissor
+  that holds the run. Refused: a scissor a group, narrowed as its draws need, as one cut draw
+  still closes every lane; a rect clip in each instance's chain (Rounded clip); cut boxes clipped
+  on the CPU, as a glyph is, exact for a sharp, solid, unturned box alone; a text batch with no
+  scissor, which a partial frame drew at every damage rect.
 
 ## Rounded clip
 

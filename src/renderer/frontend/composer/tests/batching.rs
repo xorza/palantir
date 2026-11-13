@@ -285,7 +285,7 @@ fn compose_shadow_outer_halo_after_text_splits_group() {
     );
 }
 
-/// Rows in separate scissors still coalesce their text into one batch.
+/// Rows in separate clips, which cut none of them, draw as one quad run and one text batch.
 #[test]
 fn compose_coalesces_text_across_distinct_scissor_groups() {
     let buf = run(
@@ -303,12 +303,8 @@ fn compose_coalesces_text_across_distinct_scissor_groups() {
     );
     assert_eq!(
         listed(&buf),
-        [
-            (Lane::Quad, Span::new(0, 1)),
-            (Lane::Quad, Span::new(1, 1)),
-            (Lane::Text, Span::new(0, 2)),
-        ],
-        "distinct scissors take distinct groups, and the rows share one text batch",
+        [(Lane::Quad, Span::new(0, 2)), (Lane::Text, Span::new(0, 2))],
+        "clips that cut nothing cost no run, and the rows share one text batch",
     );
 }
 
@@ -345,11 +341,21 @@ fn a_clipped_text_run_batches_unless_it_turns() {
     assert_eq!(still.texts[1].bounds, URect::new(40, 40, 20, 20));
     let union = still.texts[0].bounds.union(still.texts[1].bounds);
     assert_eq!(text_runs(&still), [(Span::new(0, 2), union)]);
+    assert_eq!(
+        still.runs[0].scissor, None,
+        "unturned glyphs clip themselves"
+    );
 
     let spun = turned(Some(Spin {
         pivot: Vec2::new(50.0, 50.0),
         angle: 0.5,
     }));
+    let scissors: Vec<Option<URect>> = spun.runs.iter().map(|run| run.scissor).collect();
+    assert_eq!(
+        scissors,
+        [None, Some(URect::new(40, 40, 20, 20))],
+        "the turned run draws under its bounds"
+    );
     let spun = text_runs(&spun);
     assert_eq!(spun.len(), 2);
     assert_eq!(spun[1], (Span::new(1, 1), URect::new(40, 40, 20, 20)));

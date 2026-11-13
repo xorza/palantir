@@ -17,7 +17,7 @@ use crate::renderer::frontend::composer::clip_stack::ClipFrame;
 use crate::renderer::frontend::composer::curve_run::CurveRun;
 use crate::renderer::frontend::composer::geometry;
 use crate::renderer::frontend::composer::lowering::{Lowering, ScaledRect};
-use crate::renderer::frontend::composer::paint_order::{GroupClose, Ordering, TextClip};
+use crate::renderer::frontend::composer::paint_order::{Admitted, GroupClose, Ordering, TextClip};
 use crate::renderer::frontend::composer::polyline_scratch::{PolylineLook, StagedColors};
 use crate::renderer::frontend::composer::stroke_bbox::StrokeBbox;
 use crate::renderer::frontend::composer::template_shape::TemplateShape;
@@ -208,7 +208,9 @@ impl PaintSink for ComposeSession<'_> {
             .map(|clip| clip.covered())
             .reduce(Rect::clamp_to)
             .unwrap_or_default();
-        self.enter_clip(ClipFrame {
+        // A clip closes no group: each draw's run takes the scissor it needs
+        // ([`Ordering::run_scissor`]).
+        self.composer.clip.push(ClipFrame {
             scissor,
             chain,
             whole,
@@ -216,7 +218,7 @@ impl PaintSink for ComposeSession<'_> {
     }
 
     fn pop_clip(&mut self) {
-        self.leave_clip();
+        self.composer.clip.pop();
     }
 
     fn push_transform(&mut self, t: TranslateScale) {
@@ -236,13 +238,16 @@ impl PaintSink for ComposeSession<'_> {
         }
         // The clipped rect is also the overlap test's rect, so an ancestor-clipped quad does not
         // force a needless flush.
-        let Some(visible) = self.ordering().admit(Lane::Quad, shape.rect.urect) else {
+        let Some(Admitted { visible, scissor }) =
+            self.ordering().admit(Lane::Quad, shape.rect.urect)
+        else {
             return;
         };
         let clip = self.clip_chain(visible);
         let form = FillForm::new(ShapeForm::of(&p.geometry), FillBrush::of(p.paint.fill.kind));
         self.push_quad(
             QuadKey::Fill(form),
+            scissor,
             QuadInstance {
                 header: shape.header(clip),
                 fill: p.paint.fill.color,
@@ -267,7 +272,9 @@ impl PaintSink for ComposeSession<'_> {
             .scaled_saturating(lowering.transform.physical_scale());
         let shape =
             TemplateShape::shadow(&p, ShadowGeometry::from_lanes(geometry.lanes()), &lowering);
-        let Some(visible) = self.ordering().admit(Lane::Quad, shape.rect.urect) else {
+        let Some(Admitted { visible, scissor }) =
+            self.ordering().admit(Lane::Quad, shape.rect.urect)
+        else {
             return;
         };
         let clip = self.clip_chain(visible);
@@ -282,7 +289,7 @@ impl PaintSink for ComposeSession<'_> {
             geometry,
             unused: [0; 4],
         };
-        self.push_quad(QuadKey::Shadow, QuadInstance::from(shadow));
+        self.push_quad(QuadKey::Shadow, scissor, QuadInstance::from(shadow));
     }
 
     fn mesh(&mut self, p: DrawMeshPayload) {
@@ -304,7 +311,7 @@ impl PaintSink for ComposeSession<'_> {
         );
         // A surviving mesh closes the open text batch so its text emits before this above-text
         // geometry.
-        let Some(visible) = self
+        let Some(Admitted { visible, .. }) = self
             .ordering()
             .admit(Lane::Tier(PaintTier::Mesh), mesh_urect)
         else {
@@ -352,7 +359,9 @@ impl PaintSink for ComposeSession<'_> {
                 geometry::urect_from_physical(reach.min, reach.max(), self.out.display.physical)
             }
         };
-        let Some(visible) = self.ordering().admit(Lane::Tier(PaintTier::Icon), urect) else {
+        let Some(Admitted { visible, .. }) =
+            self.ordering().admit(Lane::Tier(PaintTier::Icon), urect)
+        else {
             return;
         };
         let box_px = Vec2::new(physical_rect.size.w, physical_rect.size.h);
@@ -408,13 +417,14 @@ impl PaintSink for ComposeSession<'_> {
         let shape = unturned.turned(p.spin, &lowering);
         let border_width = p.paint.border().width * scale;
         let physical = shape.rect.physical;
-        let Some(visible) = self.ordering().cull(
+        let Some(seen) = self.ordering().cull(
             covered
                 .as_ref()
                 .map_or(shape.rect.urect, |covered| covered.urect),
         ) else {
             return;
         };
+        let visible = seen.visible;
         let look = p.paint.stage.map(|stage| MaterialLook {
             max_luminance: stage.max_luminance,
             min_luminance: stage.min_luminance,
@@ -451,8 +461,7 @@ impl PaintSink for ComposeSession<'_> {
         } else {
             0
         };
-        self.ordering()
-            .order(Lane::Tier(PaintTier::Effect), visible);
+        self.ordering().order(Lane::Tier(PaintTier::Effect), seen);
         let clip = self.clip_chain(visible);
         self.out.effects.push(EffectDrawRow {
             key: EffectKey {
@@ -518,7 +527,10 @@ impl PaintSink for ComposeSession<'_> {
         };
         // `bounds` feeds the batch GPU scissor and the backend's per-line y-cull; there is no
         // per-glyph clip.
-        let Some(bounds) = self.ordering().admit(Lane::Text, unclipped) else {
+        let Some(Admitted {
+            visible: bounds, ..
+        }) = self.ordering().admit(Lane::Text, unclipped)
+        else {
             return;
         };
         let clip = self.clip_chain(bounds);
@@ -574,7 +586,7 @@ impl ComposeSession<'_> {
         let size = Vec2::from(unturned.rect.physical.size);
         let lo = image.min - unturned.rect.physical.min;
         let shape = unturned.turned(p.spin, &lowering);
-        let Some(visible) = self
+        let Some(Admitted { visible, .. }) = self
             .ordering()
             .admit(Lane::Tier(PaintTier::Image), shape.rect.urect)
         else {
@@ -623,7 +635,7 @@ impl ComposeSession<'_> {
                 self.lowering().turned_rect(exact, spin)
             }
         };
-        let Some(visible) = self
+        let Some(Admitted { visible, .. }) = self
             .ordering()
             .admit(Lane::Tier(PaintTier::Image), image_urect)
         else {
@@ -700,9 +712,13 @@ impl ComposeSession<'_> {
         });
     }
 
-    /// Push `instance`, a quad of the stream that draws through `key`.
-    fn push_quad(&mut self, key: QuadKey, instance: QuadInstance) {
-        self.out.quads.push(QuadDrawRow { key, instance });
+    /// Push `instance`, a quad of the stream that draws through `key` in a run under `scissor`.
+    fn push_quad(&mut self, key: QuadKey, scissor: Option<URect>, instance: QuadInstance) {
+        self.out.quads.push(QuadDrawRow {
+            key,
+            scissor,
+            instance,
+        });
     }
 
     /// List the backdrop of `ticket`, seen at `visible`, as `row` makes it from the source paint
@@ -740,7 +756,7 @@ impl ComposeSession<'_> {
             display: self.out.display,
         }
         .urect();
-        let Some(visible) = self
+        let Some(Admitted { visible, .. }) = self
             .ordering()
             .admit(Lane::Tier(PaintTier::Curve), bbox_urect)
         else {
@@ -773,7 +789,7 @@ impl ComposeSession<'_> {
             display,
         }
         .urect();
-        let Some(visible) = self.ordering().cull(bbox) else {
+        let Some(seen) = self.ordering().cull(bbox) else {
             return;
         };
 
@@ -798,8 +814,8 @@ impl ComposeSession<'_> {
         }
         // Only now that the polyline will emit geometry: an empty or culled one must not split the
         // batch or group.
-        self.ordering().order(Lane::Tier(PaintTier::Curve), visible);
-        let clip = self.clip_chain(visible);
+        self.ordering().order(Lane::Tier(PaintTier::Curve), seen);
+        let clip = self.clip_chain(seen.visible);
         self.composer.polyline.emit(
             PolylineLook {
                 colors: src_colors,
@@ -847,10 +863,10 @@ impl ComposeSession<'_> {
     /// Opaque-cover annotation, for the occlusion pruner, of the quad just pushed. A solid box
     /// only ([`DrawClosedPayload::is_solid_box`]), and a turned quad covers no axis-aligned rect
     /// of its own. Its border insets nothing: an opaque fill reaches under it, so any border's
-    /// band is opaque (`primitives/wgsl/composite.wgsl`). The rounded clips in force keep the
-    /// cover to what they leave whole
-    /// ([`RoundedClip::covered`]): past it the quad shows a share of what it covers, which a
-    /// prune would drop.
+    /// band is opaque (`primitives/wgsl/composite.wgsl`). The clip in force keeps the cover to
+    /// what it shows, as a group holds draws under other scissors: the scissor to what it passes,
+    /// and the rounded clips to what they leave whole ([`RoundedClip::covered`]), past which the
+    /// quad shows a share of what it covers, which a prune would drop.
     fn record_opaque_cover(&mut self, p: &DrawClosedPayload<ClosedFill>, shape: &TemplateShape) {
         if !p.is_solid_box() || !p.paint.fill.color.is_opaque() || shape.rotation != 0.0 {
             return;
@@ -862,30 +878,18 @@ impl ComposeSession<'_> {
         } else {
             AA_HALF_WIDTH
         };
+        let inset = inscribed.deflated_by(Spacing::saturating([aa_inset; 4]));
+        let scissored = self
+            .composer
+            .clip
+            .scissor()
+            .map_or(inset, |scissor| inset.clamp_to(scissor.into()));
         let cover = self.out.rounded_clips[self.composer.clip.chain().range()]
             .iter()
-            .fold(
-                inscribed.deflated_by(Spacing::saturating([aa_inset; 4])),
-                |cover, clip| cover.clamp_to(clip.covered()),
-            );
+            .fold(scissored, |cover, clip| cover.clamp_to(clip.covered()));
         if !cover.is_paint_empty() {
             self.ordering().record_opaque(cover);
         }
-    }
-
-    /// Push `frame` as the clip in force, closing the batch and group first if it
-    /// differs ([`Ordering::break_for_clip`]). Named apart from the [`PaintSink`] pair so a
-    /// rename cannot turn `pop_clip` into silent recursion.
-    fn enter_clip(&mut self, frame: ClipFrame) {
-        self.ordering().break_for_clip(Some(frame));
-        self.composer.clip.push(frame);
-    }
-
-    /// Restore the parent clip; see [`Self::enter_clip`].
-    fn leave_clip(&mut self) {
-        let parent = self.composer.clip.parent();
-        self.ordering().break_for_clip(parent);
-        self.composer.clip.pop();
     }
 
     /// Clear-fold discard: drop the scene output and its scratch, and hide the backdrops before the

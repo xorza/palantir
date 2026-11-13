@@ -55,8 +55,11 @@ impl Schedule<'_> {
     ///
     /// 1. With `damage_scissor` `Some`, the first steps are `SetScissor(damage_scissor)` then
     ///    [`PreClear`], on a walk from the first run of a pass that loads.
-    /// 2. Each run draws under its scissor, the viewport where it has none, cut by the damage.
-    /// 3. A run whose cut scissor is empty emits nothing.
+    /// 2. A run whose pixels miss the damage emits nothing.
+    /// 3. A scissored run draws under its scissor cut by the damage; an unscissored one under the
+    ///    scissor in force where that holds its pixels in the damage, else under the damage, or
+    ///    the viewport on a full walk. Every scissor set lies inside the damage, so nothing
+    ///    paints past it.
     /// 4. `SetScissor` is a transition: [`PassState`] emits one only when the rect changes. The
     ///    first scissor of each walk always emits.
     ///
@@ -88,17 +91,33 @@ impl Schedule<'_> {
             }
         }
         let physical = self.buffer.display.physical;
-        let viewport = URect::new(0, 0, physical.x, physical.y);
+        let area = self
+            .damage_scissor
+            .unwrap_or_else(|| URect::new(0, 0, physical.x, physical.y));
         for &run in &runs[from..end] {
-            let scissor = run.scissor.unwrap_or(viewport);
-            let cut = match self.damage_scissor {
-                Some(damage) => scissor.intersect(damage),
-                None => Some(scissor),
-            };
-            let Some(cut) = cut.filter(|cut| !cut.is_paint_empty()) else {
+            let Some(pixels) = run
+                .bounds
+                .intersect(area)
+                .filter(|pixels| !pixels.is_paint_empty())
+            else {
                 continue;
             };
-            state.scissor(cut);
+            match run.scissor {
+                Some(scissor) => {
+                    let Some(cut) = scissor.intersect(area) else {
+                        continue;
+                    };
+                    state.scissor(cut);
+                }
+                None => {
+                    if !state
+                        .cur_scissor
+                        .is_some_and(|cur| pixels.clamp_to(cur) == pixels)
+                    {
+                        state.scissor(area);
+                    }
+                }
+            }
             state.push(RenderStep::Draw(run));
         }
     }

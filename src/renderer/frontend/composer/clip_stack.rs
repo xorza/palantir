@@ -23,9 +23,7 @@ pub(super) struct ClipFrame {
 /// The nested clips a compose walk has open, innermost last.
 ///
 /// Compose-time scratch, bounded by tree depth (typically <8) and kept across frames for its
-/// capacity. `push` and `pop` are raw: entering a clip also closes the group and batch the
-/// outgoing one owned, a decision about the output buffer made in
-/// `ComposeSession::push_clip`.
+/// capacity. A clip closes no group: each draw takes the scissor its run needs.
 #[derive(Debug, Default)]
 pub(super) struct ClipStack {
     frames: Vec<ClipFrame>,
@@ -49,14 +47,6 @@ impl ClipStack {
         self.top().map_or_else(Span::default, |frame| frame.chain)
     }
 
-    /// The clip that will be in force once the top is popped.
-    pub(super) fn parent(&self) -> Option<ClipFrame> {
-        self.frames
-            .len()
-            .checked_sub(2)
-            .map(|below| self.frames[below])
-    }
-
     pub(super) fn push(&mut self, frame: ClipFrame) {
         self.frames.push(frame);
     }
@@ -76,7 +66,7 @@ impl ClipStack {
     /// exactly when the draw is culled.
     ///
     /// The same reject shape serves every shape-draw site, and the rect each then registers as occupied:
-    /// text's batch scissor is the union of its runs' clipped bounds, and the quad and higher tiers order
+    /// text's batch bounds are the union of its runs' clipped bounds, and the quad and higher tiers order
     /// against what they paint, not what they would have painted unclipped.
     pub(super) fn clamped(&self, bounds: URect) -> URect {
         match self.scissor() {

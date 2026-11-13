@@ -88,12 +88,18 @@ pub(super) fn quad_runs(buf: &RenderBuffer) -> Vec<(Span, Option<URect>)> {
         .collect()
 }
 
-/// Each text run's rows and scissor, in paint order.
+/// Each text run's rows and the pixels it paints, in paint order: its batch's bounds, which are
+/// its scissor where a run of it turns.
 pub(super) fn text_runs(buf: &RenderBuffer) -> Vec<(Span, URect)> {
     buf.runs
         .iter()
         .filter(|run| run.lane == Lane::Text)
-        .map(|run| (run.rows, run.scissor.expect("a text run is scissored")))
+        .map(|run| {
+            if let Some(scissor) = run.scissor {
+                assert_eq!(scissor, run.bounds, "a text run's scissor is its bounds");
+            }
+            (run.rows, run.bounds)
+        })
         .collect()
 }
 

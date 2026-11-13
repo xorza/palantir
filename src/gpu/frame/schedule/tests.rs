@@ -10,12 +10,13 @@ use glam::UVec2;
 
 const VIEWPORT: URect = URect::new(0, 0, 100, 100);
 
-/// A run of `lane` over row `at` under `scissor`.
-const fn run(lane: Lane, at: u32, scissor: Option<URect>) -> DrawRun {
+/// A run of `lane` over row `at` under `scissor`, painting `bounds`.
+const fn run(lane: Lane, at: u32, scissor: Option<URect>, bounds: URect) -> DrawRun {
     DrawRun {
         lane,
         rows: Span::new(at, 1),
         scissor,
+        bounds,
         batch: at,
     }
 }
@@ -46,42 +47,64 @@ fn walk(
     steps
 }
 
-/// Runs draw in the order listed, each under its scissor, the viewport where it has none, and a
-/// scissor is set only where it changes: the quads and the image under `a` share one set, and the
-/// text between them takes the viewport.
+/// Runs draw in the order listed. A scissored run draws under its scissor; an unscissored one
+/// keeps the scissor in force where that holds what it paints, and else takes the viewport: the
+/// text inside `a` draws under it, set already, and the image past it under the viewport.
 #[test]
-fn runs_draw_as_listed_each_under_its_scissor() {
+fn runs_draw_as_listed_each_under_a_scissor_that_holds_it() {
     let a = URect::new(10, 10, 50, 50);
-    let quads = run(Lane::Quad, 0, Some(a));
-    let text = run(Lane::Text, 0, None);
-    let image = run(Lane::Tier(PaintTier::Image), 0, Some(a));
-    let more = run(Lane::Quad, 1, Some(a));
+    let quads = run(Lane::Quad, 0, Some(a), URect::new(10, 10, 20, 20));
+    let text = run(Lane::Text, 0, None, URect::new(20, 20, 10, 10));
+    let image = run(
+        Lane::Tier(PaintTier::Image),
+        0,
+        None,
+        URect::new(70, 70, 10, 10),
+    );
+    let more = run(Lane::Quad, 1, Some(a), URect::new(30, 30, 10, 10));
     let buffer = frame(&[quads, text, image, more]);
     assert_eq!(
         walk(&buffer, None, RunSpan::ALL, ColorLoad::Load),
         [
             RenderStep::SetScissor(a),
             RenderStep::Draw(quads),
-            RenderStep::SetScissor(VIEWPORT),
             RenderStep::Draw(text),
-            RenderStep::SetScissor(a),
+            RenderStep::SetScissor(VIEWPORT),
             RenderStep::Draw(image),
+            RenderStep::SetScissor(a),
             RenderStep::Draw(more),
         ]
     );
 }
 
-/// A partial walk opens with the damage and the clear, then cuts each run's scissor by the
-/// damage: a run inside it keeps its own, one across it takes the overlap, one with none takes
-/// the damage itself, which is set already, and one past it draws nothing.
+/// A partial walk opens with the damage and the clear, skips each run whose pixels miss the
+/// damage, and cuts each scissor by it: a scissored run inside it keeps its own, one across it
+/// takes the overlap, an unscissored one whose pixels the scissor in force does not hold takes
+/// the damage, and a scissored and an unscissored run past it draw nothing.
 #[test]
-fn the_damage_cuts_each_runs_scissor() {
+fn the_damage_skips_what_it_misses_and_cuts_each_scissor() {
     let damage = URect::new(0, 0, 40, 40);
-    let inside = run(Lane::Quad, 0, Some(URect::new(5, 5, 10, 10)));
-    let across = run(Lane::Text, 0, Some(URect::new(30, 30, 50, 50)));
-    let whole = run(Lane::Tier(PaintTier::Mesh), 0, None);
-    let past = run(Lane::Quad, 1, Some(URect::new(60, 60, 30, 30)));
-    let buffer = frame(&[inside, across, whole, past]);
+    let inside = run(
+        Lane::Quad,
+        0,
+        Some(URect::new(5, 5, 10, 10)),
+        URect::new(5, 5, 10, 10),
+    );
+    let across = run(
+        Lane::Text,
+        0,
+        Some(URect::new(30, 30, 50, 50)),
+        URect::new(30, 30, 50, 50),
+    );
+    let whole = run(Lane::Tier(PaintTier::Mesh), 0, None, VIEWPORT);
+    let past = run(
+        Lane::Quad,
+        1,
+        Some(URect::new(60, 60, 30, 30)),
+        URect::new(60, 60, 30, 30),
+    );
+    let apart = run(Lane::Quad, 2, None, URect::new(50, 0, 10, 10));
+    let buffer = frame(&[inside, across, whole, past, apart]);
     assert_eq!(
         walk(&buffer, Some(damage), RunSpan::ALL, ColorLoad::Load),
         [
@@ -101,8 +124,8 @@ fn the_damage_cuts_each_runs_scissor() {
 /// pass that clears its target, and a walk resuming past a barrier do not.
 #[test]
 fn only_a_loading_partial_walk_from_the_first_run_clears() {
-    let quads = run(Lane::Quad, 0, None);
-    let buffer = frame(&[quads, run(Lane::Quad, 1, None)]);
+    let quads = run(Lane::Quad, 0, None, VIEWPORT);
+    let buffer = frame(&[quads, run(Lane::Quad, 1, None, VIEWPORT)]);
     let damage = Some(VIEWPORT);
     let clears =
         |damage, runs, load| walk(&buffer, damage, runs, load).contains(&RenderStep::PreClear);
@@ -122,9 +145,9 @@ fn only_a_loading_partial_walk_from_the_first_run_clears() {
 #[test]
 fn a_walk_broken_at_a_barrier_draws_the_whole_walk_once() {
     let runs = [
-        run(Lane::Quad, 0, None),
-        run(Lane::Text, 0, None),
-        run(Lane::Quad, 1, None),
+        run(Lane::Quad, 0, None, VIEWPORT),
+        run(Lane::Text, 0, None, VIEWPORT),
+        run(Lane::Quad, 1, None, VIEWPORT),
     ];
     let buffer = frame(&runs);
     let damage = Some(VIEWPORT);

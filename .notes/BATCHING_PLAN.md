@@ -111,7 +111,16 @@ In order; each ends with the gate of `AGENTS.md` and the census of step 1.
 - **Gate.** No count of the census moves; the visual suite bit for bit; `atomic/schedule/*` and
   `atomic/composer/cpu/*` ABBA.
 
-### 3. A run carries the scissor its draws need
+### 3. A run carries the scissor its draws need — done, its composer cost open (step 8)
+
+- **Landed.** The decision folded into `src/gpu/AGENTS.md`, Shapes, with what it adds to this
+  step: a text batch keeps its bounds as its scissor, a run holds the bounds it paints so a
+  damage walk skips what it misses, and a clip that cuts a quad keeps its group's quads under it.
+  The census falls or holds on every page, none rising; the visual suite bit for bit with the new
+  clip-edge case; the GPU frame cases flat on the Apple laptop and on the board. Open:
+  `atomic/composer/cpu/*` on the Apple laptop, as groups no longer split at clips, `clips/*` +39
+  to +46 %, `quads/{clipped,rounded_clip}` +23 %, `higher_kind_overlap/{same_tier_image,
+  mixed_overlap}` +22 and +24 %, `quads/plain` +10 %.
 
 - **Change.** `break_for_clip` goes. A lane's run opens with the scissor its first draw needs:
   the clip in force where it cuts the draw, none where it does not. A draw of bounds `B`, seen as
@@ -211,6 +220,21 @@ In order; each ends with the gate of `AGENTS.md` and the census of step 1.
 - **Risk.** It holds only if a run's ink bounds every glyph quad; a `debug_assert!` that an uncut
   run cuts none proves it first.
 - **Gate.** The text backend's atomic cases; refuse it within the floor.
+
+### 8. The composer pays for runs per draw no more than it did for groups
+
+- **Change.** Take back the composer time step 3 added, now that one group spans every clip: a
+  tier draw's run update (its scissor test and its bounds union, about 4 ns a draw on the Apple
+  laptop), the quads' look back and prune over a whole group where a clip used to cut it short,
+  and the quad runs' bounds at the group's close. Candidates, each its own bench in one build:
+  the bounds taken where the draw already holds its visible rect, not read again at the close; a
+  run's bounds kept only where a partial frame reads them; the prune and the look back skipping a
+  quad its clip leaves apart from every other.
+- **Why.** Step 3 trades composer time for fewer commands: the census fell, the GPU frames held,
+  and `integration/clip_frame/cpu/*` moved +2 to +4 %, but the atomic cases above still read
+  +10 to +46 %.
+- **Gate.** `atomic/composer/cpu/*` ABBA within ±2 % of the step 2 tree (`bd30eb4e2`) on the Apple
+  laptop and the board; the census and the visual suite unmoved.
 
 ## Refused
 

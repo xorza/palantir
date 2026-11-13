@@ -14,7 +14,7 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::renderer::backdrop_captures::BackdropTicket;
 use crate::renderer::frontend::composer::paint_order::internals::{Closes, GroupCloses};
 use crate::renderer::frontend::composer::tests::support::{
-    clip, draw, draw_marked, effect, lanes, params, run, survivor_calls, text,
+    clip, draw, draw_marked, effect, listed, params, run, survivor_calls, text,
 };
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
@@ -165,9 +165,9 @@ fn a_backdrop_cuts_the_frame_at_its_barrier() {
 
 /// Paint order tallies each group by why it closed, and the draws ordered after: a quad and a text
 /// run close at the backdrop's barrier with 3 draws after (the effect, a quad, a quad); the quad
-/// over the effect at the next quad's paint order, with 2 after; that quad at the clip around the
-/// last, with 1 after; the last as the clip ends, with none. The session's end finds no draw left
-/// and closes none.
+/// over the effect at the next quad's paint order, with 2 after; the last two at the session's
+/// end, with none. A clip closes no group: the quad inside it, which it does not cut, joins the
+/// quad before it in one run.
 #[test]
 fn each_group_counts_why_it_closed() {
     let rect = Rect::new(20.0, 20.0, 40.0, 20.0);
@@ -182,22 +182,17 @@ fn each_group_counts_why_it_closed() {
     let mut rig = ComposeRig::new(params(1.0, UVec2::new(200, 200)));
     rig.compose(&recorded);
     assert_eq!(
-        lanes(&rig.out),
+        listed(&rig.out),
         [
-            Lane::Quad,
-            Lane::Text,
-            Lane::Tier(PaintTier::Effect),
-            Lane::Quad,
-            Lane::Quad
+            (Lane::Quad, Span::new(0, 1)),
+            (Lane::Text, Span::new(0, 1)),
+            (Lane::Tier(PaintTier::Effect), Span::new(0, 1)),
+            (Lane::Quad, Span::new(1, 2)),
         ]
     );
     assert_eq!(
         rig.composer.group_closes(),
         GroupCloses {
-            clip: Closes {
-                groups: 2,
-                draws_after: 1,
-            },
             paint_order: Closes {
                 groups: 1,
                 draws_after: 2,
@@ -206,7 +201,10 @@ fn each_group_counts_why_it_closed() {
                 groups: 1,
                 draws_after: 3,
             },
-            end: Closes::default(),
+            end: Closes {
+                groups: 1,
+                draws_after: 0,
+            },
         }
     );
 }

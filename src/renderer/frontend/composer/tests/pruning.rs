@@ -6,7 +6,6 @@ use crate::internals::paint_capture::PaintCapture;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::translate_scale::TranslateScale;
-use crate::primitives::geometry::urect::URect;
 use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::border::Border;
 use crate::primitives::paint::color::RgbaF32;
@@ -195,25 +194,30 @@ fn prune_unaligned_cover_holds_every_pixel_the_under_shades() {
     }
 }
 
+/// An occluder covers what its clip shows: inside a clip that leaves it whole it drops the quad
+/// it covers, though the clip opened after that quad; cut to (0, 0, 50 × 50) it covers only that,
+/// and the quad under it, which shows past it, stays.
 #[test]
-fn prune_keeps_quads_in_separate_groups_even_when_covered() {
-    let buf = run(
-        |b, _| {
-            draw(b, Rect::new(0.0, 0.0, 100.0, 100.0));
-            clip(b, Rect::new(0.0, 0.0, 200.0, 200.0));
-            draw(b, Rect::new(0.0, 0.0, 100.0, 100.0));
-            b.pop_clip();
-        },
-        &params(1.0, UVec2::new(200, 200)),
-    );
-    assert_eq!(buf.quads.len(), 2);
+fn an_occluder_covers_what_its_clip_shows() {
+    let covered = |clip_side: f32| {
+        run(
+            |b, _| {
+                draw(b, Rect::new(0.0, 0.0, 100.0, 100.0));
+                clip(b, Rect::new(0.0, 0.0, clip_side, clip_side));
+                draw(b, Rect::new(0.0, 0.0, 100.0, 100.0));
+                b.pop_clip();
+            },
+            &params(1.0, UVec2::new(200, 200)),
+        )
+        .quads
+        .len()
+    };
     assert_eq!(
-        quad_runs(&buf),
-        [
-            (Span::new(0, 1), None),
-            (Span::new(1, 1), Some(URect::new(0, 0, 200, 200)))
-        ]
+        covered(200.0),
+        1,
+        "a whole occluder drops the quad under it"
     );
+    assert_eq!(covered(50.0), 2, "a cut occluder keeps it");
 }
 
 #[test]

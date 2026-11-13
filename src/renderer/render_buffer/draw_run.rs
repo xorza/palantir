@@ -27,15 +27,18 @@ impl Lane {
 }
 
 /// A span of one lane's rows the backend draws under one scissor. The composer lists a frame's
-/// runs in the order they paint, so the backend replays them as listed, cutting each scissor by
-/// the damage; a backdrop's barrier is a run's index.
+/// runs in the order they paint, so the backend replays them as listed, skipping a run whose
+/// pixels miss the damage and cutting each scissor by it; a backdrop's barrier is a run's index.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct DrawRun {
     pub(crate) lane: Lane,
     /// The lane's rows it draws, never empty.
     pub(crate) rows: Span,
-    /// `None` paints the whole viewport.
+    /// What cuts its draws, `None` where nothing does: such a run draws under any scissor that
+    /// holds its [`Self::bounds`].
     pub(crate) scissor: Option<URect>,
+    /// The pixels its rows paint, inside its scissor.
+    pub(crate) bounds: URect,
     /// Its place among the runs of its lane, which the raster backends key the batch they
     /// prepare for it by.
     pub(crate) batch: u32,

@@ -1,6 +1,7 @@
 //! Visual fixtures: UI scenes rendered headlessly and compared against golden PNGs.
 
 mod blit;
+mod clip;
 mod color;
 mod corners;
 mod damage;

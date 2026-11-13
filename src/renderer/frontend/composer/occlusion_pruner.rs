@@ -1,5 +1,5 @@
-//! CPU occlusion pruning: drop quads in a scissor group fully covered by a
-//! later opaque quad in the same group.
+//! CPU occlusion pruning: drop quads in a group fully covered by a later
+//! opaque quad in the same group.
 
 use crate::common::counters::TestOnly;
 use crate::primitives::geometry::rect::Rect;
@@ -76,7 +76,7 @@ impl OcclusionPruner {
         let occluders = self.opaque_in_group.len();
         let end = out.quads.len();
         let rows = out.quads.slices_mut();
-        let (keys, quads) = (rows.key, rows.instance);
+        let (keys, scissors, quads) = (rows.key, rows.scissor, rows.instance);
         // Survivors move down to `write`, in order.
         let mut write = start;
         for read in start..end {
@@ -90,6 +90,7 @@ impl OcclusionPruner {
                 // No later occluder for this or any later quad: the rest survive.
                 if cursor >= occluders {
                     keys.copy_within(read..end, write);
+                    scissors.copy_within(read..end, write);
                     quads.copy_within(read..end, write);
                     write += end - read;
                     break;
@@ -106,6 +107,7 @@ impl OcclusionPruner {
             }
             if read != write {
                 keys[write] = key;
+                scissors[write] = scissors[read];
                 quads[write] = quads[read];
             }
             write += 1;

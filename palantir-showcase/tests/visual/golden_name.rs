@@ -61,6 +61,7 @@ golden_names! {
     AddShapeRoundedRectLinearGradient => "add_shape_rounded_rect_linear_gradient",
     ArcShapes => "arc_shapes",
     ButtonHello => "button_hello",
+    ClipEdgeDraws => "clip_edge_draws",
     ColorFieldAndBars => "color_field_and_bars",
     ColorPickerPanel => "color_picker_panel",
     ComboBoxClosed => "combo_box_closed",

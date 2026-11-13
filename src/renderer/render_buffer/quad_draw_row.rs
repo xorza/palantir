@@ -7,6 +7,7 @@
 )]
 
 use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::urect::URect;
 use crate::primitives::packed::fill_axis::FillAxis;
 use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
@@ -24,6 +25,10 @@ use soa_rs::Soars;
 pub(crate) struct QuadDrawRow {
     /// The pipeline the instance draws through, set once by the composer.
     pub(crate) key: QuadKey,
+    /// The clip in force where the composer drew the quad, then, once its group closes, the
+    /// scissor of the run it draws in, `None` for none: what the composer joins and lists quad
+    /// runs by. The backend reads the run's.
+    pub(crate) scissor: Option<URect>,
     /// A fill's [`QuadInstance`], or a shadow's [`ShadowInstance`](crate::renderer::render_buffer::shadow_instance::ShadowInstance)
     /// in a quad's bytes, as `key` says.
     pub(crate) instance: QuadInstance,

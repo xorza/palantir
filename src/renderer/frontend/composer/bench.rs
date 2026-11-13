@@ -238,9 +238,9 @@ impl HigherKindCase {
 enum QuadCase {
     /// A grid of quads apart: one group, nothing to close.
     Plain,
-    /// Each quad inside a rect clip of its own: a group per quad.
+    /// Each quad inside a rect clip of its own, which cuts nothing: one run.
     Clipped,
-    /// Each quad inside a rounded clip of its own: a group and a clip chain per quad.
+    /// Each quad inside a rounded clip of its own: a clip chain per quad, one run.
     RoundedClip,
     /// Every quad opaque over the one before: the group's prune keeps the last.
     Pruned,
@@ -332,8 +332,7 @@ impl QuadCase {
     /// instances for the polyline, one segment per gap and one joint per interior point.
     const fn expected(self, count: usize) -> [usize; 3] {
         match self {
-            Self::Plain => [count, 1, 0],
-            Self::Clipped | Self::RoundedClip => [count, count, 0],
+            Self::Plain | Self::Clipped | Self::RoundedClip => [count, 1, 0],
             Self::Pruned => [1, 1, 0],
             Self::Backdrops => [count, 1, count],
             Self::Polyline => [2 * count - 3, 1, 0],

@@ -62,13 +62,15 @@ fn finishing_a_session_emits_the_trailing_group_and_batch() {
                 lane: Lane::Quad,
                 rows: Span::new(0, 1),
                 scissor: None,
+                bounds: URect::new(0, 0, 10, 10),
                 batch: 0,
             },
             DrawRun {
                 lane: Lane::Text,
                 rows: Span::new(0, 1),
+                scissor: None,
                 // The run's bounds padded by the scale step's slack and covered.
-                scissor: Some(URect::new(0, 19, 11, 12)),
+                bounds: URect::new(0, 19, 11, 12),
                 batch: 0,
             },
         ],
@@ -76,28 +78,87 @@ fn finishing_a_session_emits_the_trailing_group_and_batch() {
     );
 }
 
+/// A clip closes no group, and costs a scissor only where it cuts a quad: under (50, 50, 100 ×
+/// 100), the quad at (140, 140) crosses its corner and draws under it, and so does the one inside
+/// it, as one scissor draws them anyway; the quads outside the clip, before and after it, join
+/// one run under none, the last moving back past the clipped ones it does not overlap.
 #[test]
-fn compose_with_clip_groups_inner_draws_under_scissor() {
+fn a_clip_scissors_the_quads_it_cuts() {
     let buf = run(
         |b, _arena| {
             draw(b, Rect::new(0.0, 0.0, 10.0, 10.0));
             clip(b, Rect::new(50.0, 50.0, 100.0, 100.0));
             draw(b, Rect::new(60.0, 60.0, 20.0, 20.0));
-            draw(b, Rect::new(90.0, 90.0, 20.0, 20.0));
+            draw(b, Rect::new(140.0, 140.0, 20.0, 20.0));
             b.pop_clip();
             draw(b, Rect::new(0.0, 0.0, 5.0, 5.0));
         },
         &params(1.0, UVec2::new(400, 400)),
     );
-    assert_eq!(buf.quads.len(), 4);
+    let rects: Vec<Rect> = buf.quads.instance().iter().map(|q| q.header.rect).collect();
+    assert_eq!(
+        rects,
+        [
+            Rect::new(0.0, 0.0, 10.0, 10.0),
+            Rect::new(0.0, 0.0, 5.0, 5.0),
+            Rect::new(60.0, 60.0, 20.0, 20.0),
+            Rect::new(140.0, 140.0, 20.0, 20.0),
+        ]
+    );
     assert_eq!(
         quad_runs(&buf),
         [
-            (Span::new(0, 1), None),
-            (Span::new(1, 2), Some(URect::new(50, 50, 100, 100))),
-            (Span::new(3, 1), None),
+            (Span::new(0, 2), None),
+            (Span::new(2, 2), Some(URect::new(50, 50, 100, 100))),
         ]
     );
+}
+
+/// A tier draw joins its open run while that run's scissor cuts it as its own clip does: under
+/// (50, 50, 100 × 100) the image across the clip's corner opens a run under it, the one inside it
+/// joins, as the clip holds it, and the one past the clip, which the clip would cut away, opens a
+/// run under none. Each run holds the pixels its images paint.
+#[test]
+fn a_tier_draw_joins_its_open_run_while_its_scissor_cuts_it_as_its_clip_does() {
+    let clip_rect = URect::new(50, 50, 100, 100);
+    let buf = run(
+        |b, _arena| {
+            clip(b, Rect::new(50.0, 50.0, 100.0, 100.0));
+            image(b, Rect::new(140.0, 140.0, 20.0, 20.0));
+            image(b, Rect::new(60.0, 60.0, 20.0, 20.0));
+            b.pop_clip();
+            image(b, Rect::new(200.0, 10.0, 20.0, 20.0));
+        },
+        &params(1.0, UVec2::new(400, 400)),
+    );
+    let runs: Vec<(Span, Option<URect>, URect)> = buf
+        .runs
+        .iter()
+        .map(|run| (run.rows, run.scissor, run.bounds))
+        .collect();
+    assert_eq!(
+        runs,
+        [
+            (Span::new(0, 2), Some(clip_rect), URect::new(60, 60, 90, 90)),
+            (Span::new(2, 1), None, URect::new(200, 10, 20, 20)),
+        ]
+    );
+}
+
+/// A quad its clip does not cut draws under no scissor, where no quad of its group needs the
+/// clip: the clipped quad joins the run of the quad before the clip.
+#[test]
+fn a_clip_that_cuts_nothing_costs_no_run() {
+    let buf = run(
+        |b, _arena| {
+            draw(b, Rect::new(0.0, 0.0, 10.0, 10.0));
+            clip(b, Rect::new(50.0, 50.0, 100.0, 100.0));
+            draw(b, Rect::new(60.0, 60.0, 20.0, 20.0));
+            b.pop_clip();
+        },
+        &params(1.0, UVec2::new(400, 400)),
+    );
+    assert_eq!(quad_runs(&buf), [(Span::new(0, 2), None)]);
 }
 
 #[test]

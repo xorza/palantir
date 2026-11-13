@@ -53,8 +53,8 @@ fn card() -> Chrome {
         .with_border(Border::new(RgbaF32::hex(0x5a6378), 1.0))
 }
 
-/// Six text fields in a column: each field's clip closes a group as it opens and as it ends,
-/// twelve closes for clips and none for paint order, in 7 draws.
+/// Six text fields in a column: their clips cut nothing and close no group, so the column is one
+/// group, closed at the session's end, in 2 draws.
 #[test]
 fn a_column_of_fields() {
     let mut texts: [String; 6] = std::array::from_fn(|i| format!("field {i}"));
@@ -71,10 +71,10 @@ fn a_column_of_fields() {
     assert_eq!(
         census.counts,
         PassCounts {
-            draws: 7,
+            draws: 2,
             pipelines: 2,
             groups: 2,
-            scissors: 2,
+            scissors: 1,
             viewports: 2,
             vertex_buffers: 2,
             index_buffers: 1,
@@ -83,9 +83,9 @@ fn a_column_of_fields() {
     assert_eq!(
         census.closes,
         GroupCloses {
-            clip: Closes {
-                groups: 12,
-                draws_after: 66,
+            end: Closes {
+                groups: 1,
+                draws_after: 0,
             },
             ..GroupCloses::default()
         }
@@ -93,7 +93,8 @@ fn a_column_of_fields() {
 }
 
 /// A scroll viewport of 100 px over rows of 20, scrolled by 10, so its first and last rows are
-/// cut at its edges: its clip closes the group before it, and its rows close none, in 3 draws.
+/// cut at its edges: the viewport's clip closes no group, and the rows it cuts draw under it, in 3
+/// draws.
 #[test]
 fn a_scroll_viewport_cuts_its_first_and_last_rows() {
     let list = WidgetId::from_hash("list");
@@ -121,21 +122,17 @@ fn a_scroll_viewport_cuts_its_first_and_last_rows() {
         census.counts,
         PassCounts {
             draws: 3,
-            pipelines: 3,
+            pipelines: 2,
             groups: 2,
-            scissors: 3,
-            viewports: 3,
-            vertex_buffers: 3,
+            scissors: 2,
+            viewports: 2,
+            vertex_buffers: 2,
             index_buffers: 1,
         }
     );
     assert_eq!(
         census.closes,
         GroupCloses {
-            clip: Closes {
-                groups: 1,
-                draws_after: 1,
-            },
             end: Closes {
                 groups: 1,
                 draws_after: 0,
@@ -146,8 +143,8 @@ fn a_scroll_viewport_cuts_its_first_and_last_rows() {
 }
 
 /// A clipped canvas of a mesh, two curves and four cards with a field each, the second and third
-/// cards overlapping, as a node graph draws: eight closes for clips and five for paint order, in
-/// 16 draws.
+/// cards overlapping, as a node graph draws: six closes for paint order and one at the session's
+/// end, in 14 draws.
 #[test]
 fn a_clipped_canvas_of_cards_with_fields() {
     let mut mesh = Mesh::with_capacity(4, 6);
@@ -202,10 +199,10 @@ fn a_clipped_canvas_of_cards_with_fields() {
     assert_eq!(
         census.counts,
         PassCounts {
-            draws: 16,
+            draws: 14,
             pipelines: 14,
             groups: 2,
-            scissors: 12,
+            scissors: 2,
             viewports: 14,
             vertex_buffers: 15,
             index_buffers: 3,
@@ -214,13 +211,13 @@ fn a_clipped_canvas_of_cards_with_fields() {
     assert_eq!(
         census.closes,
         GroupCloses {
-            clip: Closes {
-                groups: 8,
-                draws_after: 52,
-            },
             paint_order: Closes {
-                groups: 5,
-                draws_after: 48,
+                groups: 6,
+                draws_after: 56,
+            },
+            end: Closes {
+                groups: 1,
+                draws_after: 0,
             },
             ..GroupCloses::default()
         }

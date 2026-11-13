@@ -47,6 +47,7 @@ fn stream(shadows: &[ShadowInstance]) -> Soa<QuadDrawRow> {
         .iter()
         .map(|&shadow| QuadDrawRow {
             key: QuadKey::Shadow,
+            scissor: None,
             instance: QuadInstance::from(shadow),
         })
         .collect()
@@ -56,6 +57,7 @@ fn stream(shadows: &[ShadowInstance]) -> Soa<QuadDrawRow> {
 fn fill() -> QuadDrawRow {
     QuadDrawRow {
         key: QuadKey::Fill(FillForm::BOX_SOLID),
+        scissor: None,
         instance: QuadInstance::default(),
     }
 }

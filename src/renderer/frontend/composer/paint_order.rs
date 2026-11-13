@@ -7,7 +7,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::urect::URect;
 use crate::renderer::backdrop_captures::BackdropTicket;
 use crate::renderer::frontend::composer::backdrop_break::BackdropBreak;
-use crate::renderer::frontend::composer::clip_stack::{ClipFrame, ClipStack};
+use crate::renderer::frontend::composer::clip_stack::ClipStack;
 use crate::renderer::frontend::composer::higher_kind_rects::HigherKindRects;
 use crate::renderer::frontend::composer::occlusion_pruner::OcclusionPruner;
 use crate::renderer::frontend::composer::quad_runs::QuadRuns;
@@ -19,18 +19,51 @@ use crate::renderer::render_buffer::paint_tier::PaintTier;
 use crate::renderer::render_buffer::text_draw_row::TextDrawRow;
 use glam::UVec2;
 
-/// Why a group closed: the clip in force changed its scissor, a draw would have swapped paint order
-/// with one it overlaps, a backdrop's barrier, or the session's end.
+/// Why a group closed: a draw would have swapped paint order with one it overlaps, a backdrop's
+/// barrier, or the session's end.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum GroupClose {
-    Clip,
     PaintOrder,
     Barrier,
     End,
 }
 
 impl GroupClose {
-    const COUNT: usize = 4;
+    const COUNT: usize = 3;
+}
+
+/// A draw's extent and the part of it the clip in force leaves.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct Seen {
+    pub(super) bounds: URect,
+    pub(super) visible: URect,
+}
+
+/// What a draw [`Ordering::admit`] let through takes: the pixels it paints, and its scissor
+/// ([`Ordering::order`]), `None` for the whole viewport.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct Admitted {
+    pub(super) visible: URect,
+    pub(super) scissor: Option<URect>,
+}
+
+/// Where a tier's run of the open group starts among its rows, the scissor it draws under, and
+/// the pixels its draws paint.
+#[derive(Clone, Copy, Debug)]
+struct TierRun {
+    start: u32,
+    scissor: Option<URect>,
+    bounds: URect,
+}
+
+/// A run to list: its lane's rows, the scissor it draws under and the pixels it paints, as a
+/// [`DrawRun`] takes them.
+#[derive(Clone, Copy, Debug)]
+struct Listing {
+    lane: Lane,
+    rows: Span,
+    scissor: Option<URect>,
+    bounds: URect,
 }
 
 /// A frame's closed groups by cause, and the draws each cause's closes had after them.
@@ -71,6 +104,12 @@ pub(super) struct PaintOrder {
     backdrop_break: BackdropBreak,
     /// The open group's index: the groups closed with a draw before it.
     group: u32,
+    /// Each tier's open run in the open group, by [`PaintTier::idx`], `None` where it has drawn
+    /// none: what the tier's next draw joins.
+    open_runs: [Option<TierRun>; PaintTier::COUNT],
+    /// Each tier's runs in the open group before its open one, by [`PaintTier::idx`], in record
+    /// order.
+    tier_runs: [Vec<TierRun>; PaintTier::COUNT],
     /// The runs listed of each lane, by [`Lane::idx`]: the next one's [`DrawRun::batch`].
     lane_runs: [u32; Lane::COUNT],
     /// Why this frame's groups closed, which the batching census reads.
@@ -89,6 +128,9 @@ struct BatchState {
     waiting: Vec<ClosedText>,
     /// The first of [`Self::waiting`] not yet indexed in `closed_grid`.
     waiting_indexed: usize,
+    /// The union of the bounds of the waiting batches not yet indexed, which a probe tests before
+    /// it indexes them; `None` where every one is.
+    unindexed: Option<URect>,
     /// Where the next text run listed starts in `out.texts`: the runs list text in order.
     texts_listed: u32,
 }
@@ -103,6 +145,9 @@ struct OpenBatch {
     /// The last group whose text joined it, refreshed on every text push: a batch that ends in the
     /// open group lists after its quads, at its close.
     last_group: u32,
+    /// Whether a run of it turns: its glyphs' quads fade half a pixel past each turned edge, so
+    /// the batch draws under its runs' bounds, cut or not.
+    turned: bool,
     /// [`TextClip::Cut`] once a cut run has joined. The batch scissor (`open_grid.union()`) must then
     /// equal that run's bounds, so later runs join only with matching `bounds`; a turned run's
     /// glyphs carry no clip rect of their own.
@@ -117,18 +162,20 @@ pub(super) enum TextClip {
     Cut,
 }
 
-/// A text batch [`BatchState::close`] took, and the scissor its runs share.
+/// A text batch [`BatchState::close`] took, and the union of its runs' bounds.
 #[derive(Clone, Copy, Debug)]
 struct ClosedBatch {
     batch: OpenBatch,
-    scissor: URect,
+    bounds: URect,
 }
 
-/// A closed text batch's runs and the scissor they share, as it lists.
+/// A closed text batch's runs, the union of their bounds, and the scissor they draw under: the
+/// bounds where a run turns, as the backend clips no turned glyph on the CPU, and none otherwise.
 #[derive(Clone, Copy, Debug)]
 struct ClosedText {
     rows: Span,
-    scissor: URect,
+    bounds: URect,
+    scissor: Option<URect>,
 }
 
 /// Per-kind slice cursors for the open group: where its slice begins in each output buffer.
@@ -149,15 +196,16 @@ impl BatchState {
         self.closed_grid.start_frame(viewport);
         self.waiting.clear();
         self.waiting_indexed = 0;
+        self.unindexed = None;
         self.texts_listed = 0;
     }
 
     /// Take the open batch and empty its grid, the two together.
     fn close(&mut self) -> Option<ClosedBatch> {
         let batch = self.open.take()?;
-        let scissor = self.open_grid.union();
+        let bounds = self.open_grid.union();
         self.open_grid.clear();
-        Some(ClosedBatch { batch, scissor })
+        Some(ClosedBatch { batch, bounds })
     }
 }
 
@@ -172,17 +220,32 @@ impl PaintOrder {
         self.backdrop_break.open(0);
         self.group = 0;
         self.lane_runs = [0; Lane::COUNT];
+        self.open_runs = [None; PaintTier::COUNT];
+        for runs in &mut self.tier_runs {
+            runs.clear();
+        }
         self.closes.reset();
     }
 
-    /// List a run of `lane`'s `rows` under `scissor` in `out`, after every run before it.
-    fn list(&mut self, out: &mut RenderBuffer, lane: Lane, rows: Span, scissor: Option<URect>) {
+    /// List `run` in `out`, after every run before it.
+    fn list(&mut self, out: &mut RenderBuffer, run: Listing) {
+        let Listing {
+            lane,
+            rows,
+            scissor,
+            bounds,
+        } = run;
         debug_assert_ne!(rows.len, 0, "a run draws a row");
+        debug_assert!(
+            scissor.is_none_or(|scissor| bounds.clamp_to(scissor) == bounds),
+            "a run paints inside its scissor"
+        );
         let batch = &mut self.lane_runs[lane.idx()];
         out.runs.push(DrawRun {
             lane,
             rows,
             scissor,
+            bounds,
             batch: *batch,
         });
         *batch += 1;
@@ -195,7 +258,15 @@ impl PaintOrder {
             "text batches list their runs in order, without a gap"
         );
         self.batch.texts_listed = text.rows.start + text.rows.len;
-        self.list(out, Lane::Text, text.rows, Some(text.scissor));
+        self.list(
+            out,
+            Listing {
+                lane: Lane::Text,
+                rows: text.rows,
+                scissor: text.scissor,
+                bounds: text.bounds,
+            },
+        );
     }
 }
 
@@ -208,20 +279,24 @@ pub(super) struct Ordering<'s> {
 }
 
 impl Ordering<'_> {
-    /// [`Self::cull`] `bounds`, then [`Self::order`] a draw of `lane` there: the pixels it paints,
-    /// or `None` when it paints none, which then neither splits a batch nor registers a rect.
+    /// [`Self::cull`] `bounds`, then [`Self::order`] a draw of `lane` there: the pixels it paints
+    /// and its run's scissor, or `None` when it paints none, which then neither splits a batch nor
+    /// registers a rect.
     #[inline(always)]
-    pub(super) fn admit(&mut self, lane: Lane, bounds: URect) -> Option<URect> {
-        let visible = self.cull(bounds)?;
-        self.order(lane, visible);
-        Some(visible)
+    pub(super) fn admit(&mut self, lane: Lane, bounds: URect) -> Option<Admitted> {
+        let seen = self.cull(bounds)?;
+        let scissor = self.order(lane, seen);
+        Some(Admitted {
+            visible: seen.visible,
+            scissor,
+        })
     }
 
-    /// The part of `bounds` the clip in force leaves, `None` when it is empty.
+    /// `bounds` and the part of them the clip in force leaves, `None` when that is empty.
     #[inline(always)]
-    pub(super) fn cull(&self, bounds: URect) -> Option<URect> {
+    pub(super) fn cull(&self, bounds: URect) -> Option<Seen> {
         let visible = self.clip.clamped(bounds);
-        (!visible.is_paint_empty()).then_some(visible)
+        (!visible.is_paint_empty()).then_some(Seen { bounds, visible })
     }
 
     /// Close what a draw of `lane` at `visible` would reorder against, register it, and count it
@@ -234,11 +309,16 @@ impl Ordering<'_> {
     /// end of its last group and text recorded before this draw would paint over it; and the
     /// group where it overlaps a tier that replays after it. A close on every draw would cost one
     /// text batch per draw (one per toolbar button); either half alone is unsound.
+    ///
+    /// Returns the scissor the draw takes: a tier draw its run's ([`Self::run_scissor`]), a quad
+    /// the clip in force, which the group's join trades for its run's; a text run's batch takes
+    /// its own.
     // Always inlined: each caller's `lane` is a constant, so one arm remains and `visible` stays
     // in registers. As a call it took `visible` through memory, and `same_tier_image` ran 5 %
     // slower.
     #[inline(always)]
-    pub(super) fn order(&mut self, lane: Lane, visible: URect) {
+    pub(super) fn order(&mut self, lane: Lane, seen: Seen) -> Option<URect> {
+        let visible = seen.visible;
         match lane {
             Lane::Quad => self.quad_forces_flush(visible),
             Lane::Text => {
@@ -258,6 +338,54 @@ impl Ordering<'_> {
         }
         self.order.backdrop_break.paint(visible);
         self.order.closes.edit(|tally| tally.draws += 1);
+        match lane {
+            Lane::Text => None,
+            // A quad takes the clip in force, which the group's join trades for its run's
+            // scissor ([`QuadRuns::join`]).
+            Lane::Quad => self.clip.scissor(),
+            Lane::Tier(tier) => self.run_scissor(tier, seen),
+        }
+    }
+
+    /// The scissor of the run of `tier` a draw `seen` joins: the open run's while that cuts the
+    /// draw as its clip does, `bounds ∩ scissor = visible`, else a new run's, the clip in force
+    /// where it cuts the draw and none where it does not. A scope whose clip cuts nothing thus
+    /// costs no run, and one that cuts costs the runs of its cut draws. As Skia sets a scissor
+    /// only for a draw its clip does not hold (`GrClip::IsInsideClip`).
+    #[inline(always)]
+    fn run_scissor(&mut self, tier: PaintTier, seen: Seen) -> Option<URect> {
+        let Seen { bounds, visible } = seen;
+        if let Some(run) = &mut self.order.open_runs[tier.idx()] {
+            let cuts = match run.scissor {
+                None => bounds,
+                Some(scissor) => bounds.clamp_to(scissor),
+            };
+            if cuts == visible {
+                run.bounds = run.bounds.union(visible);
+                return run.scissor;
+            }
+        }
+        self.open_tier_run(tier, seen)
+    }
+
+    /// Open a run of `tier` for a draw `seen` its open run cannot take, under the clip in force
+    /// where that cuts the draw and none where it does not.
+    fn open_tier_run(&mut self, tier: PaintTier, seen: Seen) -> Option<URect> {
+        let cut = seen.bounds != seen.visible;
+        debug_assert!(
+            !cut || self.clip.scissor().is_some(),
+            "only a clip cuts a draw"
+        );
+        let scissor = if cut { self.clip.scissor() } else { None };
+        let run = TierRun {
+            start: self.out.draws_len(tier),
+            scissor,
+            bounds: seen.visible,
+        };
+        if let Some(closed) = self.order.open_runs[tier.idx()].replace(run) {
+            self.order.tier_runs[tier.idx()].push(closed);
+        }
+        scissor
     }
 
     /// Where a backdrop of `ticket` reads: its cached result where it holds one, else a
@@ -305,6 +433,7 @@ impl Ordering<'_> {
         if clip == TextClip::Cut {
             b.clip = TextClip::Cut;
         }
+        b.turned |= row.spin.is_some();
         self.out.texts.push(row);
         self.order.batch.open_grid.push(bounds);
     }
@@ -315,15 +444,6 @@ impl Ordering<'_> {
         self.order.occlusion.record_opaque(idx, cover);
     }
 
-    /// Close the group the clip in force owns, if `next` has another scissor. A rounded clip's
-    /// chain rides each draw, so it closes nothing. Runs before the stack moves, since
-    /// [`Self::flush`] stamps the closing group with the stack top.
-    pub(super) fn break_for_clip(&mut self, next: Option<ClipFrame>) {
-        if next.map(|frame| frame.scissor) != self.clip.scissor() {
-            self.flush(GroupClose::Clip);
-        }
-    }
-
     /// Close the open group for `cause`: list its runs if it drew anything, advance the per-kind
     /// cursors and clear the overlap scratches. Scissor and rounded clip carry over.
     pub(super) fn flush(&mut self, cause: GroupClose) {
@@ -331,7 +451,7 @@ impl Ordering<'_> {
         order.occlusion.prune(self.out, order.cursors.quads);
         let mut group = self.out.quads.idx_mut(order.cursors.quads as usize..);
         let rows = group.slices_mut();
-        order.runs.join(rows.key, rows.instance);
+        order.runs.join(rows.key, rows.scissor, rows.instance);
         let q_end = self.out.quads.len() as u32;
         let t_end = self.out.texts.len() as u32;
         let higher_end = PaintTier::ALL.map(|tier| self.out.draws_len(tier));
@@ -345,21 +465,65 @@ impl Ordering<'_> {
             "a batch that ends in the group drew in it"
         );
         if drew {
-            let scissor = self.clip.scissor();
-            if q_end > order.cursors.quads {
-                let quads = Span::try_from(order.cursors.quads..q_end).unwrap();
-                order.list(self.out, Lane::Quad, quads, scissor);
+            // The quads list a run a stretch of one scissor, as the join left them, each
+            // painting what it shades inside the run's scissor.
+            let physical = self.out.display.physical;
+            let viewport = URect::new(0, 0, physical.x, physical.y);
+            let mut run_start = order.cursors.quads;
+            let mut bounds: Option<URect> = None;
+            for at in order.cursors.quads..q_end {
+                let at = at as usize;
+                let scissor = self.out.quads.scissor()[at];
+                let shaded =
+                    URect::covering(order.runs.shaded()[at - order.cursors.quads as usize])
+                        .clamp_to(scissor.unwrap_or(viewport));
+                let run = bounds.map_or(shaded, |bounds| bounds.union(shaded));
+                bounds = Some(run);
+                if at + 1 == q_end as usize || self.out.quads.scissor()[at + 1] != scissor {
+                    let rows = Span::try_from(run_start..at as u32 + 1).unwrap();
+                    order.list(
+                        self.out,
+                        Listing {
+                            lane: Lane::Quad,
+                            rows,
+                            scissor,
+                            bounds: run,
+                        },
+                    );
+                    run_start = at as u32 + 1;
+                    bounds = None;
+                }
             }
             for at in 0..order.batch.waiting.len() {
                 let text = order.batch.waiting[at];
                 order.list_text(self.out, text);
             }
             for tier in PaintTier::ALL {
-                let start = order.cursors.higher[tier.idx()];
-                let end = higher_end[tier.idx()];
-                if end > start {
-                    let items = Span::try_from(start..end).unwrap();
-                    order.list(self.out, Lane::Tier(tier), items, scissor);
+                if let Some(open) = order.open_runs[tier.idx()].take() {
+                    order.tier_runs[tier.idx()].push(open);
+                }
+                let rows_end = higher_end[tier.idx()];
+                let runs = &order.tier_runs[tier.idx()];
+                debug_assert!(
+                    runs.first().map_or(rows_end, |run| run.start)
+                        == order.cursors.higher[tier.idx()],
+                    "a tier's first run of the group starts at its first row"
+                );
+                for at in 0..runs.len() {
+                    let run = order.tier_runs[tier.idx()][at];
+                    let end = order.tier_runs[tier.idx()]
+                        .get(at + 1)
+                        .map_or(rows_end, |next| next.start);
+                    let rows = Span::try_from(run.start..end).unwrap();
+                    order.list(
+                        self.out,
+                        Listing {
+                            lane: Lane::Tier(tier),
+                            rows,
+                            scissor: run.scissor,
+                            bounds: run.bounds,
+                        },
+                    );
                 }
             }
             order.group += 1;
@@ -375,30 +539,42 @@ impl Ordering<'_> {
         };
         order.higher_kinds.clear();
         order.occlusion.clear();
+        order.open_runs = [None; PaintTier::COUNT];
+        for runs in &mut order.tier_runs {
+            runs.clear();
+        }
         // The batches closed in the group have listed, so they no longer gate quads. The
         // open-batch grid spans groups.
         order.batch.closed_grid.clear();
         order.batch.waiting.clear();
         order.batch.waiting_indexed = 0;
+        order.batch.unindexed = None;
     }
 
     /// Finalize the open text batch, if any. Called at batch-split events (quad or higher-kind
     /// overlap, strict-bounds mismatch, a backdrop's barrier). A batch that ends in the open group
     /// waits to list after its quads, at its close; one that ends in a group already closed lists
-    /// now, as nothing since overlaps it ([`Self::order`] closed it at the first that did). The grid
-    /// fill is deferred to [`Self::closed_hit`].
+    /// now, as nothing since overlaps it ([`Self::order`] closed it at the first that did). The
+    /// grid fill is deferred to [`Self::closed_hit`].
     pub(super) fn close_batch(&mut self) {
-        let Some(ClosedBatch { batch: b, scissor }) = self.order.batch.close() else {
+        let Some(ClosedBatch { batch: b, bounds }) = self.order.batch.close() else {
             return;
         };
         let text = ClosedText {
             rows: Span::try_from(b.texts_start..self.out.texts.len() as u32).unwrap(),
             // Already physical and clamped to every run's clip-narrowed bounds, so it is the
-            // batch's GPU scissor, which clips a turned run; an unturned run clips its own glyphs.
-            scissor,
+            // batch's GPU scissor where a run turns; an unturned run clips its own glyphs.
+            bounds,
+            scissor: b.turned.then_some(bounds),
         };
         if self.renders_after_in_flight(b.last_group) {
-            self.order.batch.waiting.push(text);
+            let batch = &mut self.order.batch;
+            batch.waiting.push(text);
+            batch.unindexed = Some(
+                batch
+                    .unindexed
+                    .map_or(text.bounds, |unindexed| unindexed.union(text.bounds)),
+            );
         } else {
             self.order.list_text(self.out, text);
         }
@@ -412,6 +588,7 @@ impl Ordering<'_> {
         let b = self.order.batch.open.get_or_insert(OpenBatch {
             texts_start,
             last_group,
+            turned: false,
             clip: TextClip::Whole,
         });
         b.last_group = last_group;
@@ -449,23 +626,25 @@ impl Ordering<'_> {
     }
 
     /// `true` if `q` overlaps text of a batch closed in the open group that renders at its end.
-    /// The first query hitting a waiting batch's scissor drains those batches into the closed
-    /// grid; groups nothing probes never pay the fill.
+    /// The first query hitting the union of the waiting batches not yet indexed drains them into
+    /// the closed grid, so a group of many disjoint batches tests each query once against the union
+    /// and once against the grid; groups nothing probes never pay the fill.
     fn closed_hit(&mut self, q: URect) -> bool {
         let BatchState {
             closed_grid,
             waiting,
             waiting_indexed,
+            unindexed,
             ..
         } = &mut self.order.batch;
-        let unindexed = &waiting[*waiting_indexed..];
-        if unindexed.iter().any(|text| text.scissor.intersects(q)) {
-            for text in unindexed {
+        if unindexed.is_some_and(|unindexed| unindexed.intersects(q)) {
+            for text in &waiting[*waiting_indexed..] {
                 for ti in text.rows.range() {
                     closed_grid.push(self.out.texts[ti].bounds);
                 }
             }
             *waiting_indexed = waiting.len();
+            *unindexed = None;
         }
         closed_grid.any_overlap(q)
     }
@@ -474,7 +653,7 @@ impl Ordering<'_> {
 #[cfg(test)]
 pub(crate) mod internals {
     use crate::renderer::frontend::composer::paint_order::{
-        BatchState, CloseTally, ClosedText, GroupClose, PaintOrder,
+        BatchState, CloseTally, ClosedText, GroupClose, PaintOrder, TierRun,
     };
 
     /// The groups a frame closed for one cause, and the draws ordered after those closes, summed.
@@ -487,7 +666,6 @@ pub(crate) mod internals {
     /// A frame's closed groups, by cause.
     #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
     pub(crate) struct GroupCloses {
-        pub(crate) clip: Closes,
         pub(crate) paint_order: Closes,
         pub(crate) barrier: Closes,
         pub(crate) end: Closes,
@@ -513,6 +691,7 @@ pub(crate) mod internals {
                         closed_grid,
                         waiting,
                         waiting_indexed: _,
+                        unindexed: _,
                         texts_listed: _,
                     },
                 higher_kinds,
@@ -522,9 +701,15 @@ pub(crate) mod internals {
                 backdrop_break: _,
                 group: _,
                 lane_runs: _,
+                open_runs: _,
+                tier_runs,
                 closes: _,
             } = self;
             waiting.capacity() * size_of::<ClosedText>()
+                + tier_runs
+                    .iter()
+                    .map(|runs| runs.capacity() * size_of::<TierRun>())
+                    .sum::<usize>()
                 + open_grid.scratch_bytes()
                 + closed_grid.scratch_bytes()
                 + higher_kinds.scratch_bytes()
@@ -541,7 +726,6 @@ pub(crate) mod internals {
         pub(crate) fn group_closes(&self) -> GroupCloses {
             let tally = self.closes.get();
             GroupCloses {
-                clip: tally.of(GroupClose::Clip),
                 paint_order: tally.of(GroupClose::PaintOrder),
                 barrier: tally.of(GroupClose::Barrier),
                 end: tally.of(GroupClose::End),

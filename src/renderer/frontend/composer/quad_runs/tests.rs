@@ -1,4 +1,5 @@
 use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::urect::URect;
 use crate::renderer::frontend::composer::quad_runs::QuadRuns;
 use crate::renderer::render_buffer::fill_form::{FillBrush, FillForm};
 use crate::renderer::render_buffer::quad_draw_row::{QuadInstance, QuadKey};
@@ -8,22 +9,37 @@ const SOLID: QuadKey = QuadKey::Fill(FillForm::BOX_SOLID);
 const GRADIENT: QuadKey = QuadKey::Fill(FillForm::new(ShapeForm::Box, FillBrush::Gradient));
 const TRIANGLE: QuadKey = QuadKey::Fill(FillForm::new(ShapeForm::Triangle, FillBrush::Solid));
 
-/// The x of each quad in the order `join` leaves them, each 10 × 10 at its `x`; each key moves
-/// with its quad.
+/// The x of each quad in the order `join` leaves them, each 10 × 10 at its `x` under no scissor;
+/// each key moves with its quad.
 fn joined(rows: &[(f32, QuadKey)]) -> Vec<f32> {
-    let mut keys: Vec<QuadKey> = rows.iter().map(|&(_, key)| key).collect();
+    let scissored: Vec<(f32, QuadKey, Option<URect>)> =
+        rows.iter().map(|&(x, key)| (x, key, None)).collect();
+    joined_under(&scissored)
+}
+
+/// [`joined`] with each quad's run scissor, which moves with its quad.
+fn joined_under(rows: &[(f32, QuadKey, Option<URect>)]) -> Vec<f32> {
+    let mut keys: Vec<QuadKey> = rows.iter().map(|&(_, key, _)| key).collect();
+    let mut scissors: Vec<Option<URect>> = rows.iter().map(|&(_, _, scissor)| scissor).collect();
     let mut quads: Vec<QuadInstance> = rows
         .iter()
-        .map(|&(x, _)| QuadInstance::of_rect(Rect::new(x, 0.0, 10.0, 10.0)))
+        .map(|&(x, _, _)| QuadInstance::of_rect(Rect::new(x, 0.0, 10.0, 10.0)))
         .collect();
-    QuadRuns::default().join(&mut keys, &mut quads);
+    QuadRuns::default().join(&mut keys, &mut scissors, &mut quads);
     let order: Vec<f32> = quads.iter().map(|q| q.header.rect.min.x).collect();
-    for (x, key) in order.iter().zip(&keys) {
+    for (at, x) in order.iter().enumerate() {
         let source = rows
             .iter()
-            .find(|(at, _)| at == x)
+            .find(|(from, _, _)| from == x)
             .expect("a quad of the input");
-        assert_eq!(*key, source.1, "the key of the quad at {x} moved with it");
+        assert_eq!(
+            keys[at], source.1,
+            "the key of the quad at {x} moved with it"
+        );
+        assert_eq!(
+            scissors[at], source.2,
+            "the scissor of the quad at {x} moved with it"
+        );
     }
     order
 }
@@ -75,4 +91,42 @@ fn a_shadow_and_a_triangle_key_runs_of_their_own() {
         (80.0, SOLID),
     ];
     assert_eq!(joined(&rows), [0.0, 40.0, 20.0, 80.0, 60.0]);
+}
+
+/// A quad joins only a run of its scissor: of three apart solids, the first and last under no
+/// scissor join past the middle one, which a scissor cuts, so 0, 20, 40 become 0, 40, 20.
+#[test]
+fn a_quad_joins_only_a_run_of_its_scissor() {
+    let cut = Some(URect::new(15, 0, 10, 10));
+    let rows = [(0.0, SOLID, None), (20.0, SOLID, cut), (40.0, SOLID, None)];
+    assert_eq!(joined_under(&rows), [0.0, 40.0, 20.0]);
+}
+
+/// A quad its clip holds, where that clip cuts no quad of the group, joins a run under no clip:
+/// the solid at 20 under (15, 0, 20 × 10), which holds it, joins the solid at 0, leaving 0, 20, 40
+/// in order, all under none. Where the clip also cuts the solid at 30, 30..40 past its edge at 35,
+/// the solid at 20 stays under it, and the two clipped solids run together.
+#[test]
+fn a_quad_its_clip_holds_joins_a_run_under_none_unless_the_clip_cuts_another() {
+    let holding = Some(URect::new(15, 0, 20, 10));
+    let rows = [
+        (0.0, SOLID, None),
+        (20.0, SOLID, holding),
+        (40.0, SOLID, None),
+    ];
+    let mut keys: Vec<QuadKey> = rows.iter().map(|&(_, key, _)| key).collect();
+    let mut scissors: Vec<Option<URect>> = rows.iter().map(|&(_, _, scissor)| scissor).collect();
+    let mut quads: Vec<QuadInstance> = rows
+        .iter()
+        .map(|&(x, _, _)| QuadInstance::of_rect(Rect::new(x, 0.0, 10.0, 10.0)))
+        .collect();
+    QuadRuns::default().join(&mut keys, &mut scissors, &mut quads);
+    assert_eq!(scissors, [None, None, None]);
+
+    let rows = [
+        (0.0, SOLID, None),
+        (20.0, SOLID, holding),
+        (30.0, SOLID, holding),
+    ];
+    assert_eq!(joined_under(&rows), [0.0, 20.0, 30.0]);
 }

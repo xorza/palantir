@@ -96,16 +96,18 @@ impl Workload {
         for _ in 0..groups {
             buffer.quads.push(QuadDrawRow {
                 key: QuadKey::Fill(FillForm::BOX_SOLID),
+                scissor: None,
                 instance: QuadInstance::default(),
             });
         }
         for group in 0..groups {
             let scissor = Some(self.scissor(group));
             let at = Span::new(group as u32, 1);
-            let run = |lane, scissor| DrawRun {
+            let run = |lane, scissor: Option<URect>| DrawRun {
                 lane,
                 rows: at,
                 scissor,
+                bounds: scissor.unwrap_or(URect::new(0, 0, VIEWPORT, VIEWPORT)),
                 batch: group as u32,
             };
             buffer.runs.push(run(Lane::Quad, scissor));
