@@ -6,7 +6,6 @@
 - optimal resolve strategies
 - material for texts and strokes?
 
-- darkroom curves performance
 - atlas pool: the move bench and the frame A/B on the Windows AMD iGPU
 
 - widget-authoring surface
