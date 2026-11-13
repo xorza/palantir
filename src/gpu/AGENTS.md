@@ -80,7 +80,10 @@ How palantir draws, from the renderer's instance streams through wgpu: the decis
   that holds the run. Refused: a scissor a group, narrowed as its draws need, as one cut draw
   still closes every lane; a rect clip in each instance's chain (Rounded clip); cut boxes clipped
   on the CPU, as a glyph is, exact for a sharp, solid, unturned box alone; a text batch with no
-  scissor, which a partial frame drew at every damage rect.
+  scissor, which a partial frame drew at every damage rect. Kept though the draws it saves buy no
+  frame time on any host measured, and the composer pays 1 to 5 % of a CPU frame
+  (`.notes/PERF.md`, "Fewer draws buy no frame time on any host"): runs in paint order under the
+  scissor they need are what a draw's layer builds on.
 
 ## Rounded clip
 

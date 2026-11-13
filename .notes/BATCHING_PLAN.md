@@ -121,6 +121,9 @@ In order; each ends with the gate of `AGENTS.md` and the census of step 1.
   `atomic/composer/cpu/*` on the Apple laptop, as groups no longer split at clips, `clips/*` +39
   to +46 %, `quads/{clipped,rounded_clip}` +23 %, `higher_kind_overlap/{same_tier_image,
   mixed_overlap}` +22 and +24 %, `quads/plain` +10 %.
+- **Measured on four hosts, kept.** Against the step 2 tree, whole frames held on the Apple
+  laptop, the handheld, the board and the intel, and the CPU frames rose 1 to 5 %
+  (`.notes/PERF.md`, "Fewer draws buy no frame time on any host"). Kept as the base of step 6.
 
 - **Change.** `break_for_clip` goes. A lane's run opens with the scissor its first draw needs:
   the clip in force where it cuts the draw, none where it does not. A draw of bounds `B`, seen as

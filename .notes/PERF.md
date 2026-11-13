@@ -105,6 +105,14 @@ an older number here reads as a share, not a time.
 
 ## Where the time is
 
+- **Fewer draws buy no frame time on any host** (2026-11-14, ABBA of
+  `integration/{frame,clip_frame}/*` at `8dcaac510` against `bd30eb4e2`, before a run carried its
+  scissor; the showcase's census 240 → 141 draws). GPU frames: apple within ±0.5 %, board ±1 %,
+  handheld −3 to +5 % inside its GPU noise, intel's clip scrolling 0 to +1.6 % and the rest past
+  its floor, its base legs 30 % apart. CPU frames: apple 0 to +4 %, handheld +1 to +5 %, board −1
+  to +3 %, scrolling and resizing the most, the composer's wider groups. The board's clip
+  scrolling frames are 11 to 43 ms of fill either way; no host spends enough a draw for 99 fewer
+  to show on these scenes.
 - **The CPU frame** (old fixture, local `frame/cpu/hovering` 116 µs, LBR call stacks): record is
   nearly all of it. `open_node` 21.6 %, `Ui::response_for` 10.1 %, `post_record` 9.7 %, `Text::show`
   5.4 %, `Button::show` 4.9 %, the text shape's push 4.7 %, `widget_id` 3.8 %, the fixture's own
