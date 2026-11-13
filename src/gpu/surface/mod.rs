@@ -2,10 +2,8 @@
 //! backbuffer and how a frame leaves it, readbacks, and scissors.
 
 pub(crate) mod backbuffer;
-pub(crate) mod backbuffer_out;
 pub(crate) mod capture;
 pub(crate) mod damage_canvas;
-pub(crate) mod map_state;
 #[cfg_attr(
     not(feature = "internals"),
     expect(

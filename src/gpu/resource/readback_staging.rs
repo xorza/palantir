@@ -1,7 +1,7 @@
 //! [`ReadbackStaging`]: a buffer a texture region is copied into and read back from.
 
 use crate::gpu::device::gpu::Gpu;
-use crate::gpu::surface::map_state::MapState;
+use crate::gpu::resource::map_state::MapState;
 use glam::UVec2;
 
 /// A buffer that holds `size` texels of `texel` bytes, its rows padded to whole
@@ -99,8 +99,8 @@ impl ReadbackStaging {
 #[cfg(test)]
 pub(crate) mod internals {
     use crate::gpu::device::gpu::Gpu;
+    use crate::gpu::resource::map_state::MapState;
     use crate::gpu::resource::readback_staging::ReadbackStaging;
-    use crate::gpu::surface::map_state::MapState;
     use glam::UVec2;
 
     impl ReadbackStaging {

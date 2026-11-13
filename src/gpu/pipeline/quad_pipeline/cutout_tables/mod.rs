@@ -8,12 +8,12 @@ use crate::gpu::atlas::atlas_format::AtlasFormat;
 use crate::gpu::atlas::atlas_textures::{self, AtlasTextures};
 use crate::gpu::atlas::page_group::{self, PageGroup};
 use crate::gpu::device::gpu::Gpu;
-use crate::gpu::frame::gpu_ctx::GpuCtx;
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
-use crate::gpu::pipeline::pipeline_recipe::{self, PipelineRecipe, vertex_attr};
 use crate::gpu::pipeline::quad_pipeline::cutout_placements::CutoutPlacements;
 use crate::gpu::pipeline::quad_pipeline::cutout_plan::{BakeTable, CornerTables, CutoutPlan};
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
+use crate::gpu::resource::gpu_ctx::GpuCtx;
+use crate::gpu::resource::pipeline_recipe::{self, PipelineRecipe, vertex_attr};
 use bytemuck::{Pod, Zeroable};
 use std::mem::offset_of;
 

@@ -175,7 +175,7 @@ impl Capture {
     }
 
     /// Whether the copy's map callback has yet to run, which on a lost device it may never do
-    /// ([`MapState::is_pending`](crate::gpu::surface::map_state::MapState::is_pending)).
+    /// ([`MapState::is_pending`](crate::gpu::resource::map_state::MapState::is_pending)).
     pub(crate) fn is_pending(&self) -> bool {
         self.staging.map().is_pending()
     }

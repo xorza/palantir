@@ -13,7 +13,7 @@ use crate::gpu::backdrop::backdrop_blur::{
     BackdropBlur, BlurJob, JobLayout, LEVEL_FORMAT, ResultTexture,
 };
 use crate::gpu::bench_gpu::{BenchGpu, PassTimer, TARGET_FORMAT, Timing};
-use crate::gpu::frame::gpu_ctx::GpuCtx;
+use crate::gpu::resource::gpu_ctx::GpuCtx;
 use crate::gpu::resource::upload_staging::UploadStaging;
 use crate::primitives::geometry::urect::URect;
 use crate::shape::paint::blur_plan::BlurPlan;

@@ -11,12 +11,12 @@ use crate::gpu::atlas::page_slots::{AtlasSlots, PageSlots};
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::pipeline::clip_variant::{ClipVariant, Clipping};
 use crate::gpu::pipeline::instanced_pipeline::VariantTarget;
-use crate::gpu::pipeline::pipeline_recipe::{self, Pipeline, PipelineRecipe};
 use crate::gpu::pipeline::raster_pipeline::raster_quad::{
     FLAG_COLOR, FLAG_DESATURATE, FLAG_MASK, FLAG_PAGE, U_BITS, V_SHIFT,
 };
 use crate::gpu::pipeline::raster_pipeline::raster_quad::{RasterQuad, SpunRasterQuad};
-use crate::gpu::pipeline::shader_body::{ShaderBody, ShaderConstant};
+use crate::gpu::resource::pipeline_recipe::{self, Pipeline, PipelineRecipe};
+use crate::gpu::resource::shader_body::{ShaderBody, ShaderConstant};
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::primitives::wgsl;
 

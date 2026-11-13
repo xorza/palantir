@@ -5,10 +5,10 @@ use crate::common::expiry_window::ExpiryWindow;
 use crate::gpu::atlas::scratch_cache::ScratchId;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::tiler_family::TilerFamily;
-use crate::gpu::frame::gpu_ctx::GpuCtx;
-use crate::gpu::pipeline::pipeline_recipe::{self, PipelineRecipe};
-use crate::gpu::pipeline::shader_body::{ShaderBody, ShaderConstant};
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
+use crate::gpu::resource::gpu_ctx::GpuCtx;
+use crate::gpu::resource::pipeline_recipe::{self, PipelineRecipe};
+use crate::gpu::resource::shader_body::{ShaderBody, ShaderConstant};
 use crate::gpu::resource::shelf_packer::ShelfPacker;
 use crate::gpu::resource::texture_binding::{self, Filtering};
 use crate::gpu::surface::owned_target::TargetSpec;
@@ -1121,7 +1121,7 @@ pub(crate) mod internals {
     use crate::gpu::atlas_memory::AtlasUse;
     use crate::gpu::backdrop::backdrop_blur::{BackdropBlur, BlurJob};
     use crate::gpu::device::gpu::Gpu;
-    use crate::gpu::frame::gpu_ctx::GpuCtx;
+    use crate::gpu::resource::gpu_ctx::GpuCtx;
     #[cfg(test)]
     use crate::gpu::resource::shelf_packer::ShelfPacker;
     use crate::gpu::surface::render_target::TargetFormat;

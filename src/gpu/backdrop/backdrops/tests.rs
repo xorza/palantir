@@ -9,8 +9,8 @@ use crate::gpu::backdrop::backdrops::{
     BackdropFrame, BackdropSlot, Backdrops, Held, Kept, RESULTS, SpectrumCell, held_clear, place,
 };
 use crate::gpu::backdrop::tests::CLEAR;
-use crate::gpu::pipeline::shader_body::ShaderBody;
 use crate::gpu::render_owner_id::{RenderOwnerId, RenderOwners};
+use crate::gpu::resource::shader_body::ShaderBody;
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::surface::render_target::TargetFormat;
 use crate::gpu::test_gpu::{TestGpu, headless_test_gpu};

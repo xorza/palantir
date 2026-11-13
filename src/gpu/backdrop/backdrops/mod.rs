@@ -26,9 +26,9 @@ use crate::gpu::backdrop::backdrop_blur::{
     BackdropBlur, BlurJob, JobLayout, ResultTexture, TargetSource,
 };
 use crate::gpu::device::gpu::{FilledBuffer, Gpu};
-use crate::gpu::frame::gpu_ctx::GpuCtx;
 use crate::gpu::render_owner_id::RenderOwnerId;
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
+use crate::gpu::resource::gpu_ctx::GpuCtx;
 use crate::gpu::resource::texture_binding::{self, TextureBinding};
 use crate::gpu::spectrum_tables::SpectrumTables;
 use crate::gpu::surface::backbuffer::Backbuffer;

@@ -2,6 +2,8 @@
 //! of one effect and form through that pair's pipeline. The pipelines live in the
 //! [`WgpuEffectStore`], which builds them where a use wants them.
 
+pub(crate) mod wgpu_effect_store;
+
 use std::array;
 use std::mem::offset_of;
 
@@ -13,16 +15,16 @@ use crate::effect::contract::{
 use crate::effect::effect_store::EffectModule;
 use crate::gpu::backdrop::backdrops::BackdropGroups;
 use crate::gpu::device::gpu::Gpu;
-use crate::gpu::frame::gpu_ctx::GpuCtx;
 use crate::gpu::pipeline::clip_variant::{ClipVariant, Clipping};
+use crate::gpu::pipeline::effect_pipeline::wgpu_effect_store::WgpuEffectStore;
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
-use crate::gpu::pipeline::pipeline_recipe::{self, Pipeline, PipelineRecipe, vertex_attr};
 use crate::gpu::pipeline::runs::Runs;
 use crate::gpu::pipeline::shape_template::{self, TemplateIndices};
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use crate::gpu::resource::effect_image_groups::{EffectImageGroups, EffectImages};
+use crate::gpu::resource::gpu_ctx::GpuCtx;
+use crate::gpu::resource::pipeline_recipe::{self, Pipeline, PipelineRecipe, vertex_attr};
 use crate::gpu::resource::texture_binding::TextureBinding;
-use crate::gpu::resource::wgpu_effect_store::WgpuEffectStore;
 use crate::gpu::resource::wgpu_image_store::WgpuImageStore;
 use crate::primitives::effect::effect_kind::KindId;
 use crate::primitives::identity::texture_id::TextureId;

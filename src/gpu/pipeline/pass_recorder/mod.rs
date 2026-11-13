@@ -2,8 +2,8 @@
 
 use crate::diagnostics::gpu_pass_stats::PassCounts;
 use crate::gpu::debug_marker;
-use crate::gpu::pipeline::pipeline_recipe::Pipeline;
 use crate::gpu::pipeline::viewport_push::ViewportPush;
+use crate::gpu::resource::pipeline_recipe::Pipeline;
 use crate::primitives::geometry::urect::URect;
 use std::ops::Range;
 

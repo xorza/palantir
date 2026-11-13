@@ -4,7 +4,7 @@
 
 use crate::effect::effect_registry::EffectRegistry;
 use crate::gpu::device::gpu::Gpu;
-use crate::gpu::resource::wgpu_effect_store::WgpuEffectStore;
+use crate::gpu::pipeline::effect_pipeline::wgpu_effect_store::WgpuEffectStore;
 use crate::gpu::resource::wgpu_image_store::WgpuImageStore;
 use crate::host::host_cpu::HostCpu;
 use crate::host::host_device::{BackendSpec, HostDevice};

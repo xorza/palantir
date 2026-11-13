@@ -4,8 +4,8 @@
 
 use crate::gpu::device::gpu::{FilledBuffer, Gpu};
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
-use crate::gpu::pipeline::pipeline_recipe::vertex_attr;
-use crate::gpu::pipeline::shader_body::ShaderConstant;
+use crate::gpu::resource::pipeline_recipe::vertex_attr;
+use crate::gpu::resource::shader_body::ShaderConstant;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::wgsl;
 use crate::renderer::render_buffer::shape_form::ShapeForm;
@@ -201,10 +201,10 @@ const _: () = {
 
 #[cfg(test)]
 mod tests {
-    use crate::gpu::pipeline::shader_body::ShaderBody;
     use crate::gpu::pipeline::shape_template::{
         self, INDICES, TemplateIndices, point_count, triangle_count,
     };
+    use crate::gpu::resource::shader_body::ShaderBody;
     use crate::primitives::wgsl::SHAPE_TEMPLATE;
     use crate::renderer::render_buffer::shape_form::ShapeForm;
     use crate::renderer::render_buffer::template_cover::TemplateCover;

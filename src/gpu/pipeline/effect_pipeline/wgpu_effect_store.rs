@@ -271,7 +271,9 @@ impl EffectStore for WgpuEffectStore {
 #[cfg(test)]
 pub(crate) mod internals {
     use crate::gpu::pipeline::clip_variant::{ClipVariant, Clipping};
-    use crate::gpu::resource::wgpu_effect_store::{ATTACHED, FormatEffects, WgpuEffectStore};
+    use crate::gpu::pipeline::effect_pipeline::wgpu_effect_store::{
+        ATTACHED, FormatEffects, WgpuEffectStore,
+    };
     use crate::primitives::identity::effect_id::EffectId;
     use crate::renderer::render_buffer::effect_draw_row::EffectKey;
     use crate::renderer::render_buffer::shape_form::ShapeForm;

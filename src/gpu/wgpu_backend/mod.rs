@@ -63,7 +63,6 @@ use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::pass_traffic::PassTraffic;
 use crate::gpu::frame::debug_overlay::{self, DebugOverlay, OverlayDraw};
 use crate::gpu::frame::frame_passes::{ColorLoad, FramePasses, FrameShape, PassStep, TargetKind};
-use crate::gpu::frame::gpu_ctx::GpuCtx;
 use crate::gpu::frame::gpu_timings::{BackdropPhase, GpuTimings, Mark};
 use crate::gpu::frame::main_segment::MainSegment;
 use crate::gpu::frame::schedule::{GroupSpan, RenderStep, Schedule};
@@ -71,6 +70,7 @@ use crate::gpu::frame::submission::{Route, Submission};
 use crate::gpu::pipeline::blit_pipeline::BlitPipeline;
 use crate::gpu::pipeline::clip_variant::{ClipVariant, Clipping};
 use crate::gpu::pipeline::curve_pipeline::CurvePipeline;
+use crate::gpu::pipeline::effect_pipeline::wgpu_effect_store::WgpuEffectStore;
 use crate::gpu::pipeline::effect_pipeline::{
     EffectBatch, EffectPipeline, EffectStores, EffectUpload,
 };
@@ -87,10 +87,10 @@ use crate::gpu::raster::icon_backend::IconBackend;
 use crate::gpu::raster::text_backend::{TextBackend, TextBatchInput};
 use crate::gpu::render_owner_id::RenderOwnerId;
 use crate::gpu::resource::frame_group::FrameGroup;
+use crate::gpu::resource::gpu_ctx::GpuCtx;
 use crate::gpu::resource::gpu_view_targets::{GpuViewTargets, ViewSubmitter};
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::resource::upload_staging::UploadStaging;
-use crate::gpu::resource::wgpu_effect_store::WgpuEffectStore;
 use crate::gpu::resource::wgpu_image_store::WgpuImageStore;
 use crate::gpu::surface::backbuffer::Backbuffer;
 use crate::gpu::surface::capture::{Capture, CaptureBlit, CaptureSource, TexelOrder};
@@ -1380,14 +1380,13 @@ pub(crate) mod internals {
     use crate::gpu::atlas::page_list::MAX_PAGES;
     use crate::gpu::atlas_memory::{AtlasMemory, AtlasUse};
     #[cfg(test)]
+    use crate::gpu::device::backbuffer_out::BackbufferOut;
+    #[cfg(test)]
     use crate::gpu::device::pass_traffic::PassTraffic;
     #[cfg(test)]
     use crate::gpu::pipeline::format_pipelines::FormatPipelines;
     #[cfg(test)]
-    #[cfg(test)]
     use crate::gpu::raster::raster_atlas::counters::AtlasCounts;
-    #[cfg(test)]
-    use crate::gpu::surface::backbuffer_out::BackbufferOut;
     use crate::gpu::surface::render_target::TargetFormat;
     use crate::gpu::wgpu_backend::WgpuBackend;
     use crate::renderer::row_table::RowTable;

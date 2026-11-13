@@ -19,7 +19,7 @@ use crate::gpu::device::gpu_wait::GpuWait;
 use crate::gpu::device::requested_gpu::GpuRequest;
 use crate::gpu::error::GpuRequestError;
 #[cfg(test)]
-use crate::gpu::frame::gpu_ctx::GpuCtx;
+use crate::gpu::resource::gpu_ctx::GpuCtx;
 #[cfg(test)]
 use crate::gpu::resource::upload_staging::UploadStaging;
 use crate::gpu::surface::owned_target::{OwnedTarget, TargetSpec};

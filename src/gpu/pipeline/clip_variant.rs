@@ -2,7 +2,7 @@
 //! draws through it.
 
 use crate::gpu::device::gpu::Gpu;
-use crate::gpu::pipeline::pipeline_recipe::{Pipeline, PipelineRecipe};
+use crate::gpu::resource::pipeline_recipe::{Pipeline, PipelineRecipe};
 
 /// Whether a frame's draws name rounded clips, which picks the half of a [`ClipVariant`] its passes
 /// bind.

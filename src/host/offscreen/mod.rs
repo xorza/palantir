@@ -392,7 +392,7 @@ pub(crate) mod internals {
     use crate::ui::window_frames::present::PresentStrategy;
 
     #[cfg(test)]
-    use crate::gpu::resource::wgpu_effect_store::WgpuEffectStore;
+    use crate::gpu::pipeline::effect_pipeline::wgpu_effect_store::WgpuEffectStore;
     #[cfg(test)]
     use crate::gpu::surface::render_target::RenderTarget;
     #[cfg(test)]

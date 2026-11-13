@@ -3,7 +3,7 @@
 
 use crate::gpu::atlas::atlas_handle::Placement;
 use crate::gpu::atlas::page_list::MAX_PAGES;
-use crate::gpu::pipeline::pipeline_recipe::{self, vertex_attr};
+use crate::gpu::resource::pipeline_recipe::{self, vertex_attr};
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::content_type::ContentType;
 use crate::renderer::render_buffer::clip_chain::ClipChain;

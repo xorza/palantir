@@ -16,7 +16,7 @@ use crate::gpu::atlas::row_texture;
 use crate::gpu::bench_gpu::{BenchGpu, Timing};
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_wait::GpuWait;
-use crate::gpu::frame::gpu_ctx::GpuCtx;
+use crate::gpu::resource::gpu_ctx::GpuCtx;
 use crate::gpu::resource::upload_staging::UploadStaging;
 use crate::gpu::surface::owned_target::TargetSpec;
 use crate::gpu::surface::texel_readback::TexelReadback;

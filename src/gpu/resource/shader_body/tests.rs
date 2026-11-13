@@ -1,6 +1,6 @@
 use crate::gpu::pipeline::internals::SHADERS;
 use crate::gpu::pipeline::quad_pipeline::QuadPipeline;
-use crate::gpu::pipeline::shader_body::{PRELUDE, ShaderConstant, specialize_source};
+use crate::gpu::resource::shader_body::{PRELUDE, ShaderConstant, specialize_source};
 use crate::primitives::paint::antialias::AA_HALF_WIDTH;
 use std::collections::HashSet;
 use std::fs;

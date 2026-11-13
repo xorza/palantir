@@ -2,8 +2,8 @@
 
 use crate::gpu::atlas::row_texture::RowTexture;
 use crate::gpu::device::gpu::Gpu;
-use crate::gpu::frame::gpu_ctx::GpuCtx;
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
+use crate::gpu::resource::gpu_ctx::GpuCtx;
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::renderer::render_buffer::rounded_clip::RoundedClip;
 

@@ -2,7 +2,7 @@
 //! shader's lens functions probed against their closed forms.
 
 use crate::effect::stock;
-use crate::gpu::pipeline::shader_body::ShaderBody;
+use crate::gpu::resource::shader_body::ShaderBody;
 use crate::gpu::test_gpu::headless_test_gpu;
 use crate::host::harness::Harness;
 use crate::host::harness::harness_builder::Depth;

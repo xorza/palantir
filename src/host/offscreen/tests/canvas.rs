@@ -2,8 +2,8 @@
 //! and copies it into the backbuffer; on any other device it loads the backbuffer. The two paint
 //! the same pixels, and the backbuffer reaches the target alike by a copy and by a draw.
 
+use crate::gpu::device::backbuffer_out::BackbufferOut;
 use crate::gpu::device::pass_traffic::PassTraffic;
-use crate::gpu::surface::backbuffer_out::BackbufferOut;
 use crate::gpu::test_gpu::headless_test_gpu;
 use crate::host::offscreen::OffscreenHost;
 use crate::primitives::geometry::corners::Corners;

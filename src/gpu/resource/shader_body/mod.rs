@@ -8,7 +8,7 @@ use crate::primitives::wgsl;
 /// Concatenated ahead of every shader body, so shared vocabulary has one definition: the
 /// pipelines' own prelude, then the WGSL they share with the effect modules.
 const PRELUDE: [&str; 7] = [
-    include_str!("../prelude.wgsl"),
+    include_str!("prelude.wgsl"),
     wgsl::VIEWPORT,
     wgsl::TURN,
     wgsl::ANTIALIAS,
@@ -132,7 +132,7 @@ fn specialize_source(body: &str, constants: &[ShaderConstant]) -> String {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
-    use crate::gpu::pipeline::shader_body::ShaderBody;
+    use crate::gpu::resource::shader_body::ShaderBody;
     #[cfg(test)]
     use crate::gpu::test_gpu::headless_test_gpu;
     #[cfg(test)]

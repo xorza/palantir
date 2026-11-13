@@ -6,7 +6,7 @@
 //! [`RowTable`](crate::renderer::row_table::RowTable).
 
 use crate::gpu::device::gpu::Gpu;
-use crate::gpu::frame::gpu_ctx::{GpuCtx, RowCopy};
+use crate::gpu::resource::gpu_ctx::{GpuCtx, RowCopy};
 use crate::gpu::surface::owned_target::TargetSpec;
 use crate::gpu::texel;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;

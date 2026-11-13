@@ -11,7 +11,7 @@
 
 use crate::common::expiry_window::ExpiryWindow;
 use crate::gpu::device::gpu::{FilledBuffer, Gpu};
-use crate::gpu::frame::gpu_ctx::GpuCtx;
+use crate::gpu::resource::gpu_ctx::GpuCtx;
 use std::marker::PhantomData;
 use tinyvec::ArrayVec;
 
@@ -218,7 +218,7 @@ mod tests {
     use crate::common::expiry_window::EXPIRY_FRAMES;
     use crate::gpu::device::gpu_wait::GpuWait;
     use crate::gpu::resource::dynamic_buffer::{BufferSpec, DynamicBuffer, grown_capacity};
-    use crate::gpu::surface::map_state::MapState;
+    use crate::gpu::resource::map_state::MapState;
     use crate::gpu::test_gpu::{headless_test_gpu, isolated_headless_test_gpu};
 
     /// A buffer grows to the next power of two of an upload, keeps it through the expiry window

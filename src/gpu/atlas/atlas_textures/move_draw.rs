@@ -5,8 +5,8 @@ use crate::gpu::atlas::atlas_format::AtlasFormat;
 use crate::gpu::atlas::atlas_textures::texture_format;
 use crate::gpu::atlas::page_list::Move;
 use crate::gpu::device::gpu::Gpu;
-use crate::gpu::pipeline::pipeline_recipe::{self, PipelineRecipe, vertex_attr};
-use crate::gpu::pipeline::shader_body::ShaderBody;
+use crate::gpu::resource::pipeline_recipe::{self, PipelineRecipe, vertex_attr};
+use crate::gpu::resource::shader_body::ShaderBody;
 use crate::gpu::resource::texture_binding::{self, Filtering};
 use std::mem::offset_of;
 

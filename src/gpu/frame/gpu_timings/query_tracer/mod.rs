@@ -14,7 +14,7 @@ use crate::diagnostics::gpu_pass_stats::{BackdropTimes, BatchKind, GpuPassStats,
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::frame::gpu_timings::{BackdropPhase, Mark};
 use crate::gpu::frame::main_segment::MainSegment;
-use crate::gpu::surface::map_state::MapState;
+use crate::gpu::resource::map_state::MapState;
 use std::array;
 use std::mem;
 use std::ops::Range;

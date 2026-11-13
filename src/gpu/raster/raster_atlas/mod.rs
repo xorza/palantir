@@ -19,13 +19,13 @@ use crate::gpu::atlas::error::AtlasError;
 use crate::gpu::atlas::tenant::Tenant;
 use crate::gpu::atlas::{AtlasPool, LIST_CONFIGS};
 use crate::gpu::debug_marker;
-use crate::gpu::frame::gpu_ctx::{GpuCtx, RowCopy};
 use crate::gpu::pipeline::raster_pipeline::raster_quad::U_BITS;
 use crate::gpu::raster::raster_atlas::atlas_slot::{
     AtlasSlot, PlacedRaster, SlotPlacement, SlotState,
 };
 use crate::gpu::raster::raster_atlas::counters::AtlasCounters;
 use crate::gpu::raster::raster_atlas::packed_metadata::PackedMetadata;
+use crate::gpu::resource::gpu_ctx::{GpuCtx, RowCopy};
 use crate::primitives::paint::content_type::ContentType;
 use glam::{U16Vec2, UVec2};
 use rustc_hash::FxHashMap;

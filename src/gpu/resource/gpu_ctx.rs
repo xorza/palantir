@@ -194,7 +194,7 @@ pub(crate) struct Staged<'a> {
 
 #[cfg(test)]
 mod tests {
-    use crate::gpu::frame::gpu_ctx::RowCopy;
+    use crate::gpu::resource::gpu_ctx::RowCopy;
     use crate::gpu::surface::owned_target::TargetSpec;
     use crate::gpu::test_gpu::headless_test_gpu;
     use crate::gpu::texel;
