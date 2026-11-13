@@ -10,6 +10,7 @@ use crate::common::span::Span;
 use crate::gpu::atlas::atlas_textures::AtlasTextures;
 use crate::gpu::atlas::page_slots::PageSlots;
 use crate::gpu::device::gpu::Gpu;
+use crate::gpu::pipeline::atlas_binding::ATLAS_GROUP;
 use crate::gpu::pipeline::clip_variant::{ClipVariant, Clipping};
 use crate::gpu::pipeline::format_pipelines::PassPipelines;
 use crate::gpu::pipeline::instanced_pipeline::VariantTarget;
@@ -187,7 +188,7 @@ pub(crate) struct QuadPipeline {
     shader: wgpu::ShaderModule,
     /// Format-independent, so built once here rather than per format.
     pipeline_layout: wgpu::PipelineLayout,
-    /// [`Self::pipeline_layout`] plus the mask pages at group 1, for the shadow variant.
+    /// [`Self::pipeline_layout`] plus the atlas group, for the shadow variant.
     shadow_layout: wgpu::PipelineLayout,
     /// The shadows' baked corner cutouts.
     cutouts: CutoutTables,
@@ -285,11 +286,12 @@ impl QuadPipeline {
         self.extras.outlines.u32_range()
     }
 
-    /// Build the format-independent quad resources, the shadows reading their cutout tables from
-    /// `atlas`'s mask pages; per-format pipelines come from [`Self::ensure_draw`].
-    pub(crate) fn new(gpu: &Gpu, textures: &TextureBinding, atlas: &AtlasTextures) -> Self {
+    /// Build the format-independent quad resources, the shadows reading their cutout tables
+    /// through `atlas`, the atlas group's layout; per-format pipelines come from
+    /// [`Self::ensure_draw`].
+    pub(crate) fn new(gpu: &Gpu, textures: &TextureBinding, atlas: &wgpu::BindGroupLayout) -> Self {
         let shader = Self::SHADER.module(gpu);
-        let cutouts = CutoutTables::new(gpu, &shader, atlas);
+        let cutouts = CutoutTables::new(gpu, &shader);
 
         let instance_buffer =
             DynamicBuffer::<QuadInstance>::vertex(gpu, "palantir.quad.instances", 256);
@@ -310,7 +312,7 @@ impl QuadPipeline {
             shadow_layout: pipeline_recipe::pipeline_layout(
                 gpu,
                 "palantir.quad.shadow.pl",
-                &[Some(textures.frame_layout()), Some(cutouts.layout())],
+                &[Some(textures.frame_layout()), Some(atlas)],
             ),
             cutouts,
             shadow_cells: ShapeCells::Template,
@@ -380,7 +382,7 @@ impl QuadPipeline {
                                 f64::from(u8::from(self.shadow_cells == ShapeCells::Template)),
                             ),
                             ("TABLES_SERIES", f64::from(u8::from(series))),
-                            ("CUTOUT_SLOTS", f64::from(slots.mask.bits())),
+                            slots.mask_constant(),
                         ],
                         vertex_buffers: &[
                             Some(SHADOW_INSTANCE_LAYOUT),
@@ -444,11 +446,6 @@ impl QuadPipeline {
         self.cutouts.prepare(ctx, cutouts, placements, atlas);
     }
 
-    /// Make the cutout tables' group follow `atlas`, outside a frame's upload.
-    pub(crate) fn follow_cutouts(&mut self, gpu: &Gpu, atlas: &AtlasTextures) {
-        self.cutouts.follow(gpu, atlas);
-    }
-
     /// The runs of `instances`, a group's quads, that each draw through one [`QuadDraw`], in
     /// paint order.
     pub(crate) fn runs(&self, instances: Span) -> Runs<impl Fn(u32) -> QuadDraw + '_> {
@@ -472,7 +469,7 @@ impl QuadPipeline {
         match draw {
             QuadDraw::Fill(form) => self.draw_fill(rec, form, instances.u32_range()),
             QuadDraw::Shadow(_) => {
-                self.cutouts.bind(rec);
+                self.cutouts.bind(rec, pipelines.atlas());
                 self.draw_shapes(
                     rec,
                     self.shadow_cells,
@@ -574,6 +571,7 @@ const SHADOW_INSTANCE_LAYOUT: wgpu::VertexBufferLayout<'static> = pipeline_recip
 
 /// The numbers [`QuadPipeline::SHADER`] takes from the Rust types that own them.
 const SHADER_CONSTANTS: &[ShaderConstant] = &[
+    ShaderConstant::uint("ATLAS_GROUP", ATLAS_GROUP),
     ShaderConstant::uint("FILL_TAG_MASK", FillKind::TAG_MASK),
     ShaderConstant::uint("SPREAD_SHIFT", FillKind::SPREAD_SHIFT),
     ShaderConstant::uint("SPREAD_MASK", FillKind::SPREAD_MASK),
@@ -692,7 +690,7 @@ mod tests {
     fn a_table_shadow_builds_one_pipeline_a_set_of_mask_slots() {
         use crate::gpu::atlas::atlas_textures::AtlasTextures;
         use crate::gpu::atlas::page_slots::PageSlots;
-        use crate::gpu::pipeline::atlas_binding::AtlasSlots;
+        use crate::gpu::pipeline::atlas_binding::{AtlasGroup, AtlasSlots};
         use crate::gpu::pipeline::clip_variant::Clipping;
         use crate::gpu::pipeline::instanced_pipeline::VariantTarget;
         use crate::gpu::pipeline::quad_pipeline::QuadVariants;
@@ -704,8 +702,8 @@ mod tests {
         use crate::renderer::render_buffer::fill_form::FillForm;
 
         let gpu = headless_test_gpu();
-        let program =
-            QuadPipeline::new(&gpu, &TextureBinding::new(&gpu), &AtlasTextures::new(&gpu));
+        let atlas = AtlasGroup::new(&gpu, &AtlasTextures::new(&gpu));
+        let program = QuadPipeline::new(&gpu, &TextureBinding::new(&gpu), atlas.layout());
         let mut variants = QuadVariants::NONE;
         let tables = QuadDraw::Shadow(ShadowEntry::Tables);
         let fill = QuadDraw::Fill(FillForm::BOX_SOLID);

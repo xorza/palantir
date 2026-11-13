@@ -1,12 +1,12 @@
-//! The GPU half of the shadow cutout tables: the bake into the pool's mask pages, the group the
-//! shadows read them through, and the per-instance stream `vs_shadow` reads. The CPU half is
-//! [`CutoutPlan`], kept on each window's render stream, which places its tables through the
-//! shared [`CutoutPlacements`].
+//! The GPU half of the shadow cutout tables: the bake into the pool's mask pages and the
+//! per-instance stream `vs_shadow` reads; the shadows read the pages through the atlas group. The
+//! CPU half is [`CutoutPlan`], kept on each window's render stream, which places its tables
+//! through the shared [`CutoutPlacements`].
 
 use crate::gpu::atlas::atlas_format::AtlasFormat;
 use crate::gpu::atlas::atlas_textures::{self, AtlasTextures};
-use crate::gpu::atlas::page_group::{self, PageGroup};
 use crate::gpu::device::gpu::Gpu;
+use crate::gpu::pipeline::atlas_binding::ATLAS_GROUP;
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
 use crate::gpu::pipeline::quad_pipeline::cutout_placements::CutoutPlacements;
 use crate::gpu::pipeline::quad_pipeline::cutout_plan::{BakeTable, CornerTables, CutoutPlan};
@@ -16,12 +16,10 @@ use crate::gpu::resource::pipeline_recipe::{self, PipelineRecipe, vertex_attr};
 use bytemuck::{Pod, Zeroable};
 use std::mem::offset_of;
 
-/// The group the shadows read the tables through, the pool's mask pages; the bake pipeline; and
-/// this frame's tables. Where each key's table sits is the backend's [`CutoutPlacements`], a map
-/// with no device.
+/// The bake pipeline and this frame's tables. Where each key's table sits is the backend's
+/// [`CutoutPlacements`], a map with no device.
 #[derive(Debug)]
 pub(crate) struct CutoutTables {
-    pages: PageGroup<1>,
     bake_pipeline: wgpu::RenderPipeline,
     tables: DynamicBuffer<BakeInstance>,
     corners: DynamicBuffer<CornerTables>,
@@ -47,17 +45,8 @@ impl BakeInstance {
 }
 
 impl CutoutTables {
-    /// The tables for the quad `shader` (`vs_cutout_bake`, `fs_cutout_bake`), reading the mask
-    /// pages of `textures`.
-    pub(crate) fn new(gpu: &Gpu, shader: &wgpu::ShaderModule, textures: &AtlasTextures) -> Self {
-        let layout = page_group::layout(gpu, "palantir.quad.cutouts.bgl", 1);
-        let pages = PageGroup::new(
-            gpu,
-            &layout,
-            "palantir.quad.cutouts.bg",
-            [AtlasFormat::R8],
-            textures,
-        );
+    /// The tables for the quad `shader` (`vs_cutout_bake`, `fs_cutout_bake`).
+    pub(crate) fn new(gpu: &Gpu, shader: &wgpu::ShaderModule) -> Self {
         let bake_layout = pipeline_recipe::pipeline_layout(gpu, "palantir.quad.cutouts.pl", &[]);
         let bake_pipeline = PipelineRecipe {
             vertex_entry: "vs_cutout_bake",
@@ -76,18 +65,12 @@ impl CutoutTables {
         .build(gpu)
         .pipeline;
         Self {
-            pages,
             bake_pipeline,
             tables: DynamicBuffer::vertex(gpu, "palantir.quad.cutouts.tables", 16),
             corners: DynamicBuffer::vertex(gpu, "palantir.quad.cutouts.corners", 256),
             bakes: Vec::new(),
             instances: Vec::new(),
         }
-    }
-
-    /// Group 1 of the shadow pipeline: the mask pages.
-    pub(crate) const fn layout(&self) -> &wgpu::BindGroupLayout {
-        self.pages.layout()
     }
 
     /// The per-instance stream `vs_shadow` reads at location 9, parallel to the quads.
@@ -108,7 +91,6 @@ impl CutoutTables {
         placements: &mut CutoutPlacements,
         textures: &AtlasTextures,
     ) {
-        self.follow(ctx.gpu, textures);
         self.corners.upload_instances(ctx, plan.corners());
         placements.bakes(plan.tables(), &mut self.bakes);
         self.bake(ctx, textures);
@@ -162,14 +144,9 @@ impl CutoutTables {
         }
     }
 
-    /// Make the mask pages' group again where `textures` changed a page view.
-    pub(crate) fn follow(&mut self, gpu: &Gpu, textures: &AtlasTextures) {
-        self.pages.follow(gpu, textures);
-    }
-
-    /// Bind the mask pages and the corner stream for a shadow draw.
-    pub(crate) fn bind<'a>(&'a self, rec: &mut PassRecorder<'a>) {
-        rec.group(1, self.pages.group());
+    /// Bind `atlas`, the atlas group, and the corner stream for a shadow draw.
+    pub(crate) fn bind<'a>(&'a self, rec: &mut PassRecorder<'a>, atlas: &'a wgpu::BindGroup) {
+        rec.group(ATLAS_GROUP, atlas);
         rec.vertex(1, &self.corners.buffer);
     }
 }

@@ -89,7 +89,7 @@ fn a_baked_table_holds_the_cutout_it_tabulates() {
     pool.allocate(AtlasFormat::R8, Tenant::Glyphs, UVec2::splat(16))
         .unwrap();
     let mut textures = AtlasTextures::new(&gpu);
-    let mut tables = CutoutTables::new(&gpu, &shader, &textures);
+    let mut tables = CutoutTables::new(&gpu, &shader);
     let mut placements = CutoutPlacements::default();
     let mut placing = CutoutPlacing {
         placements: &mut placements,
@@ -108,7 +108,6 @@ fn a_baked_table_holds_the_cutout_it_tabulates() {
     tables.bakes.clone_from(&bakes);
     gpu.frame(|ctx| {
         textures.commit(ctx.gpu, ctx.encoder, &mut pool);
-        tables.pages.follow(ctx.gpu, &textures);
         tables.bake(ctx, &textures);
     });
     let pages =

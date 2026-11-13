@@ -1,15 +1,13 @@
 //! The GPU program every raster quad draws through, whichever tenant rasterized it: one shader
-//! module and one atlas layout, so one pipeline pair per swapchain format, over the pool's mask and
-//! color pages both tenants draw through ([`RASTER_FORMATS`]). `gpu::raster`'s `RasterPass` is the
-//! CPU half.
+//! module, so one pipeline pair per swapchain format, over the pool's mask and color pages both
+//! tenants draw through ([`AtlasGroup`](crate::gpu::pipeline::atlas_binding::AtlasGroup)).
+//! `gpu::raster`'s `RasterPass` is the CPU half.
 
 pub(crate) mod raster_quad;
 
-use crate::gpu::atlas::atlas_format::AtlasFormat;
-use crate::gpu::atlas::page_group;
 use crate::gpu::atlas::page_slots::PageSlots;
 use crate::gpu::device::gpu::Gpu;
-use crate::gpu::pipeline::atlas_binding::AtlasSlots;
+use crate::gpu::pipeline::atlas_binding::{ATLAS_GROUP, AtlasSlots};
 use crate::gpu::pipeline::clip_variant::{ClipVariant, Clipping};
 use crate::gpu::pipeline::instanced_pipeline::VariantTarget;
 use crate::gpu::pipeline::raster_pipeline::raster_quad::{
@@ -68,15 +66,14 @@ impl RasterVariants {
 pub(crate) struct RasterPipelinePair<'a> {
     pub(crate) flat: &'a Pipeline,
     pub(crate) spun: &'a Pipeline,
-    /// The [`PageGroup`](crate::gpu::atlas::page_group::PageGroup) over [`RASTER_FORMATS`].
+    /// The pool's [`AtlasGroup`](crate::gpu::pipeline::atlas_binding::AtlasGroup).
     pub(crate) atlas: &'a wgpu::BindGroup,
 }
 
-/// Shader and atlas layout, built once for every raster tenant.
+/// Shader and pipeline layout, built once for every raster tenant.
 #[derive(Debug)]
 pub(crate) struct RasterPipeline {
     shader: wgpu::ShaderModule,
-    layout: wgpu::BindGroupLayout,
     pipeline_layout: wgpu::PipelineLayout,
 }
 
@@ -89,25 +86,17 @@ impl RasterPipeline {
         constants: SHADER_CONSTANTS,
     };
 
-    pub(crate) fn new(gpu: &Gpu, textures: &TextureBinding) -> Self {
-        let layout = Self::create_layout(gpu);
-        // The frame group, then the atlas.
+    /// The program over the frame group and `atlas`, the atlas group's layout.
+    pub(crate) fn new(gpu: &Gpu, textures: &TextureBinding, atlas: &wgpu::BindGroupLayout) -> Self {
         let pipeline_layout = pipeline_recipe::pipeline_layout(
             gpu,
             "palantir.raster.pl",
-            &[Some(textures.frame_layout()), Some(&layout)],
+            &[Some(textures.frame_layout()), Some(atlas)],
         );
         Self {
             shader: Self::SHADER.module(gpu),
-            layout,
             pipeline_layout,
         }
-    }
-
-    /// The atlas group's layout, which a
-    /// [`PageGroup`](crate::gpu::atlas::page_group::PageGroup) over [`RASTER_FORMATS`] binds through.
-    pub(crate) const fn layout(&self) -> &wgpu::BindGroupLayout {
-        &self.layout
     }
 
     /// Build the halves of `variants` `target` binds, where they are not built: the only
@@ -115,10 +104,7 @@ impl RasterPipeline {
     /// animation turns, each pinned to the target's open mask and color slots.
     pub(crate) fn ensure(&self, variants: &mut RasterVariants, gpu: &Gpu, target: VariantTarget) {
         let idx = slots_idx(target.slots);
-        let constants = [
-            ("MASK_SLOTS", f64::from(target.slots.mask.bits())),
-            ("COLOR_SLOTS", f64::from(target.slots.color.bits())),
-        ];
+        let constants = target.slots.constants();
         variants.flat[idx].ensure(
             gpu,
             target.clipping,
@@ -152,18 +138,7 @@ impl RasterPipeline {
             },
         );
     }
-
-    /// The atlas group, [`ATLAS_GROUP`]: the mask pages, then the color pages.
-    fn create_layout(gpu: &Gpu) -> wgpu::BindGroupLayout {
-        page_group::layout(gpu, "palantir.raster.atlas layout", RASTER_FORMATS.len())
-    }
 }
-
-/// The page lists the raster atlas group binds, mask then color.
-pub(crate) const RASTER_FORMATS: [AtlasFormat; 2] = [AtlasFormat::R8, AtlasFormat::Rgba8];
-
-/// The group an atlas binds at, past the frame group.
-pub(crate) const ATLAS_GROUP: u32 = 1;
 
 /// The numbers [`RasterPipeline::SHADER`] takes from the Rust types that own them.
 const SHADER_CONSTANTS: &[ShaderConstant] = &[

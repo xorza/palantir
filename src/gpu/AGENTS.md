@@ -89,7 +89,9 @@ Facts and sources: `.notes/research/2026-11-12-atlas-pools.md` and
 - **A list a texel format, shared by every tenant of it**: R8 holds glyph and icon masks and the
   shadow cutout tables, RGBA8 color glyphs and icons, RGBA16F small backdrop results, as
   WebRender's `SharedTextures` and Zed's atlas keep a list a format. Glyphs and icons share their
-  lists and one bind group, as Zed keeps glyphs and SVG icons in one `Monochrome` list; nothing a
+  lists, as Zed keeps glyphs and SVG icons in one `Monochrome` list, and the rasters and the
+  shadows read the mask and color pages through one bind group at one slot, so a switch between
+  a text run and a shadow binds nothing; nothing a
   frame drew this frame or the last is evicted, so they compete for idle items alone. Refused: a
   budget a tenant, which kept a color-icon-heavy frame from evicting glyphs at the cost of each
   tenant's own headroom.

@@ -40,6 +40,26 @@ pub(crate) struct VariantTarget {
     pub(crate) slots: AtlasSlots,
 }
 
+/// What picks a frame's pipelines of every format, made once a submit after the pool's commit:
+/// whether its draws name rounded clips, and the open page slots of the lists its raster and
+/// shadow draws read.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct FrameVariant {
+    pub(crate) clipping: Clipping,
+    pub(crate) slots: AtlasSlots,
+}
+
+impl FrameVariant {
+    /// What a frame of this variant builds its pipelines of `format` for.
+    pub(crate) const fn target(self, format: wgpu::TextureFormat) -> VariantTarget {
+        VariantTarget {
+            format,
+            clipping: self.clipping,
+            slots: self.slots,
+        }
+    }
+}
+
 impl<I: bytemuck::Pod> InstancedPipeline<I> {
     pub(crate) fn new(gpu: &Gpu, spec: InstancedSpec<'_>) -> Self {
         Self {

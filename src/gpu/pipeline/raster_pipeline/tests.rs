@@ -3,20 +3,17 @@
 use crate::gpu::atlas::AtlasPool;
 use crate::gpu::atlas::atlas_format::AtlasFormat;
 use crate::gpu::atlas::atlas_textures::AtlasTextures;
-use crate::gpu::atlas::page_group::PageGroup;
 use crate::gpu::atlas::page_list::MAX_PAGES;
 use crate::gpu::atlas::page_slots::PageSlots;
 use crate::gpu::atlas::row_texture::RowTexture;
 use crate::gpu::atlas::tenant::Tenant;
 use crate::gpu::device::gpu::FilledBuffer;
-use crate::gpu::pipeline::atlas_binding::AtlasSlots;
+use crate::gpu::pipeline::atlas_binding::{ATLAS_GROUP, AtlasGroup, AtlasSlots};
 use crate::gpu::pipeline::clip_variant::Clipping;
 use crate::gpu::pipeline::instanced_pipeline::VariantTarget;
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
 use crate::gpu::pipeline::raster_pipeline::raster_quad::RasterQuad;
-use crate::gpu::pipeline::raster_pipeline::{
-    ATLAS_GROUP, RASTER_FORMATS, RasterPipeline, RasterVariants,
-};
+use crate::gpu::pipeline::raster_pipeline::{RasterPipeline, RasterVariants};
 use crate::gpu::pipeline::viewport_push::ViewportPush;
 use crate::gpu::resource::frame_group::FrameGroup;
 use crate::gpu::resource::texture_binding::TextureBinding;
@@ -86,15 +83,9 @@ fn a_quad_reads_its_page_under_every_set_of_slots() {
     }
 
     let binding = TextureBinding::new(&gpu);
-    let program = RasterPipeline::new(&gpu, &binding);
+    let group = AtlasGroup::new(&gpu, &atlas);
+    let program = RasterPipeline::new(&gpu, &binding, group.layout());
     let frame = FrameGroup::new(&gpu, binding, RowTexture::new(&gpu, 1).row_view());
-    let group = PageGroup::new(
-        &gpu,
-        program.layout(),
-        "palantir.test.raster.atlas",
-        RASTER_FORMATS,
-        &atlas,
-    );
     let size = UVec2::new(u32::from(SIDE) * MAX_PAGES as u32, 2 * u32::from(SIDE));
     let target = gpu.target("palantir.test.raster.slots", size);
     let mut variants = RasterVariants::NONE;
