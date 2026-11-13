@@ -11,7 +11,7 @@
 //!
 //! [`counter_snapshot!`] generates the cells, snapshot and subtraction from one field list, so a new counter can't miss one of them.
 //!
-//! A store that can *refuse* work at its ceiling reports it under its own name (`AtlasCounters::oversized`, `GradientAtlasCounters::fallbacks`, `BlockArenaCounters::allocs`); a workload test should assert these stay zero, since waiting won't clear them. They are gated out of shipping builds.
+//! A store that can *refuse* work at its ceiling reports it under its own name (`AtlasCounters::oversized`, `RowTableCounters::fallbacks`, `BlockArenaCounters::allocs`); a workload test should assert these stay zero, since waiting won't clear them. They are gated out of shipping builds.
 //!
 //! [`LayoutCounters`]: crate::layout::counters::LayoutCounters
 //! [`DamageCounters`]: crate::damage::counters::DamageCounters

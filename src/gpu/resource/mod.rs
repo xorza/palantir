@@ -1,6 +1,6 @@
 //! Device resources the pipelines draw from: buffers, texture bindings, the staging buffers
 //! uploads and readbacks pass through, registered images and the groups effects bind them
-//! through, the gradient atlas, the packed atlases, and `GpuView` targets.
+//! through, the gradient rows, the packed atlases, and `GpuView` targets.
 
 #[cfg(feature = "internals")]
 pub(crate) mod bench;

@@ -16,11 +16,11 @@ use crate::display::frame_stamp::FrameStamp;
 use crate::image_registry::texture_limit::TextureLimit;
 use crate::layout::Layout;
 use crate::renderer::backdrop_captures::BackdropTicket;
-use crate::renderer::cpu_gradient_atlas::FlushedRows;
 use crate::renderer::frontend::composer::Composer;
 use crate::renderer::frontend::encoder::Encoder;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_plan::RenderPlan;
+use crate::renderer::row_table::FlushedRows;
 use crate::scene::forest::Forest;
 
 /// What a frame builds: the plan it paints by, and the ticket of each backdrop of its scene, planes
@@ -105,19 +105,19 @@ impl Frontend {
         }
     }
 
-    /// The CPU side of a device attach, at startup and after a loss alike: start the gradient
-    /// atlas over under the device's `texture_limit`, which also caps `GpuView` target sizes.
+    /// The CPU side of a device attach, at startup and after a loss alike: start the row
+    /// table over under the device's `texture_limit`, which also caps `GpuView` target sizes.
     pub(crate) fn attach_device(&mut self, texture_limit: TextureLimit) {
         self.encoder.attach_device(texture_limit);
         self.composer.attach_device(texture_limit);
     }
 
-    /// Rows the gradient atlas holds, the height a new backend's LUT texture starts at.
+    /// Rows the row table holds, the height a new backend's LUT texture starts at.
     pub(crate) const fn gradient_rows(&self) -> u32 {
         self.encoder.gradient_rows()
     }
 
-    /// The last built frame as the GPU half paints it, which ends the gradient atlas's
+    /// The last built frame as the GPU half paints it, which ends the row table's
     /// registration epoch: call it for a frame that paints, once.
     pub(crate) fn output(&mut self) -> FrameOutput<'_> {
         FrameOutput {
@@ -142,10 +142,10 @@ impl Frontend {
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
     use crate::image_registry::texture_limit::TextureLimit;
-    use crate::renderer::cpu_gradient_atlas::CpuGradientAtlas;
     use crate::renderer::frontend::BuildPlan;
     use crate::renderer::frontend::Frontend;
     use crate::renderer::render_plan::RenderPlan;
+    use crate::renderer::row_table::RowTable;
     use std::num::NonZeroU32;
 
     /// No `wgpu::Device` to query; 8192 is `wgpu::Limits::default`'s `max_texture_dimension_2d`.
@@ -164,9 +164,9 @@ pub(crate) mod internals {
     }
 
     impl Frontend {
-        /// The gradient atlas the frame's ramps register in.
-        pub(crate) const fn gradient_atlas(&self) -> &CpuGradientAtlas {
-            self.encoder.gradient_atlas()
+        /// The row table the frame's ramps register in.
+        pub(crate) const fn row_table(&self) -> &RowTable {
+            self.encoder.row_table()
         }
     }
 
@@ -179,7 +179,7 @@ pub(crate) mod internals {
             frontend
         }
 
-        /// The growth ceiling of the gradient atlas, which the last device attach set.
+        /// The growth ceiling of the row table, which the last device attach set.
         pub(crate) fn gradient_max_rows(&self) -> u32 {
             self.encoder.gradient_max_rows()
         }

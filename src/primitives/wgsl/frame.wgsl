@@ -1,5 +1,5 @@
 // The frame group, which every color pipeline and every effect binds at `PALANTIR_FRAME_GROUP`:
-// the gradient LUT atlas and the frame's rounded clips, and the clip's coverage. The includer
+// the gradient rows and the frame's rounded clips, and the clip's coverage. The includer
 // declares `PALANTIR_AA_HALF_WIDTH` and includes the SDF and the antialiasing.
 
 const PALANTIR_FRAME_GROUP: u32 = /*{FRAME_GROUP}*/;

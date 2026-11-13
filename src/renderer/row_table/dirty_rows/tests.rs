@@ -1,4 +1,4 @@
-use crate::renderer::cpu_gradient_atlas::dirty_rows::DirtyRows;
+use crate::renderer::row_table::dirty_rows::DirtyRows;
 
 /// Runs come out sorted and exact whatever order rows were marked in; a run crossing a word
 /// boundary is one run; a gap of up to `merge_gap` clean rows joins its neighbors, a wider one

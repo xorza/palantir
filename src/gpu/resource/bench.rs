@@ -22,7 +22,7 @@ use crate::gpu::surface::owned_target::TargetSpec;
 use crate::gpu::surface::texel_readback::TexelReadback;
 use crate::gpu::texel;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
-use crate::renderer::cpu_gradient_atlas::bake::LUT_ROW_TEXELS;
+use crate::renderer::row_table::bake::LUT_ROW_TEXELS;
 use criterion::{Criterion, Throughput};
 use glam::UVec2;
 use std::ops::Range;

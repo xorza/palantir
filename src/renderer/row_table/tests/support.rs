@@ -3,7 +3,7 @@
 use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
-use crate::renderer::cpu_gradient_atlas::*;
+use crate::renderer::row_table::*;
 
 /// Fresh f16 LUT row, all texels transparent before bake.
 pub(super) fn fresh_row() -> LutRowTexels {
@@ -22,17 +22,17 @@ pub(crate) fn distinct_grad(i: u32) -> LinearGradient {
 }
 
 /// Register `distinct_grad(0)` through `distinct_grad(n - 1)`, in order.
-pub(crate) fn fill_rows(atlas: &mut CpuGradientAtlas, n: u32) -> Vec<LutRow> {
+pub(crate) fn fill_rows(table: &mut RowTable, n: u32) -> Vec<LutRow> {
     (0..n)
-        .map(|i| atlas.register(&distinct_grad(i).ramp))
+        .map(|i| table.register(&distinct_grad(i).ramp))
         .collect()
 }
 
-pub(super) fn assert_real_row(atlas: &CpuGradientAtlas, row: LutRow) {
+pub(super) fn assert_real_row(table: &RowTable, row: LutRow) {
     assert!(
-        (1..atlas.capacity()).contains(&row.0),
+        (1..table.capacity()).contains(&row.0),
         "row {} must be in 1..{}",
         row.0,
-        atlas.capacity(),
+        table.capacity(),
     );
 }

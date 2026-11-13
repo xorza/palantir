@@ -16,7 +16,7 @@ use crate::primitives::paint::brush::gradient::stops::{GradientStops, Stop};
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::oklab::Oklab;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
-use crate::renderer::cpu_gradient_atlas::bake::{self, LUT_ROW_TEXELS, LutRowTexels, RampTexels};
+use crate::renderer::row_table::bake::{self, LUT_ROW_TEXELS, LutRowTexels, RampTexels};
 use std::collections::HashSet;
 
 /// A row of transparent texels for a bake to fill.

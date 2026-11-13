@@ -20,9 +20,9 @@ use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::primitives::paint::lut_row::LutRow;
 use crate::primitives::preference::Preference;
 use crate::primitives::reduction::Reduction;
-use crate::renderer::cpu_gradient_atlas::INITIAL_ATLAS_ROWS;
 use crate::renderer::frontend::encoder::{self, Encoder};
 use crate::renderer::render_plan::RenderPlan;
+use crate::renderer::row_table::INITIAL_ROWS;
 use crate::scene::layer::Layer;
 use crate::scene::plane::Plane;
 use crate::shape::Shape;
@@ -378,7 +378,7 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
 
     b.frame(|ui| {
         Panel::hstack().size(20.0).show(ui, |ui| {
-            for idx in 0..INITIAL_ATLAS_ROWS - 1 {
+            for idx in 0..INITIAL_ROWS - 1 {
                 ui.add_shape(
                     Shape::rect().at(Rect::new(0.0, 0.0, 8.0, 8.0)),
                     LinearGradient::horizontal([
@@ -394,7 +394,7 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
         });
     });
     let b_rows: HashSet<LutRow> = rows(b.frames(), &mut encoder).into_iter().collect();
-    assert_eq!(b_rows.len(), (INITIAL_ATLAS_ROWS - 1) as usize);
+    assert_eq!(b_rows.len(), (INITIAL_ROWS - 1) as usize);
     assert!(b_rows.contains(&original_row));
     let _ = encoder.flush_gradients();
 
@@ -407,12 +407,12 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
     );
 }
 
-/// The encode starts each frame of the shared gradient atlas, so a window's frames halve it once
-/// the other window's ramps go idle: window b's 300 gradients take the atlas to 512 rows; window a
+/// The encode starts each frame of the shared row table, so a window's frames halve it once
+/// the other window's ramps go idle: window b's 300 gradients take the table to 512 rows; window a
 /// then paints its one gradient frame after frame, each encode and flush a frame, and by the end of
-/// the second expiry window the atlas holds 256 rows, a's ramp renumbered to row 1.
+/// the second expiry window the table holds 256 rows, a's ramp renumbered to row 1.
 #[test]
-fn an_idle_gradient_atlas_halves_through_the_encode() {
+fn an_idle_row_table_halves_through_the_encode() {
     fn row(frames: &WindowFrames, encoder: &mut Encoder) -> LutRow {
         let plan = RenderPlan {
             clear: frames.ui().theme().window_bg,
@@ -456,7 +456,7 @@ fn an_idle_gradient_atlas_halves_through_the_encode() {
         );
     });
     let _ = row(b.frames(), &mut encoder);
-    assert_eq!(encoder.gradient_rows(), 2 * INITIAL_ATLAS_ROWS);
+    assert_eq!(encoder.gradient_rows(), 2 * INITIAL_ROWS);
     let _ = encoder.flush_gradients();
     let first = row(a.frames(), &mut encoder);
     assert_eq!(first, LutRow(301), "after b's 300");
@@ -465,7 +465,7 @@ fn an_idle_gradient_atlas_halves_through_the_encode() {
         let _ = row(a.frames(), &mut encoder);
         let _ = encoder.flush_gradients();
     }
-    assert_eq!(encoder.gradient_rows(), INITIAL_ATLAS_ROWS);
+    assert_eq!(encoder.gradient_rows(), INITIAL_ROWS);
     assert_eq!(
         row(a.frames(), &mut encoder),
         LutRow(1),

@@ -80,7 +80,7 @@ impl CurvePipeline {
                 InstancedSpec {
                     shader: Self::SHADER,
                     layout: "palantir.curve.pl",
-                    // The frame group, which holds the gradient atlas; the viewport rides the
+                    // The frame group, which holds the gradient rows; the viewport rides the
                     // shared immediate region.
                     groups: &[Some(textures.frame())],
                     instances: "palantir.curve.instances",

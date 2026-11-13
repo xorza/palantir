@@ -31,7 +31,7 @@ pub(crate) struct TextureBinding {
     /// spectrum a lens spreads.
     backdrops: wgpu::BindGroupLayout,
     /// The frame group every color pipeline reads at
-    /// [`FRAME_GROUP`](crate::primitives::wgsl::FRAME_GROUP): the gradient atlas, its sampler and
+    /// [`FRAME_GROUP`](crate::primitives::wgsl::FRAME_GROUP): the gradient rows, its sampler and
     /// the frame's rounded clips (`primitives/wgsl/frame.wgsl`).
     frame: wgpu::BindGroupLayout,
     /// Linear within a mip, nearest between, clamped on all axes. Safe because no user passes a coordinate outside `0..1`: the gradient shader applies [`Spread`](crate::primitives::paint::brush::gradient::Spread) to `t` first and the image shader `fract`s uv under `FLAG_TILED`. Nearest image filtering is a shader-side snap, so all filters ride this sampler.
@@ -105,11 +105,11 @@ impl TextureBinding {
         &self.frame
     }
 
-    /// The frame group over the gradient atlas's `atlas` view and the rounded clips in `clips`.
+    /// The frame group over the gradient rows' view `rows` and the rounded clips in `clips`.
     pub(crate) fn frame_group(
         &self,
         gpu: &Gpu,
-        atlas: &wgpu::TextureView,
+        rows: &wgpu::TextureView,
         clips: &wgpu::Buffer,
     ) -> wgpu::BindGroup {
         gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -118,7 +118,7 @@ impl TextureBinding {
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: wgpu::BindingResource::TextureView(atlas),
+                    resource: wgpu::BindingResource::TextureView(rows),
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,

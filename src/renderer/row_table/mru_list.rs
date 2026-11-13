@@ -1,18 +1,18 @@
-//! Intrusive most-recently-used list over gradient atlas row ids.
+//! Intrusive most-recently-used list over gradient row ids.
 //!
 //! Two link columns indexed by row. Rows `1..capacity` are members for the
-//! atlas's whole life (only moved, never inserted or removed), so
+//! table's whole life (only moved, never inserted or removed), so
 //! [`MruList::touch`] needs no "is it linked?" branch. Row 0 is the permanent
 //! magenta fallback and is never a member.
 //!
-//! Why the tail alone answers eviction: [`CpuGradientAtlas::register`] moves a
+//! Why the tail alone answers eviction: [`RowTable::register`] moves a
 //! row to the head on every registration and stamps the epoch, and nothing
-//! moves a row backward, so the epoch-current rows are a head prefix. The atlas
-//! checks the tail's stamp; if it is current, every row is, and the atlas must
+//! moves a row backward, so the epoch-current rows are a head prefix. The table
+//! checks the tail's stamp; if it is current, every row is, and the table must
 //! grow rather than repaint a row this frame's draws reference.
 //!
-//! [`CpuGradientAtlas::register`]:
-//!     crate::renderer::cpu_gradient_atlas::CpuGradientAtlas::register
+//! [`RowTable::register`]:
+//!     crate::renderer::row_table::RowTable::register
 
 use crate::common::non_max::NonMaxU32;
 
@@ -27,7 +27,7 @@ pub(super) struct MruList {
 }
 
 impl MruList {
-    /// List over rows `1..capacity`, LRU end first, so a fresh atlas hands out
+    /// List over rows `1..capacity`, LRU end first, so a fresh table hands out
     /// ascending ids and a warm-up frame's dirty span stays contiguous.
     pub(super) fn seeded(capacity: u32) -> Self {
         let mut list = Self {
@@ -91,11 +91,11 @@ impl MruList {
     }
 
     /// Every `next` has a matching `prev`, the walk ends at the recorded tail and
-    /// visits exactly rows `1..len`. [`CpuGradientAtlas::grow`] asserts on it so
+    /// visits exactly rows `1..len`. [`RowTable::grow`] asserts on it so
     /// corruption doesn't surface as a far-off wrong eviction.
     ///
-    /// [`CpuGradientAtlas::grow`]:
-    ///     crate::renderer::cpu_gradient_atlas::CpuGradientAtlas::grow
+    /// [`RowTable::grow`]:
+    ///     crate::renderer::row_table::RowTable::grow
     pub(super) fn is_well_formed(&self) -> bool {
         let members = self.next.len().saturating_sub(1);
         let mut seen = 0usize;

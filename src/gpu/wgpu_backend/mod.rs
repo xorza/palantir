@@ -130,7 +130,7 @@ pub(crate) struct WgpuBackend {
     staging: UploadStaging,
     /// The display frame every submit's per-frame scratch ages against.
     frames: DisplayFrames,
-    /// Shared gradient LUT atlas, whose group is the frame group every color pipeline reads.
+    /// Shared gradient row texture, whose group is the frame group every color pipeline reads.
     gradient: RowTexture,
     /// The atlas pool's page lists, which glyphs and icons allocate from, and the textures behind
     /// them (`src/gpu/AGENTS.md`, Atlases).
@@ -154,7 +154,7 @@ pub(crate) struct WgpuBackend {
     /// The layouts and sampler every sampled texture binds through, so a group built for one binds
     /// in every pipeline that samples any.
     texture_binding: TextureBinding,
-    /// The frame group the main pass binds once: the gradient atlas and the frame's rounded
+    /// The frame group the main pass binds once: the gradient rows and the frame's rounded
     /// clips.
     frame_group: FrameGroup,
     /// The passes of the frame being submitted, planned before any is recorded.
@@ -1390,12 +1390,12 @@ pub(crate) mod internals {
     use crate::gpu::surface::backbuffer_out::BackbufferOut;
     use crate::gpu::surface::render_target::TargetFormat;
     use crate::gpu::wgpu_backend::WgpuBackend;
-    use crate::renderer::cpu_gradient_atlas::CpuGradientAtlas;
+    use crate::renderer::row_table::RowTable;
 
     impl WgpuBackend {
         /// Every atlas's memory, its gradient rows read against `gradient`, the frontend's atlas
         /// that bakes them.
-        pub(crate) fn atlas_memory(&self, gradient: &CpuGradientAtlas) -> AtlasMemory {
+        pub(crate) fn atlas_memory(&self, gradient: &RowTable) -> AtlasMemory {
             let masks = self
                 .atlas_textures
                 .memory(&self.atlas, AtlasFormat::R8, "mask pages");

@@ -1,32 +1,32 @@
-//! The per-frame memo from a recorded gradient to its atlas row.
+//! The per-frame memo from a recorded gradient to its table row.
 
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
-use crate::renderer::cpu_gradient_atlas::CpuGradientAtlas;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
+use crate::renderer::row_table::RowTable;
 use crate::shape::paint::lowered_brush::LoweredBrush;
 use crate::shape::record_store::recorded_gradient::RecordedGradient;
 use crate::shape::record_store::recorded_gradients::GradientId;
 
-/// Resolves each recorded gradient to its atlas row at most once per frame.
+/// Resolves each recorded gradient to its table row at most once per frame.
 #[derive(Debug, Default)]
 pub(super) struct GradientResolver {
     resolved: Vec<Option<ResolvedGradient>>,
 }
 
 impl GradientResolver {
-    /// Opens the frame's pass over `gradients`, registering them in `atlas`, forgetting last
+    /// Opens the frame's pass over `gradients`, registering them in `table`, forgetting last
     /// frame's rows (another window may have evicted them).
     pub(super) fn begin<'a>(
         &'a mut self,
         gradients: &'a [RecordedGradient],
-        atlas: &'a mut CpuGradientAtlas,
+        table: &'a mut RowTable,
     ) -> GradientPass<'a> {
         self.resolved.clear();
         self.resolved.resize(gradients.len(), None);
         GradientPass {
             gradients,
-            atlas,
+            table,
             resolved: &mut self.resolved,
         }
     }
@@ -36,7 +36,7 @@ impl GradientResolver {
 #[derive(Debug)]
 pub(super) struct GradientPass<'a> {
     gradients: &'a [RecordedGradient],
-    atlas: &'a mut CpuGradientAtlas,
+    table: &'a mut RowTable,
     resolved: &'a mut Vec<Option<ResolvedGradient>>,
 }
 
@@ -60,7 +60,7 @@ impl GradientPass<'_> {
         let gradient = &self.gradients[idx];
         let resolved = ResolvedGradient {
             axis: gradient.axis,
-            lut_row: self.atlas.register(&gradient.ramp),
+            lut_row: self.table.register(&gradient.ramp),
             kind: gradient.kind,
         };
         self.resolved[idx] = Some(resolved);
@@ -87,9 +87,9 @@ pub(crate) mod internals {
             self.resolved[id.0 as usize].is_some()
         }
 
-        /// The atlas's `register` calls so far, which a memoized repeat leaves alone.
+        /// The table's `register` calls so far, which a memoized repeat leaves alone.
         pub(crate) fn registrations(&self) -> u32 {
-            self.atlas.registrations()
+            self.table.registrations()
         }
     }
 }

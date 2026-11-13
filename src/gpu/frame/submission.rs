@@ -5,9 +5,9 @@ use crate::diagnostics::gpu_pass_stats::GpuPassStats;
 use crate::gpu::gpu_paint::gpu_views::GpuViews;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
-use crate::renderer::cpu_gradient_atlas::FlushedRows;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::repaint_scissors::RepaintScissors;
+use crate::renderer::row_table::FlushedRows;
 use crate::shape::record_store::RecordStore;
 
 /// What [`WgpuBackend::submit`](crate::gpu::wgpu_backend::WgpuBackend::submit) draws: the

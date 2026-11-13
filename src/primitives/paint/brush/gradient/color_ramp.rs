@@ -195,7 +195,7 @@ mod tests {
 
     /// Black to white in linear light is `0.25` grey at a quarter; opaque red to clear blue at
     /// `0.2` is premultiplied `(0.8, 0, 0, 0.8)`, which is straight red at alpha `0.8`; and past
-    /// either end the end's color. `gradient_atlas`'s bake tests hold each texel to it.
+    /// either end the end's color. `row_table`'s bake tests hold each texel to it.
     #[test]
     fn a_ramps_color_at_t_blends_its_stops() {
         let linear = ColorRamp::from([RgbaF32::BLACK, RgbaF32::WHITE])

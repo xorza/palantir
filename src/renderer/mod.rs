@@ -2,8 +2,8 @@
 //!
 //! [`frontend`] owns the buffers every frame reuses and turns a `FrameScene` into `&RenderBuffer`. [`RenderBuffer`](render_buffer::RenderBuffer) and its draw rows are the contract with [`crate::gpu`].
 pub(crate) mod backdrop_captures;
-pub(crate) mod cpu_gradient_atlas;
 pub(crate) mod frontend;
 pub(crate) mod render_buffer;
 pub(crate) mod render_plan;
 pub(crate) mod repaint_scissors;
+pub(crate) mod row_table;

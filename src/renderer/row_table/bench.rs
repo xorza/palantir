@@ -1,7 +1,7 @@
-//! Register-path scaling benchmark for the gradient LUT atlas.
+//! Register-path scaling benchmark for the gradient rows.
 //!
 //! Tests **flatness, not speed**: `register` must not get more expensive as
-//! the atlas grows. Each arm runs at two capacities; compare the ratio
+//! the table grows. Each arm runs at two capacities; compare the ratio
 //! between them from a single quiet run, not absolutes (256 rows stay
 //! cache-resident, 2048 spill). `miss/*` is the arm to watch for per-row walks.
 //!
@@ -15,7 +15,7 @@
 //!   re-bakes regardless of table size.
 //!
 //! Both assert against
-//! [`GradientAtlasCounters`](super::counters::GradientAtlasCounters) first, so
+//! [`RowTableCounters`](super::counters::RowTableCounters) first, so
 //! a fixture that stops doing what its name says fails loudly.
 //!
 //! - `gap_row/*`: one clean row a flush folds into a run, baked again from its ramp as the flush
@@ -30,8 +30,8 @@ use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
-use crate::renderer::cpu_gradient_atlas::bake::{self, LUT_ROW_TEXELS, LutRowTexels};
-use crate::renderer::cpu_gradient_atlas::{CpuGradientAtlas, MERGE_GAP_ROWS};
+use crate::renderer::row_table::bake::{self, LUT_ROW_TEXELS, LutRowTexels};
+use crate::renderer::row_table::{MERGE_GAP_ROWS, RowTable};
 use criterion::{Criterion, Throughput};
 use std::hint::black_box;
 
@@ -56,21 +56,21 @@ fn gradient_for(seed: u32) -> ColorRamp {
     ColorRamp::from([RgbaF32::from_srgba8(a), RgbaF32::from_srgba8(b)])
 }
 
-/// Atlas grown to `capacity` and filled to one row short of full.
+/// Table grown to `capacity` and filled to one row short of full.
 ///
 /// Fills in a single epoch so the table grows rather than evicting, then
 /// `flush` frees the rows for eviction.
-fn filled(capacity: u32) -> CpuGradientAtlas {
-    let mut atlas = CpuGradientAtlas::new(capacity);
+fn filled(capacity: u32) -> RowTable {
+    let mut table = RowTable::new(capacity);
     let mut seed = 0u32;
-    while atlas.capacity() < capacity || atlas.counters.counts().bakes < capacity - 1 {
+    while table.capacity() < capacity || table.counters.counts().bakes < capacity - 1 {
         seed += 1;
-        atlas.register(&gradient_for(seed));
+        table.register(&gradient_for(seed));
         assert!(seed < capacity * 4, "fill made no progress");
     }
-    assert_eq!(atlas.capacity(), capacity);
-    atlas.flush();
-    atlas
+    assert_eq!(table.capacity(), capacity);
+    table.flush();
+    table
 }
 
 /// `atomic/gradient_atlas/cpu/register/<hit|miss>/<capacity>`: one registration against a
@@ -83,16 +83,16 @@ pub(crate) fn atomic(c: &mut Criterion) {
             Backend::Cpu.case(&format!("register/hit/{capacity}")),
             |b| {
                 // Steady state: the most recent `WORKING_SET` rows are resident at any capacity.
-                let mut atlas = filled(capacity);
+                let mut table = filled(capacity);
                 let resident: Vec<ColorRamp> = (capacity - WORKING_SET..capacity)
                     .map(gradient_for)
                     .collect();
-                let before = atlas.counters.counts().bakes;
+                let before = table.counters.counts().bakes;
                 for ramp in &resident {
-                    black_box(atlas.register(ramp));
+                    black_box(table.register(ramp));
                 }
                 assert_eq!(
-                    atlas.counters.counts().bakes,
+                    table.counters.counts().bakes,
                     before,
                     "hit/{capacity} fixture re-baked: the working set is not resident",
                 );
@@ -100,7 +100,7 @@ pub(crate) fn atomic(c: &mut Criterion) {
                 b.iter(|| {
                     let ramp = &resident[i % resident.len()];
                     i = i.wrapping_add(1);
-                    black_box(atlas.register(ramp))
+                    black_box(table.register(ramp))
                 });
             },
         );
@@ -110,35 +110,35 @@ pub(crate) fn atomic(c: &mut Criterion) {
             |b| {
                 // Churn: a never-registered gradient every iteration, so a miss is independent of
                 // table size.
-                let mut atlas = filled(capacity);
-                let (hits, bakes) = (atlas.counters.counts().hits, atlas.counters.counts().bakes);
+                let mut table = filled(capacity);
+                let (hits, bakes) = (table.counters.counts().hits, table.counters.counts().bakes);
                 for k in 0..16 {
-                    atlas.flush();
-                    black_box(atlas.register(&gradient_for(CHURN_BASE + k)));
+                    table.flush();
+                    black_box(table.register(&gradient_for(CHURN_BASE + k)));
                 }
                 assert_eq!(
-                    atlas.counters.counts().hits,
+                    table.counters.counts().hits,
                     hits,
                     "miss/{capacity} fixture hit the index: the churn seeds overlap the fill",
                 );
                 assert_eq!(
-                    atlas.counters.counts().bakes - bakes,
+                    table.counters.counts().bakes - bakes,
                     16,
                     "miss/{capacity} fixture must bake exactly once per registration",
                 );
-                let growths = atlas.counters.counts().growths;
+                let growths = table.counters.counts().growths;
                 let mut seed = CHURN_BASE + 16;
                 b.iter(|| {
                     // `flush` ends the epoch; otherwise claimed rows stay eviction-exempt and the
-                    // atlas grows instead of churning.
-                    atlas.flush();
+                    // table grows instead of churning.
+                    table.flush();
                     seed = seed.wrapping_add(1);
-                    black_box(atlas.register(&gradient_for(seed)))
+                    black_box(table.register(&gradient_for(seed)))
                 });
                 assert_eq!(
-                    atlas.counters.counts().growths,
+                    table.counters.counts().growths,
                     growths,
-                    "miss/{capacity} grew the atlas: it measured a ratchet, not churn",
+                    "miss/{capacity} grew the table: it measured a ratchet, not churn",
                 );
             },
         );

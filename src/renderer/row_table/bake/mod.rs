@@ -8,7 +8,7 @@ use crate::primitives::paint::color::rgba_f16::RgbaF16;
 pub(crate) const LUT_ROW_TEXELS: usize = 256;
 pub(crate) type LutRowTexels = [RgbaF16; LUT_ROW_TEXELS];
 
-// The atlas uploads a row as 2048 bytes of `[r, g, b, a]` f16 lanes, which the shaders read.
+// The table uploads a row as 2048 bytes of `[r, g, b, a]` f16 lanes, which the shaders read.
 const _: () = assert!(size_of::<RgbaF16>() == 8);
 const _: () = assert!(size_of::<LutRowTexels>() == 2048);
 

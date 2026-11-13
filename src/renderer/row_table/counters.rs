@@ -1,19 +1,19 @@
-//! Observability for the gradient LUT atlas, built on [`BenchOnly`]. A row id
-//! does not say how [`CpuGradientAtlas::register`] reached it (index hit,
+//! Observability for the gradient rows, built on [`BenchOnly`]. A row id
+//! does not say how [`RowTable::register`] reached it (index hit,
 //! free-row bake, eviction bake, doubling, magenta fallback), which cost very
-//! differently. Counters accumulate rather than reset, as the atlas is shared
+//! differently. Counters accumulate rather than reset, as the table is shared
 //! across windows with no single pass to scope a reset to.
 //!
 //! [`BenchOnly`]: crate::common::counters::BenchOnly
-//! [`CpuGradientAtlas::register`]:
-//!     crate::renderer::cpu_gradient_atlas::CpuGradientAtlas::register
+//! [`RowTable::register`]:
+//!     crate::renderer::row_table::RowTable::register
 
 use crate::common::counters::counter_snapshot;
 
 counter_snapshot! {
     cells BenchOnly, reads cfg(feature = "internals");
 
-    pub(super) struct GradientAtlasCounters;
+    pub(super) struct RowTableCounters;
 
     /// One reading; subtract two for a span's activity.
     pub(super) struct GradientAtlasCounts;

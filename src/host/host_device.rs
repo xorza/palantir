@@ -165,7 +165,7 @@ impl BackendSpec {
     /// made with the device, the image store holds textures on it, the CPU core takes its limit,
     /// and the backend is built over it. Refused: the binding made by the image store,
     /// which pipelines took from it only because the store attached first. On a first attach the
-    /// store and the gradient atlas hold nothing yet, so the same steps do nothing extra.
+    /// store and the row table hold nothing yet, so the same steps do nothing extra.
     ///
     /// # Panics
     ///

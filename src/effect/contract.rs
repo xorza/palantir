@@ -248,7 +248,7 @@ fn wrapper(kind: KindId, params_struct: Option<&str>, fields: &[EffectParam]) ->
         .replace("/*{MATERIAL_BRANCH}*/", branch)
 }
 
-/// The frame group the pipelines bind, the gradient atlas and the rounded clips, with the clip's
+/// The frame group the pipelines bind, the gradient rows and the rounded clips, with the clip's
 /// coverage and the SDF it reads, its markers put in.
 fn frame() -> String {
     [SDF, FRAME]

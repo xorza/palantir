@@ -99,7 +99,7 @@ impl GpuPaint for ClearView {
 }
 
 /// One scene that holds every kind of GPU object a host keeps: solid and gradient quads
-/// (gradient atlas), four shadows of one key (cutout tables), a rounded clip (clip pool), text
+/// (gradient rows), four shadows of one key (cutout tables), a rounded clip (clip pool), text
 /// (glyph atlas), a mask and a color icon (raster atlases), a mesh, a curve, a polyline, a
 /// registered image (image store), a `GpuView` (view target), and a backdrop (backdrop atlas
 /// and blur). It fills its image again when the image is not resident.
@@ -451,7 +451,7 @@ fn a_screenshot_asked_before_the_loss_lands_after_it() {
 /// A recovery onto a smaller device takes its limit: `max_image_dimension` reads 2048, the
 /// floor Palantir runs on; an image registered at 4096 × 1 on the larger device no longer fits,
 /// so its update is refused and writes nothing, while a 2048 × 1 one fits and is written; a new 4096 × 1 image
-/// is refused; and the gradient atlas grows to 2048 rows at most.
+/// is refused; and the row table grows to 2048 rows at most.
 #[test]
 fn a_recovery_onto_a_smaller_device_takes_its_limit() {
     let large = headless_test_gpu();

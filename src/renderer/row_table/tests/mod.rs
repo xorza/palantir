@@ -1,4 +1,4 @@
-//! The atlas that keeps baked gradient LUT rows resident.
+//! The table that keeps baked gradient LUT rows resident.
 
 mod eviction;
 mod halving;

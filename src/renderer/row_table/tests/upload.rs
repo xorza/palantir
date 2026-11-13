@@ -6,26 +6,24 @@
 )]
 
 use crate::common::counters::CounterSet;
-use crate::renderer::cpu_gradient_atlas::tests::support::{
-    assert_real_row, distinct_grad, fresh_row,
-};
-use crate::renderer::cpu_gradient_atlas::*;
+use crate::renderer::row_table::tests::support::{assert_real_row, distinct_grad, fresh_row};
+use crate::renderer::row_table::*;
 use std::collections::HashSet;
 
-/// An idle atlas flushes once for the magenta init (one 2048-byte row), then stays clean.
+/// An idle table flushes once for the magenta init (one 2048-byte row), then stays clean.
 #[test]
 #[expect(
     clippy::single_range_in_vec_init,
     reason = "a flush of one run is a one-run slice"
 )]
 fn freshly_constructed_atlas_flushes_magenta_once() {
-    let mut atlas = CpuGradientAtlas::default();
+    let mut table = RowTable::default();
     {
-        let first = atlas.flush().expect("first flush carries magenta init");
+        let first = table.flush().expect("first flush carries magenta init");
         assert_eq!(first.runs, [0..1]);
         assert_eq!(first.bytes(0..1).len(), size_of::<LutRowTexels>());
     }
-    assert!(atlas.flush().is_none());
+    assert!(table.flush().is_none());
 }
 
 /// The flush covers exactly the touched rows: one row, one run per scattered row, or `None` when
@@ -36,22 +34,22 @@ fn freshly_constructed_atlas_flushes_magenta_once() {
     reason = "a flush of one run is a one-run slice"
 )]
 fn flush_runs_cover_exactly_the_dirty_rows() {
-    let mut atlas = CpuGradientAtlas::default();
-    let _ = atlas.flush(); // drain the magenta init row
-    let ra = atlas.register(&distinct_grad(10).ramp);
+    let mut table = RowTable::default();
+    let _ = table.flush(); // drain the magenta init row
+    let ra = table.register(&distinct_grad(10).ramp);
     {
-        let f = atlas.flush().expect("one baked row must flush");
+        let f = table.flush().expect("one baked row must flush");
         assert_eq!(f.runs, [ra.0..ra.0 + 1]);
         assert_eq!(f.bytes(ra.0..ra.0 + 1).len(), size_of::<LutRowTexels>());
     }
-    let rb = atlas.register(&distinct_grad(20).ramp);
-    let rc = atlas.register(&distinct_grad(30).ramp);
+    let rb = table.register(&distinct_grad(20).ramp);
+    let rc = table.register(&distinct_grad(30).ramp);
     assert_eq!((rb.0, rc.0), (2, 3), "claims walk ascending");
     {
-        let f = atlas.flush().expect("two baked rows must flush");
+        let f = table.flush().expect("two baked rows must flush");
         assert_eq!(f.runs, [2..4], "neighbors are one run");
     }
-    assert!(atlas.flush().is_none());
+    assert!(table.flush().is_none());
 }
 
 /// Rows re-dirtied around clean ones: a gap up to `MERGE_GAP_ROWS` rides along in one run, a
@@ -64,20 +62,20 @@ fn flush_runs_cover_exactly_the_dirty_rows() {
     reason = "a flush of one run is a one-run slice"
 )]
 fn a_small_gap_rides_in_the_run_and_a_wide_one_splits_it() {
-    let mut atlas = CpuGradientAtlas::default();
-    let _ = atlas.flush(); // drain the magenta init row
+    let mut table = RowTable::default();
+    let _ = table.flush(); // drain the magenta init row
 
-    let a = atlas.register(&distinct_grad(10).ramp);
-    let b = atlas.register(&distinct_grad(20).ramp);
-    let c = atlas.register(&distinct_grad(30).ramp);
+    let a = table.register(&distinct_grad(10).ramp);
+    let b = table.register(&distinct_grad(20).ramp);
+    let c = table.register(&distinct_grad(30).ramp);
     assert_eq!((a.0, b.0, c.0), (1, 2, 3), "claims walk ascending from 1");
-    let _ = atlas.flush();
-    let before = atlas.counters.counts();
+    let _ = table.flush();
+    let before = table.counters.counts();
 
     // Dirty the outer two directly through the one path that marks rows.
-    atlas.mark_row_dirty(1);
-    atlas.mark_row_dirty(3);
-    let f = atlas.flush().expect("two dirtied rows must flush");
+    table.mark_row_dirty(1);
+    table.mark_row_dirty(3);
+    let f = table.flush().expect("two dirtied rows must flush");
     assert_eq!(f.runs, [1..4], "the one clean row between rides along");
     let mut baked = Vec::new();
     for i in [10, 20, 30] {
@@ -87,16 +85,16 @@ fn a_small_gap_rides_in_the_run_and_a_wide_one_splits_it() {
     }
     assert_eq!(f.bytes(1..4), bytemuck::cast_slice::<_, u8>(&baked));
 
-    let delta = atlas.counters.counts() - before;
+    let delta = table.counters.counts() - before;
     assert_eq!(delta.bakes, 0, "no row was claimed again, only uploaded");
     assert_eq!(delta.rows_uploaded, 3);
 
     // 1, then 1 + MERGE_GAP_ROWS + 1 is a gap of exactly MERGE_GAP_ROWS; one row further is not.
     let edge = 2 + MERGE_GAP_ROWS;
-    atlas.mark_row_dirty(1);
-    atlas.mark_row_dirty(edge);
-    atlas.mark_row_dirty(edge + MERGE_GAP_ROWS + 2);
-    let f = atlas.flush().expect("three dirtied rows must flush");
+    table.mark_row_dirty(1);
+    table.mark_row_dirty(edge);
+    table.mark_row_dirty(edge + MERGE_GAP_ROWS + 2);
+    let f = table.flush().expect("three dirtied rows must flush");
     assert_eq!(
         f.runs,
         [
@@ -106,33 +104,33 @@ fn a_small_gap_rides_in_the_run_and_a_wide_one_splits_it() {
     );
 }
 
-/// A frame redrawing unchanged gradients bakes nothing, evicts nothing and holds the atlas size.
+/// A frame redrawing unchanged gradients bakes nothing, evicts nothing and holds the table size.
 #[test]
 fn steady_state_frames_never_rebake() {
     const GRADIENTS: u32 = 64;
     const FRAMES: u32 = 10;
 
-    let mut atlas = CpuGradientAtlas::default();
+    let mut table = RowTable::default();
     let content: Vec<_> = (0..GRADIENTS).map(distinct_grad).collect();
     let rows: Vec<LutRow> = content
         .iter()
-        .map(|g| atlas.register(&g.clone().ramp))
+        .map(|g| table.register(&g.clone().ramp))
         .collect();
-    let after_warmup = atlas.counters.counts().bakes;
+    let after_warmup = table.counters.counts().bakes;
     assert_eq!(after_warmup, GRADIENTS);
 
     for _ in 0..FRAMES {
-        atlas.flush();
+        table.flush();
         for (g, &row) in content.iter().zip(&rows) {
             assert_eq!(
-                atlas.register(&g.clone().ramp),
+                table.register(&g.clone().ramp),
                 row,
                 "steady-state frame moved a gradient off its row",
             );
         }
     }
 
-    let counts = atlas.counters.counts();
+    let counts = table.counters.counts();
     assert_eq!(
         counts.bakes, after_warmup,
         "a steady-state frame must not bake",
@@ -145,45 +143,45 @@ fn steady_state_frames_never_rebake() {
         GRADIENTS * (FRAMES + 1),
         "warm-up misses plus every frame's hits",
     );
-    assert_eq!(atlas.capacity(), INITIAL_ATLAS_ROWS);
+    assert_eq!(table.capacity(), INITIAL_ROWS);
 }
 
 /// Churn across epochs evicts but never grows, as growth is one-way. Cycling
 /// twice the table's size is LRU's worst case, so every registration misses.
 #[test]
 fn cross_epoch_churn_evicts_without_growing() {
-    let working_set = (INITIAL_ATLAS_ROWS * 2) as usize;
-    let mut atlas = CpuGradientAtlas::default();
+    let working_set = (INITIAL_ROWS * 2) as usize;
+    let mut table = RowTable::default();
     let content: Vec<_> = (0..working_set).map(|i| distinct_grad(i as u32)).collect();
 
     for round in 0..4 {
         for g in &content {
-            atlas.flush();
-            let row = atlas.register(&g.clone().ramp);
-            assert_real_row(&atlas, row);
+            table.flush();
+            let row = table.register(&g.clone().ramp);
+            assert_real_row(&table, row);
         }
         assert_eq!(
-            atlas.capacity(),
-            INITIAL_ATLAS_ROWS,
-            "round {round} grew the atlas instead of evicting",
+            table.capacity(),
+            INITIAL_ROWS,
+            "round {round} grew the table instead of evicting",
         );
     }
 
     let registrations = (working_set * 4) as u32;
-    let counts = atlas.counters.counts();
+    let counts = table.counters.counts();
     assert_eq!(counts.registrations, registrations);
     assert_eq!(counts.growths, 0);
-    // The first INITIAL_ATLAS_ROWS - 1 take never-claimed rows and the rest evict.
+    // The first INITIAL_ROWS - 1 take never-claimed rows and the rest evict.
     assert_eq!(counts.hits, 0, "cyclic churn cannot hit");
     assert_eq!(counts.bakes, registrations);
-    assert_eq!(counts.evictions, registrations - (INITIAL_ATLAS_ROWS - 1));
-    assert_eq!(atlas.index_len(), (INITIAL_ATLAS_ROWS - 1) as usize);
+    assert_eq!(counts.evictions, registrations - (INITIAL_ROWS - 1));
+    assert_eq!(table.index_len(), (INITIAL_ROWS - 1) as usize);
 }
 
 /// A miss bakes exactly one row, and a hit none.
 #[test]
 fn every_miss_bakes_exactly_one_row() {
-    let mut atlas = CpuGradientAtlas::default();
+    let mut table = RowTable::default();
     let content: Vec<_> = (0..40).map(|i| distinct_grad(i as u32)).collect();
     let sequence: Vec<usize> = (0..40).chain(0..40).chain([3, 3, 17, 39, 0]).collect();
 
@@ -193,10 +191,10 @@ fn every_miss_bakes_exactly_one_row() {
         if seen.insert(i) {
             expected_bakes += 1;
         }
-        atlas.register(&content[i].clone().ramp);
+        table.register(&content[i].clone().ramp);
     }
 
-    let counts = atlas.counters.counts();
+    let counts = table.counters.counts();
     assert_eq!(counts.bakes, expected_bakes);
     assert_eq!(counts.bakes, 40, "each distinct gradient baked once");
     assert_eq!(
