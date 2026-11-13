@@ -25,7 +25,6 @@ use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use crate::gpu::resource::gpu_ctx::GpuCtx;
 use crate::gpu::resource::pipeline_recipe::{self, Pipeline, PipelineRecipe, vertex_attr};
 use crate::gpu::resource::shader_body::{ShaderBody, ShaderConstant};
-use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::brush::gradient::Spread;
@@ -187,9 +186,9 @@ pub(crate) struct QuadPipeline {
     extras: ExtraSpans,
     shader: wgpu::ShaderModule,
     /// Format-independent, so built once here rather than per format.
-    pipeline_layout: wgpu::PipelineLayout,
-    /// [`Self::pipeline_layout`] plus the atlas group, for the shadow variant.
-    shadow_layout: wgpu::PipelineLayout,
+    /// The main pass's shared layout, which fills and shadows alike build over
+    /// ([`AtlasGroup::pipeline_layout`](crate::gpu::pipeline::atlas_binding::AtlasGroup::pipeline_layout)).
+    layout: wgpu::PipelineLayout,
     /// The shadows' baked corner cutouts.
     cutouts: CutoutTables,
     /// How shadows draw (`vs_shadow`): [`ShapeCells::OneQuad`] only in internals, which build
@@ -198,9 +197,6 @@ pub(crate) struct QuadPipeline {
     /// How the forms draw (`vs_template`): [`ShapeCells::OneQuad`] only in internals, which build
     /// the one-quad reference.
     shape_cells: ShapeCells,
-    /// The template's triangles over its points, which every form but the one-quad reference
-    /// draws.
-    indices: TemplateIndices,
 }
 
 impl QuadPipeline {
@@ -223,43 +219,53 @@ impl QuadPipeline {
         constants: SHADER_CONSTANTS,
     };
 
-    /// Bind `pipeline` over the instance stream and draw the frame's pre-clear quad.
-    pub(crate) fn draw_clear<'a>(&'a self, rec: &mut PassRecorder<'a>, pipeline: &'a Pipeline) {
+    /// Bind `pipeline` over the instance stream and draw the frame's pre-clear quad through
+    /// `indices`.
+    pub(crate) fn draw_clear<'a>(
+        &'a self,
+        rec: &mut PassRecorder<'a>,
+        pipeline: &'a Pipeline,
+        indices: &'a TemplateIndices,
+    ) {
         let at = self
             .extras
             .clear
             .expect("a frame that pre-clears uploads its clear quad");
-        self.draw_boxes(rec, pipeline, at..at + 1);
+        self.draw_boxes(rec, pipeline, indices, at..at + 1);
     }
 
-    /// Bind `pipeline`, a solid box's, over the instance stream and draw `instances` of it.
+    /// Bind `pipeline`, a solid box's, over the instance stream and draw `instances` of it
+    /// through `indices`.
     pub(crate) fn draw_boxes<'a>(
         &'a self,
         rec: &mut PassRecorder<'a>,
         pipeline: &'a Pipeline,
+        indices: &'a TemplateIndices,
         instances: Range<u32>,
     ) {
         self.bind(rec, pipeline);
-        self.draw_fill(rec, FillForm::BOX_SOLID, instances);
+        self.draw_shapes(
+            rec,
+            indices,
+            self.shape_cells,
+            FillForm::BOX_SOLID.shape(),
+            instances,
+        );
     }
 
-    /// Draw `instances` of `form` through the pipeline bound.
-    fn draw_fill<'a>(&'a self, rec: &mut PassRecorder<'a>, form: FillForm, instances: Range<u32>) {
-        self.draw_shapes(rec, self.shape_cells, form.shape(), instances);
-    }
-
-    /// Draw `instances` of `form` as `cells` says: its whole template, indexed, or one quad.
+    /// Draw `instances` of `form` as `cells` says: its whole template through `indices`, or one
+    /// quad.
     fn draw_shapes<'a>(
         &'a self,
         rec: &mut PassRecorder<'a>,
+        indices: &'a TemplateIndices,
         cells: ShapeCells,
         form: ShapeForm,
         instances: Range<u32>,
     ) {
         match cells {
             ShapeCells::Template => {
-                self.indices
-                    .draw(rec, form, TemplateCover::Whole, instances);
+                indices.draw(rec, form, TemplateCover::Whole, instances);
             }
             #[cfg(feature = "internals")]
             ShapeCells::OneQuad => rec.draw(0..4, instances),
@@ -286,10 +292,10 @@ impl QuadPipeline {
         self.extras.outlines.u32_range()
     }
 
-    /// Build the format-independent quad resources, the shadows reading their cutout tables
-    /// through `atlas`, the atlas group's layout; per-format pipelines come from
-    /// [`Self::ensure_draw`].
-    pub(crate) fn new(gpu: &Gpu, textures: &TextureBinding, atlas: &wgpu::BindGroupLayout) -> Self {
+    /// Build the format-independent quad resources over `layout`, the main pass's shared one,
+    /// whose atlas group the shadows read their cutout tables through; per-format pipelines come
+    /// from [`Self::ensure_draw`].
+    pub(crate) fn new(gpu: &Gpu, layout: &wgpu::PipelineLayout) -> Self {
         let shader = Self::SHADER.module(gpu);
         let cutouts = CutoutTables::new(gpu, &shader);
 
@@ -303,21 +309,10 @@ impl QuadPipeline {
             tail: Vec::new(),
             extras: ExtraSpans::default(),
             shader,
-            // The frame group. One layout serves every form; the fragment entry is no part of it.
-            pipeline_layout: pipeline_recipe::pipeline_layout(
-                gpu,
-                "palantir.quad.pl",
-                &[Some(textures.frame_layout())],
-            ),
-            shadow_layout: pipeline_recipe::pipeline_layout(
-                gpu,
-                "palantir.quad.shadow.pl",
-                &[Some(textures.frame_layout()), Some(atlas)],
-            ),
+            layout: layout.clone(),
             cutouts,
             shadow_cells: ShapeCells::Template,
             shape_cells: ShapeCells::Template,
-            indices: TemplateIndices::new(gpu),
         }
     }
 
@@ -360,7 +355,7 @@ impl QuadPipeline {
                         ],
                         vertex_buffers: &instance,
                         topology: self.shape_cells.topology(),
-                        ..PipelineRecipe::color(label, &self.shader, &self.pipeline_layout, format)
+                        ..PipelineRecipe::color(label, &self.shader, &self.layout, format)
                     },
                 );
             }
@@ -389,7 +384,7 @@ impl QuadPipeline {
                             Some(CutoutTables::CORNER_LAYOUT),
                         ],
                         topology: self.shadow_cells.topology(),
-                        ..PipelineRecipe::color(label, &self.shader, &self.shadow_layout, format)
+                        ..PipelineRecipe::color(label, &self.shader, &self.layout, format)
                     },
                 );
             }
@@ -453,12 +448,13 @@ impl QuadPipeline {
     }
 
     /// Bind the pipeline `run`'s draw picks of `pipelines` over the instance buffer, with the
-    /// groups the draw reads past the frame group, and draw it: a shadow reads the cutout tables
-    /// and draws a box's template, its rim around its hole (`vs_shadow`).
+    /// groups the draw reads past the frame group, and draw it through `indices`: a shadow reads
+    /// the cutout tables and draws a box's template, its rim around its hole (`vs_shadow`).
     pub(crate) fn draw_run<'a>(
         &'a self,
         rec: &mut PassRecorder<'a>,
         pipelines: PassPipelines<'a>,
+        indices: &'a TemplateIndices,
         run: QuadRun,
     ) {
         let QuadRun { draw, instances } = run;
@@ -466,16 +462,14 @@ impl QuadPipeline {
             return;
         }
         self.bind(rec, pipelines.quad(draw));
+        let instances = instances.u32_range();
         match draw {
-            QuadDraw::Fill(form) => self.draw_fill(rec, form, instances.u32_range()),
+            QuadDraw::Fill(form) => {
+                self.draw_shapes(rec, indices, self.shape_cells, form.shape(), instances);
+            }
             QuadDraw::Shadow(_) => {
                 self.cutouts.bind(rec, pipelines.atlas());
-                self.draw_shapes(
-                    rec,
-                    self.shadow_cells,
-                    ShapeForm::Box,
-                    instances.u32_range(),
-                );
+                self.draw_shapes(rec, indices, self.shadow_cells, ShapeForm::Box, instances);
             }
         }
     }
@@ -709,7 +703,8 @@ mod tests {
 
         let gpu = headless_test_gpu();
         let atlas = AtlasGroup::new(&gpu, &AtlasTextures::new(&gpu));
-        let program = QuadPipeline::new(&gpu, &TextureBinding::new(&gpu), atlas.layout());
+        let layout = atlas.pipeline_layout(&gpu, &TextureBinding::new(&gpu));
+        let program = QuadPipeline::new(&gpu, &layout);
         let mut variants = QuadVariants::NONE;
         let tables = QuadDraw::Shadow(ShadowEntry::Tables);
         let fill = QuadDraw::Fill(FillForm::BOX_SOLID);

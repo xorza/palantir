@@ -5,7 +5,7 @@ use crate::gpu::pipeline::atlas_binding::AtlasSlots;
 use crate::gpu::pipeline::clip_variant::Clipping;
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use crate::gpu::resource::gpu_ctx::GpuCtx;
-use crate::gpu::resource::pipeline_recipe::{self, PipelineRecipe};
+use crate::gpu::resource::pipeline_recipe::PipelineRecipe;
 use crate::gpu::resource::shader_body::ShaderBody;
 
 /// A drawing family that draws one frame's instances of `I`: their buffer, uploaded each frame,
@@ -21,10 +21,8 @@ pub(crate) struct InstancedPipeline<I: bytemuck::Pod> {
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct InstancedSpec<'a> {
     pub(crate) shader: ShaderBody,
-    /// The pipeline layout's label.
-    pub(crate) layout: &'static str,
-    /// The bind group layouts the pipelines read, by group index.
-    pub(crate) groups: &'a [Option<&'a wgpu::BindGroupLayout>],
+    /// The pipeline layout the family's pipelines build over.
+    pub(crate) layout: &'a wgpu::PipelineLayout,
     /// The instance buffer's label.
     pub(crate) instances: &'static str,
     /// The instances the buffer holds before its first grow.
@@ -65,7 +63,7 @@ impl<I: bytemuck::Pod> InstancedPipeline<I> {
         Self {
             instances: DynamicBuffer::vertex(gpu, spec.instances, spec.capacity),
             shader: spec.shader.module(gpu),
-            layout: pipeline_recipe::pipeline_layout(gpu, spec.layout, spec.groups),
+            layout: spec.layout.clone(),
         }
     }
 

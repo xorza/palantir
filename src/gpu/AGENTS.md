@@ -59,6 +59,15 @@ How palantir draws, from the renderer's instance streams through wgpu: the decis
   renderers batches in order. Refused: groups, text batches and tier batches in three tables
   anchored by group index, which the schedule merged back into one order by a cursor each, an
   order the composer had already decided.
+- **The main pass's families share one pipeline layout and one index buffer**: fills, shadows,
+  rasters, meshes and curves build over the frame group and the atlas group, and a family that
+  reads no page binds the atlas group all the same, which the recorder elides while it is bound;
+  the quads, the images and the effects draw through one template index buffer. wgpu-core tells
+  layouts apart by identity and clears the immediates at a change (`change_pipeline_layout`), so
+  each switch among five layouts pushed the viewport again, and the recorder rebound the index
+  buffer at each switch among three of the same bytes. Refused: a layout a shape, two in all, as
+  a fill and a text run, the commonest switch, would still change layout. Cost: a fill after an
+  image or an effect, whose group takes the slot, binds the atlas group again.
 - **A run carries the scissor its draws need, and a clip closes no group**: a draw takes its
   clip's scissor only where the clip cuts it, as Skia's Ganesh sets one only for a draw its clip
   does not hold (`GrClip::IsInsideClip`). A quad joins a run of its form under its clip, or, where

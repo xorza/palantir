@@ -37,6 +37,8 @@ pub(crate) struct ImageBatch<'a> {
     pub(crate) ids: &'a [TextureId],
     pub(crate) keys: &'a [ShapeForm],
     pub(crate) items: Span,
+    /// The template's indices, which every family that draws closed shapes shares.
+    pub(crate) indices: &'a TemplateIndices,
 }
 
 /// The two stores an image draw's texture id resolves in: registered images first, as the common
@@ -60,8 +62,6 @@ impl<'a> ImageTextures<'a> {
 #[derive(Debug)]
 pub(crate) struct ImagePipeline {
     family: InstancedPipeline<ImageInstance>,
-    /// The shape template's triangles, which a shaped image draws.
-    indices: TemplateIndices,
 }
 
 impl ImagePipeline {
@@ -87,17 +87,19 @@ impl ImagePipeline {
                 gpu,
                 InstancedSpec {
                     shader: Self::SHADER,
-                    layout: "palantir.image.pl",
                     // The frame group, then the image's texture.
-                    groups: &[
-                        Some(textures.frame_layout()),
-                        Some(textures.texture_layout()),
-                    ],
+                    layout: &pipeline_recipe::pipeline_layout(
+                        gpu,
+                        "palantir.image.pl",
+                        &[
+                            Some(textures.frame_layout()),
+                            Some(textures.texture_layout()),
+                        ],
+                    ),
                     instances: "palantir.image.instances",
                     capacity: 16,
                 },
             ),
-            indices: TemplateIndices::new(gpu),
         }
     }
 
@@ -153,7 +155,12 @@ impl ImagePipeline {
         &'a self,
         rec: &mut PassRecorder<'a>,
         pipelines: impl Fn(ShapeForm) -> &'a Pipeline,
-        ImageBatch { ids, keys, items }: ImageBatch<'_>,
+        ImageBatch {
+            ids,
+            keys,
+            items,
+            indices,
+        }: ImageBatch<'a>,
         textures: ImageTextures<'_>,
     ) {
         rec.vertex(0, self.family.instances());
@@ -165,8 +172,7 @@ impl ImagePipeline {
             };
             rec.pipeline(pipelines(form));
             rec.group_once(IMAGE_GROUP, bind_group);
-            self.indices
-                .draw(rec, form, TemplateCover::Whole, run.instances.u32_range());
+            indices.draw(rec, form, TemplateCover::Whole, run.instances.u32_range());
         }
     }
 }

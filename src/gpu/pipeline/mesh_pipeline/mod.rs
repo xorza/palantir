@@ -13,7 +13,6 @@ use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use crate::gpu::resource::gpu_ctx::GpuCtx;
 use crate::gpu::resource::pipeline_recipe::{self, Pipeline, PipelineRecipe, vertex_attr};
 use crate::gpu::resource::shader_body::ShaderBody;
-use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::primitives::geometry::mesh::MeshVertex;
 use crate::primitives::wgsl;
 use crate::renderer::render_buffer::mesh_draw_row::{MeshDraw, MeshInstance};
@@ -54,16 +53,15 @@ impl MeshPipeline {
 
     /// Format-independent mesh resources; pipelines come from
     /// [`Self::ensure`] via
-    /// [`FormatPipelines`](crate::gpu::pipeline::format_pipelines::FormatPipelines).
-    pub(crate) fn new(gpu: &Gpu, textures: &TextureBinding) -> Self {
+    /// [`FormatPipelines`](crate::gpu::pipeline::format_pipelines::FormatPipelines). Over `layout`,
+    /// the main pass's shared one.
+    pub(crate) fn new(gpu: &Gpu, layout: &wgpu::PipelineLayout) -> Self {
         Self {
             family: InstancedPipeline::new(
                 gpu,
                 InstancedSpec {
                     shader: Self::SHADER,
-                    layout: "palantir.mesh.pl",
-                    // The frame group, as every pipeline of the main pass takes it.
-                    groups: &[Some(textures.frame_layout())],
+                    layout,
                     instances: "palantir.mesh.instances",
                     capacity: 64,
                 },

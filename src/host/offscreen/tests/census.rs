@@ -75,7 +75,7 @@ fn a_column_of_fields() {
             pipelines: 2,
             groups: 2,
             scissors: 1,
-            viewports: 2,
+            viewports: 1,
             vertex_buffers: 2,
             index_buffers: 1,
         }
@@ -125,7 +125,7 @@ fn a_scroll_viewport_cuts_its_first_and_last_rows() {
             pipelines: 2,
             groups: 2,
             scissors: 2,
-            viewports: 2,
+            viewports: 1,
             vertex_buffers: 2,
             index_buffers: 1,
         }
@@ -203,7 +203,7 @@ fn a_clipped_canvas_of_cards_with_fields() {
             pipelines: 14,
             groups: 2,
             scissors: 2,
-            viewports: 14,
+            viewports: 1,
             vertex_buffers: 15,
             index_buffers: 3,
         }

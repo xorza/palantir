@@ -13,7 +13,6 @@ use crate::gpu::pipeline::pass_recorder::PassRecorder;
 use crate::gpu::resource::gpu_ctx::GpuCtx;
 use crate::gpu::resource::pipeline_recipe::{self, Pipeline, PipelineRecipe, vertex_attr};
 use crate::gpu::resource::shader_body::{ShaderBody, ShaderConstant};
-use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::line_style::LineCap;
 use crate::primitives::wgsl;
@@ -64,7 +63,8 @@ impl CurvePipeline {
         constants: SHADER_CONSTANTS,
     };
 
-    pub(crate) fn new(gpu: &Gpu, textures: &TextureBinding) -> Self {
+    /// The curve family over `layout`, the main pass's shared one.
+    pub(crate) fn new(gpu: &Gpu, layout: &wgpu::PipelineLayout) -> Self {
         let idxs: &[u8] = bytemuck::cast_slice(&CURVE_IDXS);
         let idx_buffer = gpu.create_filled_buffer(
             FilledBuffer {
@@ -79,10 +79,7 @@ impl CurvePipeline {
                 gpu,
                 InstancedSpec {
                     shader: Self::SHADER,
-                    layout: "palantir.curve.pl",
-                    // The frame group, which holds the gradient rows; the viewport rides the
-                    // shared immediate region.
-                    groups: &[Some(textures.frame_layout())],
+                    layout,
                     instances: "palantir.curve.instances",
                     capacity: 64,
                 },

@@ -66,6 +66,7 @@ use crate::gpu::frame::gpu_timings::{BackdropPhase, FrameTiming, GpuTimings, Mar
 use crate::gpu::frame::main_segment::MainSegment;
 use crate::gpu::frame::schedule::{RenderStep, RunSpan, Schedule};
 use crate::gpu::frame::submission::{Route, Submission};
+use crate::gpu::pipeline::atlas_binding::ATLAS_GROUP;
 use crate::gpu::pipeline::atlas_binding::{AtlasGroup, AtlasSlots};
 use crate::gpu::pipeline::blit_pipeline::BlitPipeline;
 use crate::gpu::pipeline::clip_variant::{ClipVariant, Clipping};
@@ -83,6 +84,7 @@ use crate::gpu::pipeline::quad_pipeline::cutout_placements::{CutoutPlacements, C
 use crate::gpu::pipeline::quad_pipeline::quad_draw::QuadDraw;
 use crate::gpu::pipeline::quad_pipeline::{self, QuadExtras, QuadPipeline, QuadRun};
 use crate::gpu::pipeline::raster_pipeline::{RasterDraws, RasterPipeline};
+use crate::gpu::pipeline::shape_template::TemplateIndices;
 use crate::gpu::pipeline::viewport_push::ViewportPush;
 use crate::gpu::raster::icon_backend::IconBackend;
 use crate::gpu::raster::text_backend::{TextBackend, TextBatchInput};
@@ -369,12 +371,14 @@ impl WgpuBackend {
         let backdrops = Backdrops::new(&texture_binding);
         let atlas_textures = AtlasTextures::new(&gpu);
         let atlas_group = AtlasGroup::new(&gpu, &atlas_textures);
-        let quad = QuadPipeline::new(&gpu, &texture_binding, atlas_group.layout());
-        let mesh = MeshPipeline::new(&gpu, &texture_binding);
+        let layout = atlas_group.pipeline_layout(&gpu, &texture_binding);
+        let quad = QuadPipeline::new(&gpu, &layout);
+        let mesh = MeshPipeline::new(&gpu, &layout);
         let image = ImagePipeline::new(&gpu, &texture_binding);
         let gpu_view_targets = GpuViewTargets::new(texture_binding.clone());
-        let curve = CurvePipeline::new(&gpu, &texture_binding);
-        let raster = RasterPipeline::new(&gpu, &texture_binding, atlas_group.layout());
+        let curve = CurvePipeline::new(&gpu, &layout);
+        let raster = RasterPipeline::new(&gpu, &layout);
+        let indices = TemplateIndices::new(&gpu);
         let effect = EffectPipeline::new(&gpu);
         let blit = BlitPipeline::new(&gpu, &texture_binding);
         let text = TextBackend::new(&gpu, resources.text.clone());
@@ -408,6 +412,7 @@ impl WgpuBackend {
                 curve,
                 raster,
                 effect,
+                indices,
             },
             backdrops,
             image_store,
@@ -1007,7 +1012,9 @@ impl WgpuBackend {
                     self.atlas_group.group(),
                 )
                 .quad(QuadDraw::Fill(FillForm::BOX_SOLID)),
+            indices: &self.programs.indices,
             frame_group: self.frame_group.group(),
+            atlas: self.atlas_group.group(),
             viewport: draw.viewport,
         }
     }
@@ -1123,13 +1130,19 @@ impl WgpuBackend {
             .fmt
             .for_frame(draw.variant, draw.effects, self.atlas_group.group());
         let raster = move || pipelines.raster();
+        let indices = &self.programs.indices;
+        // Every family over the main pass's shared layout reads the atlas group or binds it all the
+        // same, as its layout takes it; the recorder elides it while it stays bound, which an
+        // image's or an effect's group at its slot undoes.
+        let atlas = |rec: &mut PassRecorder<'a>| rec.group(ATLAS_GROUP, pipelines.atlas());
         schedule.for_each_step(&mut |step| match step {
             RenderStep::PreClear => ctx.batch(BatchKind::PreClear, |ctx| {
                 // Through the recorder, so the viewport is pushed before the draw; else the clear
                 // quad reads stale immediates (zero on a partial pass's first PreClear) and
                 // clears nothing.
                 let solid = pipelines.quad(QuadDraw::Fill(FillForm::BOX_SOLID));
-                self.programs.quad.draw_clear(ctx.rec, solid);
+                atlas(ctx.rec);
+                self.programs.quad.draw_clear(ctx.rec, solid, indices);
             }),
             RenderStep::SetScissor(r) => {
                 ctx.rec.scissor(URect {
@@ -1144,9 +1157,11 @@ impl WgpuBackend {
             }) => {
                 for run in self.programs.quad.runs(rows) {
                     ctx.batch(run.key.batch_kind(), |ctx| {
+                        atlas(ctx.rec);
                         self.programs.quad.draw_run(
                             ctx.rec,
                             pipelines,
+                            indices,
                             QuadRun {
                                 draw: run.key,
                                 instances: run.instances,
@@ -1171,14 +1186,17 @@ impl WgpuBackend {
                 // The timing bucket and label come from the tier, so a new tier cannot reach the
                 // pass untimed.
                 ctx.batch(batch_kind(tier), |ctx| match tier {
-                    PaintTier::Mesh => self.programs.mesh.draw_batch(
-                        ctx.rec,
-                        pipelines.mesh(),
-                        MeshBatch {
-                            draws: buffer.meshes.draw(),
-                            items,
-                        },
-                    ),
+                    PaintTier::Mesh => {
+                        atlas(ctx.rec);
+                        self.programs.mesh.draw_batch(
+                            ctx.rec,
+                            pipelines.mesh(),
+                            MeshBatch {
+                                draws: buffer.meshes.draw(),
+                                items,
+                            },
+                        );
+                    }
                     PaintTier::Image => self.programs.image.draw_batch(
                         ctx.rec,
                         |form| pipelines.image(form),
@@ -1186,11 +1204,13 @@ impl WgpuBackend {
                             ids: buffer.images.id(),
                             keys: buffer.images.key(),
                             items,
+                            indices,
                         },
                         textures,
                     ),
                     PaintTier::Icon => self.icon.render_batch(ctx.rec, batch as usize, raster()),
                     PaintTier::Curve => {
+                        atlas(ctx.rec);
                         self.programs
                             .curve
                             .draw_batch(ctx.rec, pipelines.curve(), items);
@@ -1205,6 +1225,7 @@ impl WgpuBackend {
                             items,
                             groups: &effect_groups,
                             backdrops: self.backdrops.groups(),
+                            indices,
                         },
                     ),
                 });

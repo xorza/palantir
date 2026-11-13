@@ -14,9 +14,8 @@ use crate::gpu::pipeline::raster_pipeline::raster_quad::{
     FLAG_COLOR, FLAG_DESATURATE, FLAG_MASK, FLAG_PAGE, U_BITS, V_SHIFT,
 };
 use crate::gpu::pipeline::raster_pipeline::raster_quad::{RasterQuad, SpunRasterQuad};
-use crate::gpu::resource::pipeline_recipe::{self, Pipeline, PipelineRecipe};
+use crate::gpu::resource::pipeline_recipe::{Pipeline, PipelineRecipe};
 use crate::gpu::resource::shader_body::{ShaderBody, ShaderConstant};
-use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::primitives::wgsl;
 
 /// The two pipeline pairs one swapchain format draws raster quads with, for each pair of mask and
@@ -111,16 +110,12 @@ impl RasterPipeline {
         constants: SHADER_CONSTANTS,
     };
 
-    /// The program over the frame group and `atlas`, the atlas group's layout.
-    pub(crate) fn new(gpu: &Gpu, textures: &TextureBinding, atlas: &wgpu::BindGroupLayout) -> Self {
-        let pipeline_layout = pipeline_recipe::pipeline_layout(
-            gpu,
-            "palantir.raster.pl",
-            &[Some(textures.frame_layout()), Some(atlas)],
-        );
+    /// The program over `layout`, the main pass's shared one, whose atlas group the rasters read
+    /// their pages through.
+    pub(crate) fn new(gpu: &Gpu, layout: &wgpu::PipelineLayout) -> Self {
         Self {
             shader: Self::SHADER.module(gpu),
-            pipeline_layout,
+            pipeline_layout: layout.clone(),
         }
     }
 

@@ -86,7 +86,7 @@ fn a_quad_reads_its_page_under_every_set_of_slots() {
 
     let binding = TextureBinding::new(&gpu);
     let group = AtlasGroup::new(&gpu, &atlas);
-    let program = RasterPipeline::new(&gpu, &binding, group.layout());
+    let program = RasterPipeline::new(&gpu, &group.pipeline_layout(&gpu, &binding));
     let frame = FrameGroup::new(&gpu, binding, RowTexture::new(&gpu, 1).row_view());
     let size = UVec2::new(u32::from(SIDE) * MAX_PAGES as u32, 2 * u32::from(SIDE));
     let target = gpu.target("palantir.test.raster.slots", size);

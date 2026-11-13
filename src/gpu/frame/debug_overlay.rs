@@ -5,8 +5,10 @@
 
 use crate::damage::Damage;
 use crate::damage::region::DAMAGE_RECT_CAP;
+use crate::gpu::pipeline::atlas_binding::ATLAS_GROUP;
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
 use crate::gpu::pipeline::quad_pipeline::QuadPipeline;
+use crate::gpu::pipeline::shape_template::TemplateIndices;
 use crate::gpu::pipeline::viewport_push::ViewportPush;
 use crate::gpu::resource::pipeline_recipe::Pipeline;
 use crate::primitives::geometry::rect::{EdgeRounding, Rect};
@@ -35,13 +37,15 @@ const DAMAGE_OVERLAY_GAP: f32 = 1.0;
 /// 40% alpha leaves 60% of the underlying pixel per Partial frame.
 const DIM_ALPHA: f32 = 0.4;
 
-/// What every debug-overlay draw binds: the solid quad pipeline with the frame group, and the
-/// viewport.
+/// What every debug-overlay draw binds: the solid quad pipeline with the frame group and the atlas
+/// group its layout takes, the template's indices, and the viewport.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct OverlayDraw<'a> {
     pub(crate) quad: &'a QuadPipeline,
     pub(crate) pipeline: &'a Pipeline,
+    pub(crate) indices: &'a TemplateIndices,
     pub(crate) frame_group: &'a wgpu::BindGroup,
+    pub(crate) atlas: &'a wgpu::BindGroup,
     pub(crate) viewport: ViewportPush,
 }
 
@@ -50,7 +54,9 @@ impl<'a> OverlayDraw<'a> {
     pub(crate) fn quads(self, pass: wgpu::RenderPass<'a>, instances: Range<u32>) {
         let mut rec = PassRecorder::new(pass, self.viewport);
         rec.group(FRAME_GROUP, self.frame_group);
-        self.quad.draw_boxes(&mut rec, self.pipeline, instances);
+        rec.group(ATLAS_GROUP, self.atlas);
+        self.quad
+            .draw_boxes(&mut rec, self.pipeline, self.indices, instances);
     }
 }
 

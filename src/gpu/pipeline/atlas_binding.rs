@@ -9,7 +9,8 @@ use crate::gpu::atlas::atlas_textures::AtlasTextures;
 use crate::gpu::atlas::page_list::MAX_PAGES;
 use crate::gpu::atlas::page_slots::PageSlots;
 use crate::gpu::device::gpu::Gpu;
-use crate::gpu::resource::texture_binding::{self, Filtering};
+use crate::gpu::resource::pipeline_recipe;
+use crate::gpu::resource::texture_binding::{self, Filtering, TextureBinding};
 
 /// The group the atlas binds at, past the frame group.
 pub(crate) const ATLAS_GROUP: u32 = 1;
@@ -103,9 +104,21 @@ impl AtlasGroup {
         &self.group
     }
 
-    /// The layout the raster and the shadow pipelines take at [`ATLAS_GROUP`].
-    pub(crate) const fn layout(&self) -> &wgpu::BindGroupLayout {
-        &self.layout
+    /// The one pipeline layout the main pass's fills, shadows, rasters, meshes and curves build
+    /// over: the frame group of `textures`, then this group, so a switch among them keeps the
+    /// layout, and with it the immediates the viewport rides in. A family that reads no page binds
+    /// this group all the same, which the recorder elides while it stays bound
+    /// (`src/gpu/AGENTS.md`, Shapes).
+    pub(crate) fn pipeline_layout(
+        &self,
+        gpu: &Gpu,
+        textures: &TextureBinding,
+    ) -> wgpu::PipelineLayout {
+        pipeline_recipe::pipeline_layout(
+            gpu,
+            "palantir.main.pl",
+            &[Some(textures.frame_layout()), Some(&self.layout)],
+        )
     }
 }
 

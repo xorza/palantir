@@ -19,7 +19,8 @@ use glam::{UVec2, Vec2};
 
 /// A quad, a text run and a polyline replay in that order, through three pipelines: the frame
 /// group binds once for the pass and the atlas once past it, where the gradient group at slot 0
-/// was bound again after the atlas took the slot. One draw each.
+/// was bound again after the atlas took the slot. One draw each, and the three over one layout,
+/// so the viewport is pushed once.
 #[test]
 fn the_frame_group_binds_once_a_pass() {
     let gpu = headless_test_gpu();
@@ -44,6 +45,7 @@ fn the_frame_group_binds_once_a_pass() {
         counts.groups, 2,
         "the frame group and the atlas: {counts:?}"
     );
+    assert_eq!(counts.viewports, 1, "one layout: {counts:?}");
 }
 
 /// Shadowed blocks and text runs stacked over each other in turn, so neither joins a draw past the

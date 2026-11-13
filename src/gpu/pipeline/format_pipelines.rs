@@ -13,6 +13,7 @@ use crate::gpu::pipeline::quad_pipeline::{QuadPipeline, QuadVariants};
 use crate::gpu::pipeline::raster_pipeline::{
     RasterDraws, RasterPipeline, RasterPipelinePair, RasterVariants,
 };
+use crate::gpu::pipeline::shape_template::TemplateIndices;
 use crate::gpu::resource::pipeline_recipe::Pipeline;
 use crate::renderer::render_buffer::effect_draw_row::EffectKey;
 use crate::renderer::render_buffer::fill_form::{FillBrush, FillForm};
@@ -50,6 +51,9 @@ pub(crate) struct Programs {
     pub(crate) raster: RasterPipeline,
     /// The frame's effect instances and words; each effect's pipelines are the store's.
     pub(crate) effect: EffectPipeline,
+    /// The shape template's triangles over its points, which the quads, the images and the
+    /// effects draw through, one index buffer so a switch among them binds none.
+    pub(crate) indices: TemplateIndices,
 }
 
 /// What a frame draws through, which its pipelines are built for: its variant, the quad draws it

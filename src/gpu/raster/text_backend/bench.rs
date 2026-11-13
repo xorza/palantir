@@ -219,7 +219,7 @@ impl Fixture {
         let textures = TextureBinding::new(&g.gpu);
         let atlas = AtlasTextures::new(&g.gpu);
         let group = AtlasGroup::new(&g.gpu, &atlas);
-        let program = RasterPipeline::new(&g.gpu, &textures, group.layout());
+        let program = RasterPipeline::new(&g.gpu, &group.pipeline_layout(&g.gpu, &textures));
         // The frame group the raster pipelines take first, which their glyphs read no clip of.
         let frame = FrameGroup::new(&g.gpu, textures, RowTexture::new(&g.gpu, 1).row_view());
         Self {

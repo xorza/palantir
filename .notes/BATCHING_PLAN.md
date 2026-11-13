@@ -153,7 +153,14 @@ In order; each ends with the gate of `AGENTS.md` and the census of step 1.
   the board: `atomic/composer/cpu/*`, `atomic/clip_pass/gpu/rect`, `integration/clip_frame/*`,
   `integration/frame/gpu/{scrolling,partial,alternating}`.
 
-### 4. The main pass's families share a pipeline layout and an index buffer
+### 4. The main pass's families share a pipeline layout and an index buffer — done
+
+- **Landed.** `AtlasGroup::pipeline_layout` and `Programs::indices`; the decision folded into
+  `src/gpu/AGENTS.md`, Shapes. Census: viewport pushes fall on every page, Shadows 13 to 1;
+  index binds fall where images and effects draw, Materials 13 to 7; bind groups rise by one to
+  three where a fill follows an image, Colors, Images, Materials, the cost named below. ABBA of
+  `integration/frame/gpu/*` and `atomic/main_pass/gpu/scrolling`: the board within ±0.3 %; the
+  intel within its noise, its two base runs apart by up to 10 %.
 
 - **Change.** Fills, shadows, rasters, meshes and curves build over one layout, the frame group
   and the atlas group; each binds the atlas group through the recorder, which elides it while

@@ -274,8 +274,6 @@ pub(crate) struct EffectPipeline {
     group: Option<wgpu::BindGroup>,
     /// The `words` capacity `group` binds.
     bound: usize,
-    /// The shape template's triangles, which every effect draws over its shape.
-    indices: TemplateIndices,
 }
 
 /// One batch of effect draws: the frame's per-draw key and instance columns, this batch's slice of
@@ -283,13 +281,15 @@ pub(crate) struct EffectPipeline {
 /// groups a backdrop effect reads its backdrop's result through, `None` before the first frame
 /// with a backdrop.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct EffectBatch<'a> {
-    pub(crate) keys: &'a [EffectKey],
-    pub(crate) instances: &'a [EffectInstance],
-    pub(crate) modules: &'a [EffectModule],
+pub(crate) struct EffectBatch<'f, 'a> {
+    pub(crate) keys: &'f [EffectKey],
+    pub(crate) instances: &'f [EffectInstance],
+    pub(crate) modules: &'f [EffectModule],
     pub(crate) items: Span,
-    pub(crate) groups: &'a EffectImageGroups,
-    pub(crate) backdrops: Option<BackdropGroups<'a>>,
+    pub(crate) groups: &'f EffectImageGroups,
+    pub(crate) backdrops: Option<BackdropGroups<'f>>,
+    /// The template's indices, which every family that draws closed shapes shares.
+    pub(crate) indices: &'a TemplateIndices,
 }
 
 /// What one frame uploads: each draw's instance and the span of its images in `textures`, the
@@ -310,7 +310,6 @@ impl EffectPipeline {
             images: Vec::new(),
             group: None,
             bound: 0,
-            indices: TemplateIndices::new(gpu),
         }
     }
 
@@ -371,7 +370,8 @@ impl EffectPipeline {
             items,
             groups,
             backdrops,
-        }: EffectBatch<'_>,
+            indices,
+        }: EffectBatch<'_, 'a>,
     ) {
         let group = self
             .group
@@ -408,8 +408,7 @@ impl EffectPipeline {
                     backdrops.expect("a frame with a backdrop effect prepares its backdrops");
                 rec.group_once(BACKDROPS_GROUP, backdrops.group(read));
             }
-            self.indices
-                .draw(rec, key.form, key.cover, run.instances.u32_range());
+            indices.draw(rec, key.form, key.cover, run.instances.u32_range());
         }
     }
 }
