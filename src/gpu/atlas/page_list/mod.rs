@@ -275,7 +275,7 @@ impl PageList {
             config.page_edge
         );
         assert!(
-            config.page_edge <= ShelfPacker::MAX_SIZE,
+            config.page_edge <= ShelfPacker::MAX_EDGE,
             "a page edge of {} passes the packer's",
             config.page_edge
         );
@@ -490,8 +490,7 @@ impl PageList {
             if !entry.is_idle(frame, Entry::GRACE_FRAMES) {
                 return Verdict::Skip;
             }
-            let shelf = page.packer.shelf_height(placement.origin.y);
-            if page.holds(size) && ShelfPacker::takes(shelf, size.y) {
+            if page.holds(size) && page.packer.shelf(placement.origin.y).takes(size.y) {
                 Verdict::Take
             } else {
                 Verdict::Refuse
@@ -974,7 +973,7 @@ impl PageList {
     }
 }
 
-/// An edge as a packer counts it, which [`PageList::new`] holds to [`ShelfPacker::MAX_SIZE`].
+/// An edge as a packer counts it, which [`PageList::new`] holds to [`ShelfPacker::MAX_EDGE`].
 fn edge_u16(edge: u32) -> u16 {
     u16::try_from(edge).expect("a page edge fits the packer's")
 }

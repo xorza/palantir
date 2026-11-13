@@ -18,7 +18,7 @@ pub(crate) mod bench;
 #[derive(Debug)]
 pub(crate) struct ShelfPacker {
     /// The side's edge in texels.
-    size: u16,
+    edge: u16,
     /// Sorted by `y`; together they cover `0..top`.
     shelves: Vec<Shelf>,
     /// The first row no shelf holds: everything below is unclaimed.
@@ -48,20 +48,20 @@ pub(crate) struct Shelf {
 
 impl ShelfPacker {
     /// The largest edge a packer counts, in texels.
-    pub(crate) const MAX_SIZE: u32 = u16::MAX as u32;
+    pub(crate) const MAX_EDGE: u32 = u16::MAX as u32;
 
-    pub(crate) const fn new(size: u16) -> Self {
+    pub(crate) const fn new(edge: u16) -> Self {
         Self {
-            size,
+            edge,
             shelves: Vec::new(),
             top: 0,
             spare: Vec::new(),
         }
     }
 
-    /// A packer of `edge` texels, held to [`Self::MAX_SIZE`].
+    /// A packer of `edge` texels, held to [`Self::MAX_EDGE`].
     pub(crate) const fn within(edge: u32) -> Self {
-        Self::new(if edge < Self::MAX_SIZE {
+        Self::new(if edge < Self::MAX_EDGE {
             edge as u16
         } else {
             u16::MAX
@@ -70,14 +70,7 @@ impl ShelfPacker {
 
     /// The side's edge in texels.
     pub(crate) const fn edge(&self) -> u16 {
-        self.size
-    }
-
-    /// Whether a rectangle of height `h` belongs on a shelf of `height`: no lower, and within a
-    /// quarter of its own height above it (four texels at least), so short rectangles do not
-    /// strand the room of a tall shelf.
-    pub(crate) const fn takes(height: u16, h: u16) -> bool {
-        h <= height && height - h <= max_slack(h)
+        self.edge
     }
 
     /// The top-left of a free rectangle of `size`, now taken; `None` when no shelf and no
@@ -87,20 +80,20 @@ impl ShelfPacker {
     pub(crate) fn allocate(&mut self, size: U16Vec2) -> Option<U16Vec2> {
         let (w, h) = (size.x, size.y);
         debug_assert!(w > 0 && h > 0, "a rectangle with no texels owns no room");
-        if w > self.size || h > self.size {
+        if w > self.edge || h > self.edge {
             return None;
         }
         let best = self
             .shelves
             .iter()
             .enumerate()
-            .filter(|(_, shelf)| shelf.widest >= w && Self::takes(shelf.height, h))
+            .filter(|(_, shelf)| shelf.widest >= w && shelf.takes(h))
             .map(|(i, shelf)| (shelf.height, i))
             .min();
         if let Some((_, shelf)) = best {
             return Some(self.carve(shelf, w));
         }
-        let height = shelf_height(h).min(self.size - self.top);
+        let height = shelf_height(h).min(self.edge - self.top);
         if h <= height {
             let y = self.top;
             self.top += height;
@@ -123,11 +116,11 @@ impl ShelfPacker {
     /// that went.
     fn open(&mut self, y: u16, height: u16) -> Shelf {
         let mut free = self.spare.pop().unwrap_or_default();
-        free.push(0..self.size);
+        free.push(0..self.edge);
         Shelf {
             y,
             height,
-            widest: self.size,
+            widest: self.edge,
             free,
         }
     }
@@ -233,7 +226,7 @@ impl ShelfPacker {
 
     /// Whether nothing sits on `shelf`: only an empty shelf has a span as wide as the side.
     const fn is_empty(&self, shelf: &Shelf) -> bool {
-        shelf.widest == self.size
+        shelf.widest == self.edge
     }
 
     /// Merge empty shelf `i` with the empty shelves just above and below it.
@@ -256,9 +249,9 @@ impl ShelfPacker {
         }
     }
 
-    /// The height of the shelf a rectangle at row `y` sits on.
-    pub(crate) fn shelf_height(&self, y: u16) -> u16 {
-        self.shelves[self.shelf_at(y)].height
+    /// The shelf a rectangle at row `y` sits on.
+    pub(crate) fn shelf(&self, y: u16) -> &Shelf {
+        &self.shelves[self.shelf_at(y)]
     }
 
     /// Every shelf, top to bottom.
@@ -281,21 +274,35 @@ impl ShelfPacker {
         self.top = 0;
     }
 
-    /// Widen and deepen the side to `size`, keeping every placement: each shelf gains the new
+    /// Widen and deepen the side to `edge`, keeping every placement: each shelf gains the new
     /// columns, and the new rows join the unclaimed ones.
-    pub(crate) fn grow(&mut self, size: u16) {
-        debug_assert!(size > self.size, "a grow widens the side");
-        let old = self.size;
+    pub(crate) fn grow(&mut self, edge: u16) {
+        debug_assert!(edge > self.edge, "a grow widens the side");
+        let old = self.edge;
         for shelf in &mut self.shelves {
             match shelf.free.last_mut() {
-                Some(last) if last.end == old => last.end = size,
-                _ => shelf.free.push(old..size),
+                Some(last) if last.end == old => last.end = edge,
+                _ => shelf.free.push(old..edge),
             }
             let last = shelf.free.last().expect("a span pushed or widened");
             shelf.widest = shelf.widest.max(width_of(last));
         }
-        self.size = size;
+        self.edge = edge;
     }
+}
+
+impl Shelf {
+    /// Whether a rectangle of height `h` belongs on the shelf, as [`takes`] its height.
+    pub(crate) const fn takes(&self, h: u16) -> bool {
+        takes(self.height, h)
+    }
+}
+
+/// Whether a rectangle of height `h` belongs on a shelf of `height`: no lower, and within a quarter
+/// of its own height above it (four texels at least), so short rectangles do not strand the room
+/// of a tall shelf.
+const fn takes(height: u16, h: u16) -> bool {
+    h <= height && height - h <= max_slack(h)
 }
 
 /// The texels `span` holds.
