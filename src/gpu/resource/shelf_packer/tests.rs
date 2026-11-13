@@ -1,4 +1,5 @@
 use crate::gpu::resource::shelf_packer::{ShelfPacker, takes};
+use crate::internals::seeded_rng::SeededRng;
 use glam::U16Vec2;
 
 fn size(w: u16, h: u16) -> U16Vec2 {
@@ -345,7 +346,7 @@ struct Workload {
     name: &'static str,
     side: u16,
     grown: Option<u16>,
-    sizes: fn(&mut Rng) -> U16Vec2,
+    sizes: fn(&mut SeededRng) -> U16Vec2,
     /// Out of 100 steps, how many free a rectangle.
     frees: u32,
     eviction: Eviction,
@@ -362,24 +363,6 @@ enum Path {
     New,
     /// On an emptied shelf, split to it.
     Empty,
-}
-
-/// A xorshift generator, so a run repeats.
-#[derive(Debug)]
-struct Rng(u32);
-
-impl Rng {
-    fn next(&mut self) -> u32 {
-        self.0 ^= self.0 << 13;
-        self.0 ^= self.0 >> 17;
-        self.0 ^= self.0 << 5;
-        self.0
-    }
-
-    /// A value in `range`, inclusive.
-    fn within(&mut self, lo: u16, hi: u16) -> u16 {
-        lo + (self.next() % u32::from(hi - lo + 1)) as u16
-    }
 }
 
 /// Every workload's run, step by step against a reference that finds by a full scan where the
@@ -414,7 +397,7 @@ fn every_workload_places_as_the_reference_and_drains_to_empty() {
             side: 64,
             grown: Some(128),
             sizes: |rng| {
-                if rng.next() % 8 == 0 {
+                if rng.below(8) == 0 {
                     size(rng.within(40, 64), rng.within(20, 64))
                 } else {
                     size(rng.within(1, 4), rng.within(1, 4))
@@ -456,7 +439,7 @@ fn every_workload_places_as_the_reference_and_drains_to_empty() {
         let name = workload.name;
         let mut packer = ShelfPacker::new(workload.side);
         let mut placed: Vec<(U16Vec2, U16Vec2)> = Vec::new();
-        let mut rng = Rng(0x2545_f491);
+        let mut rng = SeededRng::new(0x2545_f491_4f6c_dd1d);
         let mut paths = [0; 3];
         let mut refusals = 0;
         for step in 0..STEPS {
@@ -465,10 +448,10 @@ fn every_workload_places_as_the_reference_and_drains_to_empty() {
             {
                 packer.grow(side);
             }
-            if rng.next() % 100 < workload.frees && !placed.is_empty() {
+            if rng.below(100) < u64::from(workload.frees) && !placed.is_empty() {
                 let at = match workload.eviction {
                     Eviction::Oldest => 0,
-                    Eviction::Random => rng.next() as usize % placed.len(),
+                    Eviction::Random => rng.below(placed.len() as u64) as usize,
                 };
                 let (origin, size) = placed.remove(at);
                 packer.deallocate(origin, size.x);
@@ -504,7 +487,7 @@ fn every_workload_places_as_the_reference_and_drains_to_empty() {
         while !placed.is_empty() {
             let at = match workload.eviction {
                 Eviction::Oldest => 0,
-                Eviction::Random => rng.next() as usize % placed.len(),
+                Eviction::Random => rng.below(placed.len() as u64) as usize,
             };
             let (origin, size) = placed.remove(at);
             packer.deallocate(origin, size.x);

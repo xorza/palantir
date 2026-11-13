@@ -363,7 +363,7 @@ impl WgpuBackend {
         let effect_store = Rc::clone(resources.effect_store);
         let texture_binding = resources.texture_binding;
         let gradient = RowTexture::new(&gpu, resources.gradient_rows);
-        let frame_group = FrameGroup::new(&gpu, texture_binding.clone(), &gradient);
+        let frame_group = FrameGroup::new(&gpu, texture_binding.clone(), gradient.row_view());
         let backdrops = Backdrops::new(&texture_binding);
         let atlas_textures = AtlasTextures::new(&gpu);
         let quad = QuadPipeline::new(&gpu, &texture_binding, &atlas_textures);
@@ -466,7 +466,7 @@ impl WgpuBackend {
             self.pipelines.insert(format, built);
         }
         self.blit.ensure(&self.gpu, format.get());
-        self.effect_store.ensure_format(format.get());
+        self.effect_store.ensure_format(&self.gpu, format.get());
     }
 
     /// Render one frame of `stream` into `target`. Skip frames never reach this method.
@@ -822,7 +822,7 @@ impl WgpuBackend {
             self.gradient.upload(&mut ctx, rows);
         }
         self.frame_group
-            .upload(&mut ctx, &self.gradient, &buffer.rounded_clips);
+            .upload(&mut ctx, self.gradient.row_view(), &buffer.rounded_clips);
 
         // Damage-rect overlay quads (debug): uploaded now, drawn last after the backbuffer copy.
         if let Some(damage) = overlay.damage {
@@ -872,7 +872,7 @@ impl WgpuBackend {
         );
         self.programs.curve.upload(&mut ctx, &buffer.curves);
         self.effect_store
-            .prepare(buffer.effects.key(), clipping(buffer));
+            .prepare(ctx.gpu, buffer.effects.key(), clipping(buffer));
         self.programs.effect.upload(
             &mut ctx,
             EffectStores {

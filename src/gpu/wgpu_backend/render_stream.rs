@@ -103,7 +103,8 @@ impl RenderStream {
     pub(super) fn frame_backbuffer(&mut self) -> Option<FrameBackbuffer<'_>> {
         let backbuffer = self.backbuffer.as_ref()?;
         Some(FrameBackbuffer {
-            backbuffer,
+            view: backbuffer.view(),
+            size: backbuffer.size(),
             source: &mut self.blur_source,
         })
     }

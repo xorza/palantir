@@ -23,6 +23,8 @@ pub(crate) mod panic_probe;
 #[cfg(test)]
 pub(crate) mod scratch_report;
 #[cfg(test)]
+pub(crate) mod seeded_rng;
+#[cfg(test)]
 pub(crate) mod size_trio;
 #[cfg(test)]
 pub(crate) mod srgb_reference;

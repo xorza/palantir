@@ -31,7 +31,6 @@ use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use crate::gpu::resource::gpu_ctx::GpuCtx;
 use crate::gpu::resource::texture_binding::{self, TextureBinding};
 use crate::gpu::spectrum_tables::SpectrumTables;
-use crate::gpu::surface::backbuffer::Backbuffer;
 use crate::gpu::texel::TargetFormat;
 use crate::primitives::identity::backdrop_key::BackdropKey;
 use crate::primitives::identity::backdrop_keys::BackdropKeys;
@@ -193,7 +192,9 @@ pub(crate) struct BackdropFrame<'a> {
 /// again.
 #[derive(Debug)]
 pub(crate) struct FrameBackbuffer<'a> {
-    pub(crate) backbuffer: &'a Backbuffer,
+    /// The backbuffer's view and size.
+    pub(crate) view: &'a wgpu::TextureView,
+    pub(crate) size: UVec2,
     pub(crate) source: &'a mut Option<TargetSource>,
 }
 
@@ -481,16 +482,9 @@ impl Backdrops {
         // A blur made before keeps preparing on a frame with no job, so its scratch decays.
         if let Some(blur) = &mut resources.blur {
             let target = backbuffer.filter(|_| !self.jobs.is_empty()).map(
-                |FrameBackbuffer { backbuffer, source }| {
+                |FrameBackbuffer { view, size, source }| {
                     source
-                        .get_or_insert_with(|| {
-                            blur.target_source(
-                                ctx.gpu,
-                                backbuffer.view(),
-                                format,
-                                backbuffer.size(),
-                            )
-                        })
+                        .get_or_insert_with(|| blur.target_source(ctx.gpu, view, format, size))
                         .clone()
                 },
             );

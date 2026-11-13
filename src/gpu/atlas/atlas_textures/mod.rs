@@ -4,7 +4,7 @@
 pub(crate) mod move_draw;
 
 use crate::gpu::atlas::AtlasPool;
-use crate::gpu::atlas::atlas_format::AtlasFormat;
+use crate::gpu::atlas::atlas_format::{AtlasFormat, PerFormat};
 use crate::gpu::atlas::atlas_textures::move_draw::{MoveDraw, MoveRect, MoveRun};
 use crate::gpu::atlas::page_list::{MAX_PAGES, Move, MoveBudget, PageList};
 use crate::gpu::device::gpu::Gpu;
@@ -265,7 +265,7 @@ enum Mover {
 /// (`src/gpu/AGENTS.md`, Device loss).
 #[derive(Debug)]
 pub(crate) struct AtlasTextures {
-    lists: [ListTextures; 3],
+    lists: PerFormat<ListTextures>,
     mover: Mover,
 }
 
@@ -278,7 +278,7 @@ impl AtlasTextures {
     /// The textures of a device, moving items by `route`.
     fn with_route(gpu: &Gpu, route: MoveRoute) -> Self {
         Self {
-            lists: AtlasFormat::ALL.map(|format| ListTextures::new(gpu, format)),
+            lists: PerFormat::from_fn(|format| ListTextures::new(gpu, format)),
             mover: match route {
                 MoveRoute::Copy => Mover::Copy,
                 MoveRoute::Draw => Mover::Draw {
@@ -309,7 +309,7 @@ impl AtlasTextures {
         if let Mover::Draw { draw, .. } = &mut self.mover {
             draw.begin();
         }
-        for (textures, format) in self.lists.iter_mut().zip(AtlasFormat::ALL) {
+        for (format, textures) in self.lists.iter_mut() {
             textures.commit(gpu, encoder, pool.list(format), &mut self.mover);
         }
         pool.forget_moves();
@@ -317,7 +317,7 @@ impl AtlasTextures {
 
     /// The views of `format`'s pages by page index, a closed page's the 1 × 1 stand-in.
     pub(crate) fn views(&self, format: AtlasFormat) -> [&wgpu::TextureView; MAX_PAGES] {
-        let list = &self.lists[format as usize];
+        let list = &self.lists[format];
         std::array::from_fn(|idx| {
             list.pages[idx]
                 .as_ref()
@@ -327,32 +327,32 @@ impl AtlasTextures {
 
     /// Moves whenever a view of `format`'s pages or scratch textures changes: a consumer that binds
     /// them makes its group again when it differs from the one it made the group at.
-    pub(crate) const fn generation(&self, format: AtlasFormat) -> u64 {
-        self.lists[format as usize].generation
+    pub(crate) fn generation(&self, format: AtlasFormat) -> u64 {
+        self.lists[format].generation
     }
 
     /// The view of `format`'s page `idx`, `None` where none is open.
     pub(crate) fn page_view(&self, format: AtlasFormat, idx: usize) -> Option<&wgpu::TextureView> {
-        self.lists[format as usize].pages[idx]
+        self.lists[format].pages[idx]
             .as_ref()
             .map(|page| &page.bound.view)
     }
 
     /// The texture of `format`'s page `idx`, `None` where none is open.
     pub(crate) fn page_texture(&self, format: AtlasFormat, idx: usize) -> Option<&wgpu::Texture> {
-        self.lists[format as usize].pages[idx]
+        self.lists[format].pages[idx]
             .as_ref()
             .map(|page| &page.bound.texture)
     }
 
     /// The 1 × 1 view of `format` a binding with no texture of its own binds.
-    pub(crate) const fn absent_view(&self, format: AtlasFormat) -> &wgpu::TextureView {
-        &self.lists[format as usize].absent.view
+    pub(crate) fn absent_view(&self, format: AtlasFormat) -> &wgpu::TextureView {
+        &self.lists[format].absent.view
     }
 
     /// The view of `format`'s scratch slot `idx`, `None` where it holds no texture.
     pub(crate) fn scratch_view(&self, format: AtlasFormat, idx: u32) -> Option<&wgpu::TextureView> {
-        self.lists[format as usize]
+        self.lists[format]
             .scratch
             .get(idx as usize)?
             .as_ref()
@@ -388,7 +388,7 @@ pub(crate) mod internals {
         /// The bytes of `format`'s page and scratch textures, which the CPU half counts as
         /// [`PageList::bytes`](crate::gpu::atlas::page_list::PageList::bytes) once committed.
         pub(crate) fn bytes(&self, format: AtlasFormat) -> u64 {
-            self.lists[format as usize].bytes()
+            self.lists[format].bytes()
         }
 
         /// `format`'s textures, named `name`, against the texels its pages' items and its held
@@ -399,7 +399,7 @@ pub(crate) mod internals {
             format: AtlasFormat,
             name: &'static str,
         ) -> AtlasUse {
-            let textures = &self.lists[format as usize];
+            let textures = &self.lists[format];
             let count =
                 textures.pages.iter().flatten().count() + textures.scratch.iter().flatten().count();
             let list = pool.list(format);

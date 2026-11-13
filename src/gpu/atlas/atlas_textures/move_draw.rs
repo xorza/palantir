@@ -1,7 +1,7 @@
 //! [`MoveDraw`]: a list's moves drawn onto their destination page, one instanced draw a run of a
 //! source and a destination, as WebRender's `ps_copy` moves texture-cache items.
 
-use crate::gpu::atlas::atlas_format::AtlasFormat;
+use crate::gpu::atlas::atlas_format::{AtlasFormat, PerFormat};
 use crate::gpu::atlas::atlas_textures::texture_format;
 use crate::gpu::atlas::page_list::Move;
 use crate::gpu::device::gpu::Gpu;
@@ -94,7 +94,7 @@ pub(crate) struct MoveDraw {
     layout: wgpu::BindGroupLayout,
     pipeline_layout: wgpu::PipelineLayout,
     /// By [`AtlasFormat`].
-    pipelines: [Option<wgpu::RenderPipeline>; 3],
+    pipelines: PerFormat<Option<wgpu::RenderPipeline>>,
     /// Grown to the most rectangles one submission moved, and kept: its bound is the moves of the
     /// largest commit, a purge's, which a list's items bound.
     rects: Option<wgpu::Buffer>,
@@ -127,7 +127,7 @@ impl MoveDraw {
                 &[Some(&layout)],
             ),
             layout,
-            pipelines: [const { None }; 3],
+            pipelines: PerFormat::default(),
             rects: None,
             used: 0,
         }
@@ -155,7 +155,7 @@ impl MoveDraw {
             rects,
         } = run;
         debug_assert!(!rects.is_empty(), "a run moves an item");
-        let pipeline = self.pipelines[format as usize].get_or_insert_with(|| {
+        let pipeline = self.pipelines[format].get_or_insert_with(|| {
             PipelineRecipe {
                 vertex_buffers: &[Some(pipeline_recipe::vertex_layout(
                     size_of::<MoveRect>(),

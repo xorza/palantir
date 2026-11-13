@@ -13,7 +13,7 @@ pub(crate) mod row_texture;
 pub(crate) mod scratch_cache;
 pub(crate) mod tenant;
 
-use crate::gpu::atlas::atlas_format::AtlasFormat;
+use crate::gpu::atlas::atlas_format::{AtlasFormat, PerFormat};
 use crate::gpu::atlas::atlas_handle::{AtlasHandle, Placement};
 use crate::gpu::atlas::error::AtlasError;
 use crate::gpu::atlas::page_list::{MoveBudget, PageList, PageListConfig};
@@ -60,7 +60,7 @@ impl Evictions {
 /// evictions their tenants have yet to drop.
 #[derive(Debug)]
 pub(crate) struct AtlasPool {
-    lists: [PageList; 3],
+    lists: PerFormat<PageList>,
     frame: u64,
     /// The display frame the lists last decayed in, `None` before the first.
     decayed: Option<u64>,
@@ -77,8 +77,9 @@ impl AtlasPool {
     /// The pool with each list as `configs` sets it, by [`AtlasFormat`].
     pub(crate) fn with_configs(configs: [PageListConfig; 3], device_edge: u32) -> Self {
         Self {
-            lists: AtlasFormat::ALL
-                .map(|format| PageList::new(format, configs[format as usize], device_edge)),
+            lists: PerFormat::from_fn(|format| {
+                PageList::new(format, configs[format as usize], device_edge)
+            }),
             frame: 0,
             decayed: None,
             evictions: Evictions::default(),
@@ -86,8 +87,8 @@ impl AtlasPool {
     }
 
     /// The list of `format`.
-    pub(crate) const fn list(&self, format: AtlasFormat) -> &PageList {
-        &self.lists[format as usize]
+    pub(crate) fn list(&self, format: AtlasFormat) -> &PageList {
+        &self.lists[format]
     }
 
     /// Move to display frame `frame`, and drop the scratch textures idle for an expiry window.
@@ -102,7 +103,7 @@ impl AtlasPool {
             self.frame
         );
         self.frame = frame;
-        for list in &mut self.lists {
+        for (_, list) in self.lists.iter_mut() {
             list.expire(frame);
         }
     }
@@ -115,7 +116,7 @@ impl AtlasPool {
         tenant: Tenant,
         size: U16Vec2,
     ) -> Result<AtlasHandle, AtlasError> {
-        self.lists[format as usize].allocate(tenant, size, self.frame, &mut self.evictions)
+        self.lists[format].allocate(tenant, size, self.frame, &mut self.evictions)
     }
 
     /// Return what the lists hold past their need, at the end of the first submit of each display
@@ -130,7 +131,7 @@ impl AtlasPool {
         }
         self.decayed = Some(self.frame);
         let mut budget = budget;
-        for list in &mut self.lists {
+        for (_, list) in self.lists.iter_mut() {
             list.decay(self.frame, &mut budget, &mut self.evictions);
         }
     }
@@ -140,41 +141,41 @@ impl AtlasPool {
     /// with no budget. Between frames alone, as the moves and the closed pages wait for the GPU
     /// half's next commit, which the caller records at once.
     pub(crate) fn purge(&mut self) {
-        for list in &mut self.lists {
+        for (_, list) in self.lists.iter_mut() {
             list.purge(self.frame, &mut self.evictions);
         }
     }
 
     /// Forget every list's moves, which the GPU half's commit recorded.
     pub(crate) fn forget_moves(&mut self) {
-        for list in &mut self.lists {
+        for (_, list) in self.lists.iter_mut() {
             list.forget_moves();
         }
     }
 
     /// Give `handle`'s item back.
     pub(crate) fn release(&mut self, handle: AtlasHandle) {
-        self.lists[handle.format as usize].release(handle);
+        self.lists[handle.format].release(handle);
     }
 
     /// Where `handle`'s item sits, `None` once it went.
     pub(crate) fn placement(&self, handle: AtlasHandle) -> Option<Placement> {
-        self.lists[handle.format as usize].placement(handle)
+        self.lists[handle.format].placement(handle)
     }
 
     /// Mark `handle`'s item drawn this frame and say where it sits, `None` once it went.
     pub(crate) fn stamp(&mut self, handle: AtlasHandle) -> Option<Placement> {
-        self.lists[handle.format as usize].stamp(handle, self.frame)
+        self.lists[handle.format].stamp(handle, self.frame)
     }
 
     /// Keep `handle`'s item from every eviction until a matching [`Self::unpin`].
     pub(crate) fn pin(&mut self, handle: AtlasHandle) {
-        self.lists[handle.format as usize].pin(handle);
+        self.lists[handle.format].pin(handle);
     }
 
     /// Take back one pin of `handle`'s item.
     pub(crate) fn unpin(&mut self, handle: AtlasHandle) {
-        self.lists[handle.format as usize].unpin(handle);
+        self.lists[handle.format].unpin(handle);
     }
 
     /// The handles of `tenant`'s items evicted since its last drain, each stale now: the tenant
@@ -193,12 +194,12 @@ impl AtlasPool {
         format: AtlasFormat,
         size: UVec2,
     ) -> Result<ScratchId, AtlasError> {
-        self.lists[format as usize].acquire_scratch(size)
+        self.lists[format].acquire_scratch(size)
     }
 
     /// Give back the texture of `format` `id` holds; it idles until it serves again or expires.
     pub(crate) fn release_scratch(&mut self, format: AtlasFormat, id: ScratchId) {
-        self.lists[format as usize].release_scratch(id, self.frame);
+        self.lists[format].release_scratch(id, self.frame);
     }
 }
 
@@ -217,12 +218,12 @@ pub(crate) mod internals {
 
         /// Close `format`'s page `idx`, which holds no item.
         pub(crate) fn close_page(&mut self, format: AtlasFormat, idx: usize) {
-            self.lists[format as usize].close_page(idx);
+            self.lists[format].close_page(idx);
         }
 
         /// The size of the texture of `format` `id` holds, `None` once released.
         pub(crate) fn scratch_size(&self, format: AtlasFormat, id: ScratchId) -> Option<UVec2> {
-            self.lists[format as usize].scratch_size(id)
+            self.lists[format].scratch_size(id)
         }
 
         /// Whether the lists decayed in the current display frame.

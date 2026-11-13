@@ -93,8 +93,9 @@ impl WgpuEffectStore {
         state.pending.clear();
     }
 
-    /// Build every wanted form for `format`, where it is new: before the frame that paints it.
-    pub(crate) fn ensure_format(&self, format: wgpu::TextureFormat) {
+    /// Build every wanted form for `format` on `gpu`, the attached device, where it is new: before
+    /// the frame that paints it.
+    pub(crate) fn ensure_format(&self, gpu: &Gpu, format: wgpu::TextureFormat) {
         let mut state = self.state.borrow_mut();
         let StoreState {
             modules,
@@ -114,6 +115,7 @@ impl WgpuEffectStore {
         for slot in wanted.ones() {
             let key = EffectKey::of_slot(slot);
             attached.device.ensure(
+                gpu,
                 &mut built.effects[slot],
                 EffectTarget {
                     module: &modules[key.effect.idx()],
@@ -126,10 +128,11 @@ impl WgpuEffectStore {
         attached.formats.push(built);
     }
 
-    /// The start of a frame's GPU phase: want each key of `keys`, the frame's draws, and build
-    /// every wanted form's halves not built yet for each format, before any pass; a frame of
-    /// `clipping` [`Clipping::On`] first asks for the clipped half of every wanted form.
-    pub(crate) fn prepare(&self, keys: &[EffectKey], clipping: Clipping) {
+    /// The start of a frame's GPU phase on `gpu`, the attached device: want each key of `keys`, the
+    /// frame's draws, and build every wanted form's halves not built yet for each format, before
+    /// any pass; a frame of `clipping` [`Clipping::On`] first asks for the clipped half of every
+    /// wanted form.
+    pub(crate) fn prepare(&self, gpu: &Gpu, keys: &[EffectKey], clipping: Clipping) {
         let mut state = self.state.borrow_mut();
         for &key in keys {
             state.want(key);
@@ -156,6 +159,7 @@ impl WgpuEffectStore {
         for key in pending.drain(..) {
             for built in formats.iter_mut() {
                 device.ensure(
+                    gpu,
                     &mut built.effects[key.slot()],
                     EffectTarget {
                         module: &modules[key.effect.idx()],

@@ -7,25 +7,9 @@ use crate::gpu::atlas::atlas_handle::{AtlasHandle, Placement};
 use crate::gpu::atlas::page_list::{MAX_PAGES, MoveBudget, Page, PageListConfig};
 use crate::gpu::atlas::tenant::Tenant;
 use crate::gpu::atlas::{AtlasPool, error::AtlasError};
+use crate::internals::seeded_rng::SeededRng;
 use glam::{U16Vec2, UVec2};
 use std::collections::BTreeMap;
-
-/// A xorshift64 stream, so a failing run replays from its seed.
-#[derive(Debug)]
-struct Rng(u64);
-
-impl Rng {
-    fn next(&mut self) -> u64 {
-        self.0 ^= self.0 << 13;
-        self.0 ^= self.0 >> 7;
-        self.0 ^= self.0 << 17;
-        self.0
-    }
-
-    fn below(&mut self, n: u64) -> u64 {
-        self.next() % n
-    }
-}
 
 /// What the model knows of a live item: its handle, where the pool put it, its pins and the
 /// frame it was last drawn in.
@@ -53,7 +37,7 @@ fn the_pool_agrees_with_a_model_over_a_seeded_run() {
     // By slot and generation, so a walk over it runs in one order every run.
     let mut model: BTreeMap<(u32, u32), Held> = BTreeMap::new();
     let mut drained = Vec::new();
-    let mut rng = Rng(0x9e37_79b9_7f4a_7c15);
+    let mut rng = SeededRng::new(0x9e37_79b9_7f4a_7c15);
     let tenants = [
         Tenant::Glyphs,
         Tenant::Icons,
@@ -65,7 +49,7 @@ fn the_pool_agrees_with_a_model_over_a_seeded_run() {
     let mut moved = 0;
     for step in 0..4000 {
         let live: Vec<AtlasHandle> = model.values().map(|held| held.handle).collect();
-        let pick = |rng: &mut Rng| live[rng.below(live.len() as u64) as usize];
+        let pick = |rng: &mut SeededRng| live[rng.below(live.len() as u64) as usize];
         match rng.below(10) {
             0..=4 => {
                 let size = U16Vec2::new(1 + rng.below(40) as u16, 1 + rng.below(40) as u16);

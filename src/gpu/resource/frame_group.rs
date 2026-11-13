@@ -1,6 +1,5 @@
 //! The frame group: what every color pipeline of the main pass reads at one slot.
 
-use crate::gpu::atlas::row_texture::RowTexture;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use crate::gpu::resource::gpu_ctx::GpuCtx;
@@ -22,6 +21,14 @@ pub(crate) struct FrameGroup {
     bound: Bound,
 }
 
+/// The row texture's view as the frame group binds it, and which texture it views, which a table
+/// that grew or halved makes again.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct RowView<'a> {
+    pub(crate) view: &'a wgpu::TextureView,
+    pub(crate) generation: u64,
+}
+
 /// The row texture's generation and the pool's capacity a frame group was made over.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Bound {
@@ -31,11 +38,11 @@ struct Bound {
 
 impl FrameGroup {
     /// The group over `rows` and an empty pool.
-    pub(crate) fn new(gpu: &Gpu, binding: TextureBinding, rows: &RowTexture) -> Self {
+    pub(crate) fn new(gpu: &Gpu, binding: TextureBinding, rows: RowView<'_>) -> Self {
         let clips = DynamicBuffer::storage(gpu, "palantir.frame.clips", 16);
-        let group = binding.frame_group(gpu, rows.view(), &clips.buffer);
+        let group = binding.frame_group(gpu, rows.view, &clips.buffer);
         let bound = Bound {
-            rows: rows.generation(),
+            rows: rows.generation,
             clips: clips.capacity(),
         };
         Self {
@@ -51,18 +58,18 @@ impl FrameGroup {
     pub(crate) fn upload(
         &mut self,
         ctx: &mut GpuCtx<'_>,
-        rows: &RowTexture,
+        rows: RowView<'_>,
         clips: &[RoundedClip],
     ) {
         self.clips.upload_instances(ctx, clips);
         let bound = Bound {
-            rows: rows.generation(),
+            rows: rows.generation,
             clips: self.clips.capacity(),
         };
         if bound != self.bound {
             self.group = self
                 .binding
-                .frame_group(ctx.gpu, rows.view(), &self.clips.buffer);
+                .frame_group(ctx.gpu, rows.view, &self.clips.buffer);
             self.bound = bound;
         }
     }

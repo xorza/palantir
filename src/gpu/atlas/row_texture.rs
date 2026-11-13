@@ -6,6 +6,7 @@
 //! [`RowTable`](crate::renderer::row_table::RowTable).
 
 use crate::gpu::device::gpu::Gpu;
+use crate::gpu::resource::frame_group::RowView;
 use crate::gpu::resource::gpu_ctx::{GpuCtx, RowCopy};
 use crate::gpu::texel;
 use crate::gpu::texel::TargetSpec;
@@ -78,14 +79,13 @@ impl RowTexture {
         }
     }
 
-    /// The view the frame group binds.
-    pub(crate) const fn view(&self) -> &wgpu::TextureView {
-        &self.view
-    }
-
-    /// Which texture [`Self::view`] views: it changes where the table grows or halves.
-    pub(crate) const fn generation(&self) -> u64 {
-        self.generation
+    /// The view the frame group binds, and which texture it views, which changes where the table
+    /// grows or halves.
+    pub(crate) const fn row_view(&self) -> RowView<'_> {
+        RowView {
+            view: &self.view,
+            generation: self.generation,
+        }
     }
 
     /// Syncs the row table to the GPU: the dirty `rows` stage once in the belt and copy one per
@@ -193,7 +193,7 @@ mod tests {
             assert_eq!(row_texels(row), baked(i), "ramp {i} at row {row}");
         }
 
-        let generation = texture.generation();
+        let generation = texture.generation;
         // Two windows of frames at most: the first ends with the 255 ramps' frame inside it.
         for _ in 0..2 * EXPIRY_FRAMES {
             table.begin_frame();
@@ -205,7 +205,7 @@ mod tests {
         }
         upload(&gpu, &mut table, &mut texture);
         assert_eq!(texture.texture.height(), INITIAL_ROWS);
-        assert_eq!(texture.generation(), generation + 1);
+        assert_eq!(texture.generation, generation + 1);
         let texels = gpu.read_texture(&texture.texture);
         let row_texels = |row: u32| {
             let at = (row * ROW_PITCH) as usize;

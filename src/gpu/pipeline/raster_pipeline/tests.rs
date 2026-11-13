@@ -91,7 +91,7 @@ fn a_quad_reads_its_page_under_every_set_of_slots() {
 
     let binding = TextureBinding::new(&gpu);
     let program = RasterPipeline::new(&gpu, &binding);
-    let frame = FrameGroup::new(&gpu, binding, &RowTexture::new(&gpu, 1));
+    let frame = FrameGroup::new(&gpu, binding, RowTexture::new(&gpu, 1).row_view());
     let group = PageGroup::new(
         &gpu,
         program.layout(),

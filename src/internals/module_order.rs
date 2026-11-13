@@ -1,4 +1,5 @@
-//! The module order `AGENTS.md` states, held against every `crate::` path of the shipped code.
+//! The module orders the `AGENTS.md` files state, held against every path of the shipped code: the
+//! crate's top-level modules, and `gpu`'s submodules within it.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -38,8 +39,58 @@ const ORDER: [&[&str]; 17] = [
 /// measures. Refused: a `src/bench/` away from that code.
 const OUTSIDE: [&str; 3] = ["golden", "internals", "bench"];
 
-fn tier(module: &str) -> Option<usize> {
-    ORDER.iter().position(|tier| tier.contains(&module))
+/// `gpu`'s submodules in order, as `src/gpu/AGENTS.md` draws it: the leaves; the device; the
+/// texel geometry and the app's paint callbacks; the resources the pipelines draw from; the atlas
+/// pool; the pipelines; the tenants that draw through them; a frame's passes; the surfaces it
+/// paints; and the backend over them all.
+const GPU_ORDER: [&[&str]; 11] = [
+    &[
+        "debug_marker",
+        "flag_names",
+        "render_owner_id",
+        "spectrum_tables",
+        "atlas_memory",
+    ],
+    &["error"],
+    &["device"],
+    &["texel", "gpu_paint"],
+    &["resource"],
+    &["atlas"],
+    &["pipeline"],
+    &["raster", "backdrop"],
+    &["frame"],
+    &["surface"],
+    &["wgpu_backend"],
+];
+
+/// What sits outside `gpu`'s order: the module root, its tests and benches, and the test and bench
+/// devices.
+const GPU_OUTSIDE: [&str; 5] = ["mod", "tests", "bench", "test_gpu", "bench_gpu"];
+
+/// One order: the path its modules sit under, its tiers, and what sits outside it.
+#[derive(Clone, Copy, Debug)]
+struct Order {
+    prefix: &'static str,
+    tiers: &'static [&'static [&'static str]],
+    outside: &'static [&'static str],
+}
+
+const CRATE: Order = Order {
+    prefix: "crate::",
+    tiers: &ORDER,
+    outside: &OUTSIDE,
+};
+
+const GPU: Order = Order {
+    prefix: "crate::gpu::",
+    tiers: &GPU_ORDER,
+    outside: &GPU_OUTSIDE,
+};
+
+impl Order {
+    fn tier(self, module: &str) -> Option<usize> {
+        self.tiers.iter().position(|tier| tier.contains(&module))
+    }
 }
 
 /// The lines of a file that ship: those before its gated tail, an inline `mod internals` or
@@ -64,16 +115,16 @@ fn shipped(text: &str) -> Vec<&str> {
     lines[..tail.unwrap_or(lines.len())].to_vec()
 }
 
-/// Each module of the order that `module`'s code `text` names and may not, and `{` for a grouped
+/// Each module of `order` that `module`'s code `text` names and may not, and `{` for a grouped
 /// path, which hides the modules it names.
-fn edges_against_order<'a>(module: &str, text: &'a str) -> Vec<&'a str> {
-    let from = tier(module).expect("a module of the order");
+fn edges_against_order<'a>(order: Order, module: &str, text: &'a str) -> Vec<&'a str> {
+    let from = order.tier(module).expect("a module of the order");
     shipped(text)
         .into_iter()
         .filter(|line| !line.trim_start().starts_with("//"))
         .flat_map(|line| {
-            line.match_indices("crate::")
-                .map(move |(at, _)| &line[at + 7..])
+            line.match_indices(order.prefix)
+                .map(move |(at, _)| &line[at + order.prefix.len()..])
         })
         .map(|path| {
             if path.starts_with('{') {
@@ -84,7 +135,7 @@ fn edges_against_order<'a>(module: &str, text: &'a str) -> Vec<&'a str> {
                 .unwrap_or("")
         })
         .filter(|target| {
-            *target == "{" || (*target != module && tier(target).is_some_and(|to| to >= from))
+            *target == "{" || (*target != module && order.tier(target).is_some_and(|to| to >= from))
         })
         .collect()
 }
@@ -127,22 +178,30 @@ fn the_scan_finds_an_edge_against_the_order() {
                 // crate::host::c\n\
                 fn f() { crate::driver::d(); }\n\
                 #[cfg(test)]\nmod tests { use crate::widgets::e::E; }\n";
-    assert_eq!(edges_against_order("ui", text), ["widget_core", "driver"]);
     assert_eq!(
-        edges_against_order("damage", "use crate::input::f::F;\n"),
+        edges_against_order(CRATE, "ui", text),
+        ["widget_core", "driver"]
+    );
+    assert_eq!(
+        edges_against_order(CRATE, "damage", "use crate::input::f::F;\n"),
         ["input"]
     );
     assert_eq!(
-        edges_against_order("ui", "use crate::{host::g::G, common::h::H};\n"),
+        edges_against_order(CRATE, "ui", "use crate::{host::g::G, common::h::H};\n"),
         ["{"]
     );
     assert_eq!(
-        edges_against_order("ui", "#[cfg(test)]\nmod tests;\nuse crate::host::i::I;\n"),
+        edges_against_order(
+            CRATE,
+            "ui",
+            "#[cfg(test)]\nmod tests;\nuse crate::host::i::I;\n"
+        ),
         ["host"],
         "a gated declaration closes nothing"
     );
     assert_eq!(
         edges_against_order(
+            CRATE,
             "ui",
             "use crate::widget_core::j::J;\r\n\
              #[cfg(test)]\r\nmod tests { use crate::host::k::K; }\r\n"
@@ -152,6 +211,7 @@ fn the_scan_finds_an_edge_against_the_order() {
     );
     assert_eq!(
         edges_against_order(
+            CRATE,
             "ui",
             "#[cfg(feature = \"internals\")]\r\npub(crate) mod internals {\r\n\
              use crate::host::l::L;\r\n}\r\n"
@@ -161,31 +221,49 @@ fn the_scan_finds_an_edge_against_the_order() {
     );
 }
 
-/// Each top-level module has a place, in the order or outside it, and no shipped line of one names
-/// a module it may not.
+/// Each module has a place, in its order or outside it, and no shipped line of one names a module it
+/// may not: the crate's top-level modules over `src`, and `gpu`'s submodules over `src/gpu`.
 #[test]
 fn no_module_imports_against_the_order() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
-    let mut files = 0;
-    for path in rust_files(&root) {
-        let relative = path.strip_prefix(&root).unwrap();
-        let top = relative.components().next().unwrap().as_os_str();
-        let module = top.to_str().unwrap().trim_end_matches(".rs");
-        if module == "lib" || OUTSIDE.contains(&module) {
-            continue;
+    let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    for (order, root, files_min) in [(CRATE, src.clone(), 500), (GPU, src.join("gpu"), 100)] {
+        let mut files = 0;
+        for path in rust_files(&root) {
+            let relative = path.strip_prefix(&root).unwrap();
+            let top = relative.components().next().unwrap().as_os_str();
+            let module = top.to_str().unwrap().trim_end_matches(".rs");
+            if module == "lib" || order.outside.contains(&module) {
+                continue;
+            }
+            assert!(
+                order.tier(module).is_some(),
+                "{module} has no place in the order"
+            );
+            if !ships(relative) {
+                continue;
+            }
+            files += 1;
+            let text = fs::read_to_string(&path).unwrap();
+            let against = edges_against_order(order, module, &text);
+            assert!(
+                against.is_empty(),
+                "{} imports {against:?} against the order",
+                relative.display()
+            );
         }
-        assert!(tier(module).is_some(), "{module} has no place in the order");
-        if !ships(relative) {
-            continue;
-        }
-        files += 1;
-        let text = fs::read_to_string(&path).unwrap();
-        let against = edges_against_order(module, &text);
         assert!(
-            against.is_empty(),
-            "{} imports {against:?} against the order",
-            relative.display()
+            files > files_min,
+            "the scan reads the tree, not {files} files"
         );
     }
-    assert!(files > 500, "the scan reads the crate, not {files} files");
+}
+
+/// The gpu scan reads paths under `crate::gpu::` alone: an edge to a later submodule, and none to
+/// an earlier one or past the module.
+#[test]
+fn the_gpu_scan_finds_an_edge_against_its_order() {
+    let text = "use crate::gpu::resource::a::A;\n\
+                use crate::gpu::wgpu_backend::B;\n\
+                use crate::renderer::c::C;\n";
+    assert_eq!(edges_against_order(GPU, "atlas", text), ["wgpu_backend"]);
 }

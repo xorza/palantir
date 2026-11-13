@@ -296,7 +296,7 @@ fn a_page_opened_again_in_its_slot_starts_empty() {
     commit(&gpu, &mut textures, &mut pool);
     assert!(textures.page_texture(AtlasFormat::R8, 1).is_none());
     assert_eq!(textures.generation(AtlasFormat::R8), generation + 1);
-    let list = &textures.lists[AtlasFormat::R8 as usize];
+    let list = &textures.lists[AtlasFormat::R8];
     let views = textures.views(AtlasFormat::R8);
     let open = &list.pages[0].as_ref().unwrap().bound.view;
     let absent = &list.absent.view;

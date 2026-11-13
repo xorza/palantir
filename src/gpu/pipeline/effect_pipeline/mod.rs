@@ -33,13 +33,11 @@ use crate::renderer::render_buffer::effect_draw_row::{EffectInstance, EffectKey}
 use crate::renderer::render_buffer::shape_form::ShapeForm;
 use crate::renderer::render_buffer::template_cover::TemplateCover;
 
-/// The device effects build on, and the layouts every effect's pipeline builds over: the frame
-/// group, which holds the gradient rows a material's box reads, the images at [`IMAGES_GROUP`]
+/// The layouts every effect's pipeline builds over: the frame group, which holds the gradient rows a material's box reads, the images at [`IMAGES_GROUP`]
 /// for an effect that binds any, a backdrop effect's backdrop results at [`BACKDROPS_GROUP`], the
 /// parameter words at [`WORDS_GROUP`], and the immediates every pipeline declares.
 #[derive(Debug)]
 pub(crate) struct EffectDevice {
-    gpu: Gpu,
     /// The parameter words' group layout.
     pub(crate) group: wgpu::BindGroupLayout,
     /// A color effect's, at each count of image slots from 0.
@@ -94,7 +92,6 @@ impl EffectDevice {
             )
         });
         Self {
-            gpu: gpu.clone(),
             group,
             color,
             backdrop,
@@ -209,7 +206,7 @@ impl EffectDevice {
     /// # Panics
     ///
     /// For a [`ShapeForm::Rect`], as an effect draws its shape's template.
-    pub(crate) fn ensure(&self, variant: &mut ClipVariant, target: EffectTarget<'_>) {
+    pub(crate) fn ensure(&self, gpu: &Gpu, variant: &mut ClipVariant, target: EffectTarget<'_>) {
         let EffectTarget {
             module,
             key:
@@ -251,8 +248,7 @@ impl EffectDevice {
             KindId::Backdrop => &backdrop,
         };
         let label = format!("palantir.effect.{}.{form:?}.{cover:?}", effect.0);
-        let shader = self
-            .gpu
+        let shader = gpu
             .device
             .create_shader_module(wgpu::ShaderModuleDescriptor {
                 label: Some(&label),
@@ -268,7 +264,7 @@ impl EffectDevice {
             ..PipelineRecipe::color(&label, &shader, self.pipeline(module), format)
         };
         for &clipping in halves {
-            variant.ensure(&self.gpu, clipping, &recipe);
+            variant.ensure(gpu, clipping, &recipe);
         }
     }
 }
@@ -485,26 +481,30 @@ mod tests {
             let target = |form, halves| covered(form, TemplateCover::Whole, halves);
             for form in [ShapeForm::Box, ShapeForm::Triangle] {
                 let mut variant = ClipVariant::NONE;
-                device.ensure(&mut variant, target(form, &[Clipping::Off]));
+                device.ensure(&gpu, &mut variant, target(form, &[Clipping::Off]));
                 assert!(variant.is_built(Clipping::Off), "{kind:?} {form:?}");
                 assert!(!variant.is_built(Clipping::On), "{kind:?} {form:?}");
-                device.ensure(&mut variant, target(form, &[Clipping::Off, Clipping::On]));
+                device.ensure(
+                    &gpu,
+                    &mut variant,
+                    target(form, &[Clipping::Off, Clipping::On]),
+                );
                 assert!(variant.is_built(Clipping::On), "{kind:?} {form:?}");
             }
             panic_probe::assert_panics_with("an effect draws its shape's template", || {
                 let mut rect = ClipVariant::NONE;
-                device.ensure(&mut rect, target(ShapeForm::Rect, &[Clipping::Off]));
+                device.ensure(&gpu, &mut rect, target(ShapeForm::Rect, &[Clipping::Off]));
             });
             let mut halo = ClipVariant::NONE;
             let rim = covered(ShapeForm::Box, TemplateCover::Rim, &[Clipping::Off]);
             match kind {
                 KindId::Color => {
-                    device.ensure(&mut halo, rim);
+                    device.ensure(&gpu, &mut halo, rim);
                     assert!(halo.is_built(Clipping::Off), "a color effect's halo");
                 }
                 KindId::Backdrop => {
                     panic_probe::assert_panics_with("a halo is a color effect's", || {
-                        device.ensure(&mut halo, rim);
+                        device.ensure(&gpu, &mut halo, rim);
                     });
                 }
             }

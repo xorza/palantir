@@ -4,6 +4,23 @@ How palantir draws, from the renderer's instance streams through wgpu: the decis
 `renderer`, `gpu` or the shared WGSL in `primitives::wgsl` keeps. Measurements behind them are in
 `.notes/PERF.md` and `.notes/research/`.
 
+## Module order
+
+- **`gpu`'s submodules import only those to their left**, as the crate's top-level modules do
+  (`internals::module_order` holds both):
+
+  ```text
+  {debug_marker, flag_names, render_owner_id, spectrum_tables, atlas_memory} → error → device
+    → {texel, gpu_paint} → resource → atlas → pipeline → {raster, backdrop} → frame → surface
+    → wgpu_backend
+  ```
+
+  A type two layers share sits in the lower: `GpuCtx` and the pipeline recipe in `resource`, a
+  target's `TargetSpec` and `TargetFormat` in `texel`, what a backdrop's composite binds in
+  `pipeline`, and a layer hands a lower one what it reads, a view and a size, not its own type.
+  Refused: one cycle through eleven submodules, which no part of `gpu` could be read or tested
+  apart from.
+
 ## Shapes
 
 - **A closed shape draws as a template the vertex stage builds**: a fill, a shaped image, a
