@@ -31,7 +31,7 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::renderer::row_table::bake::{self, LUT_ROW_TEXELS, LutRowTexels};
-use crate::renderer::row_table::{MERGE_GAP_ROWS, RowTable};
+use crate::renderer::row_table::{MERGE_GAP_ROWS, RowTable, RowTableConfig};
 use criterion::{Criterion, Throughput};
 use std::hint::black_box;
 
@@ -58,10 +58,10 @@ fn gradient_for(seed: u32) -> ColorRamp {
 
 /// Table grown to `capacity` and filled to one row short of full.
 ///
-/// Fills in a single epoch so the table grows rather than evicting, then
-/// `flush` frees the rows for eviction.
+/// Fills in one display frame so the table grows rather than evicting, flushes, then moves two
+/// frames on, past the grace, so the rows are free for eviction.
 fn filled(capacity: u32) -> RowTable {
-    let mut table = RowTable::new(capacity);
+    let mut table = RowTable::new(RowTableConfig::of_device(capacity));
     let mut seed = 0u32;
     while table.capacity() < capacity || table.counters.counts().bakes < capacity - 1 {
         seed += 1;
@@ -70,6 +70,7 @@ fn filled(capacity: u32) -> RowTable {
     }
     assert_eq!(table.capacity(), capacity);
     table.flush();
+    table.advance_to(2);
     table
 }
 
@@ -114,6 +115,7 @@ pub(crate) fn atomic(c: &mut Criterion) {
                 let (hits, bakes) = (table.counters.counts().hits, table.counters.counts().bakes);
                 for k in 0..16 {
                     table.flush();
+                    table.advance_to(table.frame() + 2);
                     black_box(table.register(&gradient_for(CHURN_BASE + k)));
                 }
                 assert_eq!(
@@ -129,9 +131,11 @@ pub(crate) fn atomic(c: &mut Criterion) {
                 let growths = table.counters.counts().growths;
                 let mut seed = CHURN_BASE + 16;
                 b.iter(|| {
-                    // `flush` ends the epoch; otherwise claimed rows stay eviction-exempt and the
-                    // table grows instead of churning.
+                    // A submit's flush bakes the row the last miss claimed; two frames on, past
+                    // the grace, as otherwise the claimed rows stay exempt and the table grows
+                    // instead of churning.
                     table.flush();
+                    table.advance_to(table.frame() + 2);
                     seed = seed.wrapping_add(1);
                     black_box(table.register(&gradient_for(seed)))
                 });

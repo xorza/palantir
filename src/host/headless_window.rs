@@ -126,6 +126,8 @@ impl HeadlessWindow {
         let ComposeCanvas { target, rows } = canvas;
         let report = self.record_frame(app, target, now);
         if let Some(plan) = report.plan {
+            // With no backend to count display frames, each compose is one.
+            rows.advance_to(rows.frame() + 1);
             self.frames.compose(&mut self.cpu.frontend, rows, plan);
         }
         report

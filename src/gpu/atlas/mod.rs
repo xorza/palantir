@@ -20,25 +20,28 @@ use crate::gpu::atlas::page_list::{MoveBudget, PageList, PageListConfig};
 use crate::gpu::atlas::scratch_cache::ScratchId;
 use crate::gpu::atlas::tenant::Tenant;
 use crate::gpu::device::pass_traffic::PassTraffic;
-use crate::renderer::row_table::RowTable;
+use crate::renderer::row_table::{RowTable, RowTableConfig};
 use glam::UVec2;
 use std::vec::Drain;
 
-/// What a pool is made with: each list's constants, the device's largest texture edge, and what a
-/// display frame's moves may take on it.
+/// What a pool is made with: each list's constants and the row table's, the device's largest
+/// texture edge, and what a display frame's moves may take on it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct PoolConfig {
     pub(crate) lists: PerFormat<PageListConfig>,
+    pub(crate) rows: RowTableConfig,
     pub(crate) device_edge: u32,
     pub(crate) move_budget: MoveBudget,
 }
 
 impl PoolConfig {
-    /// A device's: each list's starting constants ([`PageListConfig::of`]), its largest texture
-    /// edge `device_edge`, and the budget of a device whose passes move `traffic`.
+    /// A device's: each list's starting constants ([`PageListConfig::of`]) and the row table's
+    /// ([`RowTableConfig::of_device`]), its largest texture edge `device_edge`, and the budget of a
+    /// device whose passes move `traffic`.
     pub(crate) fn of_device(device_edge: u32, traffic: PassTraffic) -> Self {
         Self {
             lists: PerFormat::from_fn(PageListConfig::of),
+            rows: RowTableConfig::of_device(device_edge),
             device_edge,
             move_budget: MoveBudget::of(traffic),
         }
@@ -85,7 +88,7 @@ impl AtlasPool {
             lists: PerFormat::from_fn(|format| {
                 PageList::new(format, config.lists[format], config.device_edge)
             }),
-            rows: RowTable::new(config.device_edge),
+            rows: RowTable::new(config.rows),
             frame: 0,
             decayed: None,
             move_budget: config.move_budget,
@@ -113,18 +116,13 @@ impl AtlasPool {
         self.frame
     }
 
-    /// Move to display frame `frame`.
-    ///
-    /// # Panics
-    ///
-    /// If `frame` is before the pool's.
+    /// Move the lists and the rows to display frame `frame`, or stay where a build moved them
+    /// ahead: a build takes the frame its submit will belong to, and one whose submit was dropped
+    /// leaves the pool a frame ahead of the next window's, which only holds what that window draws
+    /// a frame longer.
     pub(crate) fn advance_to(&mut self, frame: u64) {
-        assert!(
-            frame >= self.frame,
-            "the display frames ran backwards, {} to {frame}",
-            self.frame
-        );
-        self.frame = frame;
+        self.frame = self.frame.max(frame);
+        self.rows.advance_to(frame);
     }
 
     /// Room for an item of `size` of `format` for `tenant`, drawn this frame, and where it sits;
@@ -262,6 +260,7 @@ pub(crate) mod internals {
     use crate::gpu::atlas::page_list::{MoveBudget, PageListConfig};
     use crate::gpu::atlas::{AtlasPool, PoolConfig};
     use crate::gpu::device::pass_traffic::PassTraffic;
+    use crate::renderer::row_table::RowTableConfig;
 
     impl AtlasPool {
         /// The pool of a device whose largest texture edge is `device_edge` at the starting
@@ -279,6 +278,7 @@ pub(crate) mod internals {
                     page_edge,
                     soft_bytes,
                 }),
+                rows: RowTableConfig::of_device(16384),
                 device_edge: 16384,
                 move_budget: MoveBudget::COPIES,
             })

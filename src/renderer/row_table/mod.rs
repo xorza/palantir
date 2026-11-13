@@ -21,6 +21,7 @@
 //!   stops converted to Oklab once; the texel loop lerps and runs only
 //!   `Oklab::to_color`. Perceptually uniform; the CSS Color 4 default.
 
+use crate::common::eviction_clock::{ClockSweep, GRACE_FRAMES, Verdict};
 use crate::common::expiry_window::{EXPIRY_FRAMES, ExpiryWindow};
 use crate::common::hash::Hasher;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
@@ -29,7 +30,6 @@ use crate::primitives::paint::lut_row::LutRow;
 use crate::renderer::row_table::bake::{LUT_ROW_TEXELS, LutRowTexels};
 use crate::renderer::row_table::counters::RowTableCounters;
 use crate::renderer::row_table::dirty_rows::DirtyRows;
-use crate::renderer::row_table::mru_list::MruList;
 use hashbrown::HashTable;
 use std::hash::{Hash as _, Hasher as _};
 use std::ops::Range;
@@ -39,12 +39,14 @@ pub(crate) mod bake;
 pub(crate) mod bench;
 mod counters;
 mod dirty_rows;
-mod mru_list;
 
-/// Rows the table starts with, and the fewest a halving leaves. Row 0 is a
-/// debug-magenta fallback, so a `fill_lut_row = 0` from a bug paints obviously wrong. The table
-/// doubles ([`RowTable::grow`]) when a frame registers more gradients than fit.
+/// Rows a device's table starts with, and the fewest a halving leaves. Row 0 is a debug-magenta
+/// fallback, so a `fill_lut_row = 0` from a bug paints obviously wrong.
 pub(crate) const INITIAL_ROWS: u32 = 256;
+
+/// Rows a device's table grows to before it evicts: a frame's ramps past them take the rows of
+/// ramps no frame drew in the grace, as a page list evicts past its soft budget.
+pub(crate) const SOFT_ROWS: u32 = 256;
 
 /// Growth ceiling of a table no device holds, a host's that paints nothing: wgpu's downlevel
 /// `max_texture_dimension_2d` floor.
@@ -63,16 +65,33 @@ pub(crate) const MAX_ROWS: u32 = 4096;
 /// (`.notes/research/2026-11-12-atlas-pool-measurements.md`, "The gradient flush").
 pub(crate) const MERGE_GAP_ROWS: u32 = 3;
 
-/// One row's bookkeeping: the ramp a flush bakes it from, and when a frame last registered it.
-#[derive(Clone, Debug, Default)]
-struct RowSlot {
-    /// The ramp this row holds, which the index hashes and compares through. `None` for a
-    /// never-claimed row and for row 0 (not in the MRU list).
-    key: Option<ColorRamp>,
-    /// The [`RowTable::epoch`] the row was last registered in. A current-epoch
-    /// row cannot be evicted: its `LutRow` is in this frame's draw payloads. `0` means
-    /// never claimed, hence the epoch starts at 1.
-    epoch: u64,
+/// What a table is made with: the rows it starts at, the rows it grows to before it evicts, and
+/// the rows it never passes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct RowTableConfig {
+    pub(crate) first_rows: u32,
+    pub(crate) soft_rows: u32,
+    pub(crate) max_rows: u32,
+}
+
+impl RowTableConfig {
+    /// A device's whose largest texture edge is `device_edge` (one LUT row per texture row): its
+    /// ceiling the edge clamped to the [`MAX_ROWS`] policy ceiling, and raised to the first rows.
+    pub(crate) fn of_device(device_edge: u32) -> Self {
+        Self {
+            first_rows: INITIAL_ROWS,
+            soft_rows: SOFT_ROWS,
+            max_rows: device_edge.clamp(INITIAL_ROWS, MAX_ROWS),
+        }
+    }
+}
+
+/// A row a ramp holds: the ramp a flush bakes it from, and the display frame a build last
+/// registered it in.
+#[derive(Clone, Copy, Debug)]
+struct Row {
+    ramp: ColorRamp,
+    last_use: u64,
 }
 
 /// The pool's row table (`src/gpu/AGENTS.md`, Atlases): a ramp to row-id map, whose rows
@@ -81,35 +100,38 @@ struct RowSlot {
 /// No CPU mirror of the texture: a flush bakes each row of its runs again from its ramp, the clean
 /// rows a run folds in among them, which the bake's determinism makes the same bytes.
 ///
-/// Row 0 is the magenta fallback and never evicted. With no free row, the
-/// least-recently-used one is evicted and claimed in place, excluding rows
-/// registered since the last flush; if all are exempt the table [grows](Self::grow). At the
+/// Row 0 is the magenta fallback and never evicted; the held rows are `1..=len`, so a free row is
+/// the next. A registration takes, in order: its row where the ramp holds one; a free row; under
+/// the soft rows, a doubled table's; the row of a ramp no frame drew in the grace, as the page
+/// lists' clock finds it; a doubled table's up to the ceiling; else [`LutRow::FALLBACK`]. At the
 /// start of a frame that ends an expiry window with fewer than a quarter of the rows registered
 /// in it, the table [halves](Self::halve): those rows renumbered low, the rest dropped.
 ///
 /// ## Why the index is separate from the rows
 ///
-/// An open-addressed table can't survive eviction: a victim is chosen by recency,
-/// so keys land away from their home slot and the forward-probe invariant dies at
-/// the first eviction, making a miss O(capacity). A separate index keeps every
-/// operation O(1) and lets [`Self::grow`] leave lookup alone.
+/// An open-addressed table can't survive eviction: a victim is chosen by age, so keys land away
+/// from their home slot and the forward-probe invariant dies at the first eviction, making a miss
+/// O(capacity). A separate index keeps every operation O(1) and lets [`Self::grow`] leave lookup
+/// alone.
 #[derive(Debug)]
 pub(crate) struct RowTable {
-    /// The rows that hold a ramp, found by the ramp, which each row's [`RowSlot::key`] holds: a
-    /// ramp is the exact bake identity whatever gradient kind paints it, and it is stored once.
-    /// A pure lookup index, undisturbed by eviction and growth. Refused: a map from ramp to row
-    /// beside the slots, which held each resident ramp twice, about 42 B each.
+    /// The rows that hold a ramp, found by the ramp, which each [`Row`] holds: a ramp is the exact
+    /// bake identity whatever gradient kind paints it, and it is stored once. A pure lookup index,
+    /// undisturbed by eviction and growth. Refused: a map from ramp to row beside the rows, which
+    /// held each resident ramp twice, about 42 B each.
     index: HashTable<u32>,
-    slots: Vec<RowSlot>,
-    /// Recency order over rows `1..capacity`; see [`mru_list`] for why its tail alone
-    /// answers "what may be evicted".
-    mru: MruList,
-    /// Hard row ceiling: `min(device max_texture_dimension_2d, MAX_ROWS)`.
-    max_rows: u32,
-    /// Registration epoch, bumped per [`Self::flush`] (the per-submit boundary). The
-    /// table is shared across windows, but each re-registers its gradients before its
-    /// own flush, so exempting rows registered since the last flush is safe.
-    epoch: u64,
+    /// Row `id`'s at `id - 1`: the held rows, a prefix of the table.
+    rows: Vec<Row>,
+    /// Rows the table holds, row 0 among them: the height the backend's texture matches.
+    capacity: u32,
+    config: RowTableConfig,
+    /// The display frame the builds register in, which only moves on.
+    frame: u64,
+    /// Where the clock resumes, over [`Self::rows`].
+    hand: u32,
+    /// The display frame a whole turn of the clock found nothing evictable in: within a frame no
+    /// row turns evictable, so no registration walks the rows again.
+    dry_frame: Option<u64>,
     /// How each registration resolved; zero-sized in a shipping build.
     counters: RowTableCounters,
     /// Rows changed since the last `flush`, uploaded as runs that fold in a gap up to
@@ -118,10 +140,8 @@ pub(crate) struct RowTable {
     /// The rows a flush bakes, its runs one after another; retained, so a flush allocates
     /// nothing past the largest it has staged.
     staging: Vec<LutRowTexels>,
-    /// The expiry window over [`Self::epoch`] whose end may halve the table.
+    /// The expiry window over [`Self::frame`] whose end may halve the table.
     window: ExpiryWindow,
-    /// The rows a halving keeps, retained.
-    kept: Vec<RowSlot>,
 }
 
 /// Freshly baked rows for GPU upload, as sorted runs: one copy each.
@@ -152,212 +172,209 @@ impl<'a> FlushedRows<'a> {
 /// A table no device holds, a host's that paints nothing, capped at [`DEFAULT_MAX_ROWS`].
 impl Default for RowTable {
     fn default() -> Self {
-        Self::new(DEFAULT_MAX_ROWS)
+        Self::new(RowTableConfig::of_device(DEFAULT_MAX_ROWS))
     }
 }
 
 impl RowTable {
-    /// An empty table whose growth ceiling is a device's largest texture edge `device_edge` (one
-    /// LUT row per texture row), clamped to the [`MAX_ROWS`] policy ceiling and raised to
-    /// [`INITIAL_ROWS`].
-    pub(crate) fn new(device_edge: u32) -> Self {
-        // Row 0 alone: the permanent fallback, not an MRU member, so `resize_rows` can
-        // reach `INITIAL_ROWS` from row 1 as every growth does.
+    /// An empty table `config` sets, at display frame 0.
+    ///
+    /// # Panics
+    ///
+    /// If `config` starts below two rows, row 0 and one a ramp can hold, or its rows do not rise
+    /// from the first through the soft to the ceiling.
+    pub(crate) fn new(config: RowTableConfig) -> Self {
+        assert!(config.first_rows >= 2, "a table holds a row past row 0");
+        assert!(config.first_rows <= config.soft_rows);
+        assert!(config.soft_rows <= config.max_rows);
         let mut table = Self {
             index: HashTable::new(),
-            slots: vec![RowSlot::default()],
-            mru: MruList::seeded(1),
-            max_rows: device_edge.clamp(INITIAL_ROWS, MAX_ROWS),
-            epoch: 1,
-            dirty: DirtyRows::default(),
+            rows: Vec::new(),
+            capacity: 0,
+            config,
+            frame: 0,
+            hand: 0,
+            dry_frame: None,
             counters: RowTableCounters::default(),
+            dirty: DirtyRows::default(),
             staging: Vec::new(),
             window: ExpiryWindow::NEW,
-            kept: Vec::new(),
         };
-        table.resize_rows(INITIAL_ROWS);
+        table.resize(config.first_rows);
         // Other rows start zero on the GPU, so uploading only row 0 is exact.
-        table.mark_row_dirty(0);
+        table.dirty.mark(0);
         table
     }
 
-    /// Rows the table holds, the height the backend's LUT texture must match. Starts at
-    /// [`INITIAL_ROWS`], doubles and halves.
+    /// Rows the table holds, the height the backend's LUT texture must match.
     pub(crate) const fn capacity(&self) -> u32 {
-        self.slots.len() as u32
+        self.capacity
     }
 
-    /// Find-or-claim the row for `ramp`, which the next flush bakes; gradients with the same ramp
-    /// share a row.
-    /// Returns a row id in `1..capacity`, moved to the MRU head on every call.
-    ///
-    /// Once every row is occupied: claim the tail if not referenced this epoch, else
-    /// [grow](Self::grow), else return [`LutRow::FALLBACK`].
+    /// The display frame the builds register in.
+    pub(crate) const fn frame(&self) -> u64 {
+        self.frame
+    }
+
+    /// Register from display frame `frame` on, or stay where a build moved the table ahead: a
+    /// build takes the frame its submit will belong to, and one whose submit was dropped leaves
+    /// the table a frame ahead of the next window's, which only holds its rows a frame longer.
+    pub(crate) fn advance_to(&mut self, frame: u64) {
+        self.frame = self.frame.max(frame);
+    }
+
+    /// The row for `ramp` in this display frame, which the next flush bakes where it is new;
+    /// gradients with the same ramp share a row. A row in `1..capacity`, or [`LutRow::FALLBACK`]
+    /// where every row is drawn within the grace and the table is at its ceiling.
     pub(crate) fn register(&mut self, ramp: &ColorRamp) -> LutRow {
         self.counters.registrations.bump();
-        let key = *ramp;
-        // Hit: mark the row referenced this epoch; it must not be evicted before upload.
-        if let Some(row) = self.resident_row(&key) {
+        let hash = ramp_hash(ramp);
+        let rows = &self.rows;
+        if let Some(&id) = self.index.find(hash, |&id| rows[row_idx(id)].ramp == *ramp) {
             self.counters.hits.bump();
-            self.touch(row);
-            return LutRow(row);
+            self.rows[row_idx(id)].last_use = self.frame;
+            return LutRow(id);
         }
+        let row = Row {
+            ramp: *ramp,
+            last_use: self.frame,
+        };
         loop {
-            // The MRU tail is never-claimed or least-recently-registered, and current-epoch
-            // rows form a head prefix, so this one check decides eviction.
-            let victim = self.mru.tail();
-            if self.slots[victim as usize].epoch != self.epoch {
-                return self.claim_row(victim, key);
+            if self.held() + 1 < self.capacity {
+                self.rows.push(row);
+                return self.claim(self.held(), hash);
             }
-            // Every row is in use by this frame: grow and retry; new rows land at the tail
-            // unclaimed, so this loops at most twice.
-            if !self.grow() {
-                self.counters.fallbacks.bump();
-                return LutRow::FALLBACK;
+            if self.capacity < self.config.soft_rows && self.grow(self.config.soft_rows) {
+                continue;
             }
+            if let Some(id) = self.victim() {
+                let evicted = std::mem::replace(&mut self.rows[row_idx(id)], row);
+                self.index
+                    .find_entry(ramp_hash(&evicted.ramp), |&held| held == id)
+                    .expect("an evicted row is indexed")
+                    .remove();
+                self.counters.evictions.bump();
+                return self.claim(id, hash);
+            }
+            if self.grow(self.config.max_rows) {
+                continue;
+            }
+            self.counters.fallbacks.bump();
+            return LutRow::FALLBACK;
         }
     }
 
-    /// Mark `row` most recently used and referenced this epoch. Every registration
-    /// path goes through here, keeping current-epoch rows a head prefix of the MRU list.
-    /// Pinned by `epoch_current_rows_form_an_mru_prefix`.
-    #[inline]
-    fn touch(&mut self, row: u32) {
-        self.mru.touch(row);
-        self.slots[row as usize].epoch = self.epoch;
+    /// The rows that hold a ramp.
+    fn held(&self) -> u32 {
+        u32::try_from(self.rows.len()).expect("a table's rows are counted in u32")
     }
 
-    /// Double the row count (capped at [`Self::max_rows`]), reporting whether it grew.
-    /// Resident rows keep their ids (draw payloads hold them), and the backend copies them into
-    /// its taller texture, so growth uploads nothing; new rows join the MRU list at the eviction
-    /// end.
-    fn grow(&mut self) -> bool {
-        let capacity = self.capacity();
-        let grown = capacity.saturating_mul(2).min(self.max_rows);
-        if grown <= capacity {
+    /// Index row `id`, which now holds the ramp hashing to `hash`, and mark it for the next flush.
+    fn claim(&mut self, id: u32, hash: u64) -> LutRow {
+        debug_assert_ne!(id, 0, "row 0 is the permanent magenta fallback");
+        self.counters.bakes.bump();
+        self.index.insert_unique(hash, id, row_hash(&self.rows));
+        self.dirty.mark(id);
+        LutRow(id)
+    }
+
+    /// The row of a ramp no frame drew in the grace, by the clock from where it last stopped;
+    /// `None`, latched for the frame, where every row was drawn in it.
+    fn victim(&mut self) -> Option<u32> {
+        if self.dry_frame == Some(self.frame) {
+            return None;
+        }
+        let (rows, frame) = (&self.rows, self.frame);
+        let sweep = ClockSweep::over(rows.len(), self.hand, |idx| {
+            if rows[idx].last_use + GRACE_FRAMES < frame {
+                Verdict::Take
+            } else {
+                Verdict::Skip
+            }
+        });
+        self.hand = sweep.hand;
+        if sweep.victim.is_none() {
+            self.dry_frame = Some(frame);
+        }
+        sweep.victim.map(|idx| idx + 1)
+    }
+
+    /// Double the rows, up to `limit`, reporting whether the table grew. Resident rows keep their
+    /// ids (draw payloads hold them), and the backend copies them into its taller texture, so
+    /// growth uploads nothing.
+    fn grow(&mut self, limit: u32) -> bool {
+        let grown = self.capacity.saturating_mul(2).min(limit);
+        if grown <= self.capacity {
             return false;
         }
-        self.resize_rows(grown);
+        self.resize(grown);
         self.counters.growths.bump();
-        debug_assert!(self.mru.is_well_formed(), "growth corrupted the MRU list");
         true
     }
 
-    /// Move every per-row column to `to` rows, together: the one resize site, since `slots`, the
-    /// index's room, the MRU list and the dirty rows can't share a length invariant in the types.
-    fn resize_rows(&mut self, to: u32) {
-        // Read before anything moves: the MRU list extends from the old row count.
-        let from = self.capacity();
-        debug_assert!(
-            from <= to,
-            "rows resize up; a halving starts over from row 1"
-        );
-        self.slots.resize(to as usize, RowSlot::default());
+    /// Hold `to` rows: the index's room and the dirty rows follow, as nothing ties their lengths
+    /// to the capacity in the types.
+    fn resize(&mut self, to: u32) {
+        self.capacity = to;
         // Room for an entry a row, so a registration never grows the table: growth, a cold
         // frame, is where it grows. An eviction's tombstone can still make an insert rehash the
         // table in place, as in any open-addressed table, hashbrown's included.
         self.index
-            .reserve(to as usize - self.index.len(), row_hash(&self.slots));
-        self.mru.extend_to(from, to);
+            .reserve(to as usize - self.index.len(), row_hash(&self.rows));
         self.dirty.resize(to);
     }
 
-    /// Start a frame: at the end of an expiry window over the flushes, halve the table where fewer
-    /// than a quarter of its rows were registered in the window. Before the frame registers
-    /// anything, so every row id the frame hands out is the halved table's. The window counts
-    /// flushes, each a window's submit, so two windows end it twice as fast, which only shortens
-    /// the idle wait.
+    /// Start a build of the display frame: at the end of an expiry window, halve the table where
+    /// fewer than a quarter of its rows were registered in the window. Before the build registers
+    /// anything, so every row id the frame hands out is the halved table's; once a frame, as the
+    /// window ends once.
     pub(crate) fn begin_frame(&mut self) {
-        if !self.window.ends(self.epoch) {
+        if !self.window.ends(self.frame) {
             return;
         }
-        let capacity = self.capacity();
-        let live = self
-            .slots
-            .iter()
-            .filter(|slot| is_live(slot, self.epoch))
-            .count();
-        if capacity > INITIAL_ROWS && (live as u32) < capacity / 4 {
+        let frame = self.frame;
+        let live = self.rows.iter().filter(|row| is_live(row, frame)).count();
+        if self.capacity > self.config.first_rows && (live as u32) < self.capacity / 4 {
             self.halve();
         }
     }
 
-    /// Halve the rows, keeping the live ones renumbered from row 1 in their recency order and
-    /// dropping the rest; every kept row and row 0 dirty, as the backend's halved texture starts
-    /// empty. Renumbers every kept ramp's row, so it runs only before a frame registers.
+    /// Halve the rows, keeping the live ones renumbered from row 1 in their order and dropping the
+    /// rest; every kept row and row 0 dirty, as the backend's halved texture starts empty.
+    /// Renumbers every kept ramp's row, so it runs only before a frame registers.
     fn halve(&mut self) {
-        let to = self.capacity() / 2;
-        let epoch = self.epoch;
-        self.kept.clear();
-        self.kept.extend(
-            self.slots
-                .iter()
-                .filter(|slot| is_live(slot, epoch))
-                .cloned(),
-        );
-        debug_assert!(self.kept.len() < to as usize, "a halving keeps what fits");
-        // Least recent first, so the most recent lands at the MRU head.
-        self.kept.sort_by_key(|slot| slot.epoch);
+        let frame = self.frame;
+        self.rows.retain(|row| is_live(row, frame));
+        let to = self.capacity / 2;
+        debug_assert!(self.rows.len() < to as usize, "a halving keeps what fits");
         self.index.clear();
-        self.slots.truncate(1);
-        self.mru = MruList::seeded(1);
         self.dirty = DirtyRows::default();
-        self.resize_rows(to);
-        self.mark_row_dirty(0);
-        for (row, slot) in (1..).zip(self.kept.drain(..)) {
-            let key = slot.key.as_ref().expect("a kept row holds a ramp");
-            self.index
-                .insert_unique(ramp_hash(key), row, row_hash(&self.slots));
-            self.slots[row as usize] = slot;
-            self.mru.touch(row);
-            self.dirty.mark(row);
+        self.hand = 0;
+        self.dry_frame = None;
+        self.resize(to);
+        self.dirty.mark(0);
+        for id in 1..=self.held() {
+            let hash = ramp_hash(&self.rows[row_idx(id)].ramp);
+            self.index.insert_unique(hash, id, row_hash(&self.rows));
+            self.dirty.mark(id);
         }
         self.counters.halvings.bump();
-        debug_assert!(self.mru.is_well_formed(), "halving corrupted the MRU list");
     }
 
-    /// Take over `row` for `key`: index entry, recency, epoch, dirty range, so the next flush
-    /// bakes it. Shared by the free-row and evict arms.
-    fn claim_row(&mut self, row: u32, key: ColorRamp) -> LutRow {
-        debug_assert_ne!(row, 0, "row 0 is the permanent magenta fallback");
-        // Evicting: drop the outgoing index entry, or a lookup would resolve to another bake.
-        if let Some(evicted) = self.slots[row as usize].key.replace(key) {
-            self.index
-                .find_entry(ramp_hash(&evicted), |&held| held == row)
-                .expect("an evicted row is indexed")
-                .remove();
-            self.counters.evictions.bump();
-        }
-        self.counters.bakes.bump();
-        self.index
-            .insert_unique(ramp_hash(&key), row, row_hash(&self.slots));
-        self.touch(row);
-        self.mark_row_dirty(row);
-        LutRow(row)
-    }
-
-    /// The row that holds `ramp`, if one does.
-    fn resident_row(&self, ramp: &ColorRamp) -> Option<u32> {
-        self.index
-            .find(ramp_hash(ramp), |&row| {
-                self.slots[row as usize].key.as_ref() == Some(ramp)
-            })
-            .copied()
-    }
-
+    /// Mark row `row` for the next flush, as a registration that claims it does.
+    #[cfg(test)]
     fn mark_row_dirty(&mut self, row: u32) {
         self.dirty.mark(row);
     }
 
-    /// Bake the dirty rows as runs for upload and clear them. Also bumps the registration
-    /// epoch: rows registered since the last flush are eviction-exempt until after this one.
+    /// Bake the dirty rows as runs for upload and clear them.
     pub(crate) fn flush(&mut self) -> Option<FlushedRows<'_>> {
-        self.epoch += 1;
-        let total_rows = self.capacity();
+        let total_rows = self.capacity;
         let Self {
             dirty,
             staging,
             counters,
+            rows,
             ..
         } = self;
         let runs = dirty.take_runs(MERGE_GAP_ROWS);
@@ -370,9 +387,9 @@ impl RowTable {
             .edit(|n| *n = n.saturating_add(uploaded));
         staging.clear();
         staging.resize(uploaded as usize, [RgbaF16::TRANSPARENT; LUT_ROW_TEXELS]);
-        let rows = runs.iter().flat_map(Clone::clone);
-        for (row, out) in rows.zip(staging.iter_mut()) {
-            bake_row(&self.slots, row, out);
+        let ids = runs.iter().flat_map(Clone::clone);
+        for (id, out) in ids.zip(staging.iter_mut()) {
+            bake_row(rows, id, out);
         }
         Some(FlushedRows {
             runs,
@@ -382,19 +399,25 @@ impl RowTable {
     }
 }
 
-/// Whether `slot` holds a ramp a frame registered in the expiry window ending at `epoch`.
-const fn is_live(slot: &RowSlot, epoch: u64) -> bool {
-    slot.key.is_some() && slot.epoch + EXPIRY_FRAMES > epoch
+/// Where row `id`'s [`Row`] sits in [`RowTable::rows`].
+const fn row_idx(id: u32) -> usize {
+    id as usize - 1
 }
 
-/// Bake row `row` of `slots` into `out`: row 0 bright magenta (sRGB `#ff00ff`), a row that holds a
-/// ramp the ramp, any other zero, as the GPU texture starts.
-fn bake_row(slots: &[RowSlot], row: u32, out: &mut LutRowTexels) {
-    match &slots[row as usize].key {
+/// Whether `row` holds a ramp a frame registered in the expiry window ending at `frame`.
+const fn is_live(row: &Row, frame: u64) -> bool {
+    row.last_use + EXPIRY_FRAMES > frame
+}
+
+/// Bake row `id` of a table whose held rows are `rows` into `out`: row 0 bright magenta (sRGB
+/// `#ff00ff`), any other its ramp. A dirty run's rows are held, as the held rows are a prefix and
+/// a run folds in only the rows between two dirty ones.
+fn bake_row(rows: &[Row], id: u32, out: &mut LutRowTexels) {
+    if id == 0 {
         // Linear (1, 0, 1, 1); the sRGB framebuffer encodes it to `#ff00ff`.
-        _ if row == 0 => out.fill(RgbaF16::new(1.0, 0.0, 1.0, 1.0)),
-        Some(ramp) => bake::row(ramp, out),
-        None => out.fill(RgbaF16::TRANSPARENT),
+        out.fill(RgbaF16::new(1.0, 0.0, 1.0, 1.0));
+    } else {
+        bake::row(&rows[row_idx(id)].ramp, out);
     }
 }
 
@@ -405,24 +428,37 @@ fn ramp_hash(ramp: &ColorRamp) -> u64 {
     hasher.finish()
 }
 
-/// The hash of an indexed row, through the ramp `slots` holds for it, as the table rehashes.
-fn row_hash(slots: &[RowSlot]) -> impl Fn(&u32) -> u64 {
-    |&row| {
-        ramp_hash(
-            slots[row as usize]
-                .key
-                .as_ref()
-                .expect("an indexed row holds a ramp"),
-        )
-    }
+/// The hash of an indexed row, through the ramp `rows` holds for it, as the table rehashes.
+fn row_hash(rows: &[Row]) -> impl Fn(&u32) -> u64 {
+    |&id| ramp_hash(&rows[row_idx(id)].ramp)
 }
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
-    use super::*;
+    #[cfg(test)]
+    use crate::common::counters::CounterSet;
+    #[cfg(test)]
+    use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
+    #[cfg(test)]
+    use crate::primitives::paint::color::rgba_f16::RgbaF16;
+    #[cfg(test)]
+    use crate::primitives::paint::lut_row::LutRow;
+    use crate::renderer::row_table::RowTable;
+    #[cfg(test)]
+    use crate::renderer::row_table::bake::LUT_ROW_TEXELS;
+    use crate::renderer::row_table::bake::LutRowTexels;
+    #[cfg(test)]
+    use crate::renderer::row_table::{FlushedRows, bake_row, ramp_hash, row_idx};
+    #[cfg(test)]
+    use std::ops::Range;
 
     #[cfg(test)]
     impl<'a> FlushedRows<'a> {
+        /// The runs, sorted.
+        pub(crate) const fn runs(&self) -> &'a [Range<u32>] {
+            self.runs
+        }
+
         /// The texels of `run`, one of the flush's runs, as bytes.
         pub(crate) fn bytes(&self, run: Range<u32>) -> &'a [u8] {
             self.copies()
@@ -431,21 +467,11 @@ pub(crate) mod internals {
                 .1
         }
     }
-    #[cfg(test)]
-    use crate::common::counters::CounterSet;
 
     impl RowTable {
         /// The rows that hold a ramp, row 0's fallback among them.
         pub(crate) fn live_rows(&self) -> u32 {
-            u32::try_from(self.index.len()).expect("the rows are counted in u32") + 1
-        }
-
-        /// Row `row`'s texels as a flush bakes them.
-        #[cfg(test)]
-        pub(crate) fn row_texels(&self, row: u32) -> LutRowTexels {
-            let mut out = [RgbaF16::TRANSPARENT; LUT_ROW_TEXELS];
-            bake_row(&self.slots, row, &mut out);
-            out
+            self.held() + 1
         }
 
         /// The bytes of the rows a flush stages, as large as the largest flush.
@@ -453,23 +479,30 @@ pub(crate) mod internals {
             (self.staging.capacity() * size_of::<LutRowTexels>()) as u64
         }
 
-        /// Whether this epoch's registered rows form a head prefix of the MRU list, which
-        /// [`Self::register`] relies on to decide eviction from the tail.
+        /// Row `row`'s texels as a flush bakes them.
         #[cfg(test)]
-        pub(crate) fn epoch_prefix_holds(&self) -> bool {
-            let mut seen_stale = false;
-            for row in self.mru.to_vec() {
-                match self.slots[row as usize].epoch == self.epoch {
-                    true if seen_stale => return false,
-                    true => {}
-                    false => seen_stale = true,
-                }
-            }
-            true
+        pub(crate) fn row_texels(&self, row: u32) -> LutRowTexels {
+            let mut out = [RgbaF16::TRANSPARENT; LUT_ROW_TEXELS];
+            bake_row(&self.rows, row, &mut out);
+            out
         }
 
-        /// Live index entries, one per occupied row; a mismatch shows a duplicate bake or
-        /// leaked eviction entry.
+        /// The row `ramp` holds, if one does, with no registration.
+        #[cfg(test)]
+        pub(crate) fn resident_row(&self, ramp: &ColorRamp) -> Option<LutRow> {
+            self.index
+                .find(ramp_hash(ramp), |&id| self.rows[row_idx(id)].ramp == *ramp)
+                .map(|&id| LutRow(id))
+        }
+
+        /// The display frame row `row` was last registered in.
+        #[cfg(test)]
+        pub(crate) fn last_use(&self, row: LutRow) -> u64 {
+            self.rows[row_idx(row.0)].last_use
+        }
+
+        /// Live index entries, one per held row; a mismatch shows a duplicate bake or a leaked
+        /// eviction entry.
         #[cfg(test)]
         pub(crate) fn index_len(&self) -> usize {
             self.index.len()
@@ -477,7 +510,7 @@ pub(crate) mod internals {
 
         #[cfg(test)]
         pub(crate) const fn max_rows(&self) -> u32 {
-            self.max_rows
+            self.config.max_rows
         }
 
         /// `register` calls so far, letting resolver tests prove their per-pass memo suppresses

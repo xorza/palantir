@@ -418,10 +418,14 @@ fn the_move_budget_goes_round_the_lists() {
     assert_eq!(taken, [(16, 0), (0, 16), (16, 0)]);
 }
 
+/// A pool a build moved ahead stays there, its rows with it: frame 2, then a submit of frame 1,
+/// leaves both on 2; frame 3 moves both.
 #[test]
-#[should_panic(expected = "the display frames ran backwards")]
-fn the_display_frames_do_not_run_backwards() {
+fn a_pool_moved_ahead_stays_ahead() {
     let mut pool = AtlasPool::of_edge(16384);
     pool.advance_to(2);
     pool.advance_to(1);
+    assert_eq!((pool.frame(), pool.rows().frame()), (2, 2));
+    pool.advance_to(3);
+    assert_eq!((pool.frame(), pool.rows().frame()), (3, 3));
 }

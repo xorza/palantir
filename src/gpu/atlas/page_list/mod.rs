@@ -1,7 +1,7 @@
 //! [`PageList`]: the pages of one texel format, the items packed on them, and the textures of
 //! their own it hands items too large for a page.
 
-use crate::common::eviction_clock::{ClockSweep, Verdict};
+use crate::common::eviction_clock::{self, ClockSweep, Verdict};
 use crate::common::expiry_window::EXPIRY_FRAMES;
 use crate::gpu::atlas::Evictions;
 use crate::gpu::atlas::atlas_format::AtlasFormat;
@@ -233,14 +233,10 @@ struct Entry {
 }
 
 impl Entry {
-    /// The frames past its last draw an item stays out of the clock's reach: one, so nothing
-    /// drawn this frame or the last goes, the grace that keeps a working set a little past budget
-    /// from evicting what the next frame draws again, as WebRender's least age at full pressure.
-    const GRACE_FRAMES: u64 = 1;
-
     /// Whether no one pins it and no frame drew it in the `age` frames before display frame
     /// `frame`, nor in `frame`: what an eviction may take, the clock at an age of
-    /// [`Self::GRACE_FRAMES`], the age-out at its pressure's, a purge at none.
+    /// [`GRACE_FRAMES`](eviction_clock::GRACE_FRAMES), the age-out at its pressure's, a purge at
+    /// none.
     const fn is_idle(&self, frame: u64, age: u64) -> bool {
         self.pins == 0 && self.last_use + age < frame
     }
@@ -573,7 +569,7 @@ impl PageList {
             let page = pages[placement.page as usize]
                 .as_ref()
                 .expect("an item sits on an open page");
-            if !entry.is_idle(frame, Entry::GRACE_FRAMES) {
+            if !entry.is_idle(frame, eviction_clock::GRACE_FRAMES) {
                 return Verdict::Skip;
             }
             if page.holds(size) && page.packer.shelf(placement.origin.y).takes(size.y) {
@@ -625,7 +621,7 @@ impl PageList {
                 .as_ref()
                 .expect("an item sits on an open page");
             let shelf_use = &mut uses[start + page.packer.shelf_at(placement.origin.y)];
-            if !entry.is_idle(frame, Entry::GRACE_FRAMES) {
+            if !entry.is_idle(frame, eviction_clock::GRACE_FRAMES) {
                 *shelf_use = ShelfUse::Kept;
             } else if *shelf_use == ShelfUse::Empty {
                 *shelf_use = ShelfUse::Evictable;

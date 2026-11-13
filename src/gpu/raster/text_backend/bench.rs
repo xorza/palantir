@@ -38,6 +38,7 @@ use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::wgsl::FRAME_GROUP;
 use crate::renderer::render_buffer::clip_chain::ClipChain;
 use crate::renderer::render_buffer::text_draw_row::TextDrawRow;
+use crate::renderer::row_table::RowTableConfig;
 use crate::shape::record_store::RecordStore;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::run::TextRun;
@@ -234,6 +235,7 @@ impl Fixture {
             pipelines: RasterVariants::NONE,
             pool: AtlasPool::new(PoolConfig {
                 lists: bench_configs(),
+                rows: RowTableConfig::of_device(g.gpu.max_texture_dim().get()),
                 device_edge: g.gpu.max_texture_dim().get(),
                 move_budget: MoveBudget::of(g.gpu.pass_traffic()),
             }),

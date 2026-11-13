@@ -1,5 +1,11 @@
 //! [`ClockSweep`]: one turn of an eviction clock, judged by its caller, so the walk is testable with
-//! no slab.
+//! no slab; the atlas pool's page lists and its row table both turn one.
+
+/// The display frames past the one an item was last drawn in that it stays from every eviction:
+/// nothing drawn this display frame or the last goes, which keeps a working set a little past
+/// budget from evicting what the next frame draws again, as WebRender's least age at full pressure
+/// (`src/gpu/AGENTS.md`, Atlases).
+pub(crate) const GRACE_FRAMES: u64 = 1;
 
 /// What the clock makes of one slot.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

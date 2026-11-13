@@ -148,9 +148,9 @@ mod tests {
         gpu.frame(|ctx| texture.upload(ctx, rows));
     }
 
-    /// A grown table's texture takes the rows its old texture held by a copy on the GPU: the 255
-    /// rows the first frame uploaded read back as baked in the doubled texture, after a frame that
-    /// re-registers them all and adds one, which the frame uploads alone. Two idle windows later,
+    /// A grown table's texture takes the rows its old one held by a copy on the GPU: the 255 rows
+    /// the first upload took read back as baked in the doubled texture, after the frame registers
+    /// them all again and adds one, which the second upload takes alone. Two idle windows later,
     /// with frames that register the added ramp alone, the table halves: the texture is made again
     /// at 256 rows with no copy, and the flush gives it row 0's magenta and the added ramp at row
     /// 1, every other row zero.
@@ -193,7 +193,8 @@ mod tests {
 
         let generation = texture.generation;
         // Two windows of frames at most: the first ends with the 255 ramps' frame inside it.
-        for _ in 0..2 * EXPIRY_FRAMES {
+        for frame in 1..2 * EXPIRY_FRAMES {
+            table.advance_to(frame);
             table.begin_frame();
             if table.capacity() == INITIAL_ROWS {
                 break;

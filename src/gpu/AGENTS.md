@@ -129,11 +129,17 @@ Facts and sources: `.notes/research/2026-11-12-atlas-pools.md` and
   texture in one group and a choice among five in the shader, the B-spline five times, which V3D
   compiled in full (619 → 1340 instructions, the board's `modal/scrolling` +6.9 %).
 - **Gradient rows are a row table, not atlas items**, per-paint data every color pipeline reads
-  branch-free through the frame group, as WebRender keeps gradient stops in its GPU cache. A row
-  keeps its id while it lives; the table doubles when full and halves at the start of a frame that
-  ends an idle expiry window under a quarter used, its live rows renumbered and baked again from
-  their ramps. Refused: a CPU mirror of the texture, 2 KiB a row, kept only to fill a run's gaps,
-  which a bake from the ramp fills with the same bytes.
+  branch-free through the frame group, as WebRender keeps gradient stops in its GPU cache. The
+  pool owns the table, made and lost with it; a build registers on the display frame its submit
+  belongs to, and the rows age as the lists' items do, with the clock and the one-frame grace:
+  under the soft rows the table doubles, over them a ramp takes the row of one no frame drew in
+  the grace, and with none it doubles to its ceiling, past which a ramp takes the magenta row 0.
+  A row keeps its id while it lives; the table halves at the start of a frame that ends an idle
+  expiry window under a quarter used, its live rows renumbered and baked again from their ramps.
+  A host with no device counts a display frame a compose. Refused: an epoch a flush ends, which
+  two windows end twice a round, so each evicted the rows the other draws, and which a host that
+  never flushes never ends; a CPU mirror of the texture, 2 KiB a row, kept only to fill a run's
+  gaps, which a bake from the ramp fills with the same bytes.
 - **Eviction is a clock with a one-frame grace and pins.** Nothing drawn this display frame or the
   last goes, which keeps a working set a little past budget from evicting what the next frame
   draws again, WebRender's least age at full pressure; a pin, a cutout table a plan holds, keeps

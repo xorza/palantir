@@ -1320,6 +1320,15 @@ impl WgpuBackend {
         self.backdrops.drop_groups();
     }
 
+    /// Begin the build of `owner`'s next frame: the pool moves to the display frame its submit
+    /// will belong to, so what the build registers and places is drawn in that frame, and the
+    /// placing its build writes in. Refused: the pool left on the last submit's frame, where an
+    /// insert met that frame's dry latch and a release stamped a frame early.
+    pub(crate) fn begin_build(&mut self, owner: RenderOwnerId) -> CutoutPlacing<'_> {
+        self.atlas.advance_to(self.frames.next(owner));
+        self.cutout_placing()
+    }
+
     /// Where the mask pages hold each key's table, with the pool they live in: a frame's build
     /// registers its gradients in the pool's row table, then its plan places its tables.
     pub(crate) const fn cutout_placing(&mut self) -> CutoutPlacing<'_> {

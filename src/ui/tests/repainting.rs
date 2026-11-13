@@ -337,6 +337,8 @@ fn paint_only_preserves_record_store_for_retained_shapes() {
     let _ = h.encode_paint();
 }
 
+/// Window a's ramp, idle past the grace two display frames later, gives its row to window b's
+/// 255th ramp; a's next frame, paint-only, resolves its gradient again rather than draw b's row.
 #[test]
 fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
     fn rows(frames: &WindowFrames, encoder: &mut Encoder, table: &mut RowTable) -> Vec<LutRow> {
@@ -376,7 +378,7 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
 
     a.frame(|ui| window_a(ui, half));
     let original_row = rows(a.frames(), &mut encoder, &mut table)[0];
-    let _ = table.flush();
+    table.advance_to(2);
 
     b.frame(|ui| {
         Panel::hstack().size(20.0).show(ui, |ui| {
@@ -400,7 +402,7 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
         .collect();
     assert_eq!(b_rows.len(), (INITIAL_ROWS - 1) as usize);
     assert!(b_rows.contains(&original_row));
-    let _ = table.flush();
+    table.advance_to(4);
 
     let report = a.at(half).frame(|ui| window_a(ui, half));
     assert_eq!(report.processing, FrameProcessing::PaintOnly);
@@ -412,9 +414,9 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
 }
 
 /// The encode starts each frame of the shared row table, so a window's frames halve it once the
-/// other window's ramps go idle: window b's 300 gradients take the table to 512 rows; window a then
-/// paints its one gradient frame after frame, each encode and flush a frame, and by the end of the
-/// second expiry window the table holds 256 rows, a's ramp renumbered to row 1.
+/// other window's ramps go idle: window b's 300 gradients take the table to 512 rows at display
+/// frame 0; window a then paints its one gradient a frame each, and by the end of the second expiry
+/// window the table holds 256 rows, a's ramp renumbered to row 1.
 #[test]
 fn an_idle_row_table_halves_through_the_encode() {
     fn row(frames: &WindowFrames, encoder: &mut Encoder, table: &mut RowTable) -> LutRow {
@@ -462,13 +464,12 @@ fn an_idle_row_table_halves_through_the_encode() {
     });
     let _ = row(b.frames(), &mut encoder, &mut table);
     assert_eq!(table.capacity(), 2 * INITIAL_ROWS);
-    let _ = table.flush();
+    table.advance_to(1);
     let first = row(a.frames(), &mut encoder, &mut table);
     assert_eq!(first, LutRow(301), "after b's 300");
-    let _ = table.flush();
-    for _ in 0..2 * EXPIRY_FRAMES {
+    for frame in 2..2 * EXPIRY_FRAMES {
+        table.advance_to(frame);
         let _ = row(a.frames(), &mut encoder, &mut table);
-        let _ = table.flush();
     }
     assert_eq!(table.capacity(), INITIAL_ROWS);
     assert_eq!(

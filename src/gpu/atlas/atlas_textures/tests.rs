@@ -7,6 +7,7 @@ use crate::gpu::atlas::PoolConfig;
 use crate::gpu::atlas::page_list::{MoveBudget, PageListConfig};
 use crate::gpu::atlas::tenant::Tenant;
 use crate::gpu::test_gpu::{TestGpu, headless_test_gpu};
+use crate::renderer::row_table::RowTableConfig;
 use glam::U16Vec2;
 use std::ptr;
 
@@ -39,6 +40,7 @@ fn budget_pool(
             page_edge,
             soft_bytes,
         }),
+        rows: RowTableConfig::of_device(16384),
         device_edge: 16384,
         move_budget,
     })

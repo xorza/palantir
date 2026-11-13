@@ -1019,7 +1019,7 @@ pub(crate) mod internals {
         /// # Panics
         ///
         /// At [`Depth::Record`](crate::Depth::Record), which builds no draw list.
-        fn rows_mut(&mut self) -> &mut RowTable {
+        pub(super) fn rows_mut(&mut self) -> &mut RowTable {
             match self {
                 Self::Record { .. } => panic!("a harness at Depth::Record builds no draw list"),
                 Self::Compose { rows, .. } => rows,

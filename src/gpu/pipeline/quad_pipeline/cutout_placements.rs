@@ -177,6 +177,19 @@ pub(crate) mod internals {
             })
         }
 
+        /// The display frame each placed table was last drawn in, in order.
+        pub(crate) fn last_uses(&self) -> Vec<u64> {
+            let list = self.pool.list(AtlasFormat::R8);
+            let mut last_uses: Vec<u64> = self
+                .placements
+                .keys
+                .values()
+                .filter_map(|placed| list.last_use(placed.handle))
+                .collect();
+            last_uses.sort_unstable();
+            last_uses
+        }
+
         /// The uses every plan holds, of every key.
         pub(crate) fn uses(&self) -> u32 {
             let list = self.pool.list(AtlasFormat::R8);

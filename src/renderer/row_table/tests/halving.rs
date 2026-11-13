@@ -6,13 +6,13 @@ use crate::renderer::row_table::*;
 
 /// A table grown to 512 rows by 300 ramps, of which frames go on to register the last ten alone,
 /// halves at the end of the first expiry window that holds none of the 300's own frame: the window
-/// starts at epoch 1, the frame that registers all 300, so the first ends at epoch
-/// `EXPIRY_FRAMES` with all 300 live, and the second at `2 · EXPIRY_FRAMES` with ten, under a
-/// quarter of 512. The ten keep their ramps, renumbered to rows 1 to 10 in the order they last
-/// went, and are hits at their new rows; the 290 others go; and the flush after it uploads row 0's
+/// starts at display frame 0, the frame that registers all 300, so the first ends at frame
+/// `EXPIRY_FRAMES − 1` with all 300 live, and the second at `2 · EXPIRY_FRAMES − 1` with ten,
+/// under a quarter of 512. The ten keep their ramps, renumbered to rows 1 to 10 in their order,
+/// and are hits at their new rows; the 290 others go; and the flush after it uploads row 0's
 /// magenta and the ten rows' bakes, exactly, as the halved texture starts empty.
 #[test]
-fn an_idle_atlas_halves_and_keeps_its_live_rows_exact() {
+fn an_idle_table_halves_and_keeps_its_live_rows_exact() {
     let mut table = RowTable::default();
     table.begin_frame();
     let rows = fill_rows(&mut table, 300);
@@ -24,7 +24,8 @@ fn an_idle_atlas_halves_and_keeps_its_live_rows_exact() {
     }
     let before = table.counters.counts();
     // Frames until the halving, at most two windows of them.
-    for _ in 0..2 * EXPIRY_FRAMES {
+    for frame in 1..2 * EXPIRY_FRAMES {
+        table.advance_to(frame);
         table.begin_frame();
         if table.capacity() != 512 {
             break;
@@ -34,7 +35,11 @@ fn an_idle_atlas_halves_and_keeps_its_live_rows_exact() {
         }
         let _ = table.flush();
     }
-    assert_eq!(table.epoch, 2 * EXPIRY_FRAMES, "the second window's end");
+    assert_eq!(
+        table.frame(),
+        2 * EXPIRY_FRAMES - 1,
+        "the second window's end"
+    );
     assert_eq!(table.capacity(), 256);
     assert_eq!(table.index_len(), live.len());
     for (row, &i) in (1..).zip(&live) {
@@ -54,7 +59,7 @@ fn an_idle_atlas_halves_and_keeps_its_live_rows_exact() {
         reason = "a flush of one run is a one-run slice"
     )]
     let runs = [0..11];
-    assert_eq!(f.runs, runs);
+    assert_eq!(f.runs(), runs);
     let mut want = vec![[RgbaF16::new(1.0, 0.0, 1.0, 1.0); LUT_ROW_TEXELS]];
     for &i in &live {
         let mut row = fresh_row();
@@ -62,20 +67,20 @@ fn an_idle_atlas_halves_and_keeps_its_live_rows_exact() {
         want.push(row);
     }
     assert_eq!(f.bytes(0..11), bytemuck::cast_slice::<_, u8>(&want));
-    assert!(table.epoch_prefix_holds());
 }
 
 /// The quarter is the line: a table of 512 rows whose frames register 128 of them, a quarter,
 /// keeps 512 through two windows, and one whose frames register 127 halves. A table at its first
 /// size never halves, however idle.
 #[test]
-fn an_atlas_halves_below_a_quarter_and_never_below_its_first_size() {
+fn a_table_halves_below_a_quarter_and_never_below_its_first_size() {
     let after_two_windows = |live: u32| {
         let mut table = RowTable::default();
         table.begin_frame();
         let _ = fill_rows(&mut table, 300);
         let _ = table.flush();
-        for _ in 0..2 * EXPIRY_FRAMES {
+        for frame in 1..2 * EXPIRY_FRAMES {
+            table.advance_to(frame);
             table.begin_frame();
             let _ = fill_rows(&mut table, live);
             let _ = table.flush();
@@ -86,7 +91,8 @@ fn an_atlas_halves_below_a_quarter_and_never_below_its_first_size() {
     assert_eq!(after_two_windows(127), 256, "under a quarter");
 
     let mut idle = RowTable::default();
-    for _ in 0..2 * EXPIRY_FRAMES {
+    for frame in 0..2 * EXPIRY_FRAMES {
+        idle.advance_to(frame);
         idle.begin_frame();
         let _ = idle.flush();
     }

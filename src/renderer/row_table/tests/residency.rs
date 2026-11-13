@@ -122,15 +122,16 @@ fn register_dedups_across_variants() {
     assert_ne!(r_linear, r_other_interp);
 }
 
-/// The row ceiling is the *policy* cap, not the device's texture limit: growth never reverses, so a
-/// 16384-row adapter would let one pathological frame pin 32 MiB for the life of the process.
+/// The row ceiling is the *policy* cap, not the device's texture limit, so a 16384-row adapter
+/// lets no pathological frame take 32 MiB.
 #[test]
 fn a_table_for_a_device_clamps_its_limit_to_the_policy_cap() {
-    assert_eq!(RowTable::new(16384).max_rows(), MAX_ROWS);
+    let max_rows = |edge| RowTable::new(RowTableConfig::of_device(edge)).max_rows();
+    assert_eq!(max_rows(16384), MAX_ROWS);
     // A device below the cap still binds.
-    assert_eq!(RowTable::new(1024).max_rows(), 1024);
+    assert_eq!(max_rows(1024), 1024);
     // A device below the first size still holds it.
-    assert_eq!(RowTable::new(64).max_rows(), INITIAL_ROWS);
+    assert_eq!(max_rows(64), INITIAL_ROWS);
     // A table no device holds keeps the conservative downlevel fallback.
     assert_eq!(RowTable::default().max_rows(), DEFAULT_MAX_ROWS);
 }

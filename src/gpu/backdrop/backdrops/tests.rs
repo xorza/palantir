@@ -23,6 +23,7 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::backdrop_row::{BackdropRow, BackdropSource};
+use crate::renderer::row_table::RowTableConfig;
 use crate::shape::paint::blur_plan::BlurPlan;
 use glam::{UVec2, Vec2};
 use std::mem::offset_of;
@@ -470,6 +471,7 @@ fn a_result_past_the_device_edge_shows_its_clear() {
     };
     let mut rig = Rig::new(AtlasPool::new(PoolConfig {
         lists: PerFormat::from_fn(|_| config),
+        rows: RowTableConfig::of_device(64),
         device_edge: 64,
         move_budget: MoveBudget::COPIES,
     }));

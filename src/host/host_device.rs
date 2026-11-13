@@ -96,7 +96,8 @@ impl HostDevice {
 
     /// The CPU half of a frame that paints, the one sequence every painting host runs: build the
     /// pipelines of its target's format, hand over a screenshot the device finished, drop what
-    /// evicted backdrops held, then record `app` and build the draw list through `cpu`'s frontend.
+    /// evicted backdrops held, then record `app` and build the draw list through `cpu`'s frontend,
+    /// on the display frame its submit will belong to.
     pub(super) fn frame<'c, T: App>(
         &mut self,
         cpu: &'c mut HostCpu,
@@ -111,7 +112,7 @@ impl HostDevice {
         frames.build_paint(
             BuildCtx {
                 frontend: &mut cpu.frontend,
-                placing: self.backend.cutout_placing(),
+                placing: self.backend.begin_build(frames.render_owner()),
             },
             report,
         )
