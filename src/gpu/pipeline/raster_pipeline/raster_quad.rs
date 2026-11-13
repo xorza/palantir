@@ -40,17 +40,27 @@ impl RasterQuad {
         pack_place(u, v, page) | ((kind as u32) << KIND_SHIFT)
     }
 
-    /// This quad reading its raster where `placement` puts it, its content type and
-    /// [`Self::DESATURATE`] kept: a cached quad replayed where its raster sits now.
-    pub(crate) fn placed_at(self, placement: Placement) -> Self {
-        debug_assert_eq!(
-            placement.size, self.dim,
-            "a quad moves with its own raster, whose size it reads"
-        );
+    /// The instance drawing the raster of `content` that `placement` puts, at `pos`, a texel a
+    /// pixel, uncut: a glyph's, filed or replayed from its run's template where its raster sits
+    /// now.
+    pub(crate) fn placed(
+        pos: IVec2,
+        placement: Placement,
+        content: ContentType,
+        color: RgbaF16,
+    ) -> Self {
         Self {
-            uv_and_kind: pack_place(placement.origin.x, placement.origin.y, placement.page)
-                | (self.uv_and_kind & CARRIED),
-            ..self
+            pos,
+            dim: placement.size,
+            size: placement.size.as_uvec2(),
+            uv_and_kind: Self::pack_uv(
+                placement.origin.x,
+                placement.origin.y,
+                placement.page,
+                content,
+            ),
+            color,
+            clip: ClipChain::NONE,
         }
     }
 
@@ -101,9 +111,6 @@ const PAGE_BITS: u32 = 2;
 const DESATURATE_SHIFT: u32 = U_BITS + PAGE_BITS;
 
 const KIND_SHIFT: u32 = DESATURATE_SHIFT + 1;
-
-/// The bits of `uv_and_kind` that say how a raster reads, not where it sits.
-const CARRIED: u32 = RasterQuad::DESATURATE | (1 << KIND_SHIFT);
 
 /// `u`, `page` and `v` at their bits, the flags clear.
 fn pack_place(u: u16, v: u16, page: u8) -> u32 {
@@ -271,48 +278,35 @@ mod tests {
         assert_ne!(p & RasterQuad::DESATURATE, 0);
     }
 
-    /// A replayed quad takes its raster's new page and origin and keeps how it reads: a
-    /// desaturated color quad at (100, 200) of page 3 moved to (7, 9) of page 1 reads
-    /// `pack_uv(7, 9, 1, Color) | DESATURATE`; a mask quad keeps its content type the same way,
-    /// and every other field rides through.
+    /// A placed quad reads its raster where the placement puts it, at its size, a texel a pixel:
+    /// a color raster 10 × 8 at (7, 9) of page 1, drawn at (5, 4), packs `pack_uv(7, 9, 1, Color)`
+    /// and takes the placement's size for both extents; a mask one there packs `Mask`, and each
+    /// other field rides through as given.
     #[test]
-    fn a_placed_quad_moves_its_texels_and_keeps_its_flags() {
+    fn a_placed_quad_reads_its_raster_where_it_sits() {
         use crate::gpu::atlas::atlas_handle::Placement;
         use glam::{IVec2, U16Vec2, UVec2};
 
-        let quad = |uv_and_kind| RasterQuad {
-            pos: IVec2::new(5, 4),
-            dim: U16Vec2::new(10, 8),
-            size: UVec2::new(10, 8),
-            uv_and_kind,
-            color: RgbaF16::WHITE,
-            clip: ClipChain::NONE,
-        };
         let to = Placement {
             page: 1,
             origin: U16Vec2::new(7, 9),
             size: U16Vec2::new(10, 8),
         };
-        let color =
-            quad(RasterQuad::pack_uv(100, 200, 3, ContentType::Color) | RasterQuad::DESATURATE);
-        let moved = color.placed_at(to);
+        let at = IVec2::new(5, 4);
+        let color = RasterQuad::placed(at, to, ContentType::Color, RgbaF16::WHITE);
         assert_eq!(
-            moved.uv_and_kind,
-            RasterQuad::pack_uv(7, 9, 1, ContentType::Color) | RasterQuad::DESATURATE
-        );
-        assert_eq!(
+            bytemuck::bytes_of(&color),
             bytemuck::bytes_of(&RasterQuad {
-                uv_and_kind: 0,
-                ..moved
-            }),
-            bytemuck::bytes_of(&RasterQuad {
-                uv_and_kind: 0,
-                ..color
+                pos: at,
+                dim: U16Vec2::new(10, 8),
+                size: UVec2::new(10, 8),
+                uv_and_kind: RasterQuad::pack_uv(7, 9, 1, ContentType::Color),
+                color: RgbaF16::WHITE,
+                clip: ClipChain::NONE,
             }),
         );
-        let mask = quad(RasterQuad::pack_uv(100, 200, 3, ContentType::Mask));
         assert_eq!(
-            mask.placed_at(to).uv_and_kind,
+            RasterQuad::placed(at, to, ContentType::Mask, RgbaF16::WHITE).uv_and_kind,
             RasterQuad::pack_uv(7, 9, 1, ContentType::Mask)
         );
     }

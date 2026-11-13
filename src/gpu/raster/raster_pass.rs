@@ -297,6 +297,11 @@ impl<K: Copy + Eq + Hash + Debug> RasterPass<K> {
         self.instances.push(quad);
     }
 
+    /// Room for `additional` more quads, ahead of a run that pushes that many.
+    pub(super) fn reserve(&mut self, additional: usize) {
+        self.instances.reserve(additional);
+    }
+
     /// Take back the quads pushed since `start`, an [`Self::instance_count`] of this batch.
     pub(super) fn truncate(&mut self, start: usize) {
         debug_assert!(

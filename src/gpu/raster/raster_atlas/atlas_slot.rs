@@ -6,7 +6,6 @@ use crate::gpu::pipeline::raster_pipeline::raster_quad::RasterQuad;
 use crate::gpu::raster::raster_atlas::content_of;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::content_type::ContentType;
-use crate::renderer::render_buffer::clip_chain::ClipChain;
 use glam::{I16Vec2, IVec2, U16Vec2, UVec2};
 
 /// Where a packed raster sits now, as the pool places it, with its handle and bearing.
@@ -40,23 +39,17 @@ impl SlotPlacement {
 
     /// The instance drawing this raster at `pen` plus the bearing.
     pub(crate) fn quad(self, pen: IVec2, color: RgbaF16) -> RasterQuad {
-        RasterQuad {
-            // Bearing `y` is up; screen `y` is down.
-            pos: IVec2::new(
-                pen.x + i32::from(self.bearing.x),
-                pen.y - i32::from(self.bearing.y),
-            ),
-            dim: self.size,
-            size: self.size.as_uvec2(),
-            uv_and_kind: RasterQuad::pack_uv(
-                self.origin.x,
-                self.origin.y,
-                self.page,
-                self.content(),
-            ),
-            color,
-            clip: ClipChain::NONE,
-        }
+        // Bearing `y` is up; screen `y` is down.
+        let pos = IVec2::new(
+            pen.x + i32::from(self.bearing.x),
+            pen.y - i32::from(self.bearing.y),
+        );
+        let placement = Placement {
+            page: self.page,
+            origin: self.origin,
+            size: self.size,
+        };
+        RasterQuad::placed(pos, placement, self.content(), color)
     }
 
     /// [`Self::quad`] resampled to `size` physical px, for an icon outside the exact band.

@@ -15,11 +15,13 @@ use crate::common::span::Span;
 use crate::gpu::atlas::AtlasPool;
 use crate::gpu::atlas::atlas_handle::AtlasHandle;
 use crate::gpu::pipeline::raster_pipeline::raster_quad::RasterQuad;
+use crate::gpu::raster::raster_atlas;
 use crate::gpu::raster::raster_pass::RasterPass;
 use crate::gpu::raster::text_backend::encode::{EncodedKey, EncodedRunKey};
 use crate::gpu::raster::text_backend::encoded_counters::EncodedCounters;
 use crate::text::RENDERED_RUN_KEEP_FRAMES;
 use crate::text::render::GlyphRasterKey;
+use glam::IVec2;
 
 #[derive(Clone, Copy, Debug)]
 struct EncodedEntry {
@@ -44,9 +46,13 @@ struct TextChunk([u8; CHUNK_BYTES]);
 /// 64-byte blocks: most labels fit one.
 type TextBlocks = BlockArena<TextChunk, 8>;
 
+/// One glyph of a run's template, 20 bytes: where its quad sits from the run's pixel origin, and
+/// its raster, from whose placement and list a replay builds the quad as a miss does, in the run's
+/// color, the key's. Refused: the whole quad, 48 bytes, of which the placement's size, a clip that
+/// is always none and the key's color are derived and the texel origin rewritten at every replay.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct EncodedGlyph {
-    pub(crate) instance: RasterQuad,
+    pub(crate) offset: IVec2,
     /// The glyph's raster in the pool, whose generation an eviction moves, so a replay finds a
     /// stale template and where a live one sits now.
     pub(crate) handle: AtlasHandle,
@@ -110,10 +116,12 @@ impl EncodedCache {
             return false;
         }
         let glyphs = &self.arena.slots[entry.span.range()];
+        let color = run_key.color();
         // Each quad goes out as its raster is checked and stamped, where the raster sits now, not
         // where the run was encoded; a stale handle takes back the run's quads, and a stamp on a
         // raster of a run that turns out stale only keeps it a frame longer.
         let start = pass.instance_count();
+        pass.reserve(glyphs.len());
         let mut stale = false;
         for glyph in glyphs {
             let Some(placement) = pool.stamp(glyph.handle) else {
@@ -121,11 +129,12 @@ impl EncodedCache {
                 stale = true;
                 break;
             };
-            let g = glyph.instance.placed_at(placement);
-            pass.push(RasterQuad {
-                pos: g.pos + run_key.pixel,
-                ..g
-            });
+            pass.push(RasterQuad::placed(
+                glyph.offset + run_key.pixel,
+                placement,
+                raster_atlas::content_of(glyph.handle.format),
+                color,
+            ));
         }
         if stale {
             self.drop_stale(&run_key.key);
@@ -323,10 +332,7 @@ pub(crate) mod internals {
     use crate::gpu::atlas::atlas_format::AtlasFormat;
     #[cfg(test)]
     use crate::gpu::raster::text_backend::encoded_counters::EncodedCounts;
-    use crate::primitives::paint::color::rgba_f16::RgbaF16;
-    use crate::renderer::render_buffer::clip_chain::ClipChain;
     use crate::text::key::TextShapeKey;
-    use glam::{IVec2, U16Vec2, UVec2};
 
     /// What a unit test outside this module may ask a live cache. [`EncodedKey`]'s
     /// fields are private to `encode`, so a key only names a row across frames.
@@ -381,14 +387,7 @@ pub(crate) mod internals {
             for run in 0..self.runs {
                 for glyph in 0..self.glyphs_per_row {
                     self.cache.stage(EncodedGlyph {
-                        instance: RasterQuad {
-                            pos: IVec2::new(glyph as i32, run as i32),
-                            dim: U16Vec2::ZERO,
-                            size: UVec2::ZERO,
-                            uv_and_kind: 0,
-                            color: RgbaF16::TRANSPARENT,
-                            clip: ClipChain::NONE,
-                        },
+                        offset: IVec2::new(glyph as i32, run as i32),
                         handle: AtlasHandle {
                             format: AtlasFormat::R8,
                             idx: glyph,
@@ -451,14 +450,7 @@ pub(crate) mod internals {
                 frame += 1;
                 for glyph in 0..glyphs_per_row {
                     cache.stage(EncodedGlyph {
-                        instance: RasterQuad {
-                            pos: IVec2::new(glyph as i32, row as i32),
-                            dim: U16Vec2::ZERO,
-                            size: UVec2::ZERO,
-                            uv_and_kind: 0,
-                            color: RgbaF16::TRANSPARENT,
-                            clip: ClipChain::NONE,
-                        },
+                        offset: IVec2::new(glyph as i32, row as i32),
                         handle: AtlasHandle {
                             format: AtlasFormat::R8,
                             idx: glyph,

@@ -2,13 +2,11 @@
 //! ([`EncodedCache::emit_cached`]), or is laid out and turned into glyph instances, the miss half.
 
 use crate::gpu::atlas::AtlasPool;
-use crate::gpu::pipeline::raster_pipeline::raster_quad::RasterQuad;
 use crate::gpu::raster::raster_atlas::Found;
 use crate::gpu::raster::raster_pass::{Filed, RasterPass};
 use crate::gpu::raster::text_backend::TextBatchInput;
 use crate::gpu::raster::text_backend::encode::EncodedRunKey;
 use crate::gpu::raster::text_backend::encode::cache::{EncodeCoverage, EncodedCache, EncodedGlyph};
-use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::text::glyphs::TextGlyphs;
 use crate::text::render::{GlyphRasterKey, PlacedGlyph, RunPlacement};
 use crate::text::request::TextShapeRequest;
@@ -115,7 +113,7 @@ impl TextEncoder {
         } = run;
         let Self { cache, placed, .. } = self;
         cache.start_row();
-        let color: RgbaF16 = bytemuck::cast(run_key.key.area_color);
+        let color = run_key.color();
 
         // Whether extraction dropped any line; see `EncodedCache::settle`.
         let culled = glyphs.extract_glyphs(request, placement, placed);
@@ -140,10 +138,7 @@ impl TextEncoder {
             let quad = placement.quad(g.physical, color);
             pass.push(quad);
             cache.stage(EncodedGlyph {
-                instance: RasterQuad {
-                    pos: quad.pos - run_key.pixel,
-                    ..quad
-                },
+                offset: quad.pos - run_key.pixel,
                 handle: placement.handle,
             });
         }

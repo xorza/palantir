@@ -219,6 +219,29 @@ fn a_cached_run_replays_its_moved_glyphs_where_they_moved() {
     }
 }
 
+/// A replayed run's quads are the miss's to the byte: the first frame of a run lays it out and
+/// files its glyphs, the second replays its template through the same [`RasterQuad::placed`], at
+/// the same places, in the same color, with no re-encode.
+#[test]
+fn a_replayed_run_draws_the_quads_its_miss_drew() {
+    let mut rig = TextRig::new();
+    let runs = [TextDrawRow {
+        color: RgbaF16::new(0.78, 0.39, 0.2, 1.0),
+        ..rig.row("File", 14.0 * 1.2, Vec2::new(20.0, 20.0))
+    }];
+    rig.frame(1.0, &[&runs]);
+    let missed = rig.backend.pass.instances().to_vec();
+    let arena = rig.backend.encoder.cache().arena_len();
+    rig.tick();
+    rig.frame(1.0, &[&runs]);
+    assert_eq!(rig.backend.encoder.cache().arena_len(), arena, "replayed");
+    assert!(!missed.is_empty());
+    assert_eq!(
+        bytemuck::cast_slice::<RasterQuad, u8>(rig.backend.pass.instances()),
+        bytemuck::cast_slice::<RasterQuad, u8>(&missed),
+    );
+}
+
 /// Two batches prepared in one frame ride a single deferred vbuf write
 /// (`TextBackend::flush` after all `prepare_batch` calls). The per-batch `ranges`
 /// must partition the shared instance vec and each batch's glyphs keep their own

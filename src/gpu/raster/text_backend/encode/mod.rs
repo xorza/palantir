@@ -6,6 +6,7 @@
 //! on emit, since eviction hands its rectangle to another raster.
 
 use crate::primitives::math::num::F32Px;
+use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::render_buffer::text_draw_row::TextDrawRow;
 use crate::text::key::TextShapeKey;
 use crate::text::render::SubpixelOrigin;
@@ -23,7 +24,7 @@ pub(crate) struct EncodedKey {
     text: TextShapeKey,
     /// `(scale * 65536).round() as u32`.
     scale_q: u32,
-    /// The run's [`RgbaF16`](crate::primitives::paint::color::rgba_f16::RgbaF16) color bits.
+    /// The run's [`RgbaF16`] color bits.
     area_color: u64,
     /// Packed subpixel bins, from [`crate::text::render::SubpixelOrigin::bins`].
     bins: u8,
@@ -37,6 +38,11 @@ pub(super) struct EncodedRunKey {
 }
 
 impl EncodedRunKey {
+    /// The run's color, which every glyph quad of it takes, the miss's and the replay's alike.
+    pub(super) fn color(&self) -> RgbaF16 {
+        bytemuck::cast(self.key.area_color)
+    }
+
     /// The integer pixel plus each axis's subpixel bin; extracting from this,
     /// not the exact origin, gives every origin in a bin the template its key caches.
     pub(super) fn origin(&self) -> Vec2 {
