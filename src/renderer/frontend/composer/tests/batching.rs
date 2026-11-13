@@ -24,6 +24,7 @@ use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
 use crate::renderer::frontend::payload::spin::Spin;
 use crate::renderer::render_buffer::draw_run::Lane;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
+use crate::renderer::render_buffer::text_draw_row::TextClip;
 use crate::shape::geometry::box_geometry::PlacedBox;
 use crate::shape::paint::lowered_shadow::LoweredShadow;
 use crate::text::key::TextShapeKey;
@@ -317,7 +318,7 @@ fn a_clipped_text_run_batches_unless_it_turns() {
     let turned = |spin: Option<Spin>| {
         run(
             |b, _arena| {
-                text(b, Rect::new(0.0, 0.0, 200.0, 20.0));
+                text(b, Rect::new(10.0, 10.0, 200.0, 20.0));
                 clip(b, Rect::new(40.0, 40.0, 20.0, 20.0));
                 b.draw(
                     DrawTextPayload {
@@ -339,6 +340,16 @@ fn a_clipped_text_run_batches_unless_it_turns() {
     };
     let still = turned(None);
     assert_eq!(still.texts[1].bounds, URect::new(40, 40, 20, 20));
+    assert_eq!(
+        still.texts[0].reach,
+        TextClip::Whole,
+        "off the viewport's edge, which its padded reach would cross at 0"
+    );
+    assert_eq!(
+        still.texts[1].reach,
+        TextClip::Cut,
+        "the clip cuts its glyphs"
+    );
     let union = still.texts[0].bounds.union(still.texts[1].bounds);
     assert_eq!(text_runs(&still), [(Span::new(0, 2), union)]);
     assert_eq!(
@@ -359,6 +370,43 @@ fn a_clipped_text_run_batches_unless_it_turns() {
     let spun = text_runs(&spun);
     assert_eq!(spun.len(), 2);
     assert_eq!(spun[1], (Span::new(1, 1), URect::new(40, 40, 20, 20)));
+}
+
+/// The viewport's edge cuts a run's glyphs as a clip does, but needs no scissor of the batch: two
+/// turned runs, one inside the 300 px viewport and one past its right edge, both reach `Cut` only
+/// for the second, and share one batch, as identical bounds bind only a run a clip cuts.
+#[test]
+fn the_viewport_edge_cuts_a_run_but_not_its_batch() {
+    let turned_text = |b: &mut PaintCapture, rect: Rect| {
+        b.draw(
+            DrawTextPayload {
+                rect,
+                ink: Spacing::ZERO,
+                color: RgbaF32::WHITE.to_f16(),
+                text: ShapedTextRef {
+                    key: TextShapeKey::fixture(),
+                    span: Span::default(),
+                },
+                spin: Some(Spin {
+                    pivot: rect.center(),
+                    angle: 0.5,
+                }),
+            },
+            1.0,
+        );
+    };
+    let buf = run(
+        |b, _arena| {
+            turned_text(b, Rect::new(40.0, 40.0, 100.0, 20.0));
+            turned_text(b, Rect::new(240.0, 140.0, 100.0, 20.0));
+        },
+        &params(1.0, UVec2::new(300, 300)),
+    );
+    assert_eq!(buf.texts[0].reach, TextClip::Whole);
+    assert_eq!(buf.texts[1].reach, TextClip::Cut);
+    assert_eq!(buf.texts[1].bounds.max().x, 300, "the viewport clamps it");
+    let union = buf.texts[0].bounds.union(buf.texts[1].bounds);
+    assert_eq!(text_runs(&buf), [(Span::new(0, 2), union)]);
 }
 
 #[test]

@@ -220,7 +220,12 @@ In order; each ends with the gate of `AGENTS.md` and the census of step 1.
   fixture and in Darkroom. Then a spike, kept only where `atomic/composer/cpu/*` holds its floor
   and the census falls.
 
-### 7. An uncut run skips its clip pass
+### 7. An uncut run skips its clip pass — done
+
+- **Status.** The composer marks each row whole or cut against its unclamped reach, as the
+  viewport's edge cuts glyph quads too, and a turned run's batch still binds only to a clip's
+  cut. On the Apple laptop: `text_atlas/*/prepare` −17 to −18 %, the frame cases and
+  `encoded_cache/*` within the floor.
 
 - **Change.** A row the composer saw uncut, with no chain, skips `RasterPass::clip_since`, which
   reads and writes back every glyph of every run each frame.

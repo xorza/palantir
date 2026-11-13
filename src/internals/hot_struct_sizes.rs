@@ -271,7 +271,7 @@ const PINS: &[Pin] = &[
     pin::<SpunRasterQuad>("raster_pipeline::SpunRasterQuad", 52, 4),
     pin::<PlacedGlyph>("text::PlacedGlyph", 32, 4),
     pin::<ShapedTextRef>("text::ShapedTextRef", 32, 8),
-    pin::<TextDrawRow>("renderer::TextDrawRow", 88, 8),
+    pin::<TextDrawRow>("renderer::TextDrawRow", 96, 8),
     pin::<IconDrawRow>("renderer::IconDrawRow", 56, 4),
     pin::<ImageDrawRow>("renderer::ImageDrawRow", 128, 8),
     pin::<MeshDrawRow>("renderer::MeshDrawRow", 52, 4),

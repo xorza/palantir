@@ -16,7 +16,7 @@ use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::backdrop_row::BackdropSource;
 use crate::renderer::render_buffer::draw_run::{DrawRun, Lane};
 use crate::renderer::render_buffer::paint_tier::PaintTier;
-use crate::renderer::render_buffer::text_draw_row::TextDrawRow;
+use crate::renderer::render_buffer::text_draw_row::{TextClip, TextDrawRow};
 use glam::UVec2;
 
 /// Why a group closed: a draw would have swapped paint order with one it overlaps, a backdrop's
@@ -151,18 +151,10 @@ struct OpenBatch {
     /// Whether a run of it turns: its glyphs' quads fade half a pixel past each turned edge, so
     /// the batch draws under its runs' bounds, cut or not.
     turned: bool,
-    /// [`TextClip::Cut`] once a cut run has joined. The batch scissor (`open_grid.union()`) must then
-    /// equal that run's bounds, so later runs join only with matching `bounds`; a turned run's
-    /// glyphs carry no clip rect of their own.
+    /// [`TextClip::Cut`] once a cut turned run has joined, as only its batch's scissor clips it:
+    /// the batch's bounds (`open_grid.union()`) must then equal that run's, so later runs join
+    /// only with matching bounds. An unturned run clips its own glyphs.
     clip: TextClip,
-}
-
-/// Whether an ancestor clip cuts a turned text run's unclipped extent, which its batch's scissor
-/// alone clips; an unturned run clips its own glyphs.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum TextClip {
-    Whole,
-    Cut,
 }
 
 /// A text batch [`BatchState::close`] took, and the union of its runs' bounds.
@@ -424,8 +416,9 @@ impl Ordering<'_> {
 
     /// Push the text run `row` into the open batch, opening one where none is or where its scissor
     /// cannot hold the run: a run `clip` cuts batches only with peers of identical bounds, as the
-    /// text shader has no per-instance clip. The batch spans groups, the one draw whose order is
-    /// not group-scoped.
+    /// text shader has no per-instance clip. `clip` is [`TextClip::Cut`] for a turned run a clip
+    /// cuts alone, as an unturned run clips its own glyphs. The batch spans groups, the one draw
+    /// whose order is not group-scoped.
     pub(super) fn push_text(&mut self, row: TextDrawRow, clip: TextClip) {
         let bounds = row.bounds;
         if let Some(b) = self.order.batch.open.as_ref()

@@ -15,9 +15,9 @@ use glam::Vec2;
 pub(crate) struct TextDrawRow {
     pub(crate) text: ShapedTextRef,
     pub(crate) origin: Vec2,
-    /// Clip bounds (physical px). An unturned run culls its lines against them and clips its
-    /// glyphs' quads to them on the CPU (`RasterPass::clip_since`); a turned run culls none, and
-    /// its batch's run's scissor clips it
+    /// Clip bounds (physical px). An unturned run culls its lines against them and, where they cut
+    /// its [`Self::reach`], clips its glyphs' quads to them on the CPU (`RasterPass::clip_since`);
+    /// a turned run culls none, and its batch's run's scissor clips it
     /// ([`DrawRun::scissor`](crate::renderer::render_buffer::draw_run::DrawRun::scissor)), which
     /// equals these bounds once a clip cuts the run.
     pub(crate) bounds: URect,
@@ -31,4 +31,15 @@ pub(crate) struct TextDrawRow {
     pub(crate) spin: Option<RowSpin>,
     /// The rounded clips that cut the run, which each of its glyphs carries.
     pub(crate) clip: ClipChain,
+    /// Whether its bounds, a clip's or the viewport's edge, cut the run's reach, its glyphs'
+    /// padded ink: the backend clips a cut run's glyph quads to them, and passes over a whole one
+    /// under no rounded clip, whose quads lie inside them already.
+    pub(crate) reach: TextClip,
+}
+
+/// Whether an edge cuts a text run, which its glyphs or its batch's scissor then clip it to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum TextClip {
+    Whole,
+    Cut,
 }

@@ -3,7 +3,8 @@
 //! - Linear premultiplied end to end: the shader writes `vec4(rgb*a, a)`
 //!   with `PREMULTIPLIED_ALPHA_BLENDING`; no sRGB round-trip.
 //! - An unturned run's quads clip to its bounds on the CPU ([`RasterPass::clip_since`]) after a
-//!   y-range pre-cull; a turned run takes its batch's scissor.
+//!   y-range pre-cull, where an edge cuts it or a rounded clip reaches it; a turned run takes its
+//!   batch's scissor.
 //! - Glyphs live in the atlas pool beside the icons (`gpu::atlas`), drawn through the one atlas
 //!   group over its mask and color pages; a grow keeps every rectangle, so no re-rasterization.
 //! - Glyph uploads are staged and flushed after the pool's commit, because

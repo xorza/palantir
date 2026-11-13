@@ -47,10 +47,11 @@ How palantir draws, from the renderer's instance streams through wgpu: the decis
   coverage as a vertex attribute, exact on straight edges only; MSAA.
 - **Shared WGSL has one copy, under the `palantir_` prefix** the effect contract reserves.
   Refused: `naga_oil` and WESL, a dependency each for an include order a list of files states.
-- **A draw call joins what it can**: a text run clips its glyphs on the CPU, so it batches with
-  any other, and a closing group's quads join one run per form, looking back past quads they do
-  not overlap, as WebRender's `batch_lookback_count`. Refused: sorting by pipeline with a depth
-  buffer, as Graphite does, a depth attachment in every pipeline for a small ceiling.
+- **A draw call joins what it can**: a text run an edge cuts clips its glyphs on the CPU, so it
+  batches with any other, and one the composer saw whole skips that pass; a closing group's quads
+  join one run per form, looking back past quads they do not overlap, as WebRender's
+  `batch_lookback_count`. Refused: sorting by pipeline with a depth buffer, as Graphite does, a
+  depth attachment in every pipeline for a small ceiling.
 - **The composer hands the backend its draws in the order they paint**: a list of runs, each a
   span of one lane's rows under one scissor, which a group appends as it closes, its quads, the
   text batches that end in it and its tiers in turn, and a text batch that outlives its last group

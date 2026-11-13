@@ -7,6 +7,8 @@ use crate::gpu::raster::raster_pass::{Filed, RasterPass};
 use crate::gpu::raster::text_backend::TextBatchInput;
 use crate::gpu::raster::text_backend::encode::EncodedRunKey;
 use crate::gpu::raster::text_backend::encode::cache::{EncodeCoverage, EncodedCache, EncodedGlyph};
+use crate::renderer::render_buffer::clip_chain::ClipChain;
+use crate::renderer::render_buffer::text_draw_row::TextClip;
 use crate::text::glyphs::TextGlyphs;
 use crate::text::render::{GlyphRasterKey, PlacedGlyph, RunPlacement};
 use crate::text::request::TextShapeRequest;
@@ -82,9 +84,17 @@ impl TextEncoder {
                 );
             }
             // A turned run is emitted as an unturned one, then turned whole; its batch's scissor
-            // clips it. An unturned one clips to its bounds here, so it batches with any run.
+            // clips it. An unturned one an edge cuts, or a rounded clip reaches, clips to its
+            // bounds and takes the chain here, so it batches with any run; one neither touches
+            // lies inside them already, as quads the encoded template holds with no chain.
             match r.spin {
                 Some(spin) => pass.turn_since(start, spin, r.clip),
+                None if r.reach == TextClip::Whole && r.clip == ClipChain::NONE => {
+                    debug_assert!(
+                        pass.holds_since(start, r.bounds),
+                        "an uncut run's glyphs lie inside its bounds"
+                    );
+                }
                 None => pass.clip_since(start, r.bounds, r.clip),
             }
         }

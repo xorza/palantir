@@ -75,7 +75,7 @@ mod tests {
     use crate::primitives::geometry::urect::URect;
     use crate::primitives::paint::color::RgbaF32;
     use crate::renderer::render_buffer::clip_chain::ClipChain;
-    use crate::renderer::render_buffer::text_draw_row::TextDrawRow;
+    use crate::renderer::render_buffer::text_draw_row::{TextClip, TextDrawRow};
     use crate::text::key::TextShapeKey;
     use crate::text::shaped_ref::ShapedTextRef;
     use glam::Vec2;
@@ -92,6 +92,7 @@ mod tests {
             scale: 1.0,
             spin: None,
             clip: ClipChain::NONE,
+            reach: TextClip::Whole,
         };
         EncodedRunKey::for_row(&row, 1.0)
     }

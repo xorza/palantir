@@ -17,7 +17,7 @@ use crate::renderer::frontend::composer::clip_stack::ClipFrame;
 use crate::renderer::frontend::composer::curve_run::CurveRun;
 use crate::renderer::frontend::composer::geometry;
 use crate::renderer::frontend::composer::lowering::{Lowering, ScaledRect};
-use crate::renderer::frontend::composer::paint_order::{Admitted, GroupClose, Ordering, TextClip};
+use crate::renderer::frontend::composer::paint_order::{Admitted, GroupClose, Ordering};
 use crate::renderer::frontend::composer::polyline_scratch::{PolylineLook, StagedColors};
 use crate::renderer::frontend::composer::stroke_bbox::StrokeBbox;
 use crate::renderer::frontend::composer::template_shape::TemplateShape;
@@ -55,7 +55,7 @@ use crate::renderer::render_buffer::shadow_instance::{ShadowInstance, ShadowKind
 use crate::renderer::render_buffer::shape_form::ShapeForm;
 use crate::renderer::render_buffer::shape_header::ShapeHeader;
 use crate::renderer::render_buffer::template_cover::TemplateCover;
-use crate::renderer::render_buffer::text_draw_row::TextDrawRow;
+use crate::renderer::render_buffer::text_draw_row::{TextClip, TextDrawRow};
 use crate::shape::geometry::box_geometry::PlacedBox;
 use crate::shape::geometry::closed_geometry::PlacedClosed;
 use crate::shape::geometry::curve_basis::CurveBasis;
@@ -509,7 +509,7 @@ impl PaintSink for ComposeSession<'_> {
         // What the glyphs can reach: ink from the placed origin at true size, padded by
         // the scale-step fraction like the run's damage rect (`inflate_text_damage`).
         // Covered, never rounded in, so the last AA column is not cut.
-        let unclipped = {
+        let reach = {
             let local_inked = t.rect.inflated_by(t.ink);
             let inked = self.composer.transform.apply_rect(local_inked);
             let lead = (world.min - inked.min) * scale;
@@ -523,10 +523,12 @@ impl PaintSink for ComposeSession<'_> {
             if let Some(spin) = spin {
                 reach = reach.turned_cover(spin.pivot, spin.angle);
             }
-            geometry::urect_from_physical(reach.min, reach.max(), self.out.display.physical)
+            reach
         };
-        // `bounds` feeds the batch GPU scissor and the backend's per-line y-cull; there is no
-        // per-glyph clip.
+        let unclipped =
+            geometry::urect_from_physical(reach.min, reach.max(), self.out.display.physical);
+        // `bounds` feeds the batch's bounds, the backend's per-line y-cull and, where an edge cuts
+        // the run, the clip of its glyphs' quads.
         let Some(Admitted {
             visible: bounds, ..
         }) = self.ordering().admit(Lane::Text, unclipped)
@@ -544,15 +546,20 @@ impl PaintSink for ComposeSession<'_> {
             scale: geometry::snap_text_scale(self.composer.transform.scale()),
             spin,
             clip,
+            // Against the reach itself, as the viewport's edge cuts the glyphs' quads too.
+            reach: if Rect::from(bounds).contains_rect(reach) {
+                TextClip::Whole
+            } else {
+                TextClip::Cut
+            },
         };
-        // An unturned run's glyphs clip to its bounds where the text backend emits them
-        // (`RasterPass::clip_since`), so only a turned one needs a scissor of its own bounds.
-        let clip = if bounds == unclipped || spin.is_none() {
-            TextClip::Whole
-        } else {
+        // Only a turned run's batch scissor clips it, and the viewport's edge needs no scissor.
+        let batch_clip = if spin.is_some() && bounds != unclipped {
             TextClip::Cut
+        } else {
+            TextClip::Whole
         };
-        self.ordering().push_text(row, clip);
+        self.ordering().push_text(row, batch_clip);
     }
 }
 

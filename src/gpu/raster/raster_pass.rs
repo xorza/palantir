@@ -348,6 +348,16 @@ impl<K: Copy + Eq + Hash + Debug> RasterPass<K> {
         self.instances.truncate(kept);
     }
 
+    /// Whether every quad emitted from `start` on lies inside `bounds`, which a clip to them would
+    /// leave as it is.
+    pub(super) fn holds_since(&self, start: usize, bounds: URect) -> bool {
+        let min = bounds.min.as_ivec2();
+        let max = (bounds.min + bounds.size).as_ivec2();
+        self.instances[start..].iter().all(|quad| {
+            quad.pos.cmpge(min).all() && (quad.pos + quad.size.as_ivec2()).cmple(max).all()
+        })
+    }
+
     /// Move the quads emitted from `start` on into the turned buffer, each turned by `spin` and
     /// cut by the rounded clips of `chain`. They keep their place in the batch's paint order.
     pub(super) fn turn_since(&mut self, start: usize, spin: RowSpin, chain: ClipChain) {

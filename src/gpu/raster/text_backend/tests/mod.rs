@@ -18,7 +18,7 @@ use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::content_type::ContentType;
 use crate::renderer::render_buffer::clip_chain::ClipChain;
 use crate::renderer::render_buffer::row_spin::RowSpin;
-use crate::renderer::render_buffer::text_draw_row::TextDrawRow;
+use crate::renderer::render_buffer::text_draw_row::{TextClip, TextDrawRow};
 use crate::text::{RENDERED_RUN_KEEP_FRAMES, RENDERED_RUN_KEEP_SPREAD_MASK};
 use glam::{IVec2, UVec2, Vec2};
 use std::slice;
@@ -381,6 +381,7 @@ fn partially_culled_run_is_not_cached() {
     // Clip to the first line: the pre-cull keeps lines with line_top <= bounds_bot,
     // so h = 10 keeps line 0.
     run.bounds = URect::new(0, 0, PHYSICAL.x, 10);
+    run.reach = TextClip::Cut;
 
     // Frame 1: clipped encode gives 3 instances and no cache entry.
     rig.frame(1.0, &[slice::from_ref(&run)]);
@@ -404,6 +405,7 @@ fn partially_culled_run_is_not_cached() {
     // Frame 3, unclipped: 9 instances, cached under the same key as the clipped
     // frames (why those must not insert).
     run.bounds = URect::new(0, 0, PHYSICAL.x, PHYSICAL.y);
+    run.reach = TextClip::Whole;
     rig.frame(1.0, &[slice::from_ref(&run)]);
     assert_eq!(rig.backend.pass.instances().len(), 9);
     assert_eq!(rig.backend.encoder.cache().rows(), 1);
@@ -429,6 +431,36 @@ fn partially_culled_run_is_not_cached() {
         12,
         "a hit must not re-encode"
     );
+}
+
+/// An uncut run's quads land as encoded; a cut one's clip to its bounds. Cutting 2 px off the left
+/// of the first glyph moves that quad's left edge to the cut and narrows it by 2, and leaves every
+/// other quad, wholly inside, as it was.
+#[test]
+fn a_cut_run_clips_its_quads_to_its_bounds() {
+    let mut rig = TextRig::new();
+    let mut run = rig.row("abc", 16.0, Vec2::new(20.0, 20.0));
+    rig.frame(1.0, &[slice::from_ref(&run)]);
+    let whole = rig.backend.pass.instances().to_vec();
+    assert_eq!(whole.len(), 3, "one quad per glyph");
+    rig.tick();
+
+    let first = whole[0];
+    assert!(first.size.x > 2, "the first glyph is wider than the cut");
+    let cut = first.pos.x + 2;
+    let left = u32::try_from(cut).unwrap();
+    run.bounds = URect::new(left, 0, PHYSICAL.x - left, PHYSICAL.y);
+    run.reach = TextClip::Cut;
+    rig.frame(1.0, &[slice::from_ref(&run)]);
+    let clipped = rig.backend.pass.instances();
+    assert_eq!(clipped.len(), 3);
+    assert_eq!(clipped[0].pos, IVec2::new(cut, first.pos.y));
+    assert_eq!(clipped[0].size, UVec2::new(first.size.x - 2, first.size.y));
+    for (got, was) in clipped[1..].iter().zip(&whole[1..]) {
+        assert_eq!((got.pos, got.size, got.dim), (was.pos, was.size, was.dim));
+        assert_eq!(got.uv_and_kind, was.uv_and_kind);
+    }
+    rig.tick();
 }
 
 /// Both text caches age on one clock, so a frame drawing no text ages neither and
