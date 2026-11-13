@@ -328,6 +328,15 @@ fn a_clear_keeps_every_span_list() {
     );
     packer.allocate(size(10, 4)).unwrap();
     assert_eq!(packer.spare.len(), 2, "the new shelf took a kept list");
+
+    // A reset clears as well and takes the new edge: 100 texels wide fits 128, not 64.
+    assert_eq!(packer.allocate(size(100, 4)), None);
+    packer.reset(128);
+    assert_eq!(
+        (rows(&packer), packer.top, packer.spare.len(), packer.edge),
+        (vec![], 0, 3, 128)
+    );
+    assert_eq!(packer.allocate(size(100, 4)), Some(U16Vec2::ZERO));
 }
 
 /// How a workload frees what it placed.

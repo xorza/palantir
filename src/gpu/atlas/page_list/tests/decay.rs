@@ -209,7 +209,7 @@ fn a_drain_moves_within_the_budget_frame_by_frame() {
 /// `2 · 2048 = 4096` texels, opens in the next slot, the two items move there, and the 128² page
 /// closes, which leaves slot 1 the one open slot, as a draw reads it. With three items left,
 /// 18.75 %, no smaller page holds them twice, as the next edge down has a quarter of the texels:
-/// the page stays through two windows.
+/// the page stays through two windows. A purge shrinks the two-item page at once.
 #[test]
 fn a_sparse_page_shrinks_to_twice_its_items_after_a_window() {
     let mut list = list(32, 128, 1 << 20);
@@ -239,6 +239,19 @@ fn a_sparse_page_shrinks_to_twice_its_items_after_a_window() {
         assert!(decay(&mut full, frame, ROOMY).moves.is_empty());
     }
     assert_eq!(full.page(0).unwrap().edge(), 128);
+
+    // A purge shrinks the same sparse page at once, with no window: at frame 0 the two items are
+    // this frame's, so they stay, and move onto the 64² page in slot 1.
+    let mut purged = super::list(32, 128, 1 << 20);
+    let items = insert(&mut purged, 5, 32);
+    for &handle in &items[2..] {
+        purged.release(handle);
+    }
+    purged.purge(0, &mut Evictions::default());
+    assert_eq!(purged.moves().len(), 2);
+    assert!(purged.page(0).is_none(), "the large page closed");
+    assert_eq!(purged.page(1).unwrap().edge(), 64);
+    assert_eq!(at(&purged, items[1]).0, 1);
 }
 
 /// A drain whose item fits the others' free texels but no shape of them stalls, and is not tried

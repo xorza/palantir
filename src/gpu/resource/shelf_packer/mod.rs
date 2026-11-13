@@ -274,6 +274,13 @@ impl ShelfPacker {
         self.top = 0;
     }
 
+    /// Free every rectangle and take an edge of `edge`, keeping the span lists, so a packer reused
+    /// for trials allocates nothing once warm.
+    pub(crate) fn reset(&mut self, edge: u16) {
+        self.clear();
+        self.edge = edge;
+    }
+
     /// Widen and deepen the side to `edge`, keeping every placement: each shelf gains the new
     /// columns, and the new rows join the unclaimed ones.
     pub(crate) fn grow(&mut self, edge: u16) {

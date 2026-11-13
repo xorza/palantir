@@ -3,7 +3,7 @@
 The full plan, with each commit's scope and source, is on the `atlas-review` branch:
 `git show atlas-review:.notes/atlas-review-split.md`. Each change is applied on master, reviewed,
 gated, then committed and pushed on request. 10–14 landed as one commit, and the order test
-passed there, so K drops: 39 commits, 10 applied and 29 left, fewer where a Phase 2 split cannot
+passed there, so K drops: 39 commits, 11 applied and 28 left, fewer where a Phase 2 split cannot
 build alone and merges with its neighbor.
 
 ## Done
@@ -19,13 +19,14 @@ build alone and merges with its neighbor.
 | 7 | `da06a5308` | Move `AtlasSlots` to `pipeline::atlas_binding`, `AtlasSlots::of(&pool)` |
 | 8 | `9390184b3` | Name the texture binding's layouts and groups alike |
 | 9 | `df48dc781` | Name the shelf packer's side its edge |
-| 10–14 | uncommitted | The memory report's columns, one seeded RNG, `PerFormat<T>` and `Tenant::ALL`, views handed down, the gpu module-order test |
+| 10–14 | `9e35148d0` | The memory report's columns, one seeded RNG, `PerFormat<T>` and `Tenant::ALL`, views handed down, the gpu module-order test |
+| A1 | uncommitted | A page owns its packer and live texels; a shrink tries its packing in a packer kept on the list; `Pace` and `grow`'s size go |
 
 ## Left
 
 Phase 2, behavior:
 
-- A1–A6. Decay every candidate and every round
+- A2–A6. Decay every candidate and every round
 - B1–B3. Give the atlas pool one surface
 - C1–C7. One tenant protocol
 - D. Put the gradient row table under the atlas pool
