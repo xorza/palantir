@@ -235,14 +235,20 @@ In order; each ends with the gate of `AGENTS.md` and the census of step 1.
 
 ### 8. The composer pays for runs per draw no more than it did for groups — in progress
 
-- **Status.** A run's bounds come from unions the composer keeps anyway, a tier's from its
-  overlap grid and the quads' from one union a group, and the join reads shaded rects only past
-  its one-key fast path and copies the group only where a quad moved. On the Apple laptop against
-  the step 2 tree: `quads/clipped` +14 %, `quads/rounded_clip` +12 %, `quads/plain` +8 %,
-  `same_tier_image` +17 %, `mixed_overlap` +21 %, `clips/*` +30 to +41 %. What is left is the
-  paint-order overlap grids and the prune answering over one group where clips used to cut many:
-  `RectGrid::any_overlap_inside` and `HigherKindRects::any_overlap` take a third of
-  `clips/rect`, the prune a quarter of `quads/clipped`.
+- **Status.** Done: a run's bounds come from unions the composer keeps anyway, a tier's from
+  its overlap grid and the quads' from one union a group; the join reads shaded rects only past
+  its one-key fast path, passes over a group of one key whose clips cut no quad, and copies the
+  group only where a quad moved; a closing group lists each tier's open run without a pass
+  through its closed runs. On the Apple laptop against the step 2 tree: `quads/clipped` +15 %,
+  `quads/rounded_clip` +7 %, `quads/plain` +6 %, `same_tier_image` +16 %, `mixed_overlap`
+  +19 %, `clips/*` +35 to +43 %. What is left is the paint-order overlap grids answering over
+  one group where clips used to cut many: their union no longer rejects, so each draw walks a
+  tile, the quad's queries of the higher tiers and of the closed text most of it, and the prune
+  over the whole group.
+- **Refused: a fence a clip scope.** A clip whose scissor lay apart from every rect the grids held
+  fenced its scope, and a draw in it scanned only the rects pushed since, as an empty group
+  would. Its own check is a tile walk a clip, the walks it saved were as cheap, and `clips/rect`
+  ran 8 % slower than without it.
 
 - **Change.** Take back the composer time step 3 added, now that one group spans every clip: a
   tier draw's run update (its scissor test and its bounds union, about 4 ns a draw on the Apple

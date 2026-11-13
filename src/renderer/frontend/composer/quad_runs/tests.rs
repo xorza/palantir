@@ -104,24 +104,30 @@ fn a_quad_joins_only_a_run_of_its_scissor() {
 
 /// A quad its clip holds, where that clip cuts no quad of the group, joins a run under no clip:
 /// the solid at 20 under (15, 0, 20 × 10), which holds it, joins the solid at 0, leaving 0, 20, 40
-/// in order, all under none. Where the clip also cuts the solid at 30, 30..40 past its edge at 35,
-/// the solid at 20 stays under it, and the two clipped solids run together.
+/// in order, all under none, whether the group is of one key, which the join passes over, or the
+/// last quad is a gradient, which makes it walk the group. Where the clip also cuts the solid at
+/// 30, 30..40 past its edge at 35, the solid at 20 stays under it, and the two clipped solids run
+/// together.
 #[test]
 fn a_quad_its_clip_holds_joins_a_run_under_none_unless_the_clip_cuts_another() {
     let holding = Some(URect::new(15, 0, 20, 10));
-    let rows = [
-        (0.0, SOLID, None),
-        (20.0, SOLID, holding),
-        (40.0, SOLID, None),
-    ];
-    let mut keys: Vec<QuadKey> = rows.iter().map(|&(_, key, _)| key).collect();
-    let mut scissors: Vec<Option<URect>> = rows.iter().map(|&(_, _, scissor)| scissor).collect();
-    let mut quads: Vec<QuadInstance> = rows
-        .iter()
-        .map(|&(x, _, _)| QuadInstance::of_rect(Rect::new(x, 0.0, 10.0, 10.0)))
-        .collect();
-    QuadRuns::default().join(&mut keys, &mut scissors, &mut quads);
-    assert_eq!(scissors, [None, None, None]);
+    for last in [SOLID, GRADIENT] {
+        let rows = [
+            (0.0, SOLID, None),
+            (20.0, SOLID, holding),
+            (40.0, last, None),
+        ];
+        let mut keys: Vec<QuadKey> = rows.iter().map(|&(_, key, _)| key).collect();
+        let mut scissors: Vec<Option<URect>> =
+            rows.iter().map(|&(_, _, scissor)| scissor).collect();
+        let mut quads: Vec<QuadInstance> = rows
+            .iter()
+            .map(|&(x, _, _)| QuadInstance::of_rect(Rect::new(x, 0.0, 10.0, 10.0)))
+            .collect();
+        QuadRuns::default().join(&mut keys, &mut scissors, &mut quads);
+        assert_eq!(scissors, [None, None, None], "{last:?}");
+        assert_eq!(keys, [SOLID, SOLID, last]);
+    }
 
     let rows = [
         (0.0, SOLID, None),

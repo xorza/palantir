@@ -44,6 +44,11 @@ struct Run {
 /// The end of a run's chain.
 const NONE: u32 = u32::MAX;
 
+/// Whether `scissor` holds all a quad `shaded`, so it cuts none of it; no scissor holds all.
+fn holds(scissor: Option<URect>, shaded: Rect) -> bool {
+    scissor.is_none_or(|scissor| Rect::from(scissor).contains_rect(shaded))
+}
+
 /// How [`URect`]s sort in [`QuadRuns::cutting`].
 const fn order_key(rect: &URect) -> (u32, u32, u32, u32) {
     (rect.min.x, rect.min.y, rect.size.x, rect.size.y)
@@ -61,9 +66,10 @@ impl QuadRuns {
     /// no run takes opens one under its clip where that cuts a quad of the group, and under none
     /// otherwise. So the quads inside a scroll whose edge cuts some join one run of each form, as
     /// one scissor must draw them anyway, and a field's, which its clip cuts none of, join the
-    /// runs around it under no clip. A group of
-    /// one key and scissor, the common one, is left as it is after one read of each; a quad the
-    /// last run takes appends without a look back, so only a change scans.
+    /// runs around it under no clip. A group of one key and scissor, the common one, is left as
+    /// it is after one read of each, and one of one key whose clips cut none of its quads takes
+    /// no scissor after one read of what each shades; a quad the last run takes appends without a
+    /// look back, so only a change scans.
     pub(super) fn join(
         &mut self,
         keys: &mut [QuadKey],
@@ -82,6 +88,16 @@ impl QuadRuns {
         {
             return;
         }
+        // One key, and no clip cuts a quad: every quad is free and joins the one run, under none.
+        if keys.iter().all(|&key| key == first.0)
+            && scissors
+                .iter()
+                .zip(&*quads)
+                .all(|(&clip, quad)| holds(clip, quad.header.shaded_rect()))
+        {
+            scissors.fill(None);
+            return;
+        }
         self.shaded.clear();
         self.shaded
             .extend(quads.iter().map(|quad| quad.header.shaded_rect()));
@@ -90,9 +106,7 @@ impl QuadRuns {
             self.shaded
                 .iter()
                 .zip(&*scissors)
-                .filter_map(|(&shaded, &clip)| {
-                    clip.filter(|clip| !Rect::from(*clip).contains_rect(shaded))
-                }),
+                .filter_map(|(&shaded, &clip)| clip.filter(|&clip| !holds(Some(clip), shaded))),
         );
         self.cutting.sort_unstable_by_key(order_key);
         self.cutting.dedup();
@@ -108,9 +122,6 @@ impl QuadRuns {
         let mut moved = false;
         for at in 0..quads.len() {
             let (key, clip, shaded) = (keys[at], scissors[at], self.shaded[at]);
-            let holds = |scissor: Option<URect>| {
-                scissor.is_none_or(|scissor| Rect::from(scissor).contains_rect(shaded))
-            };
             // A clip that cuts a quad of the group holds every quad under it; any other leaves its
             // quads free to join a run whose scissor holds them.
             let cutting = clip.and_then(|clip| {
@@ -120,7 +131,7 @@ impl QuadRuns {
             });
             let free = cutting.is_none();
             let takes = |&(run_key, run_scissor): &RunKey| {
-                run_key == key && (run_scissor == clip || (free && holds(run_scissor)))
+                run_key == key && (run_scissor == clip || (free && holds(run_scissor, shaded)))
             };
             let joins = match cutting {
                 Some(at) if !self.cutting_opened[at] => None,

@@ -494,33 +494,38 @@ impl Ordering<'_> {
                 order.list_text(self.out, text);
             }
             for tier in PaintTier::ALL {
-                if let Some(open) = order.open_runs[tier.idx()].take() {
-                    order.tier_runs[tier.idx()].push(open);
-                }
-                let rows_end = higher_end[tier.idx()];
-                let runs = &order.tier_runs[tier.idx()];
-                debug_assert!(
-                    runs.first().map_or(rows_end, |run| run.start)
-                        == order.cursors.higher[tier.idx()],
+                // A tier that drew in the group has an open run, its last.
+                let Some(open) = order.open_runs[tier.idx()].take() else {
+                    debug_assert!(order.tier_runs[tier.idx()].is_empty());
+                    continue;
+                };
+                let union = order.higher_kinds.tier_union(tier);
+                debug_assert_eq!(
+                    order.tier_runs[tier.idx()]
+                        .first()
+                        .map_or(open.start, |run| run.start),
+                    order.cursors.higher[tier.idx()],
                     "a tier's first run of the group starts at its first row"
                 );
-                for at in 0..runs.len() {
-                    let run = order.tier_runs[tier.idx()][at];
-                    let end = order.tier_runs[tier.idx()]
-                        .get(at + 1)
-                        .map_or(rows_end, |next| next.start);
-                    let rows = Span::try_from(run.start..end).unwrap();
-                    let union = order.higher_kinds.tier_union(tier);
+                let mut list = |order: &mut PaintOrder, run: TierRun, end: u32| {
                     order.list(
                         self.out,
                         Listing {
                             lane: Lane::Tier(tier),
-                            rows,
+                            rows: Span::try_from(run.start..end).unwrap(),
                             scissor: run.scissor,
                             bounds: paints(run.scissor, union),
                         },
                     );
+                };
+                for at in 0..order.tier_runs[tier.idx()].len() {
+                    let runs = &order.tier_runs[tier.idx()];
+                    let run = runs[at];
+                    let end = runs.get(at + 1).map_or(open.start, |next| next.start);
+                    list(order, run, end);
                 }
+                list(order, open, higher_end[tier.idx()]);
+                order.tier_runs[tier.idx()].clear();
             }
             order.group += 1;
             order.closes.edit(|tally| {
@@ -533,12 +538,12 @@ impl Ordering<'_> {
             texts: t_end,
             higher: higher_end,
         };
+        debug_assert!(
+            drew || order.open_runs.iter().all(Option::is_none),
+            "a tier with an open run drew in the group"
+        );
         order.higher_kinds.clear();
         order.occlusion.clear();
-        order.open_runs = [None; PaintTier::COUNT];
-        for runs in &mut order.tier_runs {
-            runs.clear();
-        }
         order.quad_bounds = None;
         // The batches closed in the group have listed, so they no longer gate quads. The
         // open-batch grid spans groups.
