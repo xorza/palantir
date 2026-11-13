@@ -67,7 +67,7 @@ use crate::gpu::surface::owned_target::OwnedTarget;
 use crate::gpu::texel::TargetFormat;
 use crate::host::harness::harness_builder::{HarnessBuilder, SettlePace, TARGET_LABEL};
 use crate::host::harness::harness_session::HarnessSession;
-use crate::host::headless_window::{HeadlessCanvas, HeadlessWindow};
+use crate::host::headless_window::{ComposeCanvas, HeadlessCanvas, HeadlessWindow};
 use crate::host::host_device::HostDevice;
 use crate::input::capture::DRAG_THRESHOLD;
 use crate::primitives::geometry::rect::Rect;
@@ -82,6 +82,7 @@ use crate::primitives::input::sense::Sense;
 use crate::primitives::input::shortcut::{Shortcut, ShortcutMods};
 use crate::primitives::input::zoom_factor::ZoomFactor;
 use crate::primitives::reduction::Reduction;
+use crate::renderer::row_table::RowTable;
 use crate::theme::color_scheme::ColorScheme;
 use crate::ui::Ui;
 use crate::ui::app::{App, RecordPass};
@@ -152,8 +153,8 @@ pub struct Harness {
 enum HarnessPaint {
     /// Record through damage, and build no draw list.
     Record { size: UVec2 },
-    /// Build the draw list too, and paint nothing.
-    Compose { size: UVec2 },
+    /// Build the draw list too, its gradients in `rows`, and paint nothing.
+    Compose { size: UVec2, rows: RowTable },
     /// Paint into `target` on `device`: one target, kept between frames, so a still frame
     /// paints nothing.
     Gpu {
@@ -171,7 +172,7 @@ impl HarnessPaint {
     /// 8-bit sRGB one of its size that copies.
     fn target_key(&self) -> TargetKey {
         match self {
-            Self::Record { size } | Self::Compose { size } => Self::unpainted(*size),
+            Self::Record { size } | Self::Compose { size, .. } => Self::unpainted(*size),
             Self::Gpu { target, .. } => TargetKey::of(target.as_target()),
         }
     }
@@ -333,7 +334,7 @@ impl Harness {
     /// largest 2D texture.
     pub fn resize(&mut self, size: UVec2) -> &mut Self {
         match &mut self.paint {
-            HarnessPaint::Record { size: held } | HarnessPaint::Compose { size: held } => {
+            HarnessPaint::Record { size: held } | HarnessPaint::Compose { size: held, .. } => {
                 *held = size;
             }
             HarnessPaint::Gpu { target, .. } => {
@@ -827,10 +828,14 @@ impl Harness {
                 self.window
                     .record_frame(app, HarnessPaint::unpainted(*size), now)
             }
-            HarnessPaint::Compose { size } => {
-                self.window
-                    .compose_frame(app, HarnessPaint::unpainted(*size), now)
-            }
+            HarnessPaint::Compose { size, rows } => self.window.compose_frame(
+                app,
+                ComposeCanvas {
+                    target: HarnessPaint::unpainted(*size),
+                    rows,
+                },
+                now,
+            ),
             HarnessPaint::Gpu { target, device } => self.window.paint_frame(
                 app,
                 HeadlessCanvas {
@@ -977,6 +982,7 @@ pub(crate) mod internals {
     use crate::renderer::frontend::BuildPlan;
     use crate::renderer::render_buffer::RenderBuffer;
     use crate::renderer::render_plan::RenderPlan;
+    use crate::renderer::row_table::RowTable;
     use crate::ui::window_frames::WindowFrames;
     #[cfg(test)]
     use crate::{
@@ -990,7 +996,7 @@ pub(crate) mod internals {
         primitives::layout::sizing::Sizing,
         primitives::math::animatable::Animatable,
         renderer::frontend::Frontend,
-        renderer::frontend::encoder::{self, Encoder},
+        renderer::frontend::encoder::Encoder,
         scene::endpoint::Endpoint,
         scene::layer::Layer,
         scene::tree::node_id::NodeId,
@@ -1005,6 +1011,22 @@ pub(crate) mod internals {
     #[cfg(test)]
     use glam::{UVec2, Vec2};
     use image::RgbaImage;
+
+    impl HarnessPaint {
+        /// The row table a build outside a painted frame registers its gradients in: the device
+        /// pool's where the harness paints, which its next submit flushes, else its own.
+        ///
+        /// # Panics
+        ///
+        /// At [`Depth::Record`](crate::Depth::Record), which builds no draw list.
+        fn rows_mut(&mut self) -> &mut RowTable {
+            match self {
+                Self::Record { .. } => panic!("a harness at Depth::Record builds no draw list"),
+                Self::Compose { rows, .. } => rows,
+                Self::Gpu { device, .. } => device.rows_mut(),
+            }
+        }
+    }
 
     impl Harness {
         /// Snap paint edges to physical pixels from the next frame on, or not, as a host's
@@ -1027,16 +1049,24 @@ pub(crate) mod internals {
 
         /// Build the draw list of the last frame's scene by `plan`, its backdrops left out, and
         /// read it: the encode and compose alone, as a bench times them.
+        ///
+        /// # Panics
+        ///
+        /// At [`Depth::Record`](crate::Depth::Record), which builds no draw list.
         pub(crate) fn rebuild(&mut self, plan: RenderPlan) -> &RenderBuffer {
             self.window.cpu.frontend.build(
                 self.window.frames.ui().frame_scene(),
-                BuildPlan::without_backdrops(plan),
+                BuildPlan::without_backdrops(plan, self.paint.rows_mut()),
             );
             &self.window.cpu.frontend.buffer
         }
 
         /// Build the draw list of the whole retained scene, as a full repaint does; at
         /// [`Depth::Compose`](crate::Depth::Compose), it paints nothing.
+        ///
+        /// # Panics
+        ///
+        /// At [`Depth::Record`](crate::Depth::Record), which builds no draw list.
         pub fn paint_full(&mut self) {
             let plan = RenderPlan {
                 clear: self.ui().theme().window_bg,
@@ -1044,7 +1074,7 @@ pub(crate) mod internals {
             };
             self.window
                 .frames
-                .compose(&mut self.window.cpu.frontend, plan);
+                .compose(&mut self.window.cpu.frontend, self.paint.rows_mut(), plan);
         }
 
         /// The window's pixels as the last frame left them, waited for. See
@@ -1310,7 +1340,7 @@ pub(crate) mod internals {
                 clear: self.ui().theme().window_bg,
                 damage,
             };
-            encoder::internals::encode(self.ui().frame_scene(), &mut Encoder::default(), plan)
+            Encoder::default().capture(self.ui().frame_scene(), plan, &mut RowTable::default())
         }
     }
 }

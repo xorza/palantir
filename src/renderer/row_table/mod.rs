@@ -1,4 +1,4 @@
-//! CPU side of the gradient rows. Bakes stop sequences into LUT rows shared
+//! The gradient row table, its CPU half. Bakes stop sequences into LUT rows shared
 //! across linear / radial / conic gradients; the shader derives `t` per fragment.
 //! See [`bake::row`] and [`RowTable::register`].
 //!
@@ -23,7 +23,6 @@
 
 use crate::common::expiry_window::{EXPIRY_FRAMES, ExpiryWindow};
 use crate::common::hash::Hasher;
-use crate::image_registry::texture_limit::TextureLimit;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::lut_row::LutRow;
@@ -33,7 +32,6 @@ use crate::renderer::row_table::dirty_rows::DirtyRows;
 use crate::renderer::row_table::mru_list::MruList;
 use hashbrown::HashTable;
 use std::hash::{Hash as _, Hasher as _};
-use std::num::NonZeroU32;
 use std::ops::Range;
 
 pub(crate) mod bake;
@@ -48,7 +46,7 @@ mod mru_list;
 /// doubles ([`RowTable::grow`]) when a frame registers more gradients than fit.
 pub(crate) const INITIAL_ROWS: u32 = 256;
 
-/// Growth ceiling when no device limit is known: wgpu's downlevel
+/// Growth ceiling of a table no device holds, a host's that paints nothing: wgpu's downlevel
 /// `max_texture_dimension_2d` floor.
 pub(crate) const DEFAULT_MAX_ROWS: u32 = 2048;
 
@@ -77,9 +75,11 @@ struct RowSlot {
     epoch: u64,
 }
 
-/// CPU side of the gradient rows, the pool's row table (`src/gpu/AGENTS.md`, Atlases): a ramp to row-id map, whose rows [`Self::flush`] bakes for the backend's
-/// texture. No CPU mirror of the texture: a flush bakes each row of its runs again from its ramp,
-/// the clean rows a run folds in among them, which the bake's determinism makes the same bytes.
+/// The pool's row table (`src/gpu/AGENTS.md`, Atlases): a ramp to row-id map, whose rows
+/// [`Self::flush`] bakes for the backend's texture. Every window's build registers its ramps in
+/// the one table the device's pool owns, so the texture and the table are made and lost together.
+/// No CPU mirror of the texture: a flush bakes each row of its runs again from its ramp, the clean
+/// rows a run folds in among them, which the bake's determinism makes the same bytes.
 ///
 /// Row 0 is the magenta fallback and never evicted. With no free row, the
 /// least-recently-used one is evicted and claimed in place, excluding rows
@@ -149,6 +149,7 @@ impl<'a> FlushedRows<'a> {
     }
 }
 
+/// A table no device holds, a host's that paints nothing, capped at [`DEFAULT_MAX_ROWS`].
 impl Default for RowTable {
     fn default() -> Self {
         Self::new(DEFAULT_MAX_ROWS)
@@ -156,15 +157,17 @@ impl Default for RowTable {
 }
 
 impl RowTable {
-    /// Table capped at `max_rows`, raised to [`INITIAL_ROWS`] if lower.
-    pub(crate) fn new(max_rows: u32) -> Self {
+    /// An empty table whose growth ceiling is a device's largest texture edge `device_edge` (one
+    /// LUT row per texture row), clamped to the [`MAX_ROWS`] policy ceiling and raised to
+    /// [`INITIAL_ROWS`].
+    pub(crate) fn new(device_edge: u32) -> Self {
         // Row 0 alone: the permanent fallback, not an MRU member, so `resize_rows` can
         // reach `INITIAL_ROWS` from row 1 as every growth does.
         let mut table = Self {
             index: HashTable::new(),
             slots: vec![RowSlot::default()],
             mru: MruList::seeded(1),
-            max_rows: max_rows.max(INITIAL_ROWS),
+            max_rows: device_edge.clamp(INITIAL_ROWS, MAX_ROWS),
             epoch: 1,
             dirty: DirtyRows::default(),
             counters: RowTableCounters::default(),
@@ -176,17 +179,6 @@ impl RowTable {
         // Other rows start zero on the GPU, so uploading only row 0 is exact.
         table.mark_row_dirty(0);
         table
-    }
-
-    /// An empty table whose growth ceiling is a device's `max_texture_dimension_2d` (one LUT row
-    /// per texture row), clamped by the [`MAX_ROWS`] policy ceiling since growth never
-    /// reverses; a limit with no device uses [`DEFAULT_MAX_ROWS`], as `Default` does.
-    pub(crate) fn for_device(texture_limit: TextureLimit) -> Self {
-        let max_rows = texture_limit
-            .max_dimension()
-            .map_or(DEFAULT_MAX_ROWS, NonZeroU32::get)
-            .min(MAX_ROWS);
-        Self::new(max_rows)
     }
 
     /// Rows the table holds, the height the backend's LUT texture must match. Starts at
@@ -431,12 +423,7 @@ pub(crate) mod internals {
 
     #[cfg(test)]
     impl<'a> FlushedRows<'a> {
-        /// The runs, sorted.
-        pub(crate) const fn runs(&self) -> &'a [Range<u32>] {
-            self.runs
-        }
-
-        /// The texels of `run`, one of [`Self::runs`], as bytes.
+        /// The texels of `run`, one of the flush's runs, as bytes.
         pub(crate) fn bytes(&self, run: Range<u32>) -> &'a [u8] {
             self.copies()
                 .find(|(copied, _)| *copied == run)

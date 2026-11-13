@@ -125,18 +125,12 @@ fn register_dedups_across_variants() {
 /// The row ceiling is the *policy* cap, not the device's texture limit: growth never reverses, so a
 /// 16384-row adapter would let one pathological frame pin 32 MiB for the life of the process.
 #[test]
-fn an_atlas_for_a_device_clamps_its_limit_to_the_policy_cap() {
-    use std::num::NonZeroU32;
-
-    let huge_limit = TextureLimit::from_device(NonZeroU32::new(16384).unwrap());
-    let small_limit = TextureLimit::from_device(NonZeroU32::new(1024).unwrap());
-    assert_eq!(RowTable::for_device(huge_limit).max_rows(), MAX_ROWS);
+fn a_table_for_a_device_clamps_its_limit_to_the_policy_cap() {
+    assert_eq!(RowTable::new(16384).max_rows(), MAX_ROWS);
     // A device below the cap still binds.
-    assert_eq!(RowTable::for_device(small_limit).max_rows(), 1024);
-    // Deviceless keeps the conservative downlevel fallback, as `Default` does.
-    assert_eq!(
-        RowTable::for_device(TextureLimit::default()).max_rows(),
-        DEFAULT_MAX_ROWS,
-    );
+    assert_eq!(RowTable::new(1024).max_rows(), 1024);
+    // A device below the first size still holds it.
+    assert_eq!(RowTable::new(64).max_rows(), INITIAL_ROWS);
+    // A table no device holds keeps the conservative downlevel fallback.
     assert_eq!(RowTable::default().max_rows(), DEFAULT_MAX_ROWS);
 }

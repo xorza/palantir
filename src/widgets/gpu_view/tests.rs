@@ -10,7 +10,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::sense::Sense;
 use crate::primitives::layout::align::{Align, HAlign, VAlign};
-use crate::renderer::frontend::{BuildPlan, Frontend};
+use crate::renderer::frontend::Frontend;
 use crate::renderer::render_plan::RenderPlan;
 use crate::scene::layer::Layer;
 use crate::shape::paint::image_source::ImageSource;
@@ -122,7 +122,7 @@ fn an_attach_moves_the_view_ceiling_in_the_next_build() {
     };
     let mut frontend = Frontend::for_test();
     let target_size = |frontend: &mut Frontend| {
-        frontend.build(h.ui().frame_scene(), BuildPlan::without_backdrops(plan));
+        frontend.build_alone(h.ui().frame_scene(), plan);
         frontend.buffer.frame_targets[0].full
     };
     assert_eq!(target_size(&mut frontend), UVec2::splat(100));
@@ -148,10 +148,7 @@ fn the_live_roster_lists_a_view_the_damage_plan_culls() {
         damage,
     };
 
-    frontend.build(
-        h.frames().ui().frame_scene(),
-        BuildPlan::without_backdrops(plan(Damage::Full)),
-    );
+    frontend.build_alone(h.frames().ui().frame_scene(), plan(Damage::Full));
     h.frames()
         .gpu_views()
         .collect_live_targets(&mut frontend.buffer.live_targets);
@@ -169,9 +166,9 @@ fn the_live_roster_lists_a_view_the_damage_plan_culls() {
 
     // Damage confined to the corner opposite the bottom-right view.
     let elsewhere = DamageRegion::from(Rect::new(0.0, 0.0, 20.0, 20.0)).unmeasured();
-    frontend.build(
+    frontend.build_alone(
         h.frames().ui().frame_scene(),
-        BuildPlan::without_backdrops(plan(Damage::Partial(elsewhere))),
+        plan(Damage::Partial(elsewhere)),
     );
     h.frames()
         .gpu_views()

@@ -2,7 +2,6 @@
 
 use crate::common::content_hash::ContentHash;
 use crate::host::harness::Harness;
-use crate::image_registry::texture_limit::TextureLimit;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -16,15 +15,13 @@ use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::paint::Paint;
 use crate::primitives::paint::stroke::Stroke;
-use crate::renderer::frontend::encoder::Encoder;
 use crate::renderer::frontend::encoder::gradient_resolver::GradientResolver;
 use crate::renderer::frontend::encoder::tests::support::{
     as_rect, as_shadow, count_draw_rects, quad_rect,
 };
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_stroke_payload::StrokePath;
-use crate::renderer::row_table::tests::support::{distinct_grad, fill_rows};
-use crate::renderer::row_table::{INITIAL_ROWS, RowTable};
+use crate::renderer::row_table::RowTable;
 use crate::scene::layer::Layer;
 use crate::shape::geometry::curve_basis::CurveBasis;
 use crate::shape::paint::lowered_brush::LoweredBrush;
@@ -34,7 +31,6 @@ use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};
 use glam::{UVec2, Vec2};
-use std::num::NonZeroU32;
 
 #[test]
 fn gradient_resolution_runs_once_per_id_and_restarts_each_encode() {
@@ -69,38 +65,6 @@ fn gradient_resolution_runs_once_per_id_and_restarts_each_encode() {
     assert!(!pass.is_resolved(GradientId(0)));
     let _ = pass.source(brush);
     assert_eq!(pass.registrations(), registered + 1);
-}
-
-/// A device attach starts the encoder's table over under the new limit, as the device's texture
-/// holds none of its rows: a grown table is back at `INITIAL_ROWS`, its flush holds row 0
-/// alone, and a ramp it held lands where a fresh table puts it.
-#[test]
-fn a_device_attach_starts_a_grown_table_over() {
-    let small_limit = TextureLimit::from_device(NonZeroU32::new(1024).unwrap());
-    let mut encoder = Encoder::default();
-    // Row 0 is the fallback, so the 256th ramp of one epoch outgrows the first 256 rows.
-    let _ = fill_rows(&mut encoder.row_table, INITIAL_ROWS);
-    assert_eq!(encoder.gradient_rows(), INITIAL_ROWS * 2);
-    let _ = encoder.flush_gradients();
-
-    encoder.attach_device(small_limit);
-    assert_eq!(encoder.gradient_rows(), INITIAL_ROWS);
-    assert_eq!(encoder.row_table.max_rows(), 1024);
-    let runs: Vec<(u32, u32)> = encoder
-        .flush_gradients()
-        .expect("the fallback row is dirty")
-        .runs()
-        .iter()
-        .map(|run| (run.start, run.end))
-        .collect();
-    assert_eq!(
-        runs,
-        [(0, 1)],
-        "the new table uploads its fallback row alone"
-    );
-    let ramp = distinct_grad(0).ramp;
-    let mut fresh = RowTable::for_device(small_limit);
-    assert_eq!(encoder.row_table.register(&ramp), fresh.register(&ramp));
 }
 
 /// Baseline counts: an empty tree emits no draws, a filled Frame one rect quad; invisible Frames, degenerate

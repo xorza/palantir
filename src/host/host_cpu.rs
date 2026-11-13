@@ -53,9 +53,8 @@ impl HostCpu {
         }
     }
 
-    /// The CPU side of a device attach, at startup and after a loss alike: the recorders note the
-    /// device's `texture_limit`, and the frontend starts its row table over, as the device's
-    /// texture holds none of its rows.
+    /// The CPU side of a device attach, at startup and after a loss alike: the recorders and the
+    /// frontend note the device's `texture_limit`.
     pub(super) fn attach_device(&mut self, texture_limit: TextureLimit) {
         self.resources.attach_device(texture_limit);
         self.frontend.attach_device(texture_limit);

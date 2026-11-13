@@ -1,9 +1,8 @@
-//! [`RowTexture`]: the texture of the pool's gradient LUT rows, owned by
+//! [`RowTexture`]: the texture of the pool's gradient rows, owned by
 //! [`WgpuBackend`](crate::gpu::wgpu_backend::WgpuBackend), whose group is the frame group every
 //! color pipeline reads at [`FRAME_GROUP`](crate::primitives::wgsl::FRAME_GROUP): rows, not atlas
-//! items, as every color pipeline reads them branch-free (`src/gpu/AGENTS.md`,
-//! Atlases). Its CPU half is the frontend's
-//! [`RowTable`](crate::renderer::row_table::RowTable).
+//! items, as every color pipeline reads them branch-free (`src/gpu/AGENTS.md`, Atlases). Its CPU
+//! half is the pool's [`RowTable`](crate::renderer::row_table::RowTable).
 
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::resource::frame_group::RowView;
@@ -24,13 +23,12 @@ const _: () = assert!(
     "a gradient row's pitch must stay 256-aligned to stage rows as packed"
 );
 
-/// The texture the frontend's row table uploads into, which the frame group binds.
+/// The texture the pool's row table uploads into, which the frame group binds.
 /// Format-independent.
 #[derive(Debug)]
 pub(crate) struct RowTexture {
-    /// Row texture: 256 cols × N rows of `Rgba16Float` linear values (8-bit
-    /// would band dark stops). [`Self::upload`] fills it and replaces it when the row table grew
-    /// or halved.
+    /// 256 cols × N rows of `Rgba16Float` linear values (8-bit would band dark stops).
+    /// [`Self::upload`] fills it and replaces it when the table grew or halved.
     texture: wgpu::Texture,
     /// The view the frame group binds, made again with the texture.
     view: wgpu::TextureView,
@@ -44,7 +42,7 @@ fn create_texture(gpu: &Gpu, rows: u32) -> wgpu::Texture {
     texel::texture_2d(
         gpu,
         TargetSpec {
-            label: "palantir.gradient_atlas",
+            label: "palantir.atlas.rows",
             size: UVec2::new(LUT_ROW_TEXELS as u32, rows),
             format: wgpu::TextureFormat::Rgba16Float,
             usage: wgpu::TextureUsages::TEXTURE_BINDING
@@ -68,7 +66,7 @@ pub(crate) fn row_copies<'a>(
 }
 
 impl RowTexture {
-    /// The texture at `rows` rows, the row table's height.
+    /// The texture at `rows` rows, the table's height.
     pub(crate) fn new(gpu: &Gpu, rows: u32) -> Self {
         let texture = create_texture(gpu, rows);
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
@@ -121,7 +119,7 @@ pub(crate) mod internals {
     use crate::gpu::atlas_memory::{self, AtlasUse};
 
     impl RowTexture {
-        /// The texture's memory against `live_rows`, the rows the row table holds a ramp in.
+        /// The texture's memory against `live_rows`, the rows the table holds a ramp in.
         pub(crate) fn memory(&self, live_rows: u32) -> AtlasUse {
             AtlasUse {
                 name: "gradient rows",

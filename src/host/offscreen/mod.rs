@@ -496,9 +496,7 @@ pub(crate) mod internals {
 
         /// Every atlas's memory on the host's device.
         pub(crate) fn atlas_memory(&self) -> AtlasMemory {
-            self.device
-                .backend()
-                .atlas_memory(self.window.cpu.frontend.row_table())
+            self.device.backend().atlas_memory()
         }
 
         /// Images resident in the GPU texture cache.

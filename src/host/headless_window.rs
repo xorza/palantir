@@ -12,6 +12,7 @@ use crate::host::host_device::HostDevice;
 use crate::host::host_options::HostOptions;
 use crate::host::system_preferences::SystemPreferences;
 use crate::host::wake_signal::WakeSignal;
+use crate::renderer::row_table::RowTable;
 use crate::text::font_scope::FontScope;
 use crate::ui::app::App;
 use crate::ui::frame_report::FrameReport;
@@ -60,6 +61,14 @@ impl HeadlessSettings {
             preferences: SystemPreferences::NONE,
         }
     }
+}
+
+/// What a [`HeadlessWindow`]'s composed frame builds for and with: the target it is laid out for,
+/// and the row table its gradients take rows in, a host's with no device.
+#[derive(Debug)]
+pub(super) struct ComposeCanvas<'a> {
+    pub(super) target: TargetKey,
+    pub(super) rows: &'a mut RowTable,
 }
 
 /// What a [`HeadlessWindow`]'s painted frame paints with and on: its frame is laid out for this
@@ -111,12 +120,13 @@ impl HeadlessWindow {
     pub(super) fn compose_frame(
         &mut self,
         app: &mut impl App,
-        target: TargetKey,
+        canvas: ComposeCanvas<'_>,
         now: Duration,
     ) -> FrameReport {
+        let ComposeCanvas { target, rows } = canvas;
         let report = self.record_frame(app, target, now);
         if let Some(plan) = report.plan {
-            self.frames.compose(&mut self.cpu.frontend, plan);
+            self.frames.compose(&mut self.cpu.frontend, rows, plan);
         }
         report
     }

@@ -20,10 +20,11 @@ use crate::gpu::texel::TargetFormat;
 use crate::gpu::wgpu_backend::WgpuBackend;
 use crate::gpu::wgpu_backend::render_stream::RenderStream;
 use crate::renderer::backdrop_captures::{BackdropCaptures, BackdropDamage, Settled};
-use crate::renderer::frontend::{BuildPlan, FrameOutput, Frontend};
+use crate::renderer::frontend::{BuildPlan, Frontend};
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_plan::RenderPlan;
 use crate::renderer::repaint_scissors::RepaintScissors;
+use crate::renderer::row_table::RowTable;
 use crate::ui::app::App;
 use crate::ui::frame_report::FrameReport;
 use crate::ui::window_frames::WindowFrames;
@@ -123,7 +124,7 @@ pub(crate) enum BuiltFrame<'f> {
 #[derive(Debug)]
 pub(crate) struct PaintJob<'f> {
     fitted: Fitted,
-    frontend: &'f mut Frontend,
+    frontend: &'f Frontend,
 }
 
 /// A frame's path, and the scissors fitted to its plan.
@@ -143,7 +144,8 @@ impl Fitted {
 }
 
 /// What a frame that paints builds with, past its record: the frontend every window composes
-/// through, and the backend's placements its shadow cutouts plan in.
+/// through, and the backend's pool with the placements its shadow cutouts plan in, whose row table
+/// its gradients take rows in.
 #[derive(Debug)]
 pub(crate) struct BuildCtx<'f, 'p> {
     pub(crate) frontend: &'f mut Frontend,
@@ -250,15 +252,21 @@ impl WindowFrames {
         self.damage_base = DamageBase::Prev;
     }
 
-    /// Build the draw list of `plan` under the backdrops it captures, as a painted frame builds it,
-    /// for no target: a partial frame whose captures overflow its scissors builds whole.
-    pub(crate) fn compose(&mut self, frontend: &mut Frontend, plan: RenderPlan) {
+    /// Build the draw list of `plan` under the backdrops it captures, its gradients in `rows`, as a
+    /// painted frame builds it, for no target: a partial frame whose captures overflow its scissors
+    /// builds whole.
+    pub(crate) fn compose(
+        &mut self,
+        frontend: &mut Frontend,
+        rows: &mut RowTable,
+        plan: RenderPlan,
+    ) {
         let mut plan = plan;
         if self.decide_backdrops(plan) == Settled::Overflow {
             plan = plan.to_full();
             self.decide_backdrops(plan);
         }
-        self.build(frontend, plan);
+        self.build(frontend, rows, plan);
         self.backdrop_captures.settle(&frontend.buffer);
     }
 
@@ -404,7 +412,7 @@ impl WindowFrames {
         ) else {
             return Err(Escalation::ByStrategy);
         };
-        self.build(ctx.frontend, plan);
+        self.build(ctx.frontend, ctx.placing.pool.rows_mut(), plan);
         // The pixels this partial frame keeps show a cutout form the frame no longer picks. The
         // one refusal after a build, as the census reads what the frame draws.
         let census = self
@@ -426,7 +434,7 @@ impl WindowFrames {
             Settled::Fits,
             "a whole frame has no scissors to fit"
         );
-        self.build(ctx.frontend, plan);
+        self.build(ctx.frontend, ctx.placing.pool.rows_mut(), plan);
         let census = self.stream.plan_cutouts(
             &ctx.frontend.buffer,
             &RepaintScissors::Full,
@@ -445,15 +453,16 @@ impl WindowFrames {
         )
     }
 
-    /// Encode and compose the frame `plan` paints, under the ledger's tickets, and list every
-    /// `GpuView` the window records as the backend's retention roster: recorded, not painted, so
-    /// a culled unchanged view keeps its texture.
-    fn build(&self, frontend: &mut Frontend, plan: RenderPlan) {
+    /// Encode and compose the frame `plan` paints, under the ledger's tickets, its gradients in
+    /// `rows`, and list every `GpuView` the window records as the backend's retention roster:
+    /// recorded, not painted, so a culled unchanged view keeps its texture.
+    fn build(&self, frontend: &mut Frontend, rows: &mut RowTable, plan: RenderPlan) {
         frontend.build(
             self.ui.frame_scene(),
             BuildPlan {
                 render: plan,
                 backdrops: self.backdrop_captures.tickets(),
+                rows,
             },
         );
         self.ui
@@ -579,7 +588,7 @@ impl WindowFrames {
             "a direct partial frame loads the target, which only a retained one keeps: a \
              swapchain image holds nothing at acquire"
         );
-        let FrameOutput { buffer, gradients } = frontend.output();
+        let buffer = &frontend.buffer;
         let debug_overlay = self.ui.debug_overlay();
         self.target_outlined = debug_overlay.damage_rect;
         backend.submit(
@@ -589,7 +598,6 @@ impl WindowFrames {
                 stats: &mut self.ui.host.gpu_pass_stats,
                 store: &self.ui.forest.record_store,
                 buffer,
-                gradients,
                 gpu_views: &self.ui.memory.gpu_views,
                 clear: submission::frame_clear(plan.clear, buffer),
                 scissors: &scissors,

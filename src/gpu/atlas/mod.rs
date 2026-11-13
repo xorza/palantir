@@ -1,6 +1,6 @@
-//! The atlas pool: every page list's bookkeeping, its CPU half, with no device, so each rule is
-//! testable without one, and [`atlas_textures`], its GPU half, the textures that follow it. The
-//! decisions are `src/gpu/AGENTS.md`, Atlases.
+//! The atlas pool: every page list's bookkeeping and the gradient row table, its CPU half, with no
+//! device, so each rule is testable without one, and [`atlas_textures`] and [`row_texture`], its
+//! GPU half, the textures that follow it. The decisions are `src/gpu/AGENTS.md`, Atlases.
 
 pub(crate) mod atlas_format;
 pub(crate) mod atlas_handle;
@@ -20,6 +20,7 @@ use crate::gpu::atlas::page_list::{MoveBudget, PageList, PageListConfig};
 use crate::gpu::atlas::scratch_cache::ScratchId;
 use crate::gpu::atlas::tenant::Tenant;
 use crate::gpu::device::pass_traffic::PassTraffic;
+use crate::renderer::row_table::RowTable;
 use glam::UVec2;
 use std::vec::Drain;
 
@@ -62,11 +63,14 @@ impl Evictions {
     }
 }
 
-/// Every page list of one device, by [`AtlasFormat`], the display frame they age on, what a frame's
-/// moves may take, and the evictions their tenants have yet to drop.
+/// Every page list of one device, by [`AtlasFormat`], and its gradient row table; the display frame
+/// they age on, what a frame's moves may take, and the evictions their tenants have yet to drop.
 #[derive(Debug)]
 pub(crate) struct AtlasPool {
     lists: PerFormat<PageList>,
+    /// The table every window's build registers its gradients in, which the submit that paints them
+    /// flushes into the row texture.
+    rows: RowTable,
     frame: u64,
     /// The display frame the lists last decayed in, `None` before the first.
     decayed: Option<u64>,
@@ -81,6 +85,7 @@ impl AtlasPool {
             lists: PerFormat::from_fn(|format| {
                 PageList::new(format, config.lists[format], config.device_edge)
             }),
+            rows: RowTable::new(config.device_edge),
             frame: 0,
             decayed: None,
             move_budget: config.move_budget,
@@ -91,6 +96,16 @@ impl AtlasPool {
     /// The list of `format`.
     pub(crate) fn list(&self, format: AtlasFormat) -> &PageList {
         &self.lists[format]
+    }
+
+    /// The gradient row table.
+    pub(crate) const fn rows(&self) -> &RowTable {
+        &self.rows
+    }
+
+    /// The gradient row table, for a build to register its ramps in and a submit to flush.
+    pub(crate) const fn rows_mut(&mut self) -> &mut RowTable {
+        &mut self.rows
     }
 
     /// The display frame the pool ages on, which a tenant ages what it holds beside the pool on.

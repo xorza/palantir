@@ -7,7 +7,6 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::repaint_scissors::RepaintScissors;
-use crate::renderer::row_table::FlushedRows;
 use crate::shape::record_store::RecordStore;
 
 /// What [`WgpuBackend::submit`](crate::gpu::wgpu_backend::WgpuBackend::submit) draws: the
@@ -19,8 +18,6 @@ pub(crate) struct Submission<'a> {
     pub(crate) stats: &'a mut GpuPassStats,
     pub(crate) store: &'a RecordStore,
     pub(crate) buffer: &'a RenderBuffer,
-    /// The gradient rows baked since the last frame painted, which this one uploads first.
-    pub(crate) gradients: Option<FlushedRows<'a>>,
     /// The window's `GpuView`s, whose callbacks paint the buffer's view targets.
     pub(crate) gpu_views: &'a GpuViews,
     /// The opaque clear the frame paints ([`frame_clear`]).

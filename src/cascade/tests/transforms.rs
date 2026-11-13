@@ -10,7 +10,7 @@ use crate::primitives::layout::clip_mode::ClipMode;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;
-use crate::renderer::frontend::{BuildPlan, Frontend};
+use crate::renderer::frontend::Frontend;
 use crate::renderer::render_plan::RenderPlan;
 
 use crate::host::harness::Harness;
@@ -196,12 +196,12 @@ fn cascade_screen_rect_matches_composed_quad_under_transform() {
 
     // Surface scale 1, so physical equals logical; the child's rounded rect is the only quad.
     let mut frontend = Frontend::for_test();
-    frontend.build(
+    frontend.build_alone(
         h.frames().ui().frame_scene(),
-        BuildPlan::without_backdrops(RenderPlan {
+        RenderPlan {
             clear: h.ui().theme().window_bg,
             damage: Damage::Full,
-        }),
+        },
     );
     let buffer = &frontend.buffer;
     assert_eq!(

@@ -1,4 +1,4 @@
-//! Observability for the gradient rows, built on [`BenchOnly`]. A row id
+//! Observability for the gradient row table, built on [`BenchOnly`]. A row id
 //! does not say how [`RowTable::register`] reached it (index hit,
 //! free-row bake, eviction bake, doubling, magenta fallback), which cost very
 //! differently. Counters accumulate rather than reset, as the table is shared
@@ -16,7 +16,7 @@ counter_snapshot! {
     pub(super) struct RowTableCounters;
 
     /// One reading; subtract two for a span's activity.
-    pub(super) struct GradientAtlasCounts;
+    pub(super) struct RowTableCounts;
 
     /// `register` calls, however they resolved.
     registrations: u32,

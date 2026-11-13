@@ -132,10 +132,11 @@ pub(crate) struct WgpuBackend {
     staging: UploadStaging,
     /// The display frame every submit's per-frame scratch ages against.
     frames: DisplayFrames,
-    /// Shared gradient row texture, whose group is the frame group every color pipeline reads.
+    /// The texture of the pool's gradient rows, which the frame group every color pipeline reads
+    /// binds.
     gradient: RowTexture,
-    /// The atlas pool's page lists, which glyphs and icons allocate from, and the textures behind
-    /// them (`src/gpu/AGENTS.md`, Atlases).
+    /// The atlas pool's page lists, which glyphs and icons allocate from, its gradient rows, and the
+    /// textures behind them (`src/gpu/AGENTS.md`, Atlases).
     atlas: AtlasPool,
     atlas_textures: AtlasTextures,
     /// Where the mask pages hold each shadow cutout key's table, lent with the pool to each
@@ -366,7 +367,11 @@ impl WgpuBackend {
         let image_store = Rc::clone(resources.image_store);
         let effect_store = Rc::clone(resources.effect_store);
         let texture_binding = resources.texture_binding;
-        let gradient = RowTexture::new(&gpu, resources.gradient_rows);
+        let atlas = AtlasPool::new(PoolConfig::of_device(
+            gpu.max_texture_dim().get(),
+            gpu.pass_traffic(),
+        ));
+        let gradient = RowTexture::new(&gpu, atlas.rows().capacity());
         let frame_group = FrameGroup::new(&gpu, texture_binding.clone(), gradient.row_view());
         let backdrops = Backdrops::new(&texture_binding);
         let atlas_textures = AtlasTextures::new(&gpu);
@@ -380,10 +385,6 @@ impl WgpuBackend {
         let blit = BlitPipeline::new(&gpu, &texture_binding);
         let text = TextBackend::new(&gpu, resources.text.clone());
         let icon = IconBackend::new(&gpu, resources.icons.clone());
-        let atlas = AtlasPool::new(PoolConfig::of_device(
-            gpu.max_texture_dim().get(),
-            gpu.pass_traffic(),
-        ));
         let raster_group = PageGroup::new(
             &gpu,
             raster.layout(),
@@ -825,7 +826,6 @@ impl WgpuBackend {
         let Submission {
             store,
             buffer,
-            gradients,
             gpu_views,
             clear,
             scissors,
@@ -836,7 +836,7 @@ impl WgpuBackend {
         let owner = stream.owner();
         let mut ctx = GpuCtx::new(&self.gpu, &mut self.staging, encoder, frame);
 
-        if let Some(rows) = gradients {
+        if let Some(rows) = self.atlas.rows_mut().flush() {
             self.gradient.upload(&mut ctx, rows);
         }
         self.frame_group
@@ -1320,8 +1320,8 @@ impl WgpuBackend {
         self.backdrops.drop_groups();
     }
 
-    /// Where the mask pages hold each key's table, with the pool they live in, which a frame's
-    /// plan builds in.
+    /// Where the mask pages hold each key's table, with the pool they live in: a frame's build
+    /// registers its gradients in the pool's row table, then its plan places its tables.
     pub(crate) const fn cutout_placing(&mut self) -> CutoutPlacing<'_> {
         CutoutPlacing {
             placements: &mut self.cutout_placements,
@@ -1403,9 +1403,20 @@ pub(crate) mod internals {
     use crate::renderer::row_table::RowTable;
 
     impl WgpuBackend {
-        /// Every atlas's memory, its gradient rows read against `gradient`, the frontend's atlas
-        /// that bakes them.
-        pub(crate) fn atlas_memory(&self, gradient: &RowTable) -> AtlasMemory {
+        /// The pool's gradient row table.
+        #[cfg(test)]
+        pub(crate) const fn rows(&self) -> &RowTable {
+            self.atlas.rows()
+        }
+
+        /// The pool's gradient row table, for a build outside a painted frame, which the next
+        /// submit flushes.
+        pub(crate) const fn rows_mut(&mut self) -> &mut RowTable {
+            self.atlas.rows_mut()
+        }
+
+        /// Every atlas's memory.
+        pub(crate) fn atlas_memory(&self) -> AtlasMemory {
             let masks = self
                 .atlas_textures
                 .memory(&self.atlas, AtlasFormat::R8, "mask pages");
@@ -1418,6 +1429,7 @@ pub(crate) mod internals {
                 "half-float pages and scratch",
             );
             let blur = self.backdrops.blur_memory();
+            let gradient = self.atlas.rows();
             let live_rows = gradient.live_rows();
             let staging = AtlasUse {
                 name: "gradient staging (CPU)",

@@ -14,8 +14,6 @@ pub(crate) struct BackendResources<'a> {
     pub(crate) image_store: &'a Rc<WgpuImageStore>,
     pub(crate) effect_store: &'a Rc<WgpuEffectStore>,
     pub(crate) icons: &'a IconRegistry,
-    /// Rows the frontend's row table holds, the height the LUT texture starts at.
-    pub(crate) gradient_rows: u32,
     /// The group-0 layout and sampler every pipeline builds over, made with the device and
     /// shared with the image store.
     pub(crate) texture_binding: TextureBinding,
