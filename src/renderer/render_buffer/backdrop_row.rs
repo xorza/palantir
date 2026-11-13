@@ -81,7 +81,7 @@ pub(crate) enum BackdropSource {
     /// Its held result serves.
     Held,
     /// It captures the pixels painted before it out of the target and blurs them, which repaints
-    /// its footprint on a partial frame. The main pass breaks after `groups[..barrier]` to copy
+    /// its footprint on a partial frame. The main pass breaks after `runs[..barrier]` to copy
     /// the capture.
     Capture { barrier: u32 },
     /// Nothing is painted before it, so its backdrop is the clear, which a blur leaves as it is:

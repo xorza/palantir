@@ -35,7 +35,7 @@ fn empty_ui_drives_a_frame_safely() {
     let buffer = &frontend.buffer;
     assert!(buffer.quads.is_empty());
     assert!(buffer.texts.is_empty());
-    assert!(buffer.groups.is_empty());
+    assert!(buffer.runs.is_empty());
 
     assert_eq!(h.ui().forest.trees[Plane::MAIN].records.len(), 1);
     assert!(h.frames().damage().prev().is_empty());

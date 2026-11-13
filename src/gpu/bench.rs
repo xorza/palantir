@@ -4,10 +4,10 @@
 //!
 //! Every arm is a pair painting the same content, one paying per item and one paying once; the difference is the headroom for a change that collapses bind / draw / state-set count.
 //!
-//! - `groups/per_item` vs `groups/single`: N clipped cells (a `DrawGroup` each) against N unclipped rects folded into one group and draw.
+//! - `groups/per_item` vs `groups/single`: N clipped cells (a group and a quad run each) against N unclipped rects folded into one group and draw.
 //! - `rounded/per_item` vs `groups/per_item`: the same cells under rounded clips, whose rect fills the cell past its arcs; what a rounded clip adds to a rect clip's group.
 //! - `images/distinct` vs `images/shared`: N textures against one. `distinct` is the control that must not regress.
-//! - `text/per_group` vs `text/single`: N clipped text cells, each run cut by its cell's clip on the CPU so all join one batch, against N unclipped runs in one batch: what the cut costs the pass, its group per cell besides.
+//! - `text/per_group` vs `text/single`: N clipped text cells, each run cut by its cell's clip on the CPU so all join one batch, against N unclipped runs in one batch: what the cut costs the pass.
 //!
 //! Method: GPU instrumentation stays off so no timestamp writes land in the measured pass. Each arm
 //! renders `WARMUP_FRAMES`, then criterion times `last_main_pass_cpu` per frame through
@@ -29,6 +29,7 @@ use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::image::{Image, ImageFit};
+use crate::renderer::render_buffer::draw_run::Lane;
 use crate::shape::Shape;
 use crate::shape::image_paint::ImagePaint;
 use crate::theme::color_scheme::ColorScheme;
@@ -91,7 +92,7 @@ impl Workload {
         }
     }
 
-    /// How each cell clips. Only the per-item arms do: a clip gives each its own scissor (a `DrawGroup`) and cuts `LABEL` in X, which the run's glyphs take on the CPU. The image pair is unclipped so it differs only in `TextureId` repeats.
+    /// How each cell clips. Only the per-item arms do: a clip gives each its own scissor (a group) and cuts `LABEL` in X, which the run's glyphs take on the CPU. The image pair is unclipped so it differs only in `TextureId` repeats.
     const fn clip(self) -> ClipMode {
         match self {
             Self::GroupPerItem | Self::TextPerGroup => ClipMode::Rect,
@@ -103,19 +104,16 @@ impl Workload {
         }
     }
 
-    /// The draw groups and text batches the arm's frame composes: a clipped cell is a group, an
-    /// unclipped frame folds into one, every run joins one batch, and no text means no batch.
+    /// The runs and text runs the arm's frame composes: a clipped cell of a rect is a quad run,
+    /// an unclipped frame folds into one run, every text run joins one batch, and no text means
+    /// no text run.
     const fn expected(self) -> Counts {
-        let (groups, text_batches) = match self {
+        let (runs, text_runs) = match self {
             Self::GroupPerItem | Self::RoundedPerItem => (ITEMS, 0),
-            Self::TextPerGroup => (ITEMS, 1),
             Self::SingleGroup | Self::ImagesDistinct | Self::ImagesShared => (1, 0),
-            Self::TextSingleBatch => (1, 1),
+            Self::TextPerGroup | Self::TextSingleBatch => (1, 1),
         };
-        Counts {
-            groups,
-            text_batches,
-        }
+        Counts { runs, text_runs }
     }
 
     /// Textures the image arms register: `ImagesDistinct` one per item, `ImagesShared` one for all. Zero for the other arms.
@@ -214,8 +212,8 @@ impl Scene<'_> {
 /// The draw-list shape behind one arm's timing.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 struct Counts {
-    groups: usize,
-    text_batches: usize,
+    runs: usize,
+    text_runs: usize,
 }
 
 #[derive(Debug)]
@@ -274,11 +272,15 @@ impl Fixture {
     }
 
     /// The composed frame's draw-list shape.
-    const fn counts(&self) -> Counts {
+    fn counts(&self) -> Counts {
         let buffer = self.window.render_buffer();
         Counts {
-            groups: buffer.groups.len(),
-            text_batches: buffer.text_batches.len(),
+            runs: buffer.runs.len(),
+            text_runs: buffer
+                .runs
+                .iter()
+                .filter(|run| run.lane == Lane::Text)
+                .count(),
         }
     }
 

@@ -1,5 +1,6 @@
 //! Schedule-walk benchmark: CPU cost of turning one `RenderBuffer` into the ordered `RenderStep`
-//! stream `WgpuBackend::render_groups` dispatches, over frames with many mixed groups.
+//! stream `WgpuBackend::render_runs` dispatches, over frames of many groups, each a scope of
+//! one scissor whose runs the composer listed together.
 //!
 //! The walk emits `SetScissor` as a transition, only where the requested rect differs from the one
 //! set. Each workload isolates one shape of that:
@@ -13,7 +14,7 @@
 //! - `text_then_image`: the same plus a text batch whose wider scissor really moves the rect;
 //!   every request is a genuine transition, so the stream must not shrink.
 //!
-//! `segments/<backdrops>/512` walks a 512-group frame in one piece more than `backdrops` backdrops,
+//! `segments/<backdrops>/512` walks a 512-run frame in one piece more than `backdrops` backdrops,
 //! broken at their barriers spread evenly through it, as the main pass breaks at each capturing
 //! backdrop: the CPU the breaks add over one walk.
 //!
@@ -25,22 +26,20 @@ use crate::bench::backends::Backend;
 use crate::bench::kind::{Kind, Scale};
 use crate::common::span::Span;
 use crate::display::Display;
-use crate::gpu::frame::schedule::GroupSpan;
+use crate::gpu::frame::schedule::RunSpan;
 use crate::gpu::frame::schedule::internals::WalkCounts;
 use crate::primitives::geometry::urect::URect;
 use crate::renderer::render_buffer::RenderBuffer;
-use crate::renderer::render_buffer::draw_group::DrawGroup;
+use crate::renderer::render_buffer::draw_run::{DrawRun, Lane};
 use crate::renderer::render_buffer::fill_form::FillForm;
-use crate::renderer::render_buffer::group_batch::GroupBatch;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
 use crate::renderer::render_buffer::quad_draw_row::{QuadDrawRow, QuadInstance, QuadKey};
-use crate::renderer::render_buffer::text_batch::TextBatch;
 use criterion::{Criterion, Throughput};
 use glam::UVec2;
 use std::hint::black_box;
 
 const VIEWPORT: u32 = 1024;
-/// The groups of the `segments` frame.
+/// The groups of the `segments` frame, a quad run each.
 const SEGMENT_GROUPS: usize = 512;
 
 #[derive(Clone, Copy, Debug)]
@@ -101,28 +100,26 @@ impl Workload {
             });
         }
         for group in 0..groups {
-            let scissor = self.scissor(group);
-            buffer.groups.push(DrawGroup {
-                scissor: Some(scissor),
-                quads: Span::new(group as u32, 1),
-            });
-            match self {
-                Self::QuadsThenImage | Self::TextThenImage => {
-                    buffer.batches_mut(PaintTier::Image).push(GroupBatch {
-                        items: Span::new(group as u32, 1),
-                        last_group: group as u32,
-                    });
-                }
-                Self::DistinctScissors | Self::SharedScissor => {}
-            }
+            let scissor = Some(self.scissor(group));
+            let at = Span::new(group as u32, 1);
+            let run = |lane, scissor| DrawRun {
+                lane,
+                rows: at,
+                scissor,
+                batch: group as u32,
+            };
+            buffer.runs.push(run(Lane::Quad, scissor));
             if matches!(self, Self::TextThenImage) {
                 // Wider than the group's band, the way a composer text
                 // batch's bounds union exceeds a clipped owner's rect.
-                buffer.text_batches.push(TextBatch {
-                    texts: Span::new(group as u32, 1),
-                    last_group: group as u32,
-                    scissor: URect::new(0, 0, VIEWPORT, VIEWPORT),
-                });
+                let wide = Some(URect::new(0, 0, VIEWPORT, VIEWPORT));
+                buffer.runs.push(run(Lane::Text, wide));
+            }
+            match self {
+                Self::QuadsThenImage | Self::TextThenImage => {
+                    buffer.runs.push(run(Lane::Tier(PaintTier::Image), scissor));
+                }
+                Self::DistinctScissors | Self::SharedScissor => {}
             }
         }
         buffer
@@ -139,9 +136,9 @@ pub(crate) fn atomic(c: &mut Criterion) {
             let case = format!("walk/{}/{groups}", workload.label());
             group.bench_function(Backend::Cpu.case(&case), |b| {
                 let buffer = workload.fixture(groups);
-                let counts = WalkCounts::of(&buffer, None, GroupSpan::ALL);
+                let counts = WalkCounts::of(&buffer, None, RunSpan::ALL);
                 assert_eq!(counts.scissors, workload.scissors(groups), "{case}");
-                b.iter(|| black_box(WalkCounts::of(&buffer, None, GroupSpan::ALL)));
+                b.iter(|| black_box(WalkCounts::of(&buffer, None, RunSpan::ALL)));
             });
         }
     }
@@ -159,7 +156,7 @@ pub(crate) fn atomic(c: &mut Criterion) {
                     let mut scissors = 0;
                     for barrier in barriers.iter().copied().map(Some).chain([None]) {
                         scissors +=
-                            WalkCounts::of(&buffer, None, GroupSpan { from, barrier }).scissors;
+                            WalkCounts::of(&buffer, None, RunSpan { from, barrier }).scissors;
                         from = barrier.unwrap_or(from);
                     }
                     scissors

@@ -15,13 +15,14 @@ use crate::primitives::paint::shadow::Shadow;
 use crate::renderer::frontend::composer::tests::quad_builder::QuadBuilder;
 use crate::renderer::frontend::composer::tests::support::{
     TestPolyline, clip, clip_rounded, curve, draw, effect, icon, image, image_payload, inked_text,
-    mesh, params, params_unsnapped, run, text,
+    lanes, listed, mesh, params, params_unsnapped, rows_of, run, text, text_runs,
 };
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_shadow_payload::DrawShadowPayload;
 use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
 use crate::renderer::frontend::payload::spin::Spin;
+use crate::renderer::render_buffer::draw_run::Lane;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
 use crate::shape::geometry::box_geometry::PlacedBox;
 use crate::shape::paint::lowered_shadow::LoweredShadow;
@@ -30,20 +31,13 @@ use crate::text::shaped_ref::ShapedTextRef;
 use glam::{UVec2, Vec2};
 use std::f32::consts::{FRAC_PI_2, FRAC_PI_6};
 
-/// Quads and text share a group until a quad lands on text before it, which the backend draws at
-/// the end of its batch's last group: that quad starts a new group, and it closes the open batch
-/// it overlaps, so later text batches anew.
+/// Quads and text share a group until a quad lands on text before it, which lists after its
+/// group's quads: that quad starts a new group, and it closes the open batch it overlaps, so later
+/// text batches anew.
 #[test]
 fn a_quad_over_earlier_text_starts_a_group() {
-    /// A label, the draws, the viewport's side, each group's quads, and each text batch's runs
-    /// and last group.
-    type Row<'a> = (
-        &'a str,
-        fn(&mut PaintCapture),
-        u32,
-        &'a [Span],
-        &'a [(Span, u32)],
-    );
+    /// A label, the draws, the viewport's side, and the runs listed, in paint order.
+    type Row<'a> = (&'a str, fn(&mut PaintCapture), u32, &'a [(Lane, Span)]);
     let rows: &[Row<'_>] = &[
         (
             "quads then text",
@@ -53,8 +47,7 @@ fn a_quad_over_earlier_text_starts_a_group() {
                 text(b, Rect::new(10.0, 10.0, 80.0, 20.0));
             },
             200,
-            &[Span::new(0, 2)],
-            &[(Span::new(0, 1), 0)],
+            &[(Lane::Quad, Span::new(0, 2)), (Lane::Text, Span::new(0, 1))],
         ),
         (
             "consecutive texts",
@@ -64,8 +57,7 @@ fn a_quad_over_earlier_text_starts_a_group() {
                 text(b, Rect::new(10.0, 35.0, 80.0, 20.0));
             },
             200,
-            &[Span::new(0, 1)],
-            &[(Span::new(0, 2), 0)],
+            &[(Lane::Quad, Span::new(0, 1)), (Lane::Text, Span::new(0, 2))],
         ),
         (
             "five disjoint rows of a quad and its text",
@@ -77,8 +69,7 @@ fn a_quad_over_earlier_text_starts_a_group() {
                 }
             },
             400,
-            &[Span::new(0, 5)],
-            &[(Span::new(0, 5), 0)],
+            &[(Lane::Quad, Span::new(0, 5)), (Lane::Text, Span::new(0, 5))],
         ),
         (
             "a quad over the text",
@@ -88,8 +79,11 @@ fn a_quad_over_earlier_text_starts_a_group() {
                 draw(b, Rect::new(20.0, 20.0, 60.0, 40.0));
             },
             200,
-            &[Span::new(0, 1), Span::new(1, 1)],
-            &[(Span::new(0, 1), 0)],
+            &[
+                (Lane::Quad, Span::new(0, 1)),
+                (Lane::Text, Span::new(0, 1)),
+                (Lane::Quad, Span::new(1, 1)),
+            ],
         ),
         (
             "the next node's chrome over a label",
@@ -100,8 +94,12 @@ fn a_quad_over_earlier_text_starts_a_group() {
                 text(b, Rect::new(44.0, 14.0, 90.0, 20.0));
             },
             400,
-            &[Span::new(0, 1), Span::new(1, 1)],
-            &[(Span::new(0, 1), 0), (Span::new(1, 1), 1)],
+            &[
+                (Lane::Quad, Span::new(0, 1)),
+                (Lane::Text, Span::new(0, 1)),
+                (Lane::Quad, Span::new(1, 1)),
+                (Lane::Text, Span::new(1, 1)),
+            ],
         ),
         (
             "a redundant nested clip keeps the overlap state",
@@ -115,26 +113,22 @@ fn a_quad_over_earlier_text_starts_a_group() {
                 b.pop_clip();
             },
             400,
-            &[Span::new(0, 1), Span::new(1, 1)],
-            &[(Span::new(0, 1), 0)],
+            &[
+                (Lane::Quad, Span::new(0, 1)),
+                (Lane::Text, Span::new(0, 1)),
+                (Lane::Quad, Span::new(1, 1)),
+            ],
         ),
     ];
-    for &(label, build, side, groups, batches) in rows {
+    for &(label, build, side, want) in rows {
         let buf = run(|b, _| build(b), &params(1.0, UVec2::splat(side)));
-        let quads: Vec<Span> = buf.groups.iter().map(|group| group.quads).collect();
-        assert_eq!(quads, groups, "{label}: each group's quads");
-        let texts: Vec<(Span, u32)> = buf
-            .text_batches
-            .iter()
-            .map(|batch| (batch.texts, batch.last_group))
-            .collect();
-        assert_eq!(texts, batches, "{label}: each text batch");
+        assert_eq!(listed(&buf), want, "{label}");
     }
 }
 
 /// A quad over text still in the open batch, whose last group is already closed, closes the batch
-/// and nothing more: the text renders at the end of group 0, below the quad in group 1. The flush
-/// to group 1 comes from the quad over the image.
+/// and nothing more: the text lists as it closes, after group 0's image and below the quads of
+/// group 1. The flush to group 1 comes from the quad over the image.
 #[test]
 fn a_quad_over_text_that_already_rendered_does_not_flush() {
     let buf = run(
@@ -146,19 +140,20 @@ fn a_quad_over_text_that_already_rendered_does_not_flush() {
         },
         &params(1.0, UVec2::new(200, 100)),
     );
-    assert_eq!(buf.groups.len(), 2, "no flush for the second quad");
-    assert_eq!(buf.text_batches.len(), 1);
-    assert_eq!(buf.text_batches[0].last_group, 0);
     assert_eq!(
-        buf.groups[1].quads,
-        Span::new(0, 2),
-        "both quads draw in group 1"
+        listed(&buf),
+        [
+            (Lane::Tier(PaintTier::Image), Span::new(0, 1)),
+            (Lane::Text, Span::new(0, 1)),
+            (Lane::Quad, Span::new(0, 2)),
+        ],
+        "no flush for the second quad: both draw in group 1"
     );
 }
 
 /// A quad over text whose last group is already closed, and over an image of the open group,
-/// closes the batch and flushes: the image renders at the end of group 1, so the quad goes to
-/// group 2, above it.
+/// closes the batch, which lists then, and flushes: the image lists at the end of group 1, so the
+/// quad goes to group 2, above it.
 #[test]
 fn a_quad_over_closed_text_and_an_open_image_flushes() {
     let buf = run(
@@ -171,11 +166,17 @@ fn a_quad_over_closed_text_and_an_open_image_flushes() {
         },
         &params(1.0, UVec2::new(200, 100)),
     );
-    assert_eq!(buf.text_batches.len(), 1);
-    assert_eq!(buf.text_batches[0].last_group, 0);
-    assert_eq!(buf.groups.len(), 3, "the last quad flushes group 1");
-    assert_eq!(buf.groups[1].quads, Span::new(0, 1));
-    assert_eq!(buf.groups[2].quads, Span::new(1, 1));
+    assert_eq!(
+        listed(&buf),
+        [
+            (Lane::Tier(PaintTier::Image), Span::new(0, 1)),
+            (Lane::Text, Span::new(0, 1)),
+            (Lane::Quad, Span::new(0, 1)),
+            (Lane::Tier(PaintTier::Image), Span::new(1, 1)),
+            (Lane::Quad, Span::new(1, 1)),
+        ],
+        "the last quad flushes group 1"
+    );
 }
 
 /// A quad turned 30° about its center reaches the AA half width past each edge in its own frame:
@@ -196,8 +197,14 @@ fn a_turned_quad_orders_against_its_fringe() {
         buf.quads.instance()[0].header.shaded_rect(),
         Rect::new(8.0, 4.0, 24.0, 22.0)
     );
-    assert_eq!(buf.groups.len(), 2, "the quad flushes past the image");
-    assert_eq!(buf.groups[1].quads, Span::new(0, 1));
+    assert_eq!(
+        listed(&buf),
+        [
+            (Lane::Tier(PaintTier::Image), Span::new(0, 1)),
+            (Lane::Quad, Span::new(0, 1)),
+        ],
+        "the quad flushes past the image"
+    );
 }
 
 /// A quad 20 px square at x 10..30, turned a quarter about (50, 50), lands at x 40..60, which
@@ -232,7 +239,8 @@ fn a_turned_quad_is_culled_by_the_pixels_it_reaches() {
 /// 20 too, so it closes the group to paint above the image recorded before it.
 #[test]
 fn a_quad_orders_by_the_pixels_it_shades() {
-    for (width, groups) in [(10.0, 1), (10.25, 2)] {
+    let images = Lane::Tier(PaintTier::Image);
+    for (width, lanes_listed) in [(10.0, [Lane::Quad, images]), (10.25, [images, Lane::Quad])] {
         let buf = run(
             |b, _arena| {
                 image(b, Rect::new(20.0, 0.0, 10.0, 10.0));
@@ -244,7 +252,7 @@ fn a_quad_orders_by_the_pixels_it_shades() {
             buf.quads.instance()[0].header.shaded_rect(),
             Rect::new(10.0, 0.0, if width == 10.0 { 10.0 } else { 11.0 }, 10.0)
         );
-        assert_eq!(buf.groups.len(), groups, "width {width}");
+        assert_eq!(lanes(&buf), lanes_listed, "width {width}");
     }
 }
 
@@ -270,9 +278,11 @@ fn compose_shadow_outer_halo_after_text_splits_group() {
         &params(1.0, UVec2::new(200, 200)),
     );
 
-    assert_eq!(buf.groups.len(), 2, "outer halo overlap must split");
-    assert_eq!(buf.text_batches[0].last_group, 0);
-    assert_eq!(buf.groups[1].quads, Span::new(0, 1));
+    assert_eq!(
+        listed(&buf),
+        [(Lane::Text, Span::new(0, 1)), (Lane::Quad, Span::new(0, 1))],
+        "outer halo overlap must split"
+    );
 }
 
 /// Rows in separate scissors still coalesce their text into one batch.
@@ -291,13 +301,15 @@ fn compose_coalesces_text_across_distinct_scissor_groups() {
         },
         &params(1.0, UVec2::new(200, 200)),
     );
-    assert_eq!(buf.groups.len(), 2, "distinct scissors → distinct groups");
     assert_eq!(
-        buf.text_batches.len(),
-        1,
-        "non-overlapping rows must share one text batch",
+        listed(&buf),
+        [
+            (Lane::Quad, Span::new(0, 1)),
+            (Lane::Quad, Span::new(1, 1)),
+            (Lane::Text, Span::new(0, 2)),
+        ],
+        "distinct scissors take distinct groups, and the rows share one text batch",
     );
-    assert_eq!(buf.text_batches[0].texts.len, 2);
 }
 
 /// A clipped text run clips its own glyphs to its bounds, so it joins its wider neighbor's batch,
@@ -330,20 +342,17 @@ fn a_clipped_text_run_batches_unless_it_turns() {
         )
     };
     let still = turned(None);
-    assert_eq!(still.text_batches.len(), 1);
-    assert_eq!(still.text_batches[0].texts.len, 2);
     assert_eq!(still.texts[1].bounds, URect::new(40, 40, 20, 20));
     let union = still.texts[0].bounds.union(still.texts[1].bounds);
-    assert_eq!(still.text_batches[0].scissor, union);
+    assert_eq!(text_runs(&still), [(Span::new(0, 2), union)]);
 
     let spun = turned(Some(Spin {
         pivot: Vec2::new(50.0, 50.0),
         angle: 0.5,
     }));
-    assert_eq!(spun.text_batches.len(), 2);
-    let strict = spun.text_batches[1];
-    assert_eq!(strict.texts.len, 1);
-    assert_eq!(strict.scissor, URect::new(40, 40, 20, 20));
+    let spun = text_runs(&spun);
+    assert_eq!(spun.len(), 2);
+    assert_eq!(spun[1], (Span::new(1, 1), URect::new(40, 40, 20, 20)));
 }
 
 #[test]
@@ -361,7 +370,7 @@ fn compose_strict_text_with_matching_clip_coalesces() {
         &params(1.0, UVec2::new(300, 300)),
     );
     assert_eq!(
-        buf.text_batches.len(),
+        text_runs(&buf).len(),
         1,
         "two strict runs with identical clip bounds should share a batch",
     );
@@ -384,11 +393,10 @@ fn compose_rounded_clip_change_keeps_the_text_batch() {
         &params(1.0, UVec2::new(200, 200)),
     );
     assert_eq!(
-        buf.text_batches.len(),
-        1,
+        rows_of(&buf, Lane::Text),
+        [Span::new(0, 2)],
         "a rounded change keeps the batch"
     );
-    assert_eq!(buf.text_batches[0].texts.len, 2);
     let chain = |t: usize| &buf.rounded_clips[buf.texts[t].clip.span().range()];
     assert_eq!(chain(0).len(), 1);
     assert_eq!(chain(1).len(), 1);
@@ -414,7 +422,7 @@ fn compose_culled_mesh_over_batch_text_keeps_one_batch() {
     );
     assert_eq!(buf.meshes.len(), 0, "the mesh must be culled");
     assert_eq!(
-        buf.text_batches.len(),
+        text_runs(&buf).len(),
         1,
         "a culled mesh must not split the text batch",
     );
@@ -434,7 +442,7 @@ fn compose_quad_overlap_with_prior_batch_text_splits_batch() {
         &params(1.0, UVec2::new(400, 400)),
     );
     assert_eq!(
-        buf.text_batches.len(),
+        text_runs(&buf).len(),
         2,
         "quad overlapping prior batch text must split the batch",
     );
@@ -445,18 +453,18 @@ fn tight_curve_bound_avoids_false_group_split() {
     #[derive(Debug)]
     struct Case {
         image_x: f32,
-        expected_groups: usize,
+        lanes: [Lane; 2],
     }
 
     // The curve ends at x=20; width 2 + 0.5 AA bounds it at ceil(21.5)=22. x=22 is disjoint; one pixel left overlaps.
     let cases = [
         Case {
             image_x: 22.0,
-            expected_groups: 1,
+            lanes: [Lane::Tier(PaintTier::Image), Lane::Tier(PaintTier::Curve)],
         },
         Case {
             image_x: 21.0,
-            expected_groups: 2,
+            lanes: [Lane::Tier(PaintTier::Curve), Lane::Tier(PaintTier::Image)],
         },
     ];
 
@@ -468,16 +476,16 @@ fn tight_curve_bound_avoids_false_group_split() {
             },
             &params(1.0, UVec2::new(100, 100)),
         );
-        assert_eq!(buf.groups.len(), case.expected_groups, "{case:?}");
+        assert_eq!(lanes(&buf), case.lanes, "{case:?}");
     }
 }
 
-/// Every ordered pair of tiers, over and apart: the backend replays a group's tiers in
-/// `PaintTier::ALL` order, so a draw that overlaps one of a later tier recorded before it starts a
-/// new group, and any other pair shares one. The first draw covers (10, 10)..(40, 40), the
+/// Every ordered pair of tiers, over and apart: a group lists its tiers in `PaintTier::ALL` order,
+/// so a draw that overlaps one of a later tier recorded before it starts a new group, listed
+/// after the first draw's, and any other pair shares one, listed in tier order. The first draw covers (10, 10)..(40, 40), the
 /// overlapping second (20, 20)..(50, 50) and the apart one (120, 120)..(150, 150); a mesh's bounds
 /// grow 1 px and a curve's 2 px, which keep each pair as it is. Two draws of one tier take one
-/// batch.
+/// run.
 #[test]
 fn a_draw_under_an_earlier_tier_starts_a_group() {
     let first_rect = Rect::new(10.0, 10.0, 30.0, 30.0);
@@ -503,24 +511,23 @@ fn a_draw_under_an_earlier_tier_starts_a_group() {
                 );
                 let split = !apart && second < first;
                 let label = format!("{first:?} then {second:?}, apart: {apart}");
-                assert_eq!(buf.groups.len(), 1 + usize::from(split), "{label}");
-                let first_batch = buf.batches(first)[0];
-                assert_eq!(first_batch.last_group, 0, "{label}");
-                let second_batches = buf.batches(second);
-                assert_eq!(
-                    second_batches.last().map(|batch| batch.last_group),
-                    Some(u32::from(split)),
-                    "{label}"
-                );
-                if first == second {
-                    assert_eq!(second_batches.len(), 1, "{label}: one batch");
-                }
+                let want = if split {
+                    vec![first, second]
+                } else if first == second {
+                    vec![first]
+                } else {
+                    vec![first.min(second), first.max(second)]
+                };
+                let want: Vec<Lane> = want.into_iter().map(Lane::Tier).collect();
+                assert_eq!(lanes(&buf), want, "{label}");
             }
         }
     }
 }
 
-/// A quad overlapping text in an already-closed batch of the same group must still flush.
+/// A quad overlapping text in an already-closed batch of the same group must still flush: each
+/// batch, closed by the polyline over it, waits on its group and lists after its quads, before
+/// the quad over it.
 #[test]
 fn quad_flushes_text_in_already_closed_batch_same_group() {
     let buf = run(
@@ -536,30 +543,25 @@ fn quad_flushes_text_in_already_closed_batch_same_group() {
         },
         &params(1.0, UVec2::new(600, 600)),
     );
-    assert_eq!(buf.text_batches.len(), 2);
+    let curve = Lane::Tier(PaintTier::Curve);
+    assert_eq!(
+        listed(&buf),
+        [
+            (Lane::Text, Span::new(0, 1)),
+            (curve, Span::new(0, 1)),
+            (Lane::Quad, Span::new(0, 1)),
+            (Lane::Text, Span::new(1, 1)),
+            (curve, Span::new(1, 1)),
+            (Lane::Quad, Span::new(1, 1)),
+        ],
+        "each panel quad paints over the text before it"
+    );
     // Each box is padded 0.25 % a side (0.75 px across, 0.05 down) and covered; the first clamps to (0, 0)..(301, 21), the second spans y 99.95..120.05, so 99..121.
-    assert_eq!(buf.text_batches[0].scissor, URect::new(0, 0, 301, 21));
-    assert_eq!(buf.text_batches[1].scissor, URect::new(0, 99, 301, 22));
-    for (batch, quad_y) in buf.text_batches.iter().zip([0.0, 100.0]) {
-        let quad_group = buf
-            .groups
-            .iter()
-            .enumerate()
-            .find(|(_, group)| {
-                group
-                    .quads
-                    .range()
-                    .any(|qi| buf.quads.instance()[qi].header.rect.min.y == quad_y)
-            })
-            .map(|(i, _)| i as u32)
-            .expect("panel quad group");
-        assert_eq!(
-            batch.last_group + 1,
-            quad_group,
-            "closed-batch text must paint in the group just before the overlapping \
-             quad at y={quad_y}",
-        );
-    }
+    let scissors: Vec<URect> = text_runs(&buf).iter().map(|run| run.1).collect();
+    assert_eq!(
+        scissors,
+        [URect::new(0, 0, 301, 21), URect::new(0, 99, 301, 22)]
+    );
 }
 
 /// An opaque solid box whose physical edges lie on whole pixels, sharp, covers its own rect whole,
@@ -674,16 +676,14 @@ fn labeled_toolbar_costs_one_icon_batch_and_one_text_batch() {
 
     assert_eq!(out.icons.len(), BUTTONS);
     assert_eq!(
-        out.batches(PaintTier::Icon).len(),
-        1,
-        "every icon shares one atlas, so they are one draw however many buttons",
+        listed(&out),
+        [
+            (Lane::Text, Span::new(0, 8)),
+            (Lane::Tier(PaintTier::Icon), Span::new(0, 8)),
+        ],
+        "every icon shares one atlas and no icon covers a label, so one group draws one run of \
+         each, however many buttons",
     );
-    assert_eq!(
-        out.text_batches.len(),
-        1,
-        "no icon covers a label, so the labels coalesce into one batch",
-    );
-    assert_eq!(out.groups.len(), 1, "disjoint draws need no group flush");
 }
 
 /// Control: an *image* between the labels coalesces identically; the saving belongs to the tier boundary.
@@ -703,7 +703,7 @@ fn images_between_labels_coalesce_text_the_same_way() {
         },
         &params(1.0, UVec2::new(1024, 64)),
     );
-    assert_eq!(out.text_batches.len(), 1);
+    assert_eq!(text_runs(&out).len(), 1);
 }
 
 /// Both halves of the ordering the coalescing rests on: an icon landing on the previous label splits the batch, a label landing on the icon flushes the group. Read twice; a composer that closed nothing fails the second arm.
@@ -712,16 +712,16 @@ fn icon_over_prior_label_splits_batch_and_over_later_label_flushes_group() {
     #[derive(Debug)]
     struct Case {
         trailing_x: f32,
-        groups: usize,
+        lanes: [Lane; 3],
     }
     for case in [
         Case {
             trailing_x: 70.0,
-            groups: 1,
+            lanes: [Lane::Text, Lane::Text, Lane::Tier(PaintTier::Icon)],
         },
         Case {
             trailing_x: 50.0,
-            groups: 2,
+            lanes: [Lane::Text, Lane::Tier(PaintTier::Icon), Lane::Text],
         },
     ] {
         let out = run(
@@ -737,15 +737,15 @@ fn icon_over_prior_label_splits_batch_and_over_later_label_flushes_group() {
             &params(1.0, UVec2::new(1024, 64)),
         );
         assert_eq!(
-            out.text_batches.len(),
-            2,
-            "the icon covers the first label in both arms: {case:?}",
+            lanes(&out),
+            case.lanes,
+            "the icon covers the first label in both arms, and the second flushes past it in \
+             one: {case:?}",
         );
-        assert_eq!(out.groups.len(), case.groups, "{case:?}");
     }
 }
 
-/// A batch surviving a higher-kind draw drains past the group flush: one batch, two groups, its `last_group` the second and the image's the first. Unobservable, since the two don't meet.
+/// A batch surviving a higher-kind draw lists past the group flush: one batch, two groups, the image listed in the first and the batch at the end of the second. Unobservable, since the two don't meet.
 #[test]
 fn text_batch_drains_past_a_non_overlapping_image() {
     let out = run(
@@ -760,15 +760,13 @@ fn text_batch_drains_past_a_non_overlapping_image() {
         },
         &params(1.0, UVec2::new(1024, 64)),
     );
-    assert_eq!(out.groups.len(), 2);
-    assert_eq!(out.text_batches.len(), 1, "the image covers neither label");
-    assert_eq!(out.text_batches[0].texts.len, 2);
-    assert_eq!(out.text_batches[0].last_group, 1);
-    assert_eq!(out.batches(PaintTier::Image).len(), 1);
     assert_eq!(
-        out.batches(PaintTier::Image)[0].last_group,
-        0,
-        "the image drains a group before the batch that paints over it",
+        listed(&out),
+        [
+            (Lane::Tier(PaintTier::Image), Span::new(0, 1)),
+            (Lane::Text, Span::new(0, 2)),
+        ],
+        "the image covers neither label, and lists a group before the batch that paints over it",
     );
 }
 
@@ -806,9 +804,12 @@ fn a_text_scissor_covers_the_snapped_glyph_block() {
         let mut display = params(scale, physical);
         display.pixel_snap = true;
         let buf = run(|b, _| inked_text(b, block, ink), &display);
-        assert_eq!(buf.text_batches.len(), 1);
         assert_eq!(buf.texts[0].origin, Vec2::splat(origin), "{scale} {ink:?}");
-        assert_eq!(buf.text_batches[0].scissor, scissor, "{scale} {ink:?}");
+        assert_eq!(
+            text_runs(&buf),
+            [(Span::new(0, 1), scissor)],
+            "{scale} {ink:?}"
+        );
     }
 
     // Zoomed out to 0.5 the slack is still a share of the local size: a block 101.6 x 20 spans
@@ -825,5 +826,8 @@ fn a_text_scissor_covers_the_snapped_glyph_block() {
         },
         &display,
     );
-    assert_eq!(buf.text_batches[0].scissor, URect::new(4, 4, 53, 12));
+    assert_eq!(
+        text_runs(&buf),
+        [(Span::new(0, 1), URect::new(4, 4, 53, 12))]
+    );
 }

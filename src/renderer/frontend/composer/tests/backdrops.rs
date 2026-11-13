@@ -14,7 +14,7 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::renderer::backdrop_captures::BackdropTicket;
 use crate::renderer::frontend::composer::paint_order::internals::{Closes, GroupCloses};
 use crate::renderer::frontend::composer::tests::support::{
-    clip, draw, draw_marked, effect, params, run, survivor_calls, text,
+    clip, draw, draw_marked, effect, lanes, params, run, survivor_calls, text,
 };
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
@@ -25,6 +25,7 @@ use crate::renderer::frontend::payload::draw_closed_payload::closed_effect::{
 use crate::renderer::frontend::payload::draw_closed_payload::closed_fill::ClosedFill;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::backdrop_row::{BackdropCapture, BackdropSource};
+use crate::renderer::render_buffer::draw_run::Lane;
 use crate::renderer::render_buffer::effect_draw_row::{EffectInstance, EffectKey};
 use crate::renderer::render_buffer::paint_tier::PaintTier;
 use crate::renderer::render_buffer::shape_form::ShapeForm;
@@ -113,8 +114,8 @@ fn barriers(buf: &RenderBuffer) -> Vec<u32> {
 }
 
 /// A capturing backdrop closes the group and the text batch before it, so its barrier is the first
-/// group after them and its effect row opens that group, and the quad over it after it closes that
-/// group in turn, as it paints over a draw that replays after quads; its row takes its ticket's
+/// run after the group's quad and text runs and its effect row opens the next group, and the quad
+/// over it after it closes that group in turn, as it paints over a draw that replays after quads; its row takes its ticket's
 /// footprint, plan and region, and its effect row reads that row through its material's effect,
 /// at its whole opacity, with no luminance bound.
 #[test]
@@ -130,21 +131,22 @@ fn a_backdrop_cuts_the_frame_at_its_barrier() {
         },
         &params(1.0, UVec2::new(200, 200)),
     );
-    assert_eq!(buf.groups.len(), 3);
-    assert_eq!(buf.groups[0].quads.range(), 0..1);
-    assert_eq!(buf.groups[1].quads.range(), 1..1);
-    assert_eq!(buf.groups[2].quads.range(), 1..2);
-    assert_eq!(buf.text_batches.len(), 1);
-    assert_eq!(buf.text_batches[0].last_group, 0);
+    let rows: Vec<(Lane, Span)> = buf.runs.iter().map(|run| (run.lane, run.rows)).collect();
+    assert_eq!(
+        rows,
+        [
+            (Lane::Quad, Span::new(0, 1)),
+            (Lane::Text, Span::new(0, 1)),
+            (Lane::Tier(PaintTier::Effect), Span::new(0, 1)),
+            (Lane::Quad, Span::new(1, 1)),
+        ]
+    );
     assert_eq!(buf.backdrops.len(), 1);
     let row = buf.backdrops[0];
-    assert_eq!(row.source, BackdropSource::Capture { barrier: 1 });
+    assert_eq!(row.source, BackdropSource::Capture { barrier: 2 });
     assert_eq!(row.capture, ticket.capture);
     let look = row.look.expect("a material's backdrop has a look");
     assert_eq!((look.max_luminance, look.min_luminance), (65504.0, 0.0));
-    let effects = buf.batches(PaintTier::Effect);
-    assert_eq!(effects.len(), 1);
-    assert_eq!(effects[0].last_group, 1);
     assert_eq!(
         (buf.effects.key()[0], buf.effects.instance()[0].flags),
         (
@@ -179,7 +181,16 @@ fn each_group_counts_why_it_closed() {
     recorded.pop_clip();
     let mut rig = ComposeRig::new(params(1.0, UVec2::new(200, 200)));
     rig.compose(&recorded);
-    assert_eq!(rig.out.groups.len(), 4);
+    assert_eq!(
+        lanes(&rig.out),
+        [
+            Lane::Quad,
+            Lane::Text,
+            Lane::Tier(PaintTier::Effect),
+            Lane::Quad,
+            Lane::Quad
+        ]
+    );
     assert_eq!(
         rig.composer.group_closes(),
         GroupCloses {
@@ -215,10 +226,15 @@ fn a_held_backdrop_breaks_nothing() {
         },
         &params(1.0, UVec2::new(200, 200)),
     );
-    assert_eq!(buf.groups.len(), 2);
-    assert_eq!(buf.groups[0].quads.range(), 0..1);
-    assert_eq!(buf.batches(PaintTier::Effect)[0].last_group, 0);
-    assert_eq!(buf.groups[1].quads.range(), 1..2);
+    let rows: Vec<(Lane, Span)> = buf.runs.iter().map(|run| (run.lane, run.rows)).collect();
+    assert_eq!(
+        rows,
+        [
+            (Lane::Quad, Span::new(0, 1)),
+            (Lane::Tier(PaintTier::Effect), Span::new(0, 1)),
+            (Lane::Quad, Span::new(1, 1)),
+        ]
+    );
     let row = buf.backdrops[0];
     assert_eq!(row.source, BackdropSource::Held);
     assert_eq!(row.capture.region, ticket.capture.region);
@@ -323,7 +339,7 @@ fn a_backdrop_shares_the_last_break_when_nothing_since_touches_it() {
     );
     assert_eq!(
         barriers(&buf),
-        [0, 1, 1, 2],
+        [0, 2, 2, 3],
         "apart from the quad, on it, apart, beside the last"
     );
 }

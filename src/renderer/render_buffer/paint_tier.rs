@@ -13,7 +13,7 @@ pub(crate) enum PaintTier {
 }
 
 impl PaintTier {
-    /// Every tier in paint order (`Ord` order): the single source of the replay sequence `HigherKindRects::conflicts` relies on. [`RenderBuffer::batches`](crate::renderer::render_buffer::RenderBuffer) is sized by [`Self::COUNT`].
+    /// Every tier in paint order (`Ord` order): the single source of the order a group lists its tiers in, which `HigherKindRects::conflicts` relies on.
     pub(crate) const ALL: [Self; Self::COUNT] = [
         Self::Mesh,
         Self::Image,

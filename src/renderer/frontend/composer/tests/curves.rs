@@ -7,13 +7,14 @@ use crate::internals::paint_capture::PaintCapture;
 use crate::primitives::geometry::circular_arc::CircularArc;
 use crate::primitives::geometry::fit::FitMap;
 use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::urect::URect;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::line_style::{LineCap, LineJoin};
 use crate::primitives::paint::lut_row::LutRow;
 use crate::renderer::frontend::composer::tests::curve_builder::CurveBuilder;
 use crate::renderer::frontend::composer::tests::support::{
-    TestPolyline, clip, image, params, run, text,
+    TestPolyline, clip, image, lanes, params, rows_of, run, text,
 };
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::draw_stroke_payload::{
@@ -21,6 +22,7 @@ use crate::renderer::frontend::payload::draw_stroke_payload::{
 };
 use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::spin::Spin;
+use crate::renderer::render_buffer::draw_run::Lane;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
 use crate::shape::geometry::stroke_geometry::PolylineColorSpan;
 use crate::shape::polyline::PolylineColors;
@@ -37,18 +39,18 @@ fn compose_polyline_over_prior_text_splits_text_batch() {
     #[derive(Debug)]
     struct Case {
         stroke_y: f32,
-        text_batches: usize,
+        text_runs: usize,
     }
     // The first run spans y 0..20; the stroke reaches `stroke_y` ± 1 with its
     // fringe, so y = 10 lands inside the run and y = 25 clears it.
     for case in [
         Case {
             stroke_y: 10.0,
-            text_batches: 2,
+            text_runs: 2,
         },
         Case {
             stroke_y: 25.0,
-            text_batches: 1,
+            text_runs: 1,
         },
     ] {
         let buf = run(
@@ -66,11 +68,10 @@ fn compose_polyline_over_prior_text_splits_text_batch() {
             },
             &params(1.0, UVec2::new(200, 200)),
         );
-        assert_eq!(buf.text_batches.len(), case.text_batches, "{case:?}");
-        assert_eq!(buf.batches(PaintTier::Curve).len(), 1, "{case:?}");
+        assert_eq!(rows_of(&buf, Lane::Text).len(), case.text_runs, "{case:?}");
         assert_eq!(
-            buf.batches(PaintTier::Curve)[0].items.len,
-            1,
+            rows_of(&buf, Lane::Tier(PaintTier::Curve)),
+            [Span::new(0, 1)],
             "one segment instance for a 2-point polyline: {case:?}",
         );
         assert!(buf.meshes.is_empty(), "no CPU-tessellated mesh: {case:?}");
@@ -366,23 +367,16 @@ fn compose_emits_one_curve_batch_per_scissor_group() {
         },
         &params(1.0, UVec2::new(200, 200)),
     );
-    assert_eq!(
-        buf.batches(PaintTier::Curve).len(),
-        1,
-        "one batch per group"
-    );
-    let batch = buf.batches(PaintTier::Curve)[0];
-    assert_eq!(batch.last_group, 0);
     // Each curve's control polygon is ≈ 181.98 px; `TARGET_CHORD_PX = 1.5` splits
     // it into 122 chords and `SEGMENTS_PER_INSTANCE = 16` packs those into 8
-    // sub-instances. The two curves are one shape translated, so the batch carries
-    // twice that.
-    assert_eq!(batch.items.len, 16);
+    // sub-instances. The two curves are one shape translated, so the run carries
+    // twice that, every emitted instance.
     assert_eq!(
-        buf.curves.len() as u32,
-        batch.items.len,
-        "batch covers every emitted instance",
+        rows_of(&buf, Lane::Tier(PaintTier::Curve)),
+        [Span::new(0, 16)],
+        "one run per group"
     );
+    assert_eq!(buf.curves.len(), 16);
 }
 
 #[test]
@@ -414,14 +408,14 @@ fn compose_splits_curve_batches_across_scissor_groups() {
         },
         &params(1.0, UVec2::new(200, 200)),
     );
+    let scissors: Vec<Option<URect>> = buf.runs.iter().map(|run| run.scissor).collect();
     assert_eq!(
-        buf.batches(PaintTier::Curve).len(),
-        2,
-        "scissor change closes the open batch and opens a new one",
-    );
-    assert!(
-        buf.batches(PaintTier::Curve)[0].last_group < buf.batches(PaintTier::Curve)[1].last_group,
-        "batches anchor to monotonically increasing groups",
+        (lanes(&buf), scissors),
+        (
+            vec![Lane::Tier(PaintTier::Curve); 2],
+            vec![None, Some(URect::new(0, 0, 50, 200))]
+        ),
+        "a scissor change closes the group, and the curves of each list as a run of their own",
     );
 }
 
@@ -509,8 +503,10 @@ fn compose_arc_scales_geometry_and_subdivides_by_exact_length() {
             assert_eq!(ci.t1, 1.0);
         }
     }
-    assert_eq!(buf.batches(PaintTier::Curve).len(), 1);
-    assert_eq!(buf.batches(PaintTier::Curve)[0].items.len, 8);
+    assert_eq!(
+        rows_of(&buf, Lane::Tier(PaintTier::Curve)),
+        [Span::new(0, 8)]
+    );
 }
 
 #[test]
@@ -652,13 +648,9 @@ fn compose_arc_and_curve_share_one_batch_per_group() {
         &params(1.0, UVec2::new(300, 300)),
     );
     assert_eq!(
-        buf.batches(PaintTier::Curve).len(),
-        1,
+        rows_of(&buf, Lane::Tier(PaintTier::Curve)),
+        [Span::new(0, buf.curves.len() as u32)],
         "arcs batch with cubics"
-    );
-    assert_eq!(
-        buf.batches(PaintTier::Curve)[0].items.len as usize,
-        buf.curves.len()
     );
     assert!(buf.curves.iter().any(|c| c.kind == CurveKind::ARC));
     assert!(buf.curves.iter().any(|c| c.kind == CurveKind::CUBIC));
@@ -669,7 +661,7 @@ fn two_point_polyline_does_not_reserve_miter_join_reach() {
     #[derive(Debug)]
     struct Case {
         points: &'static [Vec2],
-        expected_groups: usize,
+        lanes: [Lane; 2],
     }
 
     static TWO: [Vec2; 2] = [Vec2::new(0.0, 10.0), Vec2::new(20.0, 10.0)];
@@ -681,11 +673,11 @@ fn two_point_polyline_does_not_reserve_miter_join_reach() {
     let cases = [
         Case {
             points: &TWO,
-            expected_groups: 1,
+            lanes: [Lane::Tier(PaintTier::Image), Lane::Tier(PaintTier::Curve)],
         },
         Case {
             points: &THREE,
-            expected_groups: 2,
+            lanes: [Lane::Tier(PaintTier::Curve), Lane::Tier(PaintTier::Image)],
         },
     ];
 
@@ -697,7 +689,7 @@ fn two_point_polyline_does_not_reserve_miter_join_reach() {
             },
             &params(1.0, UVec2::new(100, 100)),
         );
-        assert_eq!(buf.groups.len(), case.expected_groups, "{case:?}");
+        assert_eq!(lanes(&buf), case.lanes, "{case:?}");
     }
 }
 

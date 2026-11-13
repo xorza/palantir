@@ -65,7 +65,12 @@ from the code, and each step's gate is what measures it.
 
 In order; each ends with the gate of `AGENTS.md` and the census of step 1.
 
-### 1. The census covers every page
+### 1. The census covers every page — done, `93ea5a4d5`
+
+- **Landed.** `every_page_records_its_census` (`palantir-showcase/src/shot_tests.rs`) holds every
+  page's whole `PassCounts`; `src/host/offscreen/tests/census.rs` the three scenes, built on the
+  offscreen host from widgets so one scene gives both the counts and the closes; `PaintOrder`'s
+  `group_closes` the tallies, a close by clip, paint order, barrier or end, and the draws after.
 
 - **Change.** `rounded_clip_pages_draw_their_counts` (`palantir-showcase/src/shot_tests.rs`)
   widens to every page and to the whole `PassCounts`, which gains the viewport pushes and the
@@ -78,7 +83,17 @@ In order; each ends with the gate of `AGENTS.md` and the census of step 1.
   the tallies are step 6's gate. Refused: a throwaway counting patch, as the 2026-11-10 note used,
   which no later change can rerun.
 
-### 2. The composer hands the backend runs in draw order
+### 2. The composer hands the backend runs in draw order — done
+
+- **Landed.** `DrawRun` and `Lane` in `render_buffer::draw_run`; the decision folded into
+  `src/gpu/AGENTS.md`, Shapes. Its gate, as met: the census moved only in scissors, down by one or
+  two on 15 pages and the canvas and field scenes and up nowhere, as the old walk set a group's
+  scissor where the group drew only text that set its own; the visual suite bit for bit. ABBA on
+  the Apple laptop: `atomic/schedule/*` −35 to −70 %; `atomic/composer/cpu/*` within ±2 % but for
+  the cases that list a run a draw, `clips/*` +2 %, `quads/clipped` +4.5 to +8 %,
+  `higher_kind_overlap/text_between_mesh_over` +6 %, `mixed_overlap` +5 to +10 %, the time in
+  `Ordering::flush` writing a 36-byte run where a group wrote 28 and a tier batch 12: about 2 ns a
+  run listed, against 3.3 ns a run saved at each walk.
 
 - **Change.** `RenderBuffer` holds one list of runs, each a lane, a span of that lane's rows and
   a scissor, in the order they draw; a backdrop's barrier is a run's index. The composer appends

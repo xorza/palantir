@@ -16,7 +16,7 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::lut_row::LutRow;
 use crate::renderer::frontend::composer::tests::quad_builder::QuadBuilder;
 use crate::renderer::frontend::composer::tests::support::{
-    gpu_view, gpu_view_payload, params, run, run_with_texture_cap,
+    gpu_view, gpu_view_payload, params, rows_of, run, run_with_texture_cap,
 };
 use crate::renderer::frontend::paint_sink::{PaintPayload, PaintSink};
 use crate::renderer::frontend::payload::brush_source::BrushSource;
@@ -28,6 +28,7 @@ use crate::renderer::frontend::payload::draw_closed_payload::closed_image::{
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
 use crate::renderer::frontend::payload::spin::Spin;
+use crate::renderer::render_buffer::draw_run::Lane;
 use crate::renderer::render_buffer::effect_draw_row::EffectKey;
 use crate::renderer::render_buffer::fill_form::FillForm;
 use crate::renderer::render_buffer::image_flags::ImageFlags;
@@ -164,8 +165,11 @@ fn compose_emits_image_batch_for_drawimage() {
         &params(2.0, UVec2::new(400, 400)),
     );
     assert_eq!(buf.images.key(), [ShapeForm::Rect], "one plain image draw");
-    assert_eq!(buf.batches(PaintTier::Image).len(), 1, "one image batch");
-    assert_eq!(buf.batches(PaintTier::Image)[0].items, Span::new(0, 1));
+    assert_eq!(
+        rows_of(&buf, Lane::Tier(PaintTier::Image)),
+        [Span::new(0, 1)],
+        "one image run"
+    );
     assert_eq!(buf.images.id()[0], TextureId(0xc0ffee));
     assert_eq!(
         buf.images.instance()[0].header.rect,
@@ -677,8 +681,10 @@ fn an_effect_lands_as_one_physical_row() {
         &params(2.0, UVec2::new(400, 400)),
     );
     assert_eq!(buf.effects.len(), 1);
-    assert_eq!(buf.batches(PaintTier::Effect).len(), 1);
-    assert_eq!(buf.batches(PaintTier::Effect)[0].items, Span::new(0, 1));
+    assert_eq!(
+        rows_of(&buf, Lane::Tier(PaintTier::Effect)),
+        [Span::new(0, 1)]
+    );
     assert_eq!(
         (buf.effects.key()[0], buf.effects.instance()[0].flags),
         (

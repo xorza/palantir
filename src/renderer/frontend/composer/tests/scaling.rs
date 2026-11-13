@@ -20,7 +20,7 @@ use crate::primitives::paint::lut_row::LutRow;
 use crate::renderer::frontend::composer::stroke_bbox::StrokeBbox;
 use crate::renderer::frontend::composer::tests::quad_builder::QuadBuilder;
 use crate::renderer::frontend::composer::tests::support::{
-    clip, draw, params, params_unsnapped, run, text,
+    clip, draw, params, params_unsnapped, quad_runs, rows_of, run, text,
 };
 use crate::renderer::frontend::paint_sink::{PaintPayload, PaintSink};
 use crate::renderer::frontend::payload::brush_source::BrushSource;
@@ -31,6 +31,7 @@ use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
 use crate::renderer::frontend::payload::draw_shadow_payload::DrawShadowPayload;
 use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
 use crate::renderer::frontend::payload::spin::Spin;
+use crate::renderer::render_buffer::draw_run::Lane;
 use crate::renderer::render_buffer::fill_form::{FillBrush, FillForm};
 use crate::renderer::render_buffer::image_flags::ImageFlags;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
@@ -314,11 +315,10 @@ fn compose_transforms_clip_rects_to_screen_space() {
         },
         &params(1.0, UVec2::new(400, 400)),
     );
-    assert_eq!(buf.groups.len(), 1);
-    let s = buf.groups[0]
-        .scissor
-        .expect("clipped group must have a scissor");
-    assert_eq!((s.min.x, s.min.y, s.size.x, s.size.y), (20, 20, 40, 40));
+    assert_eq!(
+        quad_runs(&buf),
+        [(Span::new(0, 1), Some(URect::new(20, 20, 40, 40)))]
+    );
 }
 
 /// The composer applies the display scale, runs the icon size ladder, and
@@ -353,9 +353,9 @@ fn icon_resolves_to_a_whole_pixel_raster_at_the_display_scale() {
     assert_eq!(row.origin, IVec2::new(15, 30));
     assert_eq!(row.size, row.key.size().as_uvec2(), "drawn texel for texel");
     assert_eq!(
-        out.batches(PaintTier::Icon).len(),
+        rows_of(&out, Lane::Tier(PaintTier::Icon)).len(),
         1,
-        "icons in one group coalesce into one batch, and so one draw",
+        "icons in one group coalesce into one run, and so one draw",
     );
 
     // 50 logical px at 1.5 -> 75 physical, past the exact band: the ladder
@@ -424,8 +424,11 @@ fn icons_batch_together_and_respect_tier_order() {
         &params(1.0, UVec2::new(200, 200)),
     );
     assert_eq!(out.icons.len(), 2);
-    assert_eq!(out.batches(PaintTier::Icon).len(), 1, "two icons, one draw");
-    assert_eq!(out.batches(PaintTier::Icon)[0].items.len, 2);
+    assert_eq!(
+        rows_of(&out, Lane::Tier(PaintTier::Icon)),
+        [Span::new(0, 2)],
+        "two icons, one draw"
+    );
 }
 
 /// A triangle reaches the GPU as its points grown by its radius, from the covering quad's

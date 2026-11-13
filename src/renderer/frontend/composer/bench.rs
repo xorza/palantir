@@ -45,6 +45,7 @@ use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
 use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::render_buffer::backdrop_row::BackdropCapture;
+use crate::renderer::render_buffer::draw_run::Lane;
 use crate::renderer::render_buffer::image_flags::ImageFlags;
 use crate::shape::geometry::box_geometry::PlacedBox;
 use crate::shape::geometry::closed_geometry::PlacedClosed;
@@ -204,19 +205,22 @@ impl HigherKindCase {
         }
     }
 
-    const fn expected_groups(self, draw_count: usize) -> usize {
+    /// The runs the arm lists: one group of one tier's run for the same-tier arms; for the mixed
+    /// arm that overlaps, a group a mesh over an image, `n / 2 + 1` groups of an image run, a
+    /// mesh and an image run each, and a mesh run, `n` runs; one group of a mesh and an image run
+    /// where nothing overlaps; one group of the text and a mesh run for the text arms, a text run
+    /// a label where every mesh covers its label.
+    const fn expected_runs(self, draw_count: usize) -> usize {
         match self {
-            Self::MixedOverlap => draw_count / 2 + 1,
-            Self::SameTierMesh
-            | Self::SameTierImage
-            | Self::MixedNonOverlap
-            | Self::TextBetweenMeshClear
-            | Self::TextBetweenMeshOver => 1,
+            Self::MixedOverlap => draw_count,
+            Self::SameTierMesh | Self::SameTierImage => 1,
+            Self::MixedNonOverlap | Self::TextBetweenMeshClear => 2,
+            Self::TextBetweenMeshOver => draw_count + 1,
         }
     }
 
     /// What the text arms separate: one batch for the grid when no mesh covers a label, one per label when all do.
-    const fn expected_text_batches(self, draw_count: usize) -> usize {
+    const fn expected_text_runs(self, draw_count: usize) -> usize {
         match self {
             Self::TextBetweenMeshClear => 1,
             Self::TextBetweenMeshOver => draw_count,
@@ -324,7 +328,7 @@ impl QuadCase {
         bench
     }
 
-    /// What one replay leaves: quads, groups and listed backdrops for the quad arms, curve
+    /// What one replay leaves: quads, runs and listed backdrops for the quad arms, curve
     /// instances for the polyline, one segment per gap and one joint per interior point.
     const fn expected(self, count: usize) -> [usize; 3] {
         match self {
@@ -551,13 +555,11 @@ pub(crate) fn atomic(c: &mut Criterion) {
             group.bench_function(id, |b| {
                 let mut fixture = case.fixture(draw_count);
                 assert_eq!(fixture.compose(), draw_count);
+                let runs = &fixture.rig.out.runs;
+                assert_eq!(runs.len(), case.expected_runs(draw_count));
                 assert_eq!(
-                    fixture.rig.out.groups.len(),
-                    case.expected_groups(draw_count)
-                );
-                assert_eq!(
-                    fixture.rig.out.text_batches.len(),
-                    case.expected_text_batches(draw_count),
+                    runs.iter().filter(|run| run.lane == Lane::Text).count(),
+                    case.expected_text_runs(draw_count),
                 );
                 b.iter(|| black_box(fixture.compose()));
             });
@@ -577,7 +579,7 @@ pub(crate) fn atomic(c: &mut Criterion) {
                     _ => out.quads.len(),
                 };
                 assert_eq!(
-                    [drawn, out.groups.len(), out.backdrops.len()],
+                    [drawn, out.runs.len(), out.backdrops.len()],
                     case.expected(count),
                     "{label}/{count}"
                 );

@@ -55,7 +55,7 @@ impl RepaintScissors {
     /// only by building twice.
     ///
     /// The scissors are disjoint: each keeps only the pixels the ones before it left, split into at
-    /// most four rects. The main pass replays the groups once per scissor, and after a backdrop's
+    /// most four rects. The main pass replays the runs once per scissor, and after a backdrop's
     /// barrier it replays them without a clear, so a pixel two scissors share would composite every
     /// translucent draw past the barrier twice, as a padded damage rect inside a footprint did.
     /// `None` when the pieces outgrow [`SCISSOR_CAP`]: the frame then paints whole.

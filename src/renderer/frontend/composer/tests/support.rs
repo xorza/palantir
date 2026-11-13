@@ -14,6 +14,7 @@ use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::fit::FitMap;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::geometry::urect::URect;
 use crate::primitives::identity::effect_id::EffectId;
 use crate::primitives::identity::icon_ref::IconRef;
 use crate::primitives::identity::texture_id::TextureId;
@@ -38,6 +39,7 @@ use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::spin::Spin;
 use crate::renderer::render_buffer::RenderBuffer;
+use crate::renderer::render_buffer::draw_run::Lane;
 use crate::renderer::render_buffer::image_flags::ImageFlags;
 use crate::shape::geometry::box_geometry::PlacedBox;
 use crate::shape::geometry::closed_geometry::PlacedClosed;
@@ -66,6 +68,43 @@ pub(super) fn draw_marked(buf: &mut PaintCapture, r: Rect) {
     QuadBuilder::new(r)
         .solid(RgbaF32::new(nth / 255.0, 1.0, 1.0, 1.0))
         .draw(buf);
+}
+
+/// The rows of each run of `lane`, in paint order.
+pub(super) fn rows_of(buf: &RenderBuffer, lane: Lane) -> Vec<Span> {
+    buf.runs
+        .iter()
+        .filter(|run| run.lane == lane)
+        .map(|run| run.rows)
+        .collect()
+}
+
+/// Each quad run's rows and scissor, in paint order: what each group's quads became.
+pub(super) fn quad_runs(buf: &RenderBuffer) -> Vec<(Span, Option<URect>)> {
+    buf.runs
+        .iter()
+        .filter(|run| run.lane == Lane::Quad)
+        .map(|run| (run.rows, run.scissor))
+        .collect()
+}
+
+/// Each text run's rows and scissor, in paint order.
+pub(super) fn text_runs(buf: &RenderBuffer) -> Vec<(Span, URect)> {
+    buf.runs
+        .iter()
+        .filter(|run| run.lane == Lane::Text)
+        .map(|run| (run.rows, run.scissor.expect("a text run is scissored")))
+        .collect()
+}
+
+/// Each run's lane and rows, in paint order.
+pub(super) fn listed(buf: &RenderBuffer) -> Vec<(Lane, Span)> {
+    buf.runs.iter().map(|run| (run.lane, run.rows)).collect()
+}
+
+/// Each run's lane, in paint order.
+pub(super) fn lanes(buf: &RenderBuffer) -> Vec<Lane> {
+    buf.runs.iter().map(|run| run.lane).collect()
 }
 
 /// The surviving quads' rects, in buffer order.
@@ -132,7 +171,9 @@ pub(super) fn run_with_texture_cap(
     run_in(ComposeRig::with_texture_limit(*display, limit), build)
 }
 
-/// One frame of `rig`, recorded by `build` into a fresh capture and the rig's store.
+/// One frame of `rig`, recorded by `build` into a fresh capture and the rig's store. Every lane's
+/// runs number their batches 0, 1, 2… in paint order, and each lane's runs take its rows in order,
+/// none twice: what the raster backends key their batches by.
 fn run_in(
     mut rig: ComposeRig,
     build: impl FnOnce(&mut PaintCapture, &mut RecordStore),
@@ -140,6 +181,14 @@ fn run_in(
     let mut recorded = PaintCapture::default();
     build(&mut recorded, &mut rig.store);
     rig.compose(&recorded);
+    let mut next = [(0, 0); Lane::COUNT];
+    for run in &rig.out.runs {
+        let (batch, row) = &mut next[run.lane.idx()];
+        assert_eq!(run.batch, *batch, "{run:?}: its lane's next batch");
+        assert!(run.rows.start >= *row, "{run:?}: rows in order");
+        *batch += 1;
+        *row = run.rows.start + run.rows.len;
+    }
     rig.out
 }
 

@@ -1,4 +1,4 @@
-//! The frontend-to-backend contract: [`RenderBuffer`], the per-kind instance rows the composer fills, and the group and batch tables that order the backend's draws. Every buffer is retained and refilled, so a steady-state frame allocates nothing for its output.
+//! The frontend-to-backend contract: [`RenderBuffer`], the per-kind instance rows the composer fills, and the runs that order the backend's draws over them. Every buffer is retained and refilled, so a steady-state frame allocates nothing for its output.
 
 use crate::display::Display;
 use crate::display::frame_stamp::FrameStamp;
@@ -7,9 +7,8 @@ use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::render_buffer::backdrop_row::{BackdropRow, BackdropSource};
 use crate::renderer::render_buffer::curve_instance::CurveInstance;
-use crate::renderer::render_buffer::draw_group::DrawGroup;
+use crate::renderer::render_buffer::draw_run::DrawRun;
 use crate::renderer::render_buffer::effect_draw_row::EffectDrawRow;
-use crate::renderer::render_buffer::group_batch::GroupBatch;
 use crate::renderer::render_buffer::icon_draw_row::IconDrawRow;
 use crate::renderer::render_buffer::image_draw_row::ImageDrawRow;
 use crate::renderer::render_buffer::mesh_draw_row::MeshDrawRow;
@@ -17,7 +16,6 @@ use crate::renderer::render_buffer::paint_tier::PaintTier;
 use crate::renderer::render_buffer::quad_draw_row::QuadDrawRow;
 use crate::renderer::render_buffer::render_target_draw::{FrameViews, RenderTargetDraw};
 use crate::renderer::render_buffer::rounded_clip::RoundedClip;
-use crate::renderer::render_buffer::text_batch::TextBatch;
 use crate::renderer::render_buffer::text_draw_row::TextDrawRow;
 use soa_rs::Soa;
 use std::time::Duration;
@@ -27,10 +25,9 @@ pub(crate) mod clip_chain;
 pub(crate) mod curve_caps;
 pub(crate) mod curve_instance;
 pub(crate) mod curve_kind;
-pub(crate) mod draw_group;
+pub(crate) mod draw_run;
 pub(crate) mod effect_draw_row;
 pub(crate) mod fill_form;
-pub(crate) mod group_batch;
 pub(crate) mod icon_draw_row;
 pub(crate) mod image_draw_row;
 pub(crate) mod image_flags;
@@ -44,10 +41,9 @@ pub(crate) mod shadow_instance;
 pub(crate) mod shape_form;
 pub(crate) mod shape_header;
 pub(crate) mod template_cover;
-pub(crate) mod text_batch;
 pub(crate) mod text_draw_row;
 
-/// Output of `compose`: physical-px instances grouped by scissor region plus the wgpu callback sidecar for composited `GpuView`s. Holds no compose-time scratch; reuse one buffer across frames.
+/// Output of `compose`: physical-px instances and the runs that draw them in paint order, plus the wgpu callback sidecar for composited `GpuView`s. Holds no compose-time scratch; reuse one buffer across frames.
 #[derive(Debug)]
 pub(crate) struct RenderBuffer {
     /// The quad stream, SoA: each instance beside its pipeline's key.
@@ -55,11 +51,9 @@ pub(crate) struct RenderBuffer {
     pub(crate) texts: Vec<TextDrawRow>,
     /// Scene-wide mesh rows, SoA. Vertex/index bytes live in [`RecordStore::mesh_vertices`](crate::shape::record_store::RecordStore::mesh_vertices) and `mesh_idxs`; each row's `draw` carries spans into them and `instance` the Pod GPU state uploaded verbatim.
     pub(crate) meshes: Soa<MeshDrawRow>,
-    pub(crate) groups: Vec<DrawGroup>,
-    /// One entry per batch of text runs sharing a text-backend call. Text coalesces across adjacent groups when paint order is preserved. A batch's `texts` span is contiguous; it anchors to a group via `TextBatch.last_group`.
-    pub(crate) text_batches: Vec<TextBatch>,
-    /// Per-group batches for every [`PaintTier`], indexed by [`PaintTier::idx`] via [`Self::batches`] / [`Self::batches_mut`] and sized by [`PaintTier::COUNT`], so a new tier is a variant, not a field. None span scissor boundaries; only text carries per-run bounds.
-    batches: [Vec<GroupBatch>; PaintTier::COUNT],
+    /// The frame's draws in the order they paint, each a span of one lane's rows under one
+    /// scissor; a backdrop's barrier is an index into it.
+    pub(crate) runs: Vec<DrawRun>,
     /// Scene-wide image rows, SoA, mirroring [`Self::meshes`]; one quad draw per row. A `GpuView` is just an image row, its off-screen target listed in [`Self::frame_targets`].
     pub(crate) images: Soa<ImageDrawRow>,
     /// `GpuView` off-screen targets of this frame, one per composited view row, filled by the composer from each image draw's `ClosedImage::view`. The backend repaints one only when its stamp changed.
@@ -79,7 +73,7 @@ pub(crate) struct RenderBuffer {
     /// read them (`ClipVariant`); a frame whose draws all lie inside their clips names none.
     pub(crate) clips_drawn: bool,
     /// The backdrops in paint order; each one that captures breaks the main pass at its
-    /// barrier and copies what the groups before it painted.
+    /// barrier and copies what the runs before it painted.
     pub(crate) backdrops: Vec<BackdropRow>,
     /// Every backdrop of the frame, drawn or not: the backend's roster, which keeps an unchanged
     /// backdrop's cached blur while it stays out of the frame's damage.
@@ -98,9 +92,7 @@ impl RenderBuffer {
             quads: Soa::default(),
             texts: Vec::new(),
             meshes: Soa::default(),
-            groups: Vec::new(),
-            text_batches: Vec::new(),
-            batches: [const { Vec::new() }; PaintTier::COUNT],
+            runs: Vec::new(),
             images: Soa::default(),
             frame_targets: Vec::new(),
             live_targets: Vec::new(),
@@ -137,15 +129,6 @@ impl RenderBuffer {
         len as u32
     }
 
-    pub(crate) const fn batches_mut(&mut self, tier: PaintTier) -> &mut Vec<GroupBatch> {
-        &mut self.batches[tier.idx()]
-    }
-
-    /// This tier's per-group batches; consumers walking all tiers go through here and [`PaintTier::ALL`] to keep replay order in one place.
-    pub(crate) fn batches(&self, tier: PaintTier) -> &[GroupBatch] {
-        &self.batches[tier.idx()]
-    }
-
     pub(crate) fn frame_views(&self) -> FrameViews<'_> {
         FrameViews {
             draws: &self.frame_targets,
@@ -172,11 +155,7 @@ impl RenderBuffer {
         self.meshes.clear();
         self.images.clear();
         self.frame_targets.clear();
-        self.groups.clear();
-        self.text_batches.clear();
-        for batches in &mut self.batches {
-            batches.clear();
-        }
+        self.runs.clear();
         self.icons.clear();
         self.effects.clear();
         self.curves.clear();

@@ -1,23 +1,26 @@
 //! What the occlusion pass drops, and what it must not.
 
+use crate::common::span::Span;
 use crate::internals::compose_rig::ComposeRig;
 use crate::internals::paint_capture::PaintCapture;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::translate_scale::TranslateScale;
+use crate::primitives::geometry::urect::URect;
 use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::border::Border;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::lut_row::LutRow;
 use crate::renderer::frontend::composer::tests::quad_builder::QuadBuilder;
 use crate::renderer::frontend::composer::tests::support::{
-    clip, clip_rounded, draw, draw_marked, params, params_unsnapped, run, survivor_calls,
-    survivors, text,
+    clip, clip_rounded, draw, draw_marked, lanes, params, params_unsnapped, quad_runs, run,
+    survivor_calls, survivors, text,
 };
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_shadow_payload::DrawShadowPayload;
 use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
+use crate::renderer::render_buffer::draw_run::Lane;
 use crate::shape::geometry::box_geometry::PlacedBox;
 use crate::shape::paint::lowered_shadow::LoweredShadow;
 use glam::UVec2;
@@ -204,7 +207,13 @@ fn prune_keeps_quads_in_separate_groups_even_when_covered() {
         &params(1.0, UVec2::new(200, 200)),
     );
     assert_eq!(buf.quads.len(), 2);
-    assert_eq!(buf.groups.len(), 2);
+    assert_eq!(
+        quad_runs(&buf),
+        [
+            (Span::new(0, 1), None),
+            (Span::new(1, 1), Some(URect::new(0, 0, 200, 200)))
+        ]
+    );
 }
 
 #[test]
@@ -462,8 +471,12 @@ fn clear_fold_discards_hidden_underlay_mid_stream() {
         "survivor keeps the in-flight 2x transform",
     );
     assert_eq!(buf.texts.len(), 1, "underlay text discarded");
-    assert_eq!(buf.groups.len(), 1);
-    assert!(buf.groups[0].scissor.is_none());
+    assert_eq!(
+        lanes(&buf),
+        [Lane::Quad, Lane::Text],
+        "one group, its quads unscissored"
+    );
+    assert_eq!(quad_runs(&buf), [(Span::new(0, 1), None)]);
 }
 
 /// `clear_override` is per-frame: a fold must not leak into the next frame, and a steady cover re-folds each frame.

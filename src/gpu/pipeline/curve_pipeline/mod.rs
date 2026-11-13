@@ -1,5 +1,5 @@
 //! GPU side of native parametric strokes (cubic beziers, arcs, polyline segments, join billboards; see
-//! `CurveInstance::kind`). One `draw_indexed` per scissor group covers its `GroupBatch`; an immutable index
+//! `CurveInstance::kind`). One `draw_indexed` per curve run covers its rows; an immutable index
 //! buffer subdivides each instance into [`SEGMENTS_PER_INSTANCE`] chords.
 
 #[cfg(feature = "internals")]

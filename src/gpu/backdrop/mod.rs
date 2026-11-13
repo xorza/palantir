@@ -36,7 +36,7 @@
 //!   composite's draw run.
 //! - **The composer infers sharing.** A backdrop whose footprint misses every draw since the last
 //!   break captures at that break, as it would see the same pixels at its own place; else it opens
-//!   a barrier, where groups and text batches end, so nothing prunes or coalesces across it. The
+//!   a barrier, where a group and the text batch end, so nothing prunes or coalesces across it. The
 //!   backdrops of one break blur in one set of passes, each pass drawing every backdrop under its
 //!   own scissor, their first-axis rows apart in the scratch: a pass costs the Apple laptop about
 //!   48 µs whatever it draws (`.notes/research/2026-10-28-backdrops.md`, "Measured: a blur pass has

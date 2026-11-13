@@ -14,21 +14,10 @@ use crate::renderer::frontend::composer::quad_runs::QuadRuns;
 use crate::renderer::frontend::composer::rect_grid::RectGrid;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::backdrop_row::BackdropSource;
-use crate::renderer::render_buffer::draw_group::DrawGroup;
-use crate::renderer::render_buffer::group_batch::GroupBatch;
+use crate::renderer::render_buffer::draw_run::{DrawRun, Lane};
 use crate::renderer::render_buffer::paint_tier::PaintTier;
-use crate::renderer::render_buffer::text_batch::TextBatch;
 use crate::renderer::render_buffer::text_draw_row::TextDrawRow;
 use glam::UVec2;
-
-/// Where a draw replays within its group: the backend draws a group's quads, then its text, then
-/// each [`PaintTier`] in `PaintTier::ALL` order.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum Lane {
-    Quad,
-    Text,
-    Tier(PaintTier),
-}
 
 /// Why a group closed: the clip in force changed its scissor, a draw would have swapped paint order
 /// with one it overlaps, a backdrop's barrier, or the session's end.
@@ -59,10 +48,11 @@ struct CloseTally {
 /// The retained state of paint order: the open text batch, the higher-kind rects, where the open
 /// group's slices begin, the occluders the group prunes with, and the backdrop break.
 ///
-/// Within a group the backend replays by [`Lane`], not in record order. That is safe iff no
-/// overlapping pair of draws swaps record order, which [`Ordering::order`] enforces by closing the
-/// group, or the text batch, where a draw follows an overlapping one of a lane that replays after
-/// it.
+/// A group lists its runs as it closes, by [`Lane`], not in record order: its quads, the text
+/// batches that end in it, then each [`PaintTier`] in `PaintTier::ALL` order; a text batch that
+/// closes after its last group lists as it closes. That is safe iff no overlapping pair of draws
+/// swaps record order, which [`Ordering::order`] enforces by closing the group, or the text batch,
+/// where a draw follows an overlapping one of a lane that replays after it.
 #[derive(Debug, Default)]
 pub(super) struct PaintOrder {
     batch: BatchState,
@@ -79,32 +69,39 @@ pub(super) struct PaintOrder {
     runs: QuadRuns,
     /// The last break the main pass takes for a backdrop, and what is painted after it.
     backdrop_break: BackdropBreak,
+    /// The open group's index: the groups closed with a draw before it.
+    group: u32,
+    /// The runs listed of each lane, by [`Lane::idx`]: the next one's [`DrawRun::batch`].
+    lane_runs: [u32; Lane::COUNT],
     /// Why this frame's groups closed, which the batching census reads.
     closes: TestOnly<CloseTally>,
 }
 
 /// Allocation-owning state for text batching. The open grid may span groups; the closed grid and
-/// pending cursor reset at each group boundary. `open` and `open_grid` change together: the grid
-/// holds runs only while a batch is open.
+/// the batches waiting on the open group reset at each group boundary. `open` and `open_grid`
+/// change together: the grid holds runs only while a batch is open.
 #[derive(Debug, Default)]
 struct BatchState {
     open: Option<OpenBatch>,
     open_grid: RectGrid,
     closed_grid: RectGrid,
-    /// First finalized text batch not yet indexed in `closed_grid`.
-    pending_batch_cursor: usize,
+    /// Batches closed in the open group that end in it, which list after its quads at its close.
+    waiting: Vec<ClosedText>,
+    /// The first of [`Self::waiting`] not yet indexed in `closed_grid`.
+    waiting_indexed: usize,
+    /// Where the next text run listed starts in `out.texts`: the runs list text in order.
+    texts_listed: u32,
 }
 
-/// A text batch mid-accumulation, pushed onto `out.text_batches` as a [`TextBatch`] by
-/// [`Ordering::close_batch`].
+/// A text batch mid-accumulation, listed as a run by [`Ordering::close_batch`].
 #[derive(Clone, Copy, Debug)]
 struct OpenBatch {
     /// Cursor into `out.texts` where this batch's run span begins. Recorded, not derived from the
-    /// previous span end (which it always equals), so the close can assert they agree and catch a
+    /// previous span end (which it always equals), so the listing can assert they agree and catch a
     /// run pushed outside any batch.
     texts_start: u32,
-    /// Index (into `out.groups`) of the last group whose text contributed, refreshed on every text
-    /// push; tells the schedule where to emit the merged render step.
+    /// The last group whose text joined it, refreshed on every text push: a batch that ends in the
+    /// open group lists after its quads, at its close.
     last_group: u32,
     /// [`TextClip::Cut`] once a cut run has joined. The batch scissor (`open_grid.union()`) must then
     /// equal that run's bounds, so later runs join only with matching `bounds`; a turned run's
@@ -127,9 +124,16 @@ struct ClosedBatch {
     scissor: URect,
 }
 
+/// A closed text batch's runs and the scissor they share, as it lists.
+#[derive(Clone, Copy, Debug)]
+struct ClosedText {
+    rows: Span,
+    scissor: URect,
+}
+
 /// Per-kind slice cursors for the open group: where its slice begins in each output buffer.
-/// `texts` feeds only the did-anything-emit check, so a text-only group still pushes a `DrawGroup`
-/// and its batch's `last_group` resolves; run spans live on [`TextBatch`].
+/// `texts` feeds only the did-anything-emit check, so a text-only group still counts and its
+/// batch's `last_group` resolves.
 #[derive(Default, Clone, Copy, Debug)]
 struct GroupCursors {
     quads: u32,
@@ -143,7 +147,9 @@ impl BatchState {
         self.open = None;
         self.open_grid.start_frame(viewport);
         self.closed_grid.start_frame(viewport);
-        self.pending_batch_cursor = 0;
+        self.waiting.clear();
+        self.waiting_indexed = 0;
+        self.texts_listed = 0;
     }
 
     /// Take the open batch and empty its grid, the two together.
@@ -164,7 +170,32 @@ impl PaintOrder {
         self.cursors = GroupCursors::default();
         self.occlusion.start_frame(viewport);
         self.backdrop_break.open(0);
+        self.group = 0;
+        self.lane_runs = [0; Lane::COUNT];
         self.closes.reset();
+    }
+
+    /// List a run of `lane`'s `rows` under `scissor` in `out`, after every run before it.
+    fn list(&mut self, out: &mut RenderBuffer, lane: Lane, rows: Span, scissor: Option<URect>) {
+        debug_assert_ne!(rows.len, 0, "a run draws a row");
+        let batch = &mut self.lane_runs[lane.idx()];
+        out.runs.push(DrawRun {
+            lane,
+            rows,
+            scissor,
+            batch: *batch,
+        });
+        *batch += 1;
+    }
+
+    /// List the text batch `text` in `out`, whose runs follow the last batch listed.
+    fn list_text(&mut self, out: &mut RenderBuffer, text: ClosedText) {
+        debug_assert_eq!(
+            text.rows.start, self.batch.texts_listed,
+            "text batches list their runs in order, without a gap"
+        );
+        self.batch.texts_listed = text.rows.start + text.rows.len;
+        self.list(out, Lane::Text, text.rows, Some(text.scissor));
     }
 }
 
@@ -234,7 +265,7 @@ impl Ordering<'_> {
     /// painted since the last break shares it, and shows the clear when that is `0`, before any;
     /// else the text batch and the group close at a new barrier, so nothing before it coalesces,
     /// reorders or prunes against what follows: the main pass can break there and read the
-    /// pixels the groups before it painted.
+    /// pixels the runs before it painted.
     pub(super) fn backdrop_source(&mut self, ticket: BackdropTicket) -> BackdropSource {
         if !ticket.captures {
             return BackdropSource::Held;
@@ -246,7 +277,7 @@ impl Ordering<'_> {
             .unwrap_or_else(|| {
                 self.close_batch();
                 self.flush(GroupClose::Barrier);
-                let barrier = self.out.groups.len() as u32;
+                let barrier = self.out.runs.len() as u32;
                 self.order.backdrop_break.open(barrier);
                 barrier
             });
@@ -293,8 +324,8 @@ impl Ordering<'_> {
         }
     }
 
-    /// Close the open group for `cause`: push a `DrawGroup` if anything was emitted, advance the
-    /// per-kind cursors and clear the overlap scratches. Scissor and rounded clip carry over.
+    /// Close the open group for `cause`: list its runs if it drew anything, advance the per-kind
+    /// cursors and clear the overlap scratches. Scissor and rounded clip carry over.
     pub(super) fn flush(&mut self, cause: GroupClose) {
         let order = &mut *self.order;
         order.occlusion.prune(self.out, order.cursors.quads);
@@ -304,29 +335,34 @@ impl Ordering<'_> {
         let q_end = self.out.quads.len() as u32;
         let t_end = self.out.texts.len() as u32;
         let higher_end = PaintTier::ALL.map(|tier| self.out.draws_len(tier));
-        if q_end > order.cursors.quads
+        let drew = q_end > order.cursors.quads
             || t_end > order.cursors.texts
             || PaintTier::ALL
                 .iter()
-                .any(|&t| higher_end[t.idx()] > order.cursors.higher[t.idx()])
-        {
-            // Push higher-kind batches before the group so their `last_group` matches its eventual
-            // index.
-            let last_group = self.out.groups.len() as u32;
+                .any(|&t| higher_end[t.idx()] > order.cursors.higher[t.idx()]);
+        debug_assert!(
+            drew || order.batch.waiting.is_empty(),
+            "a batch that ends in the group drew in it"
+        );
+        if drew {
+            let scissor = self.clip.scissor();
+            if q_end > order.cursors.quads {
+                let quads = Span::try_from(order.cursors.quads..q_end).unwrap();
+                order.list(self.out, Lane::Quad, quads, scissor);
+            }
+            for at in 0..order.batch.waiting.len() {
+                let text = order.batch.waiting[at];
+                order.list_text(self.out, text);
+            }
             for tier in PaintTier::ALL {
                 let start = order.cursors.higher[tier.idx()];
                 let end = higher_end[tier.idx()];
                 if end > start {
-                    self.out.batches_mut(tier).push(GroupBatch {
-                        items: Span::try_from(start..end).unwrap(),
-                        last_group,
-                    });
+                    let items = Span::try_from(start..end).unwrap();
+                    order.list(self.out, Lane::Tier(tier), items, scissor);
                 }
             }
-            self.out.groups.push(DrawGroup {
-                scissor: self.clip.scissor(),
-                quads: Span::try_from(order.cursors.quads..q_end).unwrap(),
-            });
+            order.group += 1;
             order.closes.edit(|tally| {
                 tally.groups[cause as usize] += 1;
                 tally.draws_before[cause as usize] += tally.draws;
@@ -339,47 +375,39 @@ impl Ordering<'_> {
         };
         order.higher_kinds.clear();
         order.occlusion.clear();
-        // Closed-batch text is group-scoped: past a group boundary those batches have rendered and
-        // no longer gate quads. The open-batch grid spans groups.
+        // The batches closed in the group have listed, so they no longer gate quads. The
+        // open-batch grid spans groups.
         order.batch.closed_grid.clear();
-        order.batch.pending_batch_cursor = self.out.text_batches.len();
+        order.batch.waiting.clear();
+        order.batch.waiting_indexed = 0;
     }
 
     /// Finalize the open text batch, if any. Called at batch-split events (quad or higher-kind
-    /// overlap, strict-bounds mismatch, a backdrop's barrier). The grid fill is deferred to
-    /// [`Self::closed_hit`].
+    /// overlap, strict-bounds mismatch, a backdrop's barrier). A batch that ends in the open group
+    /// waits to list after its quads, at its close; one that ends in a group already closed lists
+    /// now, as nothing since overlaps it ([`Self::order`] closed it at the first that did). The grid
+    /// fill is deferred to [`Self::closed_hit`].
     pub(super) fn close_batch(&mut self) {
         let Some(ClosedBatch { batch: b, scissor }) = self.order.batch.close() else {
             return;
         };
-        let texts_end = self.out.texts.len() as u32;
-        // Schedule-cursor invariants: `last_group` is non-decreasing in walk order, and `texts`
-        // spans concatenate without gaps.
-        debug_assert!(
-            self.out
-                .text_batches
-                .last()
-                .is_none_or(|prev| prev.last_group <= b.last_group),
-        );
-        debug_assert!(
-            self.out
-                .text_batches
-                .last()
-                .is_none_or(|prev| prev.texts.start + prev.texts.len == b.texts_start),
-        );
-        self.out.text_batches.push(TextBatch {
-            texts: Span::try_from(b.texts_start..texts_end).unwrap(),
-            last_group: b.last_group,
+        let text = ClosedText {
+            rows: Span::try_from(b.texts_start..self.out.texts.len() as u32).unwrap(),
             // Already physical and clamped to every run's clip-narrowed bounds, so it is the
             // batch's GPU scissor, which clips a turned run; an unturned run clips its own glyphs.
             scissor,
-        });
+        };
+        if self.renders_after_in_flight(b.last_group) {
+            self.order.batch.waiting.push(text);
+        } else {
+            self.order.list_text(self.out, text);
+        }
     }
 
     /// Return the open batch, opening one if none exists; refreshes `last_group` to the open
     /// group's eventual index.
     fn open_batch(&mut self) -> &mut OpenBatch {
-        let last_group = self.out.groups.len() as u32;
+        let last_group = self.order.group;
         let texts_start = self.out.texts.len() as u32;
         let b = self.order.batch.open.get_or_insert(OpenBatch {
             texts_start,
@@ -417,37 +445,36 @@ impl Ordering<'_> {
     /// Whether a text batch whose last group is `last_group` renders at the end of the open group,
     /// after its draws, and not at the end of a group already closed.
     const fn renders_after_in_flight(&self, last_group: u32) -> bool {
-        last_group as usize == self.out.groups.len()
+        last_group == self.order.group
     }
 
     /// `true` if `q` overlaps text of a batch closed in the open group that renders at its end.
-    /// The first query hitting a pending batch scissor drains those batches into the closed grid;
-    /// groups nothing probes never pay the fill.
+    /// The first query hitting a waiting batch's scissor drains those batches into the closed
+    /// grid; groups nothing probes never pay the fill.
     fn closed_hit(&mut self, q: URect) -> bool {
-        let in_flight = self.out.groups.len();
-        let batch = &mut self.order.batch;
-        let pending = &self.out.text_batches[batch.pending_batch_cursor..];
-        let renders_after = |b: &&TextBatch| b.last_group as usize == in_flight;
-        if pending
-            .iter()
-            .filter(renders_after)
-            .any(|b| b.scissor.intersects(q))
-        {
-            for b in pending.iter().filter(renders_after) {
-                for ti in b.texts.range() {
-                    batch.closed_grid.push(self.out.texts[ti].bounds);
+        let BatchState {
+            closed_grid,
+            waiting,
+            waiting_indexed,
+            ..
+        } = &mut self.order.batch;
+        let unindexed = &waiting[*waiting_indexed..];
+        if unindexed.iter().any(|text| text.scissor.intersects(q)) {
+            for text in unindexed {
+                for ti in text.rows.range() {
+                    closed_grid.push(self.out.texts[ti].bounds);
                 }
             }
-            batch.pending_batch_cursor = self.out.text_batches.len();
+            *waiting_indexed = waiting.len();
         }
-        batch.closed_grid.any_overlap(q)
+        closed_grid.any_overlap(q)
     }
 }
 
 #[cfg(test)]
 pub(crate) mod internals {
     use crate::renderer::frontend::composer::paint_order::{
-        BatchState, CloseTally, GroupClose, PaintOrder,
+        BatchState, CloseTally, ClosedText, GroupClose, PaintOrder,
     };
 
     /// The groups a frame closed for one cause, and the draws ordered after those closes, summed.
@@ -484,16 +511,21 @@ pub(crate) mod internals {
                         open: _,
                         open_grid,
                         closed_grid,
-                        pending_batch_cursor: _,
+                        waiting,
+                        waiting_indexed: _,
+                        texts_listed: _,
                     },
                 higher_kinds,
                 cursors: _,
                 occlusion,
                 runs,
                 backdrop_break: _,
+                group: _,
+                lane_runs: _,
                 closes: _,
             } = self;
-            open_grid.scratch_bytes()
+            waiting.capacity() * size_of::<ClosedText>()
+                + open_grid.scratch_bytes()
                 + closed_grid.scratch_bytes()
                 + higher_kinds.scratch_bytes()
                 + occlusion.scratch_bytes()

@@ -10,12 +10,12 @@ use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::urect::URect;
 use crate::renderer::frontend::composer::tests::support::{
     clip, clip_rounded, curve, draw, draw_marked, image, mesh, params, push_distinct_rounded_clips,
-    run, survivor_calls, text,
+    quad_runs, run, survivor_calls, text,
 };
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::clip_chain::ClipChain;
-use crate::renderer::render_buffer::paint_tier::PaintTier;
+use crate::renderer::render_buffer::draw_run::{DrawRun, Lane};
 use glam::{UVec2, Vec2};
 use std::time::Duration;
 
@@ -28,13 +28,11 @@ fn compose_with_no_clip_emits_one_unscissored_group() {
         },
         &params(1.0, UVec2::new(200, 200)),
     );
-    assert_eq!(buf.quads.len(), 2);
-    assert_eq!(buf.groups.len(), 1);
-    assert!(buf.groups[0].scissor.is_none());
-    assert_eq!(buf.groups[0].quads, Span::new(0, 2));
+    assert_eq!(quad_runs(&buf), [(Span::new(0, 2), None)]);
 }
 
-/// Finishing a session emits the trailing group and text batch, which its rows wait on until then.
+/// Finishing a session lists the trailing group's runs, its quads then its text batch, which its
+/// rows wait on until then.
 #[test]
 fn finishing_a_session_emits_the_trailing_group_and_batch() {
     let mut rig = ComposeRig::new(params(1.0, UVec2::new(200, 200)));
@@ -48,21 +46,34 @@ fn finishing_a_session_emits_the_trailing_group_and_batch() {
         draw(&mut recorded, Rect::new(0.0, 0.0, 10.0, 10.0));
         text(&mut recorded, Rect::new(0.0, 20.0, 10.0, 10.0));
         recorded.replay(&mut session);
-        // Rows are buffered; only the group and batch that schedule them are pending.
+        // Rows are buffered; only the runs that schedule them are pending.
         assert_eq!(session.out.quads.len(), 1);
         assert_eq!(session.out.texts.len(), 1);
-        assert!(session.out.groups.is_empty());
-        assert!(session.out.text_batches.is_empty());
+        assert!(session.out.runs.is_empty());
         session.finish();
     }
     let out = &rig.out;
     assert_eq!(out.quads.len(), 1);
     assert_eq!(out.texts.len(), 1);
-    assert_eq!(out.groups.len(), 1, "trailing group emitted on finish");
-    assert_eq!(out.groups[0].quads, Span::new(0, 1));
-    assert_eq!(out.text_batches.len(), 1, "trailing batch closed on finish");
-    assert_eq!(out.text_batches[0].texts, Span::new(0, 1));
-    assert_eq!(out.text_batches[0].last_group, 0);
+    assert_eq!(
+        out.runs,
+        [
+            DrawRun {
+                lane: Lane::Quad,
+                rows: Span::new(0, 1),
+                scissor: None,
+                batch: 0,
+            },
+            DrawRun {
+                lane: Lane::Text,
+                rows: Span::new(0, 1),
+                // The run's bounds padded by the scale step's slack and covered.
+                scissor: Some(URect::new(0, 19, 11, 12)),
+                batch: 0,
+            },
+        ],
+        "the trailing group and batch list on finish"
+    );
 }
 
 #[test]
@@ -79,19 +90,14 @@ fn compose_with_clip_groups_inner_draws_under_scissor() {
         &params(1.0, UVec2::new(400, 400)),
     );
     assert_eq!(buf.quads.len(), 4);
-    assert_eq!(buf.groups.len(), 3);
-
-    assert!(buf.groups[0].scissor.is_none());
-    assert_eq!(buf.groups[0].quads, Span::new(0, 1));
-
-    let s = buf.groups[1]
-        .scissor
-        .expect("clipped group must have a scissor");
-    assert_eq!((s.min.x, s.min.y, s.size.x, s.size.y), (50, 50, 100, 100));
-    assert_eq!(buf.groups[1].quads, Span::new(1, 2));
-
-    assert!(buf.groups[2].scissor.is_none());
-    assert_eq!(buf.groups[2].quads, Span::new(3, 1));
+    assert_eq!(
+        quad_runs(&buf),
+        [
+            (Span::new(0, 1), None),
+            (Span::new(1, 2), Some(URect::new(50, 50, 100, 100))),
+            (Span::new(3, 1), None),
+        ]
+    );
 }
 
 #[test]
@@ -106,12 +112,10 @@ fn compose_intersects_nested_clips() {
         },
         &params(1.0, UVec2::new(400, 400)),
     );
-    assert_eq!(buf.quads.len(), 1);
-    assert_eq!(buf.groups.len(), 1);
-    let s = buf.groups[0]
-        .scissor
-        .expect("nested clip group must have a scissor");
-    assert_eq!((s.min.x, s.min.y, s.size.x, s.size.y), (50, 50, 50, 50));
+    assert_eq!(
+        quad_runs(&buf),
+        [(Span::new(0, 1), Some(URect::new(50, 50, 50, 50)))]
+    );
 }
 
 /// Every draw kind culls against the active clip alike: wholly outside is dropped, any overlap kept. Under a 100 px clip each kind draws one rect inside, one at (200, 200), and one straddling the corner, so two rows survive.
@@ -163,8 +167,7 @@ fn cull_without_active_clip_keeps_nonzero_viewport_bounds() {
         },
         &params(1.0, UVec2::new(400, 400)),
     );
-    assert_eq!(buf.quads.len(), 1);
-    assert_eq!(buf.groups.len(), 1);
+    assert_eq!(quad_runs(&buf), [(Span::new(0, 1), None)]);
 }
 
 #[test]
@@ -183,8 +186,8 @@ fn cull_handles_culled_text_then_quad_split() {
     assert_eq!(buf.texts.len(), 0);
     assert_eq!(survivor_calls(&buf), [2, 3]);
     assert_eq!(
-        buf.groups.len(),
-        1,
+        quad_runs(&buf),
+        [(Span::new(0, 2), Some(URect::new(0, 0, 100, 100)))],
         "culled text must not flag last_was_text and split the group"
     );
 }
@@ -199,7 +202,7 @@ fn compose_skips_groups_with_no_quads() {
         &params(1.0, UVec2::new(200, 200)),
     );
     assert!(buf.quads.is_empty());
-    assert!(buf.groups.is_empty());
+    assert!(buf.runs.is_empty());
 }
 
 /// A rounded clip rides on each draw under it that reaches its edge as a one-entry chain, scaled
@@ -221,14 +224,9 @@ fn push_clip_rounded_lands_radius_on_group_and_inherits_through_rect() {
         &params(2.0, UVec2::new(400, 400)),
     );
     assert!(!buf.rounded_clips.is_empty());
-    assert_eq!(
-        buf.groups.len(),
-        2,
-        "two groups: outer rounded scissor, inner rect scissor"
-    );
-
-    let outer = &buf.groups[0];
-    let inner = &buf.groups[1];
+    let [(_, outer), (_, inner)] = quad_runs(&buf)[..] else {
+        panic!("two groups: outer rounded scissor, inner rect scissor");
+    };
 
     let chain = |q: usize| &buf.rounded_clips[buf.quads.instance()[q].header.clip.span().range()];
     let outer_chain = chain(0);
@@ -238,7 +236,7 @@ fn push_clip_rounded_lands_radius_on_group_and_inherits_through_rect() {
     assert_eq!(outer_r.corners.to_array()[0], 16.0);
     assert_eq!(outer_r.mask_rect.min, Vec2::new(20.0, 40.0));
     assert_eq!(outer_r.mask_rect.size, Size::new(200.0, 160.0));
-    assert_eq!(outer.scissor, Some(URect::new(20, 40, 200, 160)));
+    assert_eq!(outer, Some(URect::new(20, 40, 200, 160)));
 
     // Inheritance: the inner Rect clip carries the outer chain; scissor narrows independently.
     assert_eq!(
@@ -247,7 +245,7 @@ fn push_clip_rounded_lands_radius_on_group_and_inherits_through_rect() {
         "inner draw inherits parent's chain verbatim"
     );
     // DPR=2: rect (5,25,40,30) → (10,50,80,60), clamped to outer.
-    assert_eq!(inner.scissor, Some(URect::new(20, 50, 70, 60)));
+    assert_eq!(inner, Some(URect::new(20, 50, 70, 60)));
 }
 
 /// Nested rounded clips stack where neither holds the next, outer→inner; an ancestor that holds the
@@ -275,8 +273,9 @@ fn push_clip_rounded_nested_builds_outer_inner_chain() {
         },
         &params(1.0, UVec2::new(400, 400)),
     );
+    let scissors: Vec<Option<URect>> = quad_runs(&buf).iter().map(|run| run.1).collect();
     assert_eq!(
-        buf.groups.len(),
+        scissors.len(),
         4,
         "outer rounded, nested rounded, nested rect, crossing rounded"
     );
@@ -302,7 +301,7 @@ fn push_clip_rounded_nested_builds_outer_inner_chain() {
         buf.quads.instance()[1].header.clip,
         "rect inside nested rounded inherits the full chain"
     );
-    assert_eq!(buf.groups[2].scissor, Some(URect::new(20, 30, 50, 50)));
+    assert_eq!(scissors[2], Some(URect::new(20, 30, 50, 50)));
 
     let crossing = chain(3);
     assert_eq!(crossing.len(), 2, "a clip past the outer's edge keeps it");
@@ -368,7 +367,7 @@ fn rounded_clip_chain_accepts_depth_255() {
         &params(1.0, UVec2::new(400, 400)),
     );
 
-    assert_eq!(buf.groups.len(), 1);
+    assert_eq!(quad_runs(&buf).len(), 1);
     assert_eq!(buf.quads.instance()[0].header.clip.span().len, 255);
 }
 
@@ -396,7 +395,11 @@ fn push_clip_rounded_redundant_identical_push_adds_no_depth() {
         &params(1.0, UVec2::new(400, 400)),
     );
     assert_eq!(buf.quads.len(), 2);
-    assert_eq!(buf.groups.len(), 1, "identical rounded re-push is a no-op");
+    assert_eq!(
+        quad_runs(&buf),
+        [(Span::new(0, 2), Some(URect::new(10, 10, 100, 100)))],
+        "identical rounded re-push is a no-op"
+    );
     assert_eq!(
         buf.quads.instance()[1].header.clip.span().len,
         1,
@@ -427,7 +430,10 @@ fn push_clip_rounded_mask_rect_is_unclamped_to_viewport() {
     assert_eq!(r.mask_rect.min, Vec2::new(-50.0, -20.0));
     assert_eq!(r.mask_rect.size, Size::new(200.0, 100.0));
     // Scissor clamps to the viewport.
-    assert_eq!(buf.groups[0].scissor, Some(URect::new(0, 0, 120, 60)));
+    assert_eq!(
+        quad_runs(&buf),
+        [(Span::new(0, 1), Some(URect::new(0, 0, 120, 60)))]
+    );
 }
 
 #[test]
@@ -440,7 +446,10 @@ fn push_clip_rect_emits_no_rounded_data() {
         },
         &params(1.0, UVec2::new(400, 400)),
     );
-    assert_eq!(buf.groups.len(), 1);
+    assert_eq!(
+        quad_runs(&buf),
+        [(Span::new(0, 1), Some(URect::new(10, 20, 100, 80)))]
+    );
     assert!(buf.rounded_clips.is_empty());
     assert_eq!(buf.quads.instance()[0].header.clip, ClipChain::NONE);
     assert!(!buf.clips_drawn, "a rect clip names no rounded clip");
@@ -495,8 +504,5 @@ fn compose_culls_non_text_draws_outside_each_viewport_edge_without_clip() {
     assert!(buf.meshes.is_empty());
     assert!(buf.images.is_empty());
     assert!(buf.curves.is_empty());
-    assert!(buf.groups.is_empty());
-    assert!(buf.batches(PaintTier::Mesh).is_empty());
-    assert!(buf.batches(PaintTier::Image).is_empty());
-    assert!(buf.batches(PaintTier::Curve).is_empty());
+    assert!(buf.runs.is_empty());
 }

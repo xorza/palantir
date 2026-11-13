@@ -1,6 +1,6 @@
 //! The tracer of a device that writes timestamps: `wgpu` timestamp and pipeline-statistics queries (see `DeviceRequirements::GPU_TIMING_FEATURES`).
 //!
-//! - `TIMESTAMP_QUERY_INSIDE_PASSES` writes a timestamp at every category transition in `render_groups`, attributed per [`BatchKind`]; off, only pass begin/end are timed. Where the main pass breaks at a backdrop, the break's start and end are timestamped, and the captures and blurs between count in no category.
+//! - `TIMESTAMP_QUERY_INSIDE_PASSES` writes a timestamp at every category transition in `render_runs`, attributed per [`BatchKind`]; off, only pass begin/end are timed. Where the main pass breaks at a backdrop, the break's start and end are timestamped, and the captures and blurs between count in no category.
 //! - `PIPELINE_STATISTICS_QUERY` brackets each pass of the main pass, and the frame publishes their sum.
 //! - `TIMESTAMP_QUERY_INSIDE_ENCODERS` brackets the backbuffer copy-out at [`COPY_OUT_IDX`], published as [`GpuPassStats::last_copy_out`], and each backdrop break's captures and blurs at [`BACKDROP_IDX`], published as their sums.
 //!

@@ -14,9 +14,9 @@
 //! # Damage
 //!
 //! - [`Damage::Full`](crate::damage::Damage::Full): one `LoadOp::Clear(clear)` pass
-//!   paints every group at its native scissor.
+//!   paints every run at its native scissor.
 //! - [`Damage::Partial(region)`](crate::damage::Damage::Partial): one render pass that
-//!   `LoadOp::Load`s the backbuffer and replays the groups once per rect, each group's
+//!   `LoadOp::Load`s the backbuffer and replays the runs once per rect, each run's
 //!   scissor narrowed to the rect (scaled, padded for AA bleed, clamped; zero-area rects
 //!   dropped). On a device whose pass loads and stores its whole target
 //!   ([`PassTraffic::WholeTarget`]), the pass instead clears a [`DamageCanvas`] of the rects'
@@ -64,7 +64,7 @@ use crate::gpu::frame::debug_overlay::{self, DebugOverlay, OverlayDraw};
 use crate::gpu::frame::frame_passes::{ColorLoad, FramePasses, FrameShape, PassStep, TargetKind};
 use crate::gpu::frame::gpu_timings::{BackdropPhase, FrameTiming, GpuTimings, Mark};
 use crate::gpu::frame::main_segment::MainSegment;
-use crate::gpu::frame::schedule::{GroupSpan, RenderStep, Schedule};
+use crate::gpu::frame::schedule::{RenderStep, RunSpan, Schedule};
 use crate::gpu::frame::submission::{Route, Submission};
 use crate::gpu::pipeline::atlas_binding::{AtlasGroup, AtlasSlots};
 use crate::gpu::pipeline::blit_pipeline::BlitPipeline;
@@ -107,6 +107,7 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::wgsl::FRAME_GROUP;
 use crate::renderer::render_buffer::RenderBuffer;
+use crate::renderer::render_buffer::draw_run::{DrawRun, Lane};
 use crate::renderer::render_buffer::fill_form::FillForm;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
 use crate::renderer::render_buffer::shape_form::ShapeForm;
@@ -292,7 +293,7 @@ struct MainPassRecord {
 struct SegmentPass<'a, 't> {
     main: MainPass<'a>,
     segment: MainSegment,
-    groups: GroupSpan,
+    runs: RunSpan,
     load: ColorLoad,
     /// The stream's timestamp queries, when timing is on.
     timings: Option<&'t mut GpuTimings>,
@@ -505,7 +506,7 @@ impl WgpuBackend {
         tracing::trace!(
             quads = buffer.quads.len(),
             texts = buffer.texts.len(),
-            groups = buffer.groups.len(),
+            runs = buffer.runs.len(),
             viewport = ?buffer.display.physical,
             scissors = ?repaint_scissors,
             ?route,
@@ -739,7 +740,7 @@ impl WgpuBackend {
                 PassStep::Dim => self.run_dim_pass(draw, main.color_view, encoder),
                 PassStep::Main {
                     segment,
-                    groups,
+                    runs,
                     load,
                 } => {
                     if segment.opens() {
@@ -750,7 +751,7 @@ impl WgpuBackend {
                         SegmentPass {
                             main,
                             segment,
-                            groups,
+                            runs,
                             load,
                             timings: timings.as_deref_mut(),
                         },
@@ -927,15 +928,19 @@ impl WgpuBackend {
         {
             tracy::zone!(
                 "text.prepare_batches",
-                value = buffer.text_batches.len() as u64
+                value = buffer
+                    .runs
+                    .iter()
+                    .filter(|run| run.lane == Lane::Text)
+                    .count() as u64
             );
             let interned_text = store.text.interned();
-            for (idx, b) in buffer.text_batches.iter().enumerate() {
+            for run in buffer.runs.iter().filter(|run| run.lane == Lane::Text) {
                 self.text.prepare_batch(
                     &mut self.atlas,
                     TextBatchInput {
-                        idx,
-                        runs: &buffer.texts[b.texts.range()],
+                        idx: run.batch as usize,
+                        runs: &buffer.texts[run.rows.range()],
                         scale: buffer.display.scale_factor(),
                         interned_text,
                     },
@@ -943,13 +948,17 @@ impl WgpuBackend {
             }
         }
         {
+            let icons = Lane::Tier(PaintTier::Icon);
             tracy::zone!(
                 "icon.prepare_batches",
-                value = buffer.batches(PaintTier::Icon).len() as u64
+                value = buffer.runs.iter().filter(|run| run.lane == icons).count() as u64
             );
-            for (i, b) in buffer.batches(PaintTier::Icon).iter().enumerate() {
-                self.icon
-                    .prepare_batch(&mut self.atlas, i, &buffer.icons[b.items.range()]);
+            for run in buffer.runs.iter().filter(|run| run.lane == icons) {
+                self.icon.prepare_batch(
+                    &mut self.atlas,
+                    run.batch as usize,
+                    &buffer.icons[run.rows.range()],
+                );
             }
         }
 
@@ -1003,7 +1012,7 @@ impl WgpuBackend {
         }
     }
 
-    /// One pass of the main pass: its groups, walked once per repaint scissor (once, unscissored,
+    /// One pass of the main pass: its runs, walked once per repaint scissor (once, unscissored,
     /// on Full). The scissors are disjoint ([`RepaintScissors::new`]), as a later pass paints over
     /// what the one before it left. Timestamps open with the first pass and close with the last,
     /// the breaks between count in no category, and each pass adds its pipeline statistics.
@@ -1017,7 +1026,7 @@ impl WgpuBackend {
         let SegmentPass {
             main,
             segment,
-            groups,
+            runs,
             load,
             mut timings,
         } = segment_pass;
@@ -1079,15 +1088,15 @@ impl WgpuBackend {
         let schedule = |damage_scissor| Schedule {
             buffer: draw.buffer,
             damage_scissor,
-            groups,
+            runs,
             load,
         };
         match scissors {
-            RepaintScissors::Full => self.render_groups(&mut ctx, schedule(None)),
+            RepaintScissors::Full => self.render_runs(&mut ctx, schedule(None)),
             RepaintScissors::Partial(rects) => {
                 for r in rects {
                     tracing::trace!(scissor = ?r, "wgpu_backend.submit.pass.partial_rect");
-                    self.render_groups(&mut ctx, schedule(Some(r)));
+                    self.render_runs(&mut ctx, schedule(Some(r)));
                 }
             }
         }
@@ -1099,7 +1108,7 @@ impl WgpuBackend {
 
     /// Dispatch each step of `schedule` ([`Schedule::for_each_step`]) to the pass; ordering lives
     /// in the schedule module so tests assert it without a GPU.
-    fn render_groups<'a>(&'a self, ctx: &mut DrawCtx<'a, '_>, schedule: Schedule<'a>) {
+    fn render_runs<'a>(&'a self, ctx: &mut DrawCtx<'a, '_>, schedule: Schedule<'a>) {
         tracy::zone!();
         let draw = ctx.draw;
         let buffer = draw.buffer;
@@ -1128,8 +1137,12 @@ impl WgpuBackend {
                     size: r.size,
                 });
             }
-            RenderStep::Quads { range } => {
-                for run in self.programs.quad.runs(range) {
+            RenderStep::Draw(DrawRun {
+                lane: Lane::Quad,
+                rows,
+                ..
+            }) => {
+                for run in self.programs.quad.runs(rows) {
                     ctx.batch(run.key.batch_kind(), |ctx| {
                         self.programs.quad.draw_run(
                             ctx.rec,
@@ -1142,52 +1155,58 @@ impl WgpuBackend {
                     });
                 }
             }
-            RenderStep::Text { batch } => ctx.batch(BatchKind::Text, |ctx| {
-                self.text.render_batch(ctx.rec, batch, raster());
+            RenderStep::Draw(DrawRun {
+                lane: Lane::Text,
+                batch,
+                ..
+            }) => ctx.batch(BatchKind::Text, |ctx| {
+                self.text.render_batch(ctx.rec, batch as usize, raster());
             }),
-            RenderStep::TierBatch { tier, batch } => {
+            RenderStep::Draw(DrawRun {
+                lane: Lane::Tier(tier),
+                rows: items,
+                batch,
+                ..
+            }) => {
                 // The timing bucket and label come from the tier, so a new tier cannot reach the
                 // pass untimed.
-                ctx.batch(batch_kind(tier), |ctx| {
-                    let items = || buffer.batches(tier)[batch].items;
-                    match tier {
-                        PaintTier::Mesh => self.programs.mesh.draw_batch(
-                            ctx.rec,
-                            pipelines.mesh(),
-                            MeshBatch {
-                                draws: buffer.meshes.draw(),
-                                items: items(),
-                            },
-                        ),
-                        PaintTier::Image => self.programs.image.draw_batch(
-                            ctx.rec,
-                            |form| pipelines.image(form),
-                            ImageBatch {
-                                ids: buffer.images.id(),
-                                keys: buffer.images.key(),
-                                items: items(),
-                            },
-                            textures,
-                        ),
-                        PaintTier::Icon => self.icon.render_batch(ctx.rec, batch, raster()),
-                        PaintTier::Curve => {
-                            self.programs
-                                .curve
-                                .draw_batch(ctx.rec, pipelines.curve(), items());
-                        }
-                        PaintTier::Effect => self.programs.effect.draw_batch(
-                            ctx.rec,
-                            |key| pipelines.effect(key),
-                            EffectBatch {
-                                keys: buffer.effects.key(),
-                                instances: buffer.effects.instance(),
-                                modules: draw.effect_modules,
-                                items: items(),
-                                groups: &effect_groups,
-                                backdrops: self.backdrops.groups(),
-                            },
-                        ),
+                ctx.batch(batch_kind(tier), |ctx| match tier {
+                    PaintTier::Mesh => self.programs.mesh.draw_batch(
+                        ctx.rec,
+                        pipelines.mesh(),
+                        MeshBatch {
+                            draws: buffer.meshes.draw(),
+                            items,
+                        },
+                    ),
+                    PaintTier::Image => self.programs.image.draw_batch(
+                        ctx.rec,
+                        |form| pipelines.image(form),
+                        ImageBatch {
+                            ids: buffer.images.id(),
+                            keys: buffer.images.key(),
+                            items,
+                        },
+                        textures,
+                    ),
+                    PaintTier::Icon => self.icon.render_batch(ctx.rec, batch as usize, raster()),
+                    PaintTier::Curve => {
+                        self.programs
+                            .curve
+                            .draw_batch(ctx.rec, pipelines.curve(), items);
                     }
+                    PaintTier::Effect => self.programs.effect.draw_batch(
+                        ctx.rec,
+                        |key| pipelines.effect(key),
+                        EffectBatch {
+                            keys: buffer.effects.key(),
+                            instances: buffer.effects.instance(),
+                            modules: draw.effect_modules,
+                            items,
+                            groups: &effect_groups,
+                            backdrops: self.backdrops.groups(),
+                        },
+                    ),
                 });
             }
         });

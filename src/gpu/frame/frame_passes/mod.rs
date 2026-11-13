@@ -1,7 +1,7 @@
 //! The passes one frame records, in order, planned before any is: the backend runs the plan.
 
 use crate::gpu::frame::main_segment::MainSegment;
-use crate::gpu::frame::schedule::GroupSpan;
+use crate::gpu::frame::schedule::RunSpan;
 
 /// One step of a frame's passes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -9,10 +9,10 @@ pub(crate) enum PassStep {
     /// Dim what a partial frame keeps, in a pass of its own over the color target, before the
     /// main pass.
     Dim,
-    /// One pass of the main pass, painting `groups` into the color target.
+    /// One pass of the main pass, painting `runs` into the color target.
     Main {
         segment: MainSegment,
-        groups: GroupSpan,
+        runs: RunSpan,
         load: ColorLoad,
     },
     /// Copy break `at`'s backdrops out of the color target and blur them, between two main passes.
@@ -130,7 +130,7 @@ impl FramePasses {
         };
         self.steps.push(PassStep::Main {
             segment,
-            groups: GroupSpan { from, barrier },
+            runs: RunSpan { from, barrier },
             load,
         });
     }

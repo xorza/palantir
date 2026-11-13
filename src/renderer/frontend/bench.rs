@@ -143,9 +143,9 @@ pub(crate) fn atomic<S: Scene>(c: &mut Criterion) {
                 partial,
                 "encode/{label}: the plan"
             );
-            let mut build = || h.rebuild(plan).groups.len();
-            let groups = build();
-            assert!(groups > 0, "encode/{label}: no group built");
+            let mut build = || h.rebuild(plan).runs.len();
+            let runs = build();
+            assert!(runs > 0, "encode/{label}: no run built");
             b.iter(|| black_box(build()));
         });
     }

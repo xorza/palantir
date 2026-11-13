@@ -1,11 +1,11 @@
 use crate::gpu::frame::frame_passes::{ColorLoad, FramePasses, FrameShape, PassStep, TargetKind};
 use crate::gpu::frame::main_segment::MainSegment;
-use crate::gpu::frame::schedule::GroupSpan;
+use crate::gpu::frame::schedule::RunSpan;
 
 const fn main(segment: MainSegment, from: u32, barrier: Option<u32>, load: ColorLoad) -> PassStep {
     PassStep::Main {
         segment,
-        groups: GroupSpan { from, barrier },
+        runs: RunSpan { from, barrier },
         load,
     }
 }

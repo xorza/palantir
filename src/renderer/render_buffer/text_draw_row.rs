@@ -17,9 +17,9 @@ pub(crate) struct TextDrawRow {
     pub(crate) origin: Vec2,
     /// Clip bounds (physical px). An unturned run culls its lines against them and clips its
     /// glyphs' quads to them on the CPU (`RasterPass::clip_since`); a turned run culls none, and
-    /// its batch's scissor clips it
-    /// ([`TextBatch::scissor`](crate::renderer::render_buffer::text_batch::TextBatch::scissor)),
-    /// which equals these bounds once a clip cuts the run.
+    /// its batch's run's scissor clips it
+    /// ([`DrawRun::scissor`](crate::renderer::render_buffer::draw_run::DrawRun::scissor)), which
+    /// equals these bounds once a clip cuts the run.
     pub(crate) bounds: URect,
     pub(crate) color: RgbaF16,
     /// Per-run scale on top of the DPI scale: the ancestor `TranslateScale.scale`

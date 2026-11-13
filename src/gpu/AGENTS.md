@@ -51,6 +51,14 @@ How palantir draws, from the renderer's instance streams through wgpu: the decis
   any other, and a closing group's quads join one run per form, looking back past quads they do
   not overlap, as WebRender's `batch_lookback_count`. Refused: sorting by pipeline with a depth
   buffer, as Graphite does, a depth attachment in every pipeline for a small ceiling.
+- **The composer hands the backend its draws in the order they paint**: a list of runs, each a
+  span of one lane's rows under one scissor, which a group appends as it closes, its quads, the
+  text batches that end in it and its tiers in turn, and a text batch that outlives its last group
+  as it closes; the backend replays the list, cutting each scissor by the damage, and a backdrop's
+  barrier is a run's index. As Zed's `Scene::batches` and WebRender's batch lists hand their
+  renderers batches in order. Refused: groups, text batches and tier batches in three tables
+  anchored by group index, which the schedule merged back into one order by a cursor each, an
+  order the composer had already decided.
 
 ## Rounded clip
 
