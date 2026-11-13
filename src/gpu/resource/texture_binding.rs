@@ -46,7 +46,16 @@ impl TextureBinding {
                 label: Some("palantir.texture.bgl"),
                 entries: &[texture_entry(0, Filtering::Filtered), sampler_entry(1)],
             });
-        let sampler = sampler(gpu, "palantir.texture.sampler");
+        let sampler = gpu.device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("palantir.texture.sampler"),
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::MipmapFilterMode::Nearest,
+            ..Default::default()
+        });
         let images = array::from_fn(|idx| {
             let entries: Vec<wgpu::BindGroupLayoutEntry> = [sampler_entry(0)]
                 .into_iter()
@@ -60,16 +69,6 @@ impl TextureBinding {
                     entries: &entries,
                 })
         });
-        let storage = |binding| wgpu::BindGroupLayoutEntry {
-            binding,
-            visibility: wgpu::ShaderStages::FRAGMENT,
-            ty: wgpu::BindingType::Buffer {
-                ty: wgpu::BufferBindingType::Storage { read_only: true },
-                has_dynamic_offset: false,
-                min_binding_size: None,
-            },
-            count: None,
-        };
         let backdrops = gpu
             .device
             .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -77,8 +76,8 @@ impl TextureBinding {
                 entries: &[
                     texture_entry(0, Filtering::Filtered),
                     sampler_entry(1),
-                    storage(2),
-                    storage(3),
+                    storage_entry(2),
+                    storage_entry(3),
                 ],
             });
         let frame = gpu
@@ -88,7 +87,7 @@ impl TextureBinding {
                 entries: &[
                     texture_entry(0, Filtering::Filtered),
                     sampler_entry(1),
-                    storage(2),
+                    storage_entry(2),
                 ],
             });
         Self {
@@ -137,9 +136,49 @@ impl TextureBinding {
         &self.backdrops
     }
 
+    /// The group a backdrop's composite reads `result` through, the texture its result lies in,
+    /// with this sampler, the slot table `slots` and the spectrum a lens spreads, as
+    /// `effect/backdrop.wgsl` declares them.
+    pub(crate) fn backdrop_group(
+        &self,
+        gpu: &Gpu,
+        result: &wgpu::TextureView,
+        slots: &wgpu::Buffer,
+        spectrum: &wgpu::Buffer,
+    ) -> wgpu::BindGroup {
+        gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("palantir.backdrop.composite"),
+            layout: &self.backdrops,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(result),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&self.sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: slots.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: spectrum.as_entire_binding(),
+                },
+            ],
+        })
+    }
+
     /// The layout of one sampled texture's group.
     pub(crate) const fn texture_layout(&self) -> &wgpu::BindGroupLayout {
         &self.layout
+    }
+
+    /// The backend's one sampler, which a group of a layout of its own binds too: the backdrop
+    /// blur's.
+    pub(crate) const fn sampler(&self) -> &wgpu::Sampler {
+        &self.sampler
     }
 
     /// The layout of an effect's image group of `slots` images, from 1.
@@ -200,19 +239,19 @@ impl TextureBinding {
     }
 }
 
-/// The backend's one sampler shape: linear within a mip, nearest between, clamped on every
-/// axis. Every sampling shader takes it, so its description lives here alone.
-pub(crate) fn sampler(gpu: &Gpu, label: &str) -> wgpu::Sampler {
-    gpu.device.create_sampler(&wgpu::SamplerDescriptor {
-        label: Some(label),
-        address_mode_u: wgpu::AddressMode::ClampToEdge,
-        address_mode_v: wgpu::AddressMode::ClampToEdge,
-        address_mode_w: wgpu::AddressMode::ClampToEdge,
-        mag_filter: wgpu::FilterMode::Linear,
-        min_filter: wgpu::FilterMode::Linear,
-        mipmap_filter: wgpu::MipmapFilterMode::Nearest,
-        ..Default::default()
-    })
+/// One fragment-visible read-only storage buffer entry, as the slot tables and the clip pool
+/// declare them.
+pub(crate) const fn storage_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
+    wgpu::BindGroupLayoutEntry {
+        binding,
+        visibility: wgpu::ShaderStages::FRAGMENT,
+        ty: wgpu::BindingType::Buffer {
+            ty: wgpu::BufferBindingType::Storage { read_only: true },
+            has_dynamic_offset: false,
+            min_binding_size: None,
+        },
+        count: None,
+    }
 }
 
 /// One fragment-visible 2D float texture entry, the only texture shape any shader declares,

@@ -1,7 +1,7 @@
 //! [`AtlasGroup`]: the one bind group over the pool's mask and color pages, which every draw that
 //! reads a page binds at [`ATLAS_GROUP`], a raster's and a shadow's alike, and [`AtlasSlots`], the
-//! open slots their pipelines are built for. The shaders declare the pages in this order and take
-//! the group's index by substitution.
+//! open slots their pipelines are built for. `primitives/wgsl/atlas_pages.wgsl` declares the pages
+//! in this order and takes the group's index by substitution.
 
 use crate::gpu::atlas::AtlasPool;
 use crate::gpu::atlas::atlas_format::AtlasFormat;
@@ -18,8 +18,8 @@ pub(crate) const ATLAS_GROUP: u32 = 1;
 /// which glyphs, icons and the shadows' cutout tables share, then the color glyphs and icons.
 pub(crate) const ATLAS_LISTS: [AtlasFormat; 2] = [AtlasFormat::R8, AtlasFormat::Rgba8];
 
-/// The override each list's open slots pin, as the shaders name it.
-const SLOT_OVERRIDES: [&str; 2] = ["MASK_SLOTS", "COLOR_SLOTS"];
+/// The override each list's open slots pin, as `primitives/wgsl/atlas_pages.wgsl` names it.
+const SLOT_OVERRIDES: [&str; 2] = ["PALANTIR_MASK_SLOTS", "PALANTIR_COLOR_SLOTS"];
 
 /// The open slots of the lists the atlas group binds, after the pool's commit: what the pipelines
 /// that read the pages are built for.

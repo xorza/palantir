@@ -48,18 +48,9 @@ const CUTOUT_PAGE_SHIFT: u32 = /*{CUTOUT_PAGE_SHIFT}*/;
 const NO_CUTOUT_TABLE: u32 = /*{NO_CUTOUT_TABLE}*/;
 
 // Baked corner cutouts, one square table per `(r, σ)` in the pool's mask
-// pages, a closed page bound as a 1 × 1 stand-in. Read by `textureLoad`
-// and filtered by hand, as the table's texels are its nodes, and a chain of
-// branches on a flat page picks the texture among the `MASK_SLOTS` the
-// pipeline pins (`palantir_reads_slot`), as the raster shader picks its pages.
-// The atlas group's first bindings, its mask pages; bound to the shadow
-// pipeline only.
-override MASK_SLOTS: u32 = 15u;
-const ATLAS_GROUP: u32 = /*{ATLAS_GROUP}*/;
-@group(ATLAS_GROUP) @binding(0) var mask_page0: texture_2d<f32>;
-@group(ATLAS_GROUP) @binding(1) var mask_page1: texture_2d<f32>;
-@group(ATLAS_GROUP) @binding(2) var mask_page2: texture_2d<f32>;
-@group(ATLAS_GROUP) @binding(3) var mask_page3: texture_2d<f32>;
+// pages, read through the atlas group (`primitives/wgsl/atlas_pages.wgsl`)
+// and filtered by hand, as the table's texels are its nodes. Bound to the
+// shadow pipeline only.
 
 // Whether a shadow draws as its template, which leaves out where it paints
 // nothing, and takes the cheaper forms where the cutoff at `reach` makes
@@ -483,24 +474,6 @@ fn cutout_side(table: u32) -> u32 {
     return ((table >> CUTOUT_SIDE_SHIFT) & mask) + 1u;
 }
 
-// The four texels from `at` to `at + (1, 1)` of mask page `page`, one of the
-// `MASK_SLOTS`, as `(at, +x, +y, +xy)`.
-fn cutout_texels(page: u32, at: vec2<u32>) -> vec4<f32> {
-    if (palantir_reads_slot(MASK_SLOTS, 0u, page)) { return cutout_quad(mask_page0, at); }
-    if (palantir_reads_slot(MASK_SLOTS, 1u, page)) { return cutout_quad(mask_page1, at); }
-    if (palantir_reads_slot(MASK_SLOTS, 2u, page)) { return cutout_quad(mask_page2, at); }
-    return cutout_quad(mask_page3, at);
-}
-
-fn cutout_quad(page: texture_2d<f32>, at: vec2<u32>) -> vec4<f32> {
-    return vec4<f32>(
-        textureLoad(page, at, 0).x,
-        textureLoad(page, at + vec2<u32>(1u, 0u), 0).x,
-        textureLoad(page, at + vec2<u32>(0u, 1u), 0).x,
-        textureLoad(page, at + vec2<u32>(1u, 1u), 0).x,
-    );
-}
-
 // The cutout at `q` from a baked table, filtered bilinearly: texel `i` of
 // each axis holds the cutout at `q = i·h − reach`, `h = σ /
 // CUTOUT_TEXELS_PER_SIGMA`. Outside the table the cutout is zero, as it is
@@ -512,7 +485,8 @@ fn cutout_lookup(table: u32, q: vec2<f32>, sigma: f32, reach: f32) -> f32 {
     }
     let i = vec2<u32>(t);
     let f = t - vec2<f32>(i);
-    let t4 = cutout_texels(table >> CUTOUT_PAGE_SHIFT, cutout_origin(table) + i);
+    let at = vec2<i32>(cutout_origin(table) + i);
+    let t4 = palantir_mask_taps(table >> CUTOUT_PAGE_SHIFT, at, at + vec2<i32>(1));
     return mix(mix(t4.x, t4.y, f.x), mix(t4.z, t4.w, f.x), f.y);
 }
 

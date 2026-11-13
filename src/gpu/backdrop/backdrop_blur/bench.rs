@@ -13,6 +13,7 @@ use crate::gpu::backdrop::backdrop_blur::{BackdropBlur, BlurJob, JobLayout, LEVE
 use crate::gpu::bench_gpu::{BenchGpu, PassTimer, TARGET_FORMAT, Timing};
 use crate::gpu::pipeline::effect_pipeline::backdrop_groups::ResultTexture;
 use crate::gpu::resource::gpu_ctx::GpuCtx;
+use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::resource::upload_staging::UploadStaging;
 use crate::primitives::geometry::urect::URect;
 use crate::shape::paint::blur_plan::BlurPlan;
@@ -74,7 +75,7 @@ pub(crate) fn atomic(c: &mut Criterion, backends: &Backends) {
                     dest_origin: UVec2::ZERO,
                     layout: JobLayout::default(),
                 };
-                let mut blur = BackdropBlur::new(&gpu.gpu);
+                let mut blur = BackdropBlur::new(&gpu.gpu, TextureBinding::new(&gpu.gpu).sampler());
                 fill_capture(gpu, &mut blur, side);
                 let dest_size = job.dest_rect().max();
                 let dest = gpu.gpu.device.create_texture(&wgpu::TextureDescriptor {
@@ -114,7 +115,7 @@ pub(crate) fn atomic(c: &mut Criterion, backends: &Backends) {
                     layout: JobLayout::default(),
                 })
                 .collect();
-            let mut blur = BackdropBlur::new(&gpu.gpu);
+            let mut blur = BackdropBlur::new(&gpu.gpu, TextureBinding::new(&gpu.gpu).sampler());
             fill_capture(gpu, &mut blur, 2048);
             let dest_size = jobs
                 .iter()

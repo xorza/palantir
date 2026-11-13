@@ -25,7 +25,7 @@ use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use crate::gpu::resource::effect_image_groups::{EffectImageGroups, EffectImages};
 use crate::gpu::resource::gpu_ctx::GpuCtx;
 use crate::gpu::resource::pipeline_recipe::{self, Pipeline, PipelineRecipe, vertex_attr};
-use crate::gpu::resource::texture_binding::TextureBinding;
+use crate::gpu::resource::texture_binding::{self, TextureBinding};
 use crate::gpu::resource::wgpu_image_store::WgpuImageStore;
 use crate::primitives::effect::effect_kind::KindId;
 use crate::primitives::identity::texture_id::TextureId;
@@ -53,16 +53,7 @@ impl EffectDevice {
             .device
             .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("palantir.effect.bgl"),
-                entries: &[wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: true },
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                }],
+                entries: &[texture_binding::storage_entry(0)],
             });
         let images = |slots: usize| match u8::try_from(slots).unwrap() {
             0 => None,
@@ -281,7 +272,8 @@ pub(crate) struct EffectPipeline {
     images: Vec<EffectImages>,
     /// Bound over `words`; made again when the buffer grows or shrinks.
     group: Option<wgpu::BindGroup>,
-    group_capacity: usize,
+    /// The `words` capacity `group` binds.
+    bound: usize,
     /// The shape template's triangles, which every effect draws over its shape.
     indices: TemplateIndices,
 }
@@ -317,7 +309,7 @@ impl EffectPipeline {
             words: DynamicBuffer::storage(gpu, "palantir.effect.words", 64),
             images: Vec::new(),
             group: None,
-            group_capacity: 0,
+            bound: 0,
             indices: TemplateIndices::new(gpu),
         }
     }
@@ -347,7 +339,7 @@ impl EffectPipeline {
                 .filter(|set| !set.ids().is_empty()),
             ctx.frame,
         );
-        if self.group.is_none() || self.words.capacity() != self.group_capacity {
+        if self.group.is_none() || self.words.capacity() != self.bound {
             let read = stores.effects.read();
             self.group = Some(
                 ctx.gpu
@@ -361,7 +353,7 @@ impl EffectPipeline {
                         }],
                     }),
             );
-            self.group_capacity = self.words.capacity();
+            self.bound = self.words.capacity();
         }
     }
 

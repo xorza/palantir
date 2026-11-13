@@ -22,9 +22,15 @@ pub(crate) struct CompositeGroups {
     pub(crate) absent: wgpu::BindGroup,
     pub(crate) pages: [Option<wgpu::BindGroup>; MAX_PAGES],
     pub(crate) scratch: Vec<Option<wgpu::BindGroup>>,
-    /// The generation of the list's views the groups bind.
+    /// What the groups bind, which a moved view or a grown slot table changes.
+    pub(crate) bound: CompositeBound,
+}
+
+/// The generation of the list's views and the `slot_buffer` capacity composite groups were made
+/// over.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct CompositeBound {
     pub(crate) generation: u64,
-    /// The `slot_buffer` capacity the groups bind.
     pub(crate) capacity: usize,
 }
 

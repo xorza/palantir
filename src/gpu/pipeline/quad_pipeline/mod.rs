@@ -210,7 +210,7 @@ impl QuadPipeline {
         wgsl: include_str!("quad.wgsl"),
         includes: &[
             wgsl::FRAME,
-            wgsl::ATLAS_SLOTS,
+            wgsl::ATLAS_PAGES,
             wgsl::GRADIENT_LUT,
             wgsl::GRADIENT_FILL,
             include_str!("paint.wgsl"),

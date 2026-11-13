@@ -25,12 +25,12 @@ use crate::gpu::atlas::tenant::Tenant;
 use crate::gpu::backdrop::backdrop_blur::{BackdropBlur, BlurJob, JobLayout, TargetSource};
 use crate::gpu::device::gpu::{FilledBuffer, Gpu};
 use crate::gpu::pipeline::effect_pipeline::backdrop_groups::{
-    BackdropGroups, CompositeGroups, ResultTexture,
+    BackdropGroups, CompositeBound, CompositeGroups, ResultTexture,
 };
 use crate::gpu::render_owner_id::RenderOwnerId;
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use crate::gpu::resource::gpu_ctx::GpuCtx;
-use crate::gpu::resource::texture_binding::{self, TextureBinding};
+use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::spectrum_tables::SpectrumTables;
 use crate::gpu::texel::TargetFormat;
 use crate::primitives::identity::backdrop_key::BackdropKey;
@@ -253,70 +253,23 @@ pub(crate) struct Backdrops {
     drained: Vec<AtlasHandle>,
     /// The scratch ids a purge took, as [`Self::drop_evicted`] drains them.
     drained_scratch: Vec<ScratchId>,
-    /// The layout of the group a backdrop's composite reads its result through
-    /// ([`TextureBinding::backdrop_layout`]); the group itself waits for a backdrop.
-    layout: wgpu::BindGroupLayout,
+    /// What a backdrop's composite group binds through ([`TextureBinding::backdrop_group`]); the
+    /// group itself waits for a backdrop.
+    binding: TextureBinding,
     /// What the backdrops hold on the device, from the first frame with a backdrop.
     resources: Option<BackdropResources>,
 }
 
-/// What [`Backdrops`] holds on the device once a frame has a backdrop: the slot table, the sampler
-/// and the spectrum a lens spreads ([`SpectrumCell`]), written once; the groups over them, made
+/// What [`Backdrops`] holds on the device once a frame has a backdrop: the slot table and the
+/// spectrum a lens spreads ([`SpectrumCell`]), written once; the groups over them, made
 /// after the pool's commit; and the blur, made at the first frame that blurs, as a frame of held
 /// results blurs nothing.
 #[derive(Debug)]
 struct BackdropResources {
     blur: Option<BackdropBlur>,
     slot_buffer: DynamicBuffer<BackdropSlot>,
-    sampler: wgpu::Sampler,
     spectrum: wgpu::Buffer,
     groups: Option<CompositeGroups>,
-}
-
-/// What the group a backdrop's composite reads its result through binds.
-#[derive(Clone, Copy, Debug)]
-struct CompositeParts<'a> {
-    result: &'a wgpu::TextureView,
-    slots: &'a DynamicBuffer<BackdropSlot>,
-    sampler: &'a wgpu::Sampler,
-    spectrum: &'a wgpu::Buffer,
-}
-
-/// The group over one result texture, the sampler, the slot table and the spectrum, as
-/// `effect/backdrop.wgsl` declares them.
-fn composite_group(
-    gpu: &Gpu,
-    layout: &wgpu::BindGroupLayout,
-    parts: CompositeParts<'_>,
-) -> wgpu::BindGroup {
-    let CompositeParts {
-        result,
-        slots,
-        sampler,
-        spectrum,
-    } = parts;
-    gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
-        label: Some("palantir.backdrop.composite"),
-        layout,
-        entries: &[
-            wgpu::BindGroupEntry {
-                binding: 0,
-                resource: wgpu::BindingResource::TextureView(result),
-            },
-            wgpu::BindGroupEntry {
-                binding: 1,
-                resource: wgpu::BindingResource::Sampler(sampler),
-            },
-            wgpu::BindGroupEntry {
-                binding: 2,
-                resource: slots.buffer.as_entire_binding(),
-            },
-            wgpu::BindGroupEntry {
-                binding: 3,
-                resource: spectrum.as_entire_binding(),
-            },
-        ],
-    })
 }
 
 impl BackdropResources {
@@ -325,7 +278,6 @@ impl BackdropResources {
         Self {
             blur: None,
             slot_buffer: DynamicBuffer::storage(gpu, "palantir.backdrop.slots", 4),
-            sampler: texture_binding::sampler(gpu, "palantir.backdrop.composite.sampler"),
             spectrum: gpu.create_filled_buffer(
                 FilledBuffer {
                     label: "palantir.backdrop.spectrum",
@@ -338,23 +290,14 @@ impl BackdropResources {
         }
     }
 
-    /// The group over `result`.
+    /// The group over `result`, through `binding`.
     fn group(
         &self,
         gpu: &Gpu,
-        layout: &wgpu::BindGroupLayout,
+        binding: &TextureBinding,
         result: &wgpu::TextureView,
     ) -> wgpu::BindGroup {
-        composite_group(
-            gpu,
-            layout,
-            CompositeParts {
-                result,
-                slots: &self.slot_buffer,
-                sampler: &self.sampler,
-                spectrum: &self.spectrum,
-            },
-        )
+        binding.backdrop_group(gpu, result, &self.slot_buffer.buffer, &self.spectrum)
     }
 }
 
@@ -370,7 +313,7 @@ impl Backdrops {
             slot_reads: Vec::new(),
             drained: Vec::new(),
             drained_scratch: Vec::new(),
-            layout: binding.backdrop_layout().clone(),
+            binding: binding.clone(),
             resources: None,
         }
     }
@@ -520,7 +463,7 @@ impl Backdrops {
         if !self.jobs.is_empty() {
             resources
                 .blur
-                .get_or_insert_with(|| BackdropBlur::new(ctx.gpu));
+                .get_or_insert_with(|| BackdropBlur::new(ctx.gpu, self.binding.sampler()));
         }
         // A blur made before keeps preparing on a frame with no job, so its scratch decays.
         if let Some(blur) = &mut resources.blur {
@@ -548,24 +491,25 @@ impl Backdrops {
         let Some(resources) = &mut self.resources else {
             return;
         };
-        let generation = textures.generation(RESULTS);
-        let capacity = resources.slot_buffer.capacity();
+        let bound = CompositeBound {
+            generation: textures.generation(RESULTS),
+            capacity: resources.slot_buffer.capacity(),
+        };
         let stale = resources
             .groups
             .as_ref()
-            .is_none_or(|groups| groups.generation != generation || groups.capacity != capacity);
+            .is_none_or(|groups| groups.bound != bound);
         if stale {
-            let layout = &self.layout;
+            let binding = &self.binding;
             resources.groups = Some(CompositeGroups {
-                absent: resources.group(gpu, layout, textures.absent_view(RESULTS)),
+                absent: resources.group(gpu, binding, textures.absent_view(RESULTS)),
                 pages: std::array::from_fn(|idx| {
                     textures
                         .page_view(RESULTS, idx)
-                        .map(|view| resources.group(gpu, layout, view))
+                        .map(|view| resources.group(gpu, binding, view))
                 }),
                 scratch: Vec::new(),
-                generation,
-                capacity,
+                bound,
             });
         }
         for read in self.slot_reads.iter().flatten() {
@@ -578,7 +522,7 @@ impl Backdrops {
                 let view = textures
                     .scratch_view(id)
                     .expect("a held scratch was committed");
-                let group = resources.group(gpu, &self.layout, view);
+                let group = resources.group(gpu, &self.binding, view);
                 let scratch = &mut resources.groups.as_mut().expect("made above").scratch;
                 if scratch.len() <= slot {
                     scratch.resize_with(slot + 1, || None);

@@ -3,6 +3,7 @@ use crate::gpu::backdrop::backdrop_blur::{
     BackdropBlur, BlurJob, BlurParams, JobLayout, LEVEL_FORMAT, ResidualLoop, grown,
 };
 use crate::gpu::pipeline::effect_pipeline::backdrop_groups::ResultTexture;
+use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::test_gpu::{TestGpu, headless_test_gpu};
 use crate::gpu::texel;
 use crate::gpu::texel::TargetFormat;
@@ -139,7 +140,7 @@ fn blur_with(
     jobs: &mut [BlurJob],
     dest_size: UVec2,
 ) -> Vec<[f32; 4]> {
-    let mut engine = BackdropBlur::with_loop(gpu, residual);
+    let mut engine = BackdropBlur::with_loop(gpu, TextureBinding::new(gpu).sampler(), residual);
     blur_on(gpu, &mut engine, pixels, jobs, dest_size)
 }
 
@@ -264,7 +265,7 @@ fn prepare_on(gpu: &TestGpu, engine: &mut BackdropBlur, jobs: &mut [BlurJob]) {
 #[test]
 fn the_shared_textures_expire_after_idle() {
     let gpu = headless_test_gpu();
-    let mut engine = BackdropBlur::new(&gpu);
+    let mut engine = BackdropBlur::new(&gpu, TextureBinding::new(&gpu).sampler());
     let plan = BlurPlan::new(10.0);
     assert!(plan.levels() > 0, "fixture: a blur that halves");
     let capture = |engine: &BackdropBlur| {
@@ -493,7 +494,7 @@ fn blur_batches(
         .iter()
         .map(|dest| dest.create_view(&wgpu::TextureViewDescriptor::default()))
         .collect();
-    let mut engine = BackdropBlur::new(gpu);
+    let mut engine = BackdropBlur::new(gpu, TextureBinding::new(gpu).sampler());
     gpu.frame(|ctx| {
         engine.prepare(ctx, jobs, batches.iter().cloned(), None);
         for batch in batches {
@@ -693,7 +694,7 @@ fn a_batch_past_the_scratch_runs_in_rounds() {
     let size = second.dest_rect().max();
     let run = |edge: u16| {
         let mut jobs = [first, second];
-        let mut engine = BackdropBlur::new(&gpu);
+        let mut engine = BackdropBlur::new(&gpu, TextureBinding::new(&gpu).sampler());
         engine.cap(u32::from(edge));
         let got = blur_on(&gpu, &mut engine, &pixels, &mut jobs, size);
         let scratch = texel::size(&engine.scratch.as_ref().unwrap().texture);

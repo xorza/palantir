@@ -107,7 +107,7 @@ impl RasterPipeline {
     pub(crate) const SHADER: ShaderBody = ShaderBody {
         label: "palantir.raster.shader",
         wgsl: include_str!("shader.wgsl"),
-        includes: &[wgsl::FRAME, wgsl::ATLAS_SLOTS],
+        includes: &[wgsl::FRAME, wgsl::ATLAS_PAGES],
         constants: SHADER_CONSTANTS,
     };
 

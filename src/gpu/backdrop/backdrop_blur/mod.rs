@@ -241,6 +241,9 @@ pub(crate) struct BackdropBlur {
     filtered: SourcePasses,
     loaded: SourcePasses,
     vertical: wgpu::RenderPipeline,
+    /// The backend's one sampler ([`TextureBinding::sampler`]), which the filtered passes bind.
+    ///
+    /// [`TextureBinding::sampler`]: crate::gpu::resource::texture_binding::TextureBinding::sampler
     sampler: wgpu::Sampler,
     params_layout: wgpu::BindGroupLayout,
     params: DynamicBuffer<ParamsSlot>,
@@ -285,12 +288,13 @@ impl BackdropBlur {
         constants: SHADER_CONSTANTS,
     };
 
-    pub(crate) fn new(gpu: &Gpu) -> Self {
-        Self::with_loop(gpu, ResidualLoop::of(&gpu.device.adapter_info()))
+    /// The blur on `gpu`, its filtered passes binding `sampler`, the backend's one.
+    pub(crate) fn new(gpu: &Gpu, sampler: &wgpu::Sampler) -> Self {
+        Self::with_loop(gpu, sampler, ResidualLoop::of(&gpu.device.adapter_info()))
     }
 
     /// The blur on `gpu`, its residual's loop shaped `residual`.
-    pub(crate) fn with_loop(gpu: &Gpu, residual: ResidualLoop) -> Self {
+    pub(crate) fn with_loop(gpu: &Gpu, sampler: &wgpu::Sampler, residual: ResidualLoop) -> Self {
         let one_loop = [(
             "ONE_LOOP",
             f64::from(u8::from(residual == ResidualLoop::One)),
@@ -371,7 +375,6 @@ impl BackdropBlur {
         }
         .build(gpu)
         .pipeline;
-        let sampler = texture_binding::sampler(gpu, "palantir.backdrop.blur.sampler");
         let params = DynamicBuffer::uniform(gpu, "palantir.backdrop.blur.params", 16);
         let params_group = params_group(gpu, &params_layout, &params.buffer);
         let ceiling = gpu.max_texture_dim().get();
@@ -379,7 +382,7 @@ impl BackdropBlur {
             filtered,
             loaded,
             vertical,
-            sampler,
+            sampler: sampler.clone(),
             params_layout,
             params_bound: params.capacity(),
             params,
