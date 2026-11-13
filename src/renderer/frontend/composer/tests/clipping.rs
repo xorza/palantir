@@ -117,7 +117,8 @@ fn a_clip_scissors_the_quads_it_cuts() {
 /// A tier draw joins its open run while that run's scissor cuts it as its own clip does: under
 /// (50, 50, 100 × 100) the image across the clip's corner opens a run under it, the one inside it
 /// joins, as the clip holds it, and the one past the clip, which the clip would cut away, opens a
-/// run under none. Each run holds the pixels its images paint.
+/// run under none. Each run's bounds are the images' union in the group, (60, 10)..(220, 150), cut
+/// to its scissor: wider than its own draws, which costs a damage walk a skip, never a pixel.
 #[test]
 fn a_tier_draw_joins_its_open_run_while_its_scissor_cuts_it_as_its_clip_does() {
     let clip_rect = URect::new(50, 50, 100, 100);
@@ -139,8 +140,12 @@ fn a_tier_draw_joins_its_open_run_while_its_scissor_cuts_it_as_its_clip_does() {
     assert_eq!(
         runs,
         [
-            (Span::new(0, 2), Some(clip_rect), URect::new(60, 60, 90, 90)),
-            (Span::new(2, 1), None, URect::new(200, 10, 20, 20)),
+            (
+                Span::new(0, 2),
+                Some(clip_rect),
+                URect::new(60, 50, 90, 100)
+            ),
+            (Span::new(2, 1), None, URect::new(60, 10, 160, 140)),
         ]
     );
 }

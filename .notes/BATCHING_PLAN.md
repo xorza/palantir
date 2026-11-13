@@ -228,7 +228,16 @@ In order; each ends with the gate of `AGENTS.md` and the census of step 1.
   run cuts none proves it first.
 - **Gate.** The text backend's atomic cases; refuse it within the floor.
 
-### 8. The composer pays for runs per draw no more than it did for groups
+### 8. The composer pays for runs per draw no more than it did for groups — in progress
+
+- **Status.** A run's bounds come from unions the composer keeps anyway, a tier's from its
+  overlap grid and the quads' from one union a group, and the join reads shaded rects only past
+  its one-key fast path and copies the group only where a quad moved. On the Apple laptop against
+  the step 2 tree: `quads/clipped` +14 %, `quads/rounded_clip` +12 %, `quads/plain` +8 %,
+  `same_tier_image` +17 %, `mixed_overlap` +21 %, `clips/*` +30 to +41 %. What is left is the
+  paint-order overlap grids and the prune answering over one group where clips used to cut many:
+  `RectGrid::any_overlap_inside` and `HigherKindRects::any_overlap` take a third of
+  `clips/rect`, the prune a quarter of `quads/clipped`.
 
 - **Change.** Take back the composer time step 3 added, now that one group spans every clip: a
   tier draw's run update (its scissor test and its bounds union, about 4 ns a draw on the Apple

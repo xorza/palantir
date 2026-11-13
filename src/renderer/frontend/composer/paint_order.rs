@@ -47,13 +47,11 @@ pub(super) struct Admitted {
     pub(super) scissor: Option<URect>,
 }
 
-/// Where a tier's run of the open group starts among its rows, the scissor it draws under, and
-/// the pixels its draws paint.
+/// Where a tier's run of the open group starts among its rows, and the scissor it draws under.
 #[derive(Clone, Copy, Debug)]
 struct TierRun {
     start: u32,
     scissor: Option<URect>,
-    bounds: URect,
 }
 
 /// A run to list: its lane's rows, the scissor it draws under and the pixels it paints, as a
@@ -110,6 +108,11 @@ pub(super) struct PaintOrder {
     /// Each tier's runs in the open group before its open one, by [`PaintTier::idx`], in record
     /// order.
     tier_runs: [Vec<TierRun>; PaintTier::COUNT],
+    /// The union of what the open group's quads paint, `None` before its first: each quad run's
+    /// bounds, cut to its scissor, as each tier run's are its tier's union cut to its scissor.
+    /// Wider than a run's own where a group's quads take several runs, which costs a damage walk
+    /// a run it could have skipped, never a pixel.
+    quad_bounds: Option<URect>,
     /// The runs listed of each lane, by [`Lane::idx`]: the next one's [`DrawRun::batch`].
     lane_runs: [u32; Lane::COUNT],
     /// Why this frame's groups closed, which the batching census reads.
@@ -224,6 +227,7 @@ impl PaintOrder {
         for runs in &mut self.tier_runs {
             runs.clear();
         }
+        self.quad_bounds = None;
         self.closes.reset();
     }
 
@@ -342,7 +346,11 @@ impl Ordering<'_> {
             Lane::Text => None,
             // A quad takes the clip in force, which the group's join trades for its run's
             // scissor ([`QuadRuns::join`]).
-            Lane::Quad => self.clip.scissor(),
+            Lane::Quad => {
+                let bounds = &mut self.order.quad_bounds;
+                *bounds = Some(bounds.map_or(visible, |bounds| bounds.union(visible)));
+                self.clip.scissor()
+            }
             Lane::Tier(tier) => self.run_scissor(tier, seen),
         }
     }
@@ -355,13 +363,12 @@ impl Ordering<'_> {
     #[inline(always)]
     fn run_scissor(&mut self, tier: PaintTier, seen: Seen) -> Option<URect> {
         let Seen { bounds, visible } = seen;
-        if let Some(run) = &mut self.order.open_runs[tier.idx()] {
+        if let Some(run) = self.order.open_runs[tier.idx()] {
             let cuts = match run.scissor {
                 None => bounds,
                 Some(scissor) => bounds.clamp_to(scissor),
             };
             if cuts == visible {
-                run.bounds = run.bounds.union(visible);
                 return run.scissor;
             }
         }
@@ -380,7 +387,6 @@ impl Ordering<'_> {
         let run = TierRun {
             start: self.out.draws_len(tier),
             scissor,
-            bounds: seen.visible,
         };
         if let Some(closed) = self.order.open_runs[tier.idx()].replace(run) {
             self.order.tier_runs[tier.idx()].push(closed);
@@ -465,21 +471,18 @@ impl Ordering<'_> {
             "a batch that ends in the group drew in it"
         );
         if drew {
-            // The quads list a run a stretch of one scissor, as the join left them, each
-            // painting what it shades inside the run's scissor.
+            // The quads list a run a stretch of one scissor, as the join left them.
             let physical = self.out.display.physical;
             let viewport = URect::new(0, 0, physical.x, physical.y);
+            let paints =
+                |scissor: Option<URect>, union: URect| union.clamp_to(scissor.unwrap_or(viewport));
             let mut run_start = order.cursors.quads;
-            let mut bounds: Option<URect> = None;
             for at in order.cursors.quads..q_end {
                 let at = at as usize;
-                let scissor = self.out.quads.scissor()[at];
-                let shaded =
-                    URect::covering(order.runs.shaded()[at - order.cursors.quads as usize])
-                        .clamp_to(scissor.unwrap_or(viewport));
-                let run = bounds.map_or(shaded, |bounds| bounds.union(shaded));
-                bounds = Some(run);
-                if at + 1 == q_end as usize || self.out.quads.scissor()[at + 1] != scissor {
+                let scissors = self.out.quads.scissor();
+                let scissor = scissors[at];
+                if at + 1 == q_end as usize || scissors[at + 1] != scissor {
+                    let union = order.quad_bounds.expect("a group of quads ordered them");
                     let rows = Span::try_from(run_start..at as u32 + 1).unwrap();
                     order.list(
                         self.out,
@@ -487,11 +490,10 @@ impl Ordering<'_> {
                             lane: Lane::Quad,
                             rows,
                             scissor,
-                            bounds: run,
+                            bounds: paints(scissor, union),
                         },
                     );
                     run_start = at as u32 + 1;
-                    bounds = None;
                 }
             }
             for at in 0..order.batch.waiting.len() {
@@ -515,13 +517,14 @@ impl Ordering<'_> {
                         .get(at + 1)
                         .map_or(rows_end, |next| next.start);
                     let rows = Span::try_from(run.start..end).unwrap();
+                    let union = order.higher_kinds.tier_union(tier);
                     order.list(
                         self.out,
                         Listing {
                             lane: Lane::Tier(tier),
                             rows,
                             scissor: run.scissor,
-                            bounds: run.bounds,
+                            bounds: paints(run.scissor, union),
                         },
                     );
                 }
@@ -543,6 +546,7 @@ impl Ordering<'_> {
         for runs in &mut order.tier_runs {
             runs.clear();
         }
+        order.quad_bounds = None;
         // The batches closed in the group have listed, so they no longer gate quads. The
         // open-batch grid spans groups.
         order.batch.closed_grid.clear();
@@ -703,6 +707,7 @@ pub(crate) mod internals {
                 lane_runs: _,
                 open_runs: _,
                 tier_runs,
+                quad_bounds: _,
                 closes: _,
             } = self;
             waiting.capacity() * size_of::<ClosedText>()

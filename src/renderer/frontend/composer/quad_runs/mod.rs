@@ -24,11 +24,8 @@ pub(super) struct QuadRuns {
     keys: Vec<QuadKey>,
     scissors: Vec<Option<URect>>,
     moved: Vec<QuadInstance>,
-    /// What each quad of the group shades, read once: by source position during a join, in the
-    /// joined order after it ([`Self::shaded`]).
+    /// What each quad of the group shades, by source position, read once a join.
     shaded: Vec<Rect>,
-    /// [`Self::shaded`] in the joined order, while the join builds it.
-    shaded_joined: Vec<Rect>,
     /// The clips that cut a quad of the group, whose every quad draws under them, sorted.
     cutting: Vec<URect>,
     /// Whether a run opened under each of [`Self::cutting`], by its position: a quad of a clip no
@@ -75,9 +72,6 @@ impl QuadRuns {
     ) {
         assert_eq!(keys.len(), quads.len(), "a key for each quad");
         assert_eq!(scissors.len(), quads.len(), "a scissor for each quad");
-        self.shaded.clear();
-        self.shaded
-            .extend(quads.iter().map(|quad| quad.header.shaded_rect()));
         let Some(first) = keys.first().map(|&key| (key, scissors[0])) else {
             return;
         };
@@ -88,6 +82,9 @@ impl QuadRuns {
         {
             return;
         }
+        self.shaded.clear();
+        self.shaded
+            .extend(quads.iter().map(|quad| quad.header.shaded_rect()));
         self.cutting.clear();
         self.cutting.extend(
             self.shaded
@@ -106,7 +103,9 @@ impl QuadRuns {
         self.prev.resize(quads.len(), NONE);
         self.next.clear();
         self.next.resize(quads.len(), NONE);
-        let mut changed = false;
+        // Whether a quad joined a run before the last, which reorders the group; a scissor traded
+        // for a run's is written in place.
+        let mut moved = false;
         for at in 0..quads.len() {
             let (key, clip, shaded) = (keys[at], scissors[at], self.shaded[at]);
             let holds = |scissor: Option<URect>| {
@@ -129,16 +128,14 @@ impl QuadRuns {
             };
             let at = at as u32;
             if let Some(joined) = joins {
-                changed |= joined + 1 != self.runs.len();
+                moved |= joined + 1 != self.runs.len();
                 let run = &mut self.runs[joined];
                 self.next[run.last as usize] = at;
                 self.prev[at as usize] = run.last;
                 run.last = at;
-                changed |= run.key.1 != clip;
                 scissors[at as usize] = run.key.1;
             } else {
                 let scissor = if free { None } else { clip };
-                changed |= scissor != clip;
                 scissors[at as usize] = scissor;
                 self.runs.push(Run {
                     key: (key, scissor),
@@ -150,32 +147,24 @@ impl QuadRuns {
                 }
             }
         }
-        if !changed {
+        if !moved {
             return;
         }
         self.moved.clear();
         self.keys.clear();
         self.scissors.clear();
-        self.shaded_joined.clear();
         for run in &self.runs {
             let mut at = run.first;
             while at != NONE {
                 self.moved.push(quads[at as usize]);
                 self.keys.push(run.key.0);
                 self.scissors.push(run.key.1);
-                self.shaded_joined.push(self.shaded[at as usize]);
                 at = self.next[at as usize];
             }
         }
         quads.copy_from_slice(&self.moved);
         keys.copy_from_slice(&self.keys);
         scissors.copy_from_slice(&self.scissors);
-        std::mem::swap(&mut self.shaded, &mut self.shaded_joined);
-    }
-
-    /// What each quad of the group the last [`Self::join`] reordered shades, in its order.
-    pub(super) fn shaded(&self) -> &[Rect] {
-        &self.shaded
     }
 
     /// The run a quad shading `shaded` joins, as `takes` says, looking back [`Self::LOOKBACK`]
@@ -223,7 +212,6 @@ pub(crate) mod internals {
                 scissors,
                 moved,
                 shaded,
-                shaded_joined,
                 cutting,
                 cutting_opened,
             } = self;
@@ -234,7 +222,6 @@ pub(crate) mod internals {
                 + scratch_report::vec_bytes(scissors)
                 + scratch_report::vec_bytes(moved)
                 + scratch_report::vec_bytes(shaded)
-                + scratch_report::vec_bytes(shaded_joined)
                 + scratch_report::vec_bytes(cutting)
                 + scratch_report::vec_bytes(cutting_opened)
         }

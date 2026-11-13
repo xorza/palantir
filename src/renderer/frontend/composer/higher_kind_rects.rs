@@ -41,6 +41,11 @@ impl HigherKindRects {
         self.union.intersects(rect) && self.tiers.iter_mut().any(|t| t.any_overlap(rect))
     }
 
+    /// The union of what `tier` drew in the group, zero-sized where it drew nothing.
+    pub(super) const fn tier_union(&self, tier: PaintTier) -> URect {
+        self.tiers[tier.idx()].union()
+    }
+
     pub(super) fn clear(&mut self) {
         for tier in &mut self.tiers {
             tier.clear();
