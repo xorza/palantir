@@ -5,6 +5,7 @@ use crate::common::expiry_window::EXPIRY_FRAMES;
 use crate::gpu::atlas::atlas_format::AtlasFormat;
 use crate::gpu::atlas::atlas_handle::{Allocation, AtlasHandle, Placement};
 use crate::gpu::atlas::page_list::{MAX_PAGES, Page, PageListConfig};
+use crate::gpu::atlas::scratch_cache::ScratchId;
 use crate::gpu::atlas::tenant::Tenant;
 use crate::gpu::atlas::{AtlasPool, error::AtlasError};
 use crate::internals::seeded_rng::SeededRng;
@@ -212,7 +213,11 @@ fn the_pool_takes_the_starting_constants() {
 fn a_scratch_texture_idles_then_expires_with_the_frames() {
     let mut pool = AtlasPool::of_edge(16384);
     let id = pool
-        .acquire_scratch(AtlasFormat::Rgba16F, UVec2::new(1936, 1088))
+        .acquire_scratch(
+            AtlasFormat::Rgba16F,
+            Tenant::Backdrops,
+            UVec2::new(1936, 1088),
+        )
         .unwrap();
     assert_eq!(pool.scratch_size(id), Some(UVec2::new(2048, 1536)));
     let bytes = 2048 * 1536 * 8;
@@ -299,7 +304,8 @@ fn a_burst_past_one_page_decays_within_the_bounds() {
 /// pinned ones, drops the idle scratch, and drains with no budget. On pages of 32², 16² items fill
 /// the first and open a second: at frame 5, one drawn at 5 and one pinned stay of six, one drawn
 /// at 4, in the grace a decay keeps, among the rest that go. The second page, its last item gone,
-/// closes; the first keeps the two. An idle scratch texture goes; a held one stays.
+/// closes; the first keeps the two. An idle scratch texture goes; of two held, the one drawn at 5
+/// stays, and the other goes to its tenant's queue.
 #[test]
 fn a_purge_keeps_what_this_frame_drew_and_what_is_pinned() {
     let mut pool = AtlasPool::uniform(32, 32, 1 << 20);
@@ -312,16 +318,20 @@ fn a_purge_keeps_what_this_frame_drew_and_what_is_pinned() {
         .collect();
     assert!(pool.list(AtlasFormat::R8).page(1).is_some());
     let idle = pool
-        .acquire_scratch(AtlasFormat::R8, UVec2::splat(64))
+        .acquire_scratch(AtlasFormat::R8, Tenant::Backdrops, UVec2::splat(64))
         .unwrap();
     let held = pool
-        .acquire_scratch(AtlasFormat::R8, UVec2::splat(64))
+        .acquire_scratch(AtlasFormat::R8, Tenant::Backdrops, UVec2::splat(64))
+        .unwrap();
+    let undrawn = pool
+        .acquire_scratch(AtlasFormat::R8, Tenant::Backdrops, UVec2::splat(64))
         .unwrap();
     pool.release_scratch(idle);
     pool.advance_to(4);
     pool.stamp(items[1]).unwrap();
     pool.advance_to(5);
     pool.stamp(items[0]).unwrap();
+    assert_eq!(pool.stamp_scratch(held), Some(UVec2::splat(64)));
     pool.pin(items[2]);
     pool.purge();
     let live: Vec<bool> = items
@@ -334,8 +344,11 @@ fn a_purge_keeps_what_this_frame_drew_and_what_is_pinned() {
     let list = pool.list(AtlasFormat::R8);
     assert!(list.page(1).is_none(), "the emptied page closed");
     assert_eq!(list.page(0).unwrap().live_texels(), 2 * 16 * 16);
-    assert_eq!(list.scratch().texels(), 64 * 64, "the held scratch alone");
+    assert_eq!(list.scratch().texels(), 64 * 64, "the drawn scratch alone");
     assert_eq!(pool.scratch_size(held), Some(UVec2::splat(64)));
+    assert_eq!(pool.scratch_size(undrawn), None);
+    let taken: Vec<ScratchId> = pool.drain_evicted_scratch(Tenant::Backdrops).collect();
+    assert_eq!(taken, [undrawn]);
 }
 
 /// A purge whose drain moved items goes on once they are committed, round after round, until the

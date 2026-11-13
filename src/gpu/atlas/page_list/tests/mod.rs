@@ -354,7 +354,10 @@ fn edges_hold_to_the_device_and_scratch_counts_in_the_bytes() {
     );
     assert!(!wide.prefers_scratch(UVec2::new(512, 10)));
     assert!(wide.prefers_scratch(UVec2::new(10, 513)));
-    let id = wide.scratch_mut().acquire(UVec2::splat(100)).unwrap();
+    let id = wide
+        .scratch_mut()
+        .acquire(UVec2::splat(100), Tenant::Backdrops, 0)
+        .unwrap();
     assert_eq!(wide.scratch().size(id), Some(UVec2::splat(128)));
     assert_eq!(wide.bytes(), 128 * 128);
 }

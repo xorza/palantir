@@ -8,16 +8,19 @@
 use crate::common::span::Span;
 use crate::gpu::atlas::AtlasPool;
 use crate::gpu::atlas::atlas_format::AtlasFormat;
+use crate::gpu::atlas::atlas_handle::Placement;
 use crate::gpu::atlas::atlas_textures::AtlasTextures;
+use crate::gpu::atlas::error::AtlasError;
 use crate::gpu::atlas::tenant::Tenant;
+use crate::gpu::debug_marker;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
 use crate::gpu::pipeline::raster_pipeline::raster_quad::{RasterQuad, SpunRasterQuad};
 use crate::gpu::pipeline::raster_pipeline::{ATLAS_GROUP, RasterPipelinePair};
 use crate::gpu::raster::raster_atlas::packed_metadata::PackedMetadata;
-use crate::gpu::raster::raster_atlas::{PackedRaster, RasterAtlas};
+use crate::gpu::raster::raster_atlas::{Found, RasterAtlas, format_of};
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
-use crate::gpu::resource::gpu_ctx::GpuCtx;
+use crate::gpu::resource::gpu_ctx::{GpuCtx, RowCopy};
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::math::libm_ext::LibmVec2;
 use crate::primitives::paint::raster_image::RasterImage;
@@ -26,6 +29,7 @@ use crate::renderer::render_buffer::row_spin::RowSpin;
 use glam::Vec2;
 use std::fmt::Debug;
 use std::hash::Hash;
+use std::ops::Range;
 
 /// Everything one tenant's pass settles at construction; the pipeline and shader
 /// belong to the [`RasterPipeline`](crate::gpu::pipeline::raster_pipeline::RasterPipeline).
@@ -41,14 +45,85 @@ pub(super) struct RasterPassConfig {
     pub(super) initial_instances: usize,
 }
 
-/// What one [`RasterPass::insert_raster`] managed to do with an image: a slot, one that draws
-/// nothing for an image no frame can place, or the one failure a later frame clears.
+/// What [`RasterPass::file`] made of a rasterized image: an entry, or the one failure a later
+/// frame clears.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum Rasterized {
-    Slot(u32),
-    /// The atlas is at the device maximum with no evictable rectangle; the image is
-    /// missing *this frame only*.
-    AtlasFull,
+pub(super) enum Filed {
+    Found(Found),
+    /// The atlas is at the device maximum with no evictable rectangle; the image is missing
+    /// *this frame only*.
+    Full,
+}
+
+/// One raster's pixels queued for its rectangle until the pool's commit: its list and placement,
+/// and its rows in [`RasterUploads::pixels`].
+#[derive(Clone, Debug)]
+struct PendingCopy {
+    format: AtlasFormat,
+    placement: Placement,
+    pixels: Range<usize>,
+}
+
+/// The rasters a tenant filed this frame, waiting for the pool's commit to make their pages.
+#[derive(Debug)]
+struct RasterUploads {
+    /// GPU debug label of the upload, built once: a per-frame `format!` would allocate.
+    label: String,
+    /// Raster pixels, rows as packed: [`GpuCtx::copy_rows`] pads them to the copy pitch once, in
+    /// the belt's mapped staging.
+    pixels: Vec<u8>,
+    copies: Vec<PendingCopy>,
+}
+
+impl RasterUploads {
+    fn new(label: &str) -> Self {
+        Self {
+            label: format!("{label} atlas batch upload"),
+            pixels: Vec::new(),
+            copies: Vec::new(),
+        }
+    }
+
+    /// Queue `pixels`, rows with no slack, for `placement` on `format`'s pages.
+    fn push(&mut self, format: AtlasFormat, placement: Placement, pixels: &[u8]) {
+        debug_assert_eq!(
+            pixels.len(),
+            placement.texels() as usize * format.texel_bytes() as usize,
+            "a raster's bytes must be its rows with no slack",
+        );
+        let start = self.pixels.len();
+        self.pixels.extend_from_slice(pixels);
+        self.copies.push(PendingCopy {
+            format,
+            placement,
+            pixels: start..self.pixels.len(),
+        });
+    }
+
+    /// Drain the queue into `textures`' pages, once per frame after the pool's commit and before
+    /// any pass draws, through [`GpuCtx::copy_rows`]: the bytes stage once, and no buffer of this
+    /// tenant's own holds the peak frame's worth. A raster's placement is the one it was filed at,
+    /// as no decay or purge runs between a submit's inserts and its flush.
+    fn flush(&mut self, ctx: &mut GpuCtx<'_>, textures: &AtlasTextures) {
+        if self.copies.is_empty() {
+            return;
+        }
+        let pixels = &self.pixels;
+        debug_marker::push(ctx.encoder, &self.label);
+        ctx.copy_rows(self.copies.iter().map(|copy| {
+            RowCopy {
+                texture: textures
+                    .page_texture(copy.format, usize::from(copy.placement.page))
+                    .expect("a raster's page was committed before its upload"),
+                origin: copy.placement.origin.as_uvec2(),
+                size: copy.placement.size.as_uvec2(),
+                rows: &pixels[copy.pixels.clone()],
+            }
+        }));
+        debug_marker::pop(ctx.encoder);
+        self.pixels.clear();
+        self.copies.clear();
+    }
 }
 
 /// The life of one atlas-starvation episode. Starvation is not corruption (the
@@ -99,6 +174,7 @@ struct SpunCut {
 #[derive(Debug)]
 pub(super) struct RasterPass<K> {
     pub(super) atlas: RasterAtlas<K>,
+    uploads: RasterUploads,
     instances: Vec<RasterQuad>,
     /// Where each batch's quads start in [`Self::instances`]; the next entry (or
     /// the instance count) is where they end.
@@ -119,7 +195,8 @@ pub(super) struct RasterPass<K> {
 impl<K: Copy + Eq + Hash + Debug> RasterPass<K> {
     pub(super) fn new(gpu: &Gpu, config: RasterPassConfig) -> Self {
         Self {
-            atlas: RasterAtlas::new(config.tenant, config.label),
+            atlas: RasterAtlas::new(config.tenant),
+            uploads: RasterUploads::new(config.label),
             instances: Vec::new(),
             starts: Vec::new(),
             vbuf: DynamicBuffer::vertex(gpu, config.vbuf, config.initial_instances),
@@ -133,16 +210,23 @@ impl<K: Copy + Eq + Hash + Debug> RasterPass<K> {
         }
     }
 
-    /// File a freshly rasterized image under `key` and return its slot. An image
-    /// whose extents or bearing overflow [`PackedMetadata`], that covers no
-    /// pixels, or that passes a page takes a slot owning no rectangle, so the key
-    /// is a hit forever and the rasterizer runs once.
-    pub(super) fn insert_raster(
+    /// File `image`, rasterized for `key`, which [`RasterAtlas::find`] missed: on a page, its
+    /// pixels queued for the commit, or as drawing nothing where no frame could place it, so the
+    /// key is a hit and its rasterizer runs once. Nothing to draw: no image, one that covers no
+    /// pixels, extents or a bearing past what a slot carries, or wider than a page, which
+    /// [`AtlasCounters::oversized`](crate::gpu::raster::raster_atlas::counters::AtlasCounters)
+    /// counts. [`Filed::Full`] where the pool is full this frame.
+    pub(super) fn file(
         &mut self,
         pool: &mut AtlasPool,
         key: K,
-        image: RasterImage<'_>,
-    ) -> Rasterized {
+        image: Option<RasterImage<'_>>,
+    ) -> Filed {
+        let frame = pool.frame();
+        let Some(image) = image else {
+            self.atlas.insert_unplaced(key, frame);
+            return Filed::Found(Found::Nothing);
+        };
         let Some(metadata) = PackedMetadata::new(image.size, image.bearing) else {
             tracing::warn!(
                 ?key,
@@ -153,21 +237,40 @@ impl<K: Copy + Eq + Hash + Debug> RasterPass<K> {
                 label = self.stem,
                 "skipping raster outside packed atlas metadata range",
             );
-            return Rasterized::Slot(self.atlas.insert_unallocated(key));
+            self.atlas.insert_unplaced(key, frame);
+            return Filed::Found(Found::Nothing);
         };
         if metadata.is_empty() {
-            return Rasterized::Slot(self.atlas.insert_unallocated(key));
+            self.atlas.insert_unplaced(key, frame);
+            return Filed::Found(Found::Nothing);
         }
-        let raster = PackedRaster {
-            metadata,
-            content: image.content,
-            pixels: image.data,
-        };
-        if let Some(idx) = self.atlas.insert(pool, key, raster) {
-            Rasterized::Slot(idx)
-        } else {
-            self.note_atlas_starved(pool);
-            Rasterized::AtlasFull
+        let format = format_of(image.content);
+        match pool.allocate(format, self.atlas.tenant(), metadata.size.as_uvec2()) {
+            Ok(allocation) => {
+                self.uploads.push(format, allocation.placement, image.data);
+                Filed::Found(Found::Raster(self.atlas.insert_placed(
+                    key,
+                    allocation,
+                    metadata.bearing,
+                )))
+            }
+            Err(AtlasError::Oversized { size, edge }) => {
+                self.atlas.counters.oversized.bump();
+                tracing::warn!(
+                    ?key,
+                    width = size.x,
+                    height = size.y,
+                    edge,
+                    label = self.stem,
+                    "skipping raster past the atlas page edge",
+                );
+                self.atlas.insert_unplaced(key, frame);
+                Filed::Found(Found::Nothing)
+            }
+            Err(AtlasError::Full) => {
+                self.note_atlas_starved(pool);
+                Filed::Full
+            }
         }
     }
 
@@ -311,7 +414,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterPass<K> {
     pub(super) fn flush(&mut self, ctx: &mut GpuCtx<'_>, textures: &AtlasTextures) {
         self.vbuf.upload_instances(ctx, &self.instances);
         self.spun_vbuf.upload_instances(ctx, &self.spun);
-        self.atlas.flush_pending_uploads(ctx, textures);
+        self.uploads.flush(ctx, textures);
     }
 
     /// Draw batch `batch_idx`'s quads through `pipelines`, reading the pool's pages through the
@@ -334,16 +437,16 @@ impl<K: Copy + Eq + Hash + Debug> RasterPass<K> {
         });
     }
 
-    /// Age the atlas against `frame` and drop this frame's quads and batch starts.
-    /// Runs for every submit, even one that prepared no batch, or a keep count
-    /// would bound only frames that drew something.
-    pub(super) fn end_frame(&mut self, pool: &mut AtlasPool, frame: u64) {
+    /// Retire the atlas's non-drawing entries due at display frame `frame` and drop this frame's
+    /// quads and batch starts. Runs for every submit, even one that prepared no batch, or a keep
+    /// count would bound only frames that drew something.
+    pub(super) fn end_frame(&mut self, frame: u64) {
         debug_assert!(
             !self.starts.is_empty() || self.instances.is_empty(),
             "{} quads were emitted with no batch to draw them",
             self.stem,
         );
-        self.atlas.end_frame(pool, frame);
+        self.atlas.expire(frame);
         self.instances.clear();
         self.starts.clear();
         self.spun.clear();
@@ -368,7 +471,107 @@ pub(crate) mod internals {
 
 #[cfg(test)]
 mod tests {
-    use crate::gpu::raster::raster_pass::Starvation;
+    use crate::gpu::atlas::AtlasPool;
+    use crate::gpu::atlas::atlas_format::AtlasFormat;
+    use crate::gpu::atlas::tenant::Tenant;
+    use crate::gpu::raster::raster_atlas::Found;
+    use crate::gpu::raster::raster_pass::{Filed, RasterPass, RasterPassConfig, Starvation};
+    use crate::gpu::test_gpu::headless_test_gpu;
+    use crate::primitives::paint::content_type::ContentType;
+    use crate::primitives::paint::raster_image::RasterImage;
+    use glam::{I16Vec2, IVec2, U16Vec2, UVec2};
+
+    /// An image files on a page of its content's list, its pixels queued for that list, or as
+    /// drawing nothing where no frame could place it, so its key is a hit: no image, one of no
+    /// pixels, one past what a slot carries, one past a page, which counts. A pool full of what
+    /// this frame drew files nothing, and queues nothing. On pages of 32², four at most.
+    #[test]
+    fn an_image_files_on_a_page_or_as_drawing_nothing() {
+        let gpu = headless_test_gpu();
+        let mut pass = RasterPass::<u16>::new(
+            &gpu,
+            RasterPassConfig {
+                label: "test",
+                tenant: Tenant::Glyphs,
+                vbuf: "test.vbuf",
+                spun_vbuf: "test.spun_vbuf",
+                initial_instances: 4,
+            },
+        );
+        let mut pool = AtlasPool::uniform(32, 32, 0);
+        let image = |content, size: UVec2, data| RasterImage {
+            content,
+            size,
+            bearing: IVec2::new(1, 2),
+            data,
+        };
+        let raster = |filed| match filed {
+            Filed::Found(Found::Raster(placement)) => placement,
+            other => panic!("{other:?} files no raster"),
+        };
+        let (mask, color) = (vec![0; 10 * 12], vec![0; 4 * 4 * 4]);
+        let m = raster(pass.file(
+            &mut pool,
+            1,
+            Some(image(ContentType::Mask, UVec2::new(10, 12), &mask)),
+        ));
+        assert_eq!(
+            (m.page, m.origin, m.size, m.bearing, m.content()),
+            (
+                0,
+                U16Vec2::ZERO,
+                U16Vec2::new(10, 12),
+                I16Vec2::new(1, 2),
+                ContentType::Mask
+            )
+        );
+        let c = raster(pass.file(
+            &mut pool,
+            2,
+            Some(image(ContentType::Color, UVec2::splat(4), &color)),
+        ));
+        assert_eq!(c.content(), ContentType::Color);
+        let nothing = Filed::Found(Found::Nothing);
+        assert_eq!(pass.file(&mut pool, 3, None), nothing);
+        let empty = image(ContentType::Mask, UVec2::ZERO, &[]);
+        assert_eq!(pass.file(&mut pool, 4, Some(empty)), nothing);
+        let past_slot = image(ContentType::Mask, UVec2::new(1 << 16, 1), &[]);
+        assert_eq!(pass.file(&mut pool, 5, Some(past_slot)), nothing);
+        let past_page = image(ContentType::Mask, UVec2::new(33, 1), &mask[..33]);
+        assert_eq!(pass.file(&mut pool, 6, Some(past_page)), nothing);
+        assert_eq!(pass.atlas.counters.oversized.count(), 1);
+        for key in 3..=6 {
+            assert_eq!(pass.atlas.find(&mut pool, &key), Some(Found::Nothing));
+        }
+        let queued: Vec<(AtlasFormat, U16Vec2)> = pass
+            .uploads
+            .copies
+            .iter()
+            .map(|copy| (copy.format, copy.placement.size))
+            .collect();
+        assert_eq!(
+            queued,
+            [
+                (AtlasFormat::R8, U16Vec2::new(10, 12)),
+                (AtlasFormat::Rgba8, U16Vec2::splat(4))
+            ]
+        );
+
+        let full = vec![0; 32 * 32];
+        for key in 10..14 {
+            let filed = pass.file(
+                &mut pool,
+                key,
+                Some(image(ContentType::Mask, UVec2::splat(32), &full)),
+            );
+            if key < 13 {
+                raster(filed);
+            } else {
+                assert_eq!(filed, Filed::Full, "the hard cap, all drawn this frame");
+            }
+        }
+        assert_eq!(pass.uploads.copies.len(), 2 + 3);
+    }
 
     /// The episode's life: reported once on the first starved raster, held open while starvation
     /// continues, closed by the first frame after the last starved one that starves nothing.

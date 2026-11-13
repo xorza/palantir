@@ -95,9 +95,8 @@ Facts and sources: `.notes/research/2026-11-12-atlas-pools.md` and
   tenant's own headroom.
 - **An allocation is a handle; a move rewrites its placement and nothing else.** Every tenant
   reads its placement at the lookup that draws it, so a drain needs no tenant's help; only an
-  eviction moves a handle's generation. Each tenant drops what the pool evicted at the end of the
-  submit; the backdrops after a purge too, as a window decides what its backdrops hold before its
-  next submit, where a raster or a table reads as stale at its lookup.
+  eviction moves a handle's generation. Every tenant drops what the pool evicted at the end of the
+  submit and after a purge, as a window decides what its backdrops hold before its next submit.
 - **A list binds up to four pages together, the page in the instance**, as Skia's
   `kMaxMultitexturePages`, so a draw never splits by page; a closed page binds a 1 × 1 stand-in.
   The first page doubles from its first edge to the page edge; past it the list adds pages.
@@ -169,7 +168,8 @@ Facts and sources: `.notes/research/2026-11-12-atlas-pools.md` and
   V3D at 2048², so copies win below about 64 there, and a frame takes 16 copies, about 0.7 ms at
   V3D's 43 µs a copy, where 64 took 2.4 ms. Both stop at 512² texels a frame.
 - **The system's memory warnings purge the pool on every platform**, between frames: everything no
-  one pins and the last frame did not draw goes, idle scratch goes, and the pages drain and shrink
+  one pins and the last frame did not draw goes, scratch held or idle that frame did not draw
+  goes, as one full-window glass holds tens of MiB, and the pages drain and shrink
   with no budget, committed at once, round after round as each drain's moves land before the next
   is planned, so the memory returns with no frame to wait for; a stutter traded for
   the process not being killed, as Chromium's memory-pressure listeners and GLib's

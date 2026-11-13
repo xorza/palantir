@@ -871,10 +871,11 @@ impl PageList {
 
     /// Give back all the list can at once, as the system runs short of memory, at display frame
     /// `frame`: evict every item no one pins and this frame did not draw into `evictions`, drop the
-    /// idle scratch, and drain with no budget, a sparse page shrinking and an empty one closing at
-    /// once, until a drain moved an item or none is left to start. A stutter traded for the process
-    /// not being killed (`src/gpu/AGENTS.md`, Atlases). Whether moves wait, after which the caller
-    /// commits them and purges again, as a drain planned now could take the page they land on.
+    /// idle scratch and take the held scratch this frame did not draw, and drain with no budget, a
+    /// sparse page shrinking and an empty one closing at once, until a drain moved an item or none
+    /// is left to start. A stutter traded for the process not being killed (`src/gpu/AGENTS.md`,
+    /// Atlases). Whether moves wait, after which the caller commits them and purges again, as a
+    /// drain planned now could take the page they land on.
     pub(crate) fn purge(&mut self, frame: u64, evictions: &mut Evictions) -> bool {
         for idx in 0..self.entries.len() {
             let entry = &self.entries[idx];
@@ -882,7 +883,7 @@ impl PageList {
                 self.evict(idx, evictions);
             }
         }
-        self.scratch.purge();
+        self.scratch.purge(frame, evictions);
         let mut budget = MoveBudget {
             texels: u64::MAX,
             moves: u32::MAX,

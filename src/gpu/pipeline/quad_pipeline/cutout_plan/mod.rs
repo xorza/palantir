@@ -42,27 +42,6 @@ impl BakeTable {
     pub(crate) const fn key(self) -> CutoutKey {
         CutoutKey::new(self.r, self.sigma)
     }
-
-    /// Whether `other` is the same table at the same place: its code, radius and σ alike.
-    pub(crate) const fn is_at(self, other: Self) -> bool {
-        self.table == other.table
-            && self.r.to_bits() == other.r.to_bits()
-            && self.sigma.to_bits() == other.sigma.to_bits()
-    }
-
-    /// Whether this span holds `other`'s, a table [at](Self::is_at) this one's place.
-    pub(crate) fn holds(self, other: Self) -> bool {
-        self.lo.cmple(other.lo).all() && other.hi.cmple(self.hi).all()
-    }
-
-    /// This table with the least span that holds its own and `other`'s.
-    pub(crate) fn joined(self, other: Self) -> Self {
-        Self {
-            lo: self.lo.min(other.lo),
-            hi: self.hi.max(other.hi),
-            ..self
-        }
-    }
 }
 
 #[repr(C)]
@@ -459,10 +438,11 @@ impl CutoutPlan {
         &self.entries
     }
 
-    /// The code of a table of `side` texels at `placement` in the mask pages, as `vs_shadow`
-    /// carries it: the origin's `x` and `y` in [`Self::COORD_BITS`] each, then `side − 1`, then
-    /// the page.
-    pub(crate) fn code(placement: Placement, side: u32) -> u32 {
+    /// The code of the square table at `placement` in the mask pages, as `vs_shadow` carries it:
+    /// the origin's `x` and `y` in [`Self::COORD_BITS`] each, then its side less one, then the page.
+    pub(crate) fn code(placement: Placement) -> u32 {
+        debug_assert_eq!(placement.size.x, placement.size.y, "a table is square");
+        let side = u32::from(placement.size.x);
         let origin = placement.origin.as_uvec2();
         debug_assert!(
             origin.max_element() < 1 << Self::COORD_BITS,

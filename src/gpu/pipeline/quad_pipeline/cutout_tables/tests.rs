@@ -1,6 +1,7 @@
 //! The bake into a mask page against the cutout it tabulates.
 
 use super::*;
+use crate::gpu::atlas::AtlasPool;
 use crate::gpu::atlas::tenant::Tenant;
 use crate::gpu::pipeline::quad_pipeline::QuadPipeline;
 use crate::gpu::pipeline::quad_pipeline::cutout_placements::CutoutPlacing;
@@ -89,8 +90,9 @@ fn a_baked_table_holds_the_cutout_it_tabulates() {
         .unwrap();
     let mut textures = AtlasTextures::new(&gpu);
     let mut tables = CutoutTables::new(&gpu, &shader, &textures);
+    let mut placements = CutoutPlacements::default();
     let mut placing = CutoutPlacing {
-        placements: &mut tables.placements,
+        placements: &mut placements,
         pool: &mut pool,
     };
     let bakes: Vec<BakeTable> = [(8.0, 16.0, 87), (8.0, 2.0, 127)]

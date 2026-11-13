@@ -15,8 +15,6 @@
   window in one frame, drawn or not, through a stable sort that allocates.
 - `RowTable`'s index rehashes, and once a size resizes, inside a `register` under eviction
   churn, against the comment in `resize_rows`: its `reserve` leaves no room for tombstones.
-- A cutout table a drain moved is baked again whole at its next frame, though the commit moved its
-  texels: `PlacedTable::baked` compares the table's code, which holds its placement.
 - On a device whose passes move their whole target, a frame that bakes a cutout table or blurs a
   backdrop result that lies on a page opens a load-and-store pass over the whole page, the cost
   a drain's moves avoid by copy.

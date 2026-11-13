@@ -44,16 +44,21 @@ impl PoolConfig {
     }
 }
 
-/// The handles evicted since each tenant last drained its queue. Each holds a handle at most once
-/// a generation, so a queue is bounded by its list's slab.
+/// The handles and scratch ids evicted since each tenant last drained its queues. Each holds an
+/// item at most once a generation, so a queue is bounded by its list's slab or scratch slots.
 #[derive(Debug, Default)]
 pub(crate) struct Evictions {
     queues: [Vec<AtlasHandle>; Tenant::COUNT],
+    scratch: [Vec<ScratchId>; Tenant::COUNT],
 }
 
 impl Evictions {
     fn push(&mut self, tenant: Tenant, handle: AtlasHandle) {
         self.queues[tenant as usize].push(handle);
+    }
+
+    fn push_scratch(&mut self, tenant: Tenant, id: ScratchId) {
+        self.scratch[tenant as usize].push(id);
     }
 }
 
@@ -86,6 +91,11 @@ impl AtlasPool {
     /// The list of `format`.
     pub(crate) fn list(&self, format: AtlasFormat) -> &PageList {
         &self.lists[format]
+    }
+
+    /// The display frame the pool ages on, which a tenant ages what it holds beside the pool on.
+    pub(crate) const fn frame(&self) -> u64 {
+        self.frame
     }
 
     /// Move to display frame `frame`.
@@ -191,13 +201,37 @@ impl AtlasPool {
         self.evictions.queues[tenant as usize].drain(..)
     }
 
-    /// A texture of its own of `format` for an item of `size`.
+    /// The scratch ids of `tenant`'s textures a purge took since its last drain, each stale now.
+    #[expect(
+        clippy::iter_with_drain,
+        reason = "the queue keeps its buffer for the next evictions, which `into_iter` would drop"
+    )]
+    pub(crate) fn drain_evicted_scratch(&mut self, tenant: Tenant) -> Drain<'_, ScratchId> {
+        self.evictions.scratch[tenant as usize].drain(..)
+    }
+
+    /// A texture of its own of `format` for `tenant`'s item of `size`, drawn this frame.
     pub(crate) fn acquire_scratch(
         &mut self,
         format: AtlasFormat,
+        tenant: Tenant,
         size: UVec2,
     ) -> Result<ScratchId, AtlasError> {
-        self.lists[format].scratch_mut().acquire(size)
+        let frame = self.frame;
+        self.lists[format]
+            .scratch_mut()
+            .acquire(size, tenant, frame)
+    }
+
+    /// The size of the texture `id` holds, `None` once a purge took it or it was released.
+    pub(crate) fn scratch_size(&self, id: ScratchId) -> Option<UVec2> {
+        self.lists[id.format].scratch().size(id)
+    }
+
+    /// Mark the texture `id` holds drawn this frame and give its size, `None` once a purge took it.
+    pub(crate) fn stamp_scratch(&mut self, id: ScratchId) -> Option<UVec2> {
+        let frame = self.frame;
+        self.lists[id.format].scratch_mut().stamp(id, frame)
     }
 
     /// Give back the texture `id` holds; it idles until it serves again or expires.
@@ -211,10 +245,8 @@ impl AtlasPool {
 pub(crate) mod internals {
     use crate::gpu::atlas::atlas_format::{AtlasFormat, PerFormat};
     use crate::gpu::atlas::page_list::{MoveBudget, PageListConfig};
-    use crate::gpu::atlas::scratch_cache::ScratchId;
     use crate::gpu::atlas::{AtlasPool, PoolConfig};
     use crate::gpu::device::pass_traffic::PassTraffic;
-    use glam::UVec2;
 
     impl AtlasPool {
         /// The pool of a device whose largest texture edge is `device_edge` at the starting
@@ -237,19 +269,9 @@ pub(crate) mod internals {
             })
         }
 
-        /// The display frame the pool ages on.
-        pub(crate) const fn frame(&self) -> u64 {
-            self.frame
-        }
-
         /// Close `format`'s page `idx`, which holds no item.
         pub(crate) fn close_page(&mut self, format: AtlasFormat, idx: usize) {
             self.lists[format].close_page(idx);
-        }
-
-        /// The size of the texture `id` holds, `None` once released.
-        pub(crate) fn scratch_size(&self, id: ScratchId) -> Option<UVec2> {
-            self.lists[id.format].scratch().size(id)
         }
 
         /// Whether the lists decayed in the current display frame.

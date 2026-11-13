@@ -1,10 +1,13 @@
 use crate::common::expiry_window::EXPIRY_FRAMES;
 use crate::display::Display;
-use crate::gpu::atlas::AtlasPool;
 use crate::gpu::atlas::atlas_format::AtlasFormat;
+use crate::gpu::atlas::atlas_format::PerFormat;
 use crate::gpu::atlas::atlas_textures::AtlasTextures;
+use crate::gpu::atlas::page_list::{MoveBudget, PageListConfig};
+use crate::gpu::atlas::tenant::Tenant;
+use crate::gpu::atlas::{AtlasPool, PoolConfig};
 use crate::gpu::backdrop::backdrops::{
-    BackdropFrame, BackdropSlot, Backdrops, Held, Kept, RESULTS, SpectrumCell, held_clear, place,
+    BackdropFrame, BackdropSlot, Backdrops, Kept, RESULTS, SpectrumCell, held_clear,
 };
 use crate::gpu::backdrop::tests::CLEAR;
 use crate::gpu::pipeline::effect_pipeline::backdrop_groups::ResultTexture;
@@ -21,7 +24,7 @@ use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::backdrop_row::{BackdropRow, BackdropSource};
 use crate::shape::paint::blur_plan::BlurPlan;
-use glam::UVec2;
+use glam::{UVec2, Vec2};
 use std::mem::offset_of;
 
 const SURFACE: UVec2 = UVec2::new(200, 100);
@@ -108,7 +111,7 @@ impl Rig {
             textures.commit(ctx.gpu, ctx.encoder, pool);
             backdrops.follow(ctx.gpu, textures);
         });
-        backdrops.end_frame(pool);
+        backdrops.drop_evicted(pool);
     }
 
     /// Skip `frames` display frames no frame of these backdrops prepares in.
@@ -118,19 +121,20 @@ impl Rig {
 
     /// Where `owner`'s backdrop `i`'s result lies, if it holds one: its texture and its texels.
     fn slot(&self, owner: RenderOwnerId, i: u32) -> Option<(ResultTexture, URect)> {
-        match *self.backdrops.cache.get(&(owner, key(i)))? {
-            Kept::Slot(slot) => {
-                let placed = place(slot, &self.pool)?;
-                Some((
-                    placed.texture,
-                    URect {
-                        min: placed.origin,
-                        size: slot.size,
-                    },
-                ))
-            }
-            Kept::Clear(_) => None,
-        }
+        let kept = *self.backdrops.cache.get(&(owner, key(i)))?;
+        let placed = kept.placed(&self.pool)?;
+        let size = match kept {
+            Kept::Item(handle) => self.pool.placement(handle)?.size.as_uvec2(),
+            Kept::Scratch(id) => self.pool.scratch_size(id)?,
+            Kept::Clear(_) => return None,
+        };
+        Some((
+            placed.texture,
+            URect {
+                min: placed.origin,
+                size,
+            },
+        ))
     }
 
     /// The edge of the half-float list's page `idx`.
@@ -331,27 +335,27 @@ fn a_large_result_takes_a_scratch_texture_of_its_own() {
     let (small, _) = backdrops
         .slot_for((owner, key(0)), UVec2::new(400, 300), pool)
         .unwrap();
-    assert!(matches!(small.held, Held::Item(_)));
+    assert!(matches!(small, Kept::Item(_)));
     let (large, placed) = backdrops
         .slot_for((owner, key(1)), UVec2::new(1936, 1088), pool)
         .unwrap();
-    let Held::Scratch(id) = large.held else {
+    let Kept::Scratch(id) = large else {
         panic!("a large result is scratch: {large:?}");
     };
     assert_eq!(placed.texture, ResultTexture::Scratch(id));
     assert_eq!(placed.origin, UVec2::ZERO);
     assert_eq!(pool.scratch_size(id), Some(UVec2::new(2048, 1536)));
-    backdrops.cache.insert((owner, key(1)), Kept::Slot(large));
+    backdrops.cache.insert((owner, key(1)), large);
     backdrops.drop_result((owner, key(1)), pool);
     let (again, _) = backdrops
         .slot_for((owner, key(2)), UVec2::new(1900, 1000), pool)
         .unwrap();
-    let Held::Scratch(reused) = again.held else {
+    let Kept::Scratch(reused) = again else {
         panic!("a large result is scratch: {again:?}");
     };
     assert_eq!(reused.idx, id.idx, "the idle texture reused");
     assert_eq!(pool.scratch_size(reused), Some(UVec2::new(2048, 1536)));
-    backdrops.cache.insert((owner, key(2)), Kept::Slot(again));
+    backdrops.cache.insert((owner, key(2)), again);
     backdrops.drop_result((owner, key(2)), pool);
     pool.advance_to(EXPIRY_FRAMES - 1);
     pool.end_submit();
@@ -411,4 +415,74 @@ fn a_scratch_result_reads_through_a_group_of_its_own() {
         rig.pool.list(AtlasFormat::Rgba16F).scratch().texels(),
         64 * 64
     );
+}
+
+/// A held result a drain moved shows at its new place, its composite's offset read from there.
+/// On pages of 64², window `a`'s 30² result rounds to 32² at the first page's origin; three
+/// glyphs fill that page and one opens the second; with the three gone, the decay drains the
+/// first, the emptier by slot, and the result moves to the second page's (32, 0). The next frame
+/// holds it: the slot reads page 1 there, its offset the result's origin past its apron, less the
+/// region's corner (10, 10).
+#[test]
+fn a_held_result_a_drain_moved_shows_where_it_moved() {
+    let owner = RenderOwners::default().reserve();
+    let mut rig = Rig::new(pool(64, 64, 1 << 20));
+    rig.prepare(owner, &[captured(0)]);
+    assert_eq!(
+        rig.slot(owner, 0),
+        Some((ResultTexture::Page(0), URect::new(0, 0, 32, 32)))
+    );
+    let glyphs: Vec<_> = (0..4)
+        .map(|_| {
+            rig.pool
+                .allocate(RESULTS, Tenant::Glyphs, UVec2::splat(32))
+                .unwrap()
+                .handle
+        })
+        .collect();
+    for &glyph in &glyphs[..3] {
+        rig.pool.release(glyph);
+    }
+    rig.pool.end_submit();
+    rig.prepare(owner, &[row(0, BackdropSource::Held)]);
+    assert_eq!(
+        rig.slot(owner, 0),
+        Some((ResultTexture::Page(1), URect::new(32, 0, 32, 32)))
+    );
+    let apron = BlurPlan::new(2.0).apron() as f32;
+    assert_eq!(
+        rig.backdrops.slots[0].offset,
+        Vec2::new(32.0 + apron - 10.0, apron - 10.0)
+    );
+}
+
+/// A result no texture the device makes holds shows its clear and is kept as one, so its ledger
+/// holds it and no frame captures it again for nothing: on a device of 64 with pages of 64, a
+/// 100 × 40 region past half a page takes scratch, and with its apron passes the device's edge.
+/// It is listed evicted for no ledger, and the next frame, holding it, shows the clear too.
+#[test]
+fn a_result_past_the_device_edge_shows_its_clear() {
+    let owner = RenderOwners::default().reserve();
+    let config = PageListConfig {
+        first_edge: 64,
+        page_edge: 64,
+        soft_bytes: 1 << 20,
+    };
+    let mut rig = Rig::new(AtlasPool::new(PoolConfig {
+        lists: PerFormat::from_fn(|_| config),
+        device_edge: 64,
+        move_budget: MoveBudget::COPIES,
+    }));
+    let wide = BackdropRow::fixture(0, URect::new(0, 0, 100, 40), BlurPlan::new(2.0))
+        .with_source(BackdropSource::Capture { barrier: 1 });
+    rig.prepare(owner, &[wide]);
+    assert_eq!(rig.backdrops.slots[0].lattice, 0.0, "it shows the clear");
+    assert!(matches!(
+        rig.backdrops.cache.get(&(owner, key(0))),
+        Some(Kept::Clear(_))
+    ));
+    assert_eq!(rig.backdrops.evicted(owner).count(), 0);
+    rig.prepare(owner, &[wide.with_source(BackdropSource::Held)]);
+    assert_eq!(rig.backdrops.slots[0].lattice, 0.0);
+    assert_eq!(rig.backdrops.blurs(), 0);
 }

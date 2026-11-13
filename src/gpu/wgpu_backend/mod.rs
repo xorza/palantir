@@ -79,7 +79,7 @@ use crate::gpu::pipeline::format_pipelines::{FormatPipelines, PipelineCensus, Pr
 use crate::gpu::pipeline::image_pipeline::{ImageBatch, ImagePipeline, ImageTextures};
 use crate::gpu::pipeline::mesh_pipeline::{MeshBatch, MeshPipeline, MeshUpload};
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
-use crate::gpu::pipeline::quad_pipeline::cutout_placements::CutoutPlacing;
+use crate::gpu::pipeline::quad_pipeline::cutout_placements::{CutoutPlacements, CutoutPlacing};
 use crate::gpu::pipeline::quad_pipeline::quad_draw::QuadDraw;
 use crate::gpu::pipeline::quad_pipeline::{self, QuadExtras, QuadPipeline, QuadRun};
 use crate::gpu::pipeline::raster_pipeline::{RASTER_FORMATS, RasterPipeline};
@@ -138,6 +138,9 @@ pub(crate) struct WgpuBackend {
     /// them (`src/gpu/AGENTS.md`, Atlases).
     atlas: AtlasPool,
     atlas_textures: AtlasTextures,
+    /// Where the mask pages hold each shadow cutout key's table, lent with the pool to each
+    /// window's plan for the frame it plans.
+    cutout_placements: CutoutPlacements,
     /// The group both raster tenants draw the pool's mask and color pages through.
     raster_group: PageGroup<2>,
     programs: Programs,
@@ -408,6 +411,7 @@ impl WgpuBackend {
             gradient,
             atlas,
             atlas_textures,
+            cutout_placements: CutoutPlacements::default(),
             raster_group,
             programs: Programs {
                 quad,
@@ -628,6 +632,7 @@ impl WgpuBackend {
         }
         self.staging.finish_and_recall_on_submit(&encoder);
         self.gpu.queue.submit(iter::once(encoder.finish()));
+        drop(effects);
         // Every frame, timing on or off, as it costs two `Instant::now()` calls.
         let stats = submission.stats;
         stats.record_main_pass_cpu(main_pass.cpu);
@@ -639,10 +644,19 @@ impl WgpuBackend {
         // After the frame's draws, before the tenants drain, so they learn of the decay's
         // evictions this submit.
         self.atlas.end_submit();
-        let frame = self.text.end_frame(&mut self.atlas);
-        self.icon.end_frame(&mut self.atlas, frame);
-        self.programs.quad.end_frame(&mut self.atlas);
-        self.backdrops.end_frame(&mut self.atlas);
+        self.drop_evicted();
+        self.text.end_frame(&self.atlas);
+        self.icon.end_frame(&mut self.atlas);
+    }
+
+    /// Hand every tenant the items the pool evicted since the last drain, each dropping the keys
+    /// it held them under: at the end of each submit, after the decay, and after a purge, so no
+    /// tenant's next lookup or frame decides on an item gone.
+    fn drop_evicted(&mut self) {
+        self.text.drop_evicted(&mut self.atlas);
+        self.icon.drop_evicted(&mut self.atlas);
+        self.cutout_placements.drop_evicted(&mut self.atlas);
+        self.backdrops.drop_evicted(&mut self.atlas);
     }
 
     /// Where a pass loads and stores its whole target, the canvas a partial frame paints the size
@@ -944,9 +958,12 @@ impl WgpuBackend {
             .commit(ctx.gpu, ctx.encoder, &mut self.atlas);
         self.raster_group.follow(ctx.gpu, &self.atlas_textures);
         self.backdrops.follow(ctx.gpu, &self.atlas_textures);
-        self.programs
-            .quad
-            .prepare_cutouts(&mut ctx, stream.cutouts(), &self.atlas_textures);
+        self.programs.quad.prepare_cutouts(
+            &mut ctx,
+            stream.cutouts(),
+            &mut self.cutout_placements,
+            &self.atlas_textures,
+        );
         self.text.flush(&mut ctx, &self.atlas_textures);
         self.icon.flush(&mut ctx, &self.atlas_textures);
     }
@@ -1275,9 +1292,8 @@ impl WgpuBackend {
     /// purge's moves first, so the textures it freed leave every group that binds them and their
     /// memory returns at the device's next maintain, with no frame to wait for. A purge whose
     /// drain moved items commits them and purges again, a submission a round, as the move draw
-    /// writes each commit's rectangles from the start of one buffer. The backdrops it took reach
-    /// their windows' ledgers now, as a window's next frame decides what it holds before any
-    /// submit; the rasters and tables it took read as stale at their next lookup.
+    /// writes each commit's rectangles from the start of one buffer. Every tenant drops what it
+    /// took at once, as a window's next frame decides what its backdrops hold before any submit.
     pub(crate) fn purge_atlases(&mut self) {
         let mut more = true;
         for _ in 0..=MAX_PAGES {
@@ -1296,7 +1312,7 @@ impl WgpuBackend {
             }
         }
         debug_assert!(!more, "a purge lands within MAX_PAGES + 1 rounds");
-        self.backdrops.end_frame(&mut self.atlas);
+        self.drop_evicted();
         self.raster_group.follow(&self.gpu, &self.atlas_textures);
         self.programs
             .quad
@@ -1308,7 +1324,7 @@ impl WgpuBackend {
     /// plan builds in.
     pub(crate) const fn cutout_placing(&mut self) -> CutoutPlacing<'_> {
         CutoutPlacing {
-            placements: self.programs.quad.cutout_placements_mut(),
+            placements: &mut self.cutout_placements,
             pool: &mut self.atlas,
         }
     }
@@ -1469,7 +1485,7 @@ pub(crate) mod internals {
         /// The shadow cutout tables the mask pages hold baked in part or whole.
         #[cfg(test)]
         pub(crate) fn baked_cutout_tables(&self) -> usize {
-            self.programs.quad.baked_cutout_tables()
+            self.cutout_placements.baked_len()
         }
 
         /// The texels of `format`'s scratch textures, held or idle.

@@ -19,6 +19,7 @@ use crate::gpu::atlas::AtlasPool;
 use crate::gpu::atlas::atlas_format::AtlasFormat;
 use crate::gpu::atlas::atlas_handle::{AtlasHandle, Placement};
 use crate::gpu::atlas::atlas_textures::AtlasTextures;
+use crate::gpu::atlas::error::AtlasError;
 use crate::gpu::atlas::scratch_cache::ScratchId;
 use crate::gpu::atlas::tenant::Tenant;
 use crate::gpu::backdrop::backdrop_blur::{BackdropBlur, BlurJob, JobLayout, TargetSource};
@@ -136,28 +137,49 @@ const SLOT_GRANULE: u32 = 16;
 /// The list the results live in.
 const RESULTS: AtlasFormat = AtlasFormat::Rgba16F;
 
-/// Where a kept result's texels are: an item of the pool's pages, or a scratch texture of its own.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Held {
-    Item(AtlasHandle),
-    Scratch(ScratchId),
-}
-
-/// A result kept across frames: where its texels are, and the texels its blur may write, the
-/// result and its apron rounded up to [`SLOT_GRANULE`].
-#[derive(Clone, Copy, Debug)]
-struct Slot {
-    held: Held,
-    size: UVec2,
-}
-
 /// What a kept result holds, under the plan and region its row names: the backdrop ledger says what
-/// it blurred.
-#[derive(Clone, Copy, Debug)]
+/// it blurred. The texels its blur may write, the result and its apron rounded up to
+/// [`SLOT_GRANULE`], are the item's placement or the scratch texture's size, which the pool holds.
+#[derive(Clone, Copy, Debug, PartialEq)]
 enum Kept {
-    Slot(Slot),
-    /// The linear clear the backdrop shows, as the target holds it.
+    /// An item of the pool's pages.
+    Item(AtlasHandle),
+    /// A scratch texture of its own.
+    Scratch(ScratchId),
+    /// The linear clear the backdrop shows, as the target holds it: its fill alone, or a result no
+    /// texture this device makes holds.
     Clear([f32; 3]),
+}
+
+impl Kept {
+    /// Where the result's texels lie in `pool` now, `None` once the pool took them or for a clear.
+    fn placed(self, pool: &AtlasPool) -> Option<Placed> {
+        match self {
+            Self::Item(handle) => pool.placement(handle).map(Placed::page),
+            Self::Scratch(id) => pool.scratch_size(id).map(|_| Placed::scratch(id)),
+            Self::Clear(_) => None,
+        }
+    }
+
+    /// Whether the result's texels hold a blur of `size`.
+    fn holds(self, pool: &AtlasPool, size: UVec2) -> bool {
+        let held = match self {
+            Self::Item(handle) => pool.placement(handle).map(|p| p.size.as_uvec2()),
+            Self::Scratch(id) => pool.scratch_size(id),
+            Self::Clear(_) => None,
+        };
+        held.is_some_and(|held| held.cmpge(size).all())
+    }
+
+    /// Give the result's texels back to `pool`; an item it evicted already is nothing to give, its
+    /// handle waiting for the drain, which finds no result holding it.
+    fn release(self, pool: &mut AtlasPool) {
+        match self {
+            Self::Item(handle) => pool.release(handle),
+            Self::Scratch(id) => pool.release_scratch(id),
+            Self::Clear(_) => {}
+        }
+    }
 }
 
 /// Where a slot's texels lie this frame.
@@ -227,8 +249,10 @@ pub(crate) struct Backdrops {
     /// The texture each of [`Self::slots`] reads, whose group its composite binds; `None` for one
     /// that shows its clear.
     slot_reads: Vec<Option<ResultTexture>>,
-    /// The handles the pool evicted, as [`Self::end_frame`] drains them.
+    /// The handles the pool evicted, as [`Self::drop_evicted`] drains them.
     drained: Vec<AtlasHandle>,
+    /// The scratch ids a purge took, as [`Self::drop_evicted`] drains them.
+    drained_scratch: Vec<ScratchId>,
     /// The layout of the group a backdrop's composite reads its result through
     /// ([`TextureBinding::backdrop_layout`]); the group itself waits for a backdrop.
     layout: wgpu::BindGroupLayout,
@@ -345,6 +369,7 @@ impl Backdrops {
             slots: Vec::new(),
             slot_reads: Vec::new(),
             drained: Vec::new(),
+            drained_scratch: Vec::new(),
             layout: binding.backdrop_layout().clone(),
             resources: None,
         }
@@ -388,15 +413,17 @@ impl Backdrops {
         self.resources
             .get_or_insert_with(|| BackdropResources::new(ctx.gpu));
         // Every result the frame reads is stamped first, so making room for one never evicts
-        // another.
+        // another, nor a purge take one the frame drew. A result evicted since its last frame is
+        // dropped below, at its row or the drain.
         for capture in buffer.backdrops.iter().map(|row| row.capture) {
-            if let Some(Kept::Slot(Slot {
-                held: Held::Item(handle),
-                ..
-            })) = self.cache.get(&(owner, capture.key))
-            {
-                // A result evicted since its last frame is dropped below, at its row or the drain.
-                let _ = pool.stamp(*handle);
+            match self.cache.get(&(owner, capture.key)) {
+                Some(&Kept::Item(handle)) => {
+                    let _ = pool.stamp(handle);
+                }
+                Some(&Kept::Scratch(id)) => {
+                    let _ = pool.stamp_scratch(id);
+                }
+                Some(Kept::Clear(_)) | None => {}
             }
         }
         let surface = buffer.display.physical;
@@ -409,10 +436,28 @@ impl Backdrops {
             let shown = match source {
                 BackdropSource::Capture { barrier } => {
                     let size = capture.region.size + UVec2::splat(2 * capture.plan.apron());
-                    let Some((slot, placed)) = self.slot_for(at, size, pool) else {
-                        self.evicted.push(at);
-                        self.push_slot(row, Shown::Clear(held_clear));
-                        continue;
+                    let (kept, placed) = match self.slot_for(at, size, pool) {
+                        Ok(slot) => slot,
+                        // Room may come back: the ledger captures again next frame.
+                        Err(AtlasError::Full) => {
+                            self.evicted.push(at);
+                            self.push_slot(row, Shown::Clear(held_clear));
+                            continue;
+                        }
+                        // No frame finds room: the backdrop shows its clear until it captures
+                        // again for a change.
+                        Err(AtlasError::Oversized { size, edge }) => {
+                            tracing::warn!(
+                                width = size.x,
+                                height = size.y,
+                                edge,
+                                "a backdrop's result passes the device's texture edge; it shows \
+                                 its clear",
+                            );
+                            self.cache.insert(at, Kept::Clear(held_clear));
+                            self.push_slot(row, Shown::Clear(held_clear));
+                            continue;
+                        }
                     };
                     let job = self.jobs.len();
                     match self.breaks.last_mut() {
@@ -438,7 +483,7 @@ impl Backdrops {
                         dest_origin: placed.origin,
                         layout: JobLayout::default(),
                     });
-                    self.cache.insert(at, Kept::Slot(slot));
+                    self.cache.insert(at, kept);
                     Shown::Result(placed)
                 }
                 BackdropSource::Clear => {
@@ -455,18 +500,16 @@ impl Backdrops {
                 BackdropSource::Held => {
                     let shown = self.cache.get(&at).and_then(|&kept| match kept {
                         Kept::Clear(kept) => Some(Shown::Clear(kept)),
-                        Kept::Slot(slot) => place(slot, pool).map(Shown::Result),
+                        Kept::Item(_) | Kept::Scratch(_) => kept.placed(pool).map(Shown::Result),
                     });
                     if let Some(shown) = shown {
                         shown
                     } else {
                         // Evicted after this window's frame decided, by another window's frame
                         // or by the pool before this one stamped it: the frame shows the clear
-                        // and its ledger captures again.
+                        // and its ledger, whose forget is a set's remove, captures again.
                         self.cache.remove(&at);
-                        if !self.evicted.contains(&at) {
-                            self.evicted.push(at);
-                        }
+                        self.evicted.push(at);
                         Shown::Clear(held_clear)
                     }
                 }
@@ -569,23 +612,28 @@ impl Backdrops {
     /// next frame captures again what either took, as the other tenants drop their keys. Refused:
     /// the drain in [`Self::prepare`] alone, after the frame's ledger decided, which showed a
     /// result the decay or a purge took as its clear for a frame.
-    pub(crate) fn end_frame(&mut self, pool: &mut AtlasPool) {
+    pub(crate) fn drop_evicted(&mut self, pool: &mut AtlasPool) {
         self.drained.clear();
         self.drained.extend(pool.drain_evicted(Tenant::Backdrops));
-        if self.drained.is_empty() {
+        self.drained_scratch.clear();
+        self.drained_scratch
+            .extend(pool.drain_evicted_scratch(Tenant::Backdrops));
+        if self.drained.is_empty() && self.drained_scratch.is_empty() {
             return;
         }
         let Self {
             cache,
             evicted,
             drained,
+            drained_scratch,
             ..
         } = self;
         cache.retain(|&at, kept| {
-            let gone = matches!(
-                kept,
-                Kept::Slot(Slot { held: Held::Item(handle), .. }) if drained.contains(handle)
-            );
+            let gone = match kept {
+                Kept::Item(handle) => drained.contains(handle),
+                Kept::Scratch(id) => drained_scratch.contains(id),
+                Kept::Clear(_) => false,
+            };
             if gone {
                 evicted.push(at);
             }
@@ -598,8 +646,8 @@ impl Backdrops {
     fn evict(&mut self, owner: RenderOwnerId, live: &BackdropKeys, pool: &mut AtlasPool) {
         self.cache.retain(|&(at, key), kept| {
             let keep = at != owner || live.contains(key);
-            if !keep && let Kept::Slot(slot) = *kept {
-                release(slot, pool);
+            if !keep {
+                kept.release(pool);
             }
             keep
         });
@@ -611,40 +659,45 @@ impl Backdrops {
         self.forget_evicted(owner);
     }
 
-    /// A slot of `size` for backdrop `at`, and where it lies: its cached one when that holds it,
-    /// else a new one rounded up to [`SLOT_GRANULE`], on a page or, past half a page, a scratch
-    /// texture of its own. `None` when the pool holds no room for it.
+    /// Texels for a blur of `size` for backdrop `at`, and where they lie: its cached result's when
+    /// they hold it, else new ones rounded up to [`SLOT_GRANULE`], on a page or, past half a page, a
+    /// scratch texture of its own. A page refuses only for room, [`AtlasError::Full`], as an item
+    /// past half a page takes scratch; a scratch texture only past the device's edge,
+    /// [`AtlasError::Oversized`].
     fn slot_for(
         &mut self,
         at: (RenderOwnerId, BackdropKey),
         size: UVec2,
         pool: &mut AtlasPool,
-    ) -> Option<(Slot, Placed)> {
-        if let Some(&Kept::Slot(slot)) = self.cache.get(&at)
-            && slot.size.cmpge(size).all()
-            && let Some(placed) = place(slot, pool)
+    ) -> Result<(Kept, Placed), AtlasError> {
+        if let Some(&kept) = self.cache.get(&at)
+            && kept.holds(pool, size)
+            && let Some(placed) = kept.placed(pool)
         {
-            return Some((slot, placed));
+            return Ok((kept, placed));
         }
         self.drop_result(at, pool);
         let size = size.map(|edge| edge.next_multiple_of(SLOT_GRANULE));
-        let (held, placed) = if pool.list(RESULTS).prefers_scratch(size) {
-            let id = pool.acquire_scratch(RESULTS, size).ok()?;
-            (Held::Scratch(id), Placed::scratch(id))
-        } else {
-            let allocation = pool.allocate(RESULTS, Tenant::Backdrops, size).ok()?;
-            (
-                Held::Item(allocation.handle),
+        if pool.list(RESULTS).prefers_scratch(size) {
+            let id = pool.acquire_scratch(RESULTS, Tenant::Backdrops, size)?;
+            return Ok((Kept::Scratch(id), Placed::scratch(id)));
+        }
+        match pool.allocate(RESULTS, Tenant::Backdrops, size) {
+            Ok(allocation) => Ok((
+                Kept::Item(allocation.handle),
                 Placed::page(allocation.placement),
-            )
-        };
-        Some((Slot { held, size }, placed))
+            )),
+            Err(AtlasError::Full) => Err(AtlasError::Full),
+            Err(oversized @ AtlasError::Oversized { .. }) => {
+                unreachable!("a result within half a page fits a page: {oversized}")
+            }
+        }
     }
 
     /// Drop backdrop `at`'s cached result, giving its texels back to `pool`.
     fn drop_result(&mut self, at: (RenderOwnerId, BackdropKey), pool: &mut AtlasPool) {
-        if let Some(Kept::Slot(slot)) = self.cache.remove(&at) {
-            release(slot, pool);
+        if let Some(kept) = self.cache.remove(&at) {
+            kept.release(pool);
         }
     }
 
@@ -721,23 +774,6 @@ impl Placed {
             texture: ResultTexture::Scratch(id),
             origin: UVec2::ZERO,
         }
-    }
-}
-
-/// Where `slot`'s texels lie in `pool` now, `None` once the pool evicted them.
-fn place(slot: Slot, pool: &AtlasPool) -> Option<Placed> {
-    match slot.held {
-        Held::Item(handle) => pool.placement(handle).map(Placed::page),
-        Held::Scratch(id) => Some(Placed::scratch(id)),
-    }
-}
-
-/// Give `slot`'s texels back to `pool`; an item it evicted already is nothing to give, its handle
-/// waiting for the drain, which finds no result holding it.
-fn release(slot: Slot, pool: &mut AtlasPool) {
-    match slot.held {
-        Held::Item(handle) => pool.release(handle),
-        Held::Scratch(id) => pool.release_scratch(id),
     }
 }
 

@@ -1,14 +1,15 @@
-//! One resident raster's handle into the pool, its bearing and content, and the placement a draw
-//! reads it at.
+//! One raster key's entry: the raster the pool holds for it or none, and the placement a draw reads
+//! it at.
 
 use crate::gpu::atlas::atlas_handle::{AtlasHandle, Placement};
 use crate::gpu::pipeline::raster_pipeline::raster_quad::RasterQuad;
+use crate::gpu::raster::raster_atlas::content_of;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::content_type::ContentType;
 use crate::renderer::render_buffer::clip_chain::ClipChain;
 use glam::{I16Vec2, IVec2, U16Vec2, UVec2};
 
-/// Where a packed raster sits now, as the pool places it, with its handle, bearing and content.
+/// Where a packed raster sits now, as the pool places it, with its handle and bearing.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct SlotPlacement {
     pub(crate) handle: AtlasHandle,
@@ -18,12 +19,10 @@ pub(crate) struct SlotPlacement {
     pub(crate) size: U16Vec2,
     /// Pen position to the raster's top-left; `y` up.
     pub(crate) bearing: I16Vec2,
-    /// Which list holds the rectangle, also the sampling mode.
-    pub(crate) content: ContentType,
 }
 
 impl SlotPlacement {
-    /// The raster at `placement`, of `raster`'s bearing and content.
+    /// The raster at `placement`, of `raster`'s bearing.
     pub(crate) const fn of(placement: Placement, raster: PlacedRaster) -> Self {
         Self {
             handle: raster.handle,
@@ -31,8 +30,12 @@ impl SlotPlacement {
             origin: placement.origin,
             size: placement.size,
             bearing: raster.bearing,
-            content: raster.content,
         }
+    }
+
+    /// What the raster holds, by the list its handle names: also the sampling mode.
+    pub(crate) const fn content(self) -> ContentType {
+        content_of(self.handle.format)
     }
 
     /// The instance drawing this raster at `pen` plus the bearing.
@@ -45,7 +48,12 @@ impl SlotPlacement {
             ),
             dim: self.size,
             size: self.size.as_uvec2(),
-            uv_and_kind: RasterQuad::pack_uv(self.origin.x, self.origin.y, self.page, self.content),
+            uv_and_kind: RasterQuad::pack_uv(
+                self.origin.x,
+                self.origin.y,
+                self.page,
+                self.content(),
+            ),
             color,
             clip: ClipChain::NONE,
         }
@@ -60,31 +68,22 @@ impl SlotPlacement {
     }
 }
 
-/// A raster the pool holds: its handle, its bearing and its content.
+/// A raster the pool holds: its handle, whose list says what it holds, and its bearing.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct PlacedRaster {
     pub(crate) handle: AtlasHandle,
     pub(crate) bearing: I16Vec2,
-    pub(crate) content: ContentType,
 }
 
-/// One entry of [`RasterAtlas`](super::RasterAtlas)'s slab; narrow and `Copy` for the per-glyph hit
-/// path.
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct AtlasSlot {
-    pub(crate) state: SlotState,
-    /// The text clock's frame it was last drawn or looked up in, which a non-drawing entry
-    /// expires by.
-    pub(crate) last_use: u64,
-}
-
-/// What a slab entry holds.
+/// One entry of [`RasterAtlas`](super::RasterAtlas)'s slab; narrow and `Copy` for the per-glyph
+/// hit path.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum SlotState {
+pub(crate) enum AtlasSlot {
     /// A raster the pool holds, which it may evict.
     Placed(PlacedRaster),
-    /// A live entry that draws nothing (whitespace, no pixels), which expires on a deadline.
-    Unplaced,
+    /// A live entry that draws nothing (whitespace, no pixels, past a page), which expires an
+    /// expiry window after `last_use`, the pool's display frame it was last looked up in.
+    Unplaced { last_use: u64 },
     /// On the free list, named by no cache key.
     Free,
 }
@@ -93,24 +92,9 @@ impl AtlasSlot {
     /// The raster the entry draws, `None` for one that draws nothing or is free.
     #[inline]
     pub(crate) const fn raster(&self) -> Option<PlacedRaster> {
-        match self.state {
-            SlotState::Placed(raster) => Some(raster),
-            SlotState::Unplaced | SlotState::Free => None,
-        }
-    }
-}
-
-#[cfg(test)]
-pub(super) mod internals {
-    use crate::gpu::raster::raster_atlas::atlas_slot::{AtlasSlot, SlotState};
-
-    impl AtlasSlot {
-        /// A non-drawing entry last used on `last_use`.
-        pub(crate) const fn unplaced(last_use: u64) -> Self {
-            Self {
-                state: SlotState::Unplaced,
-                last_use,
-            }
+        match *self {
+            Self::Placed(raster) => Some(raster),
+            Self::Unplaced { .. } | Self::Free => None,
         }
     }
 }

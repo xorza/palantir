@@ -480,7 +480,7 @@ fn a_scratch_texture_follows_its_slot() {
     let mut pool = pool();
     let mut textures = AtlasTextures::new(&gpu);
     let id = pool
-        .acquire_scratch(AtlasFormat::R8, UVec2::splat(100))
+        .acquire_scratch(AtlasFormat::R8, Tenant::Backdrops, UVec2::splat(100))
         .unwrap();
     commit(&gpu, &mut textures, &mut pool);
     assert!(textures.scratch_view(id).is_some());

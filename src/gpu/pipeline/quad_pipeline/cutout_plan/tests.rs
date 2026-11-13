@@ -68,14 +68,11 @@ const DEVICE_EDGE: u32 = 16384;
 
 /// The code of a table of `side` texels at `(x, y)` of mask page `page`.
 fn code_at(page: u8, x: u16, y: u16, side: u32) -> u32 {
-    CutoutPlan::code(
-        Placement {
-            page,
-            origin: U16Vec2::new(x, y),
-            size: U16Vec2::splat(side as u16),
-        },
-        side,
-    )
+    CutoutPlan::code(Placement {
+        page,
+        origin: U16Vec2::new(x, y),
+        size: U16Vec2::splat(side as u16),
+    })
 }
 
 /// A pool whose mask list holds four pages of 256², none past its soft budget, so it opens a

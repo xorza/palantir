@@ -1,8 +1,9 @@
-//! The tenant's side of the pool: its wire metadata, its rasters filed and found, an eviction
-//! reaching it, its keys forgotten, and the expiry of its empty entries.
+//! The tenant's side of the pool: its wire metadata, its rasters found where the pool holds them,
+//! an eviction reaching it, its keys forgotten, and the expiry of its empty entries.
 
 use super::*;
-use glam::{I16Vec2, IVec2};
+use crate::gpu::raster::raster_atlas::packed_metadata::PackedMetadata;
+use glam::{IVec2, U16Vec2, UVec2};
 
 /// The atlas is generic over its key, so its tests use the cheapest one that
 /// satisfies the bounds; nothing depends on what a key means.
@@ -17,18 +18,17 @@ fn pool() -> AtlasPool {
     AtlasPool::uniform(32, 32, 0)
 }
 
-/// A raster of `content` and `size`, its bearing `(1, 2)`, its bytes zero.
-fn raster(content: ContentType, size: U16Vec2, pixels: &mut Vec<u8>) -> PackedRaster<'_> {
-    pixels.clear();
-    pixels.resize(
-        usize::from(size.x) * usize::from(size.y) * content.bytes_per_pixel() as usize,
-        0,
-    );
-    PackedRaster {
-        metadata: PackedMetadata::new(size.as_uvec2(), IVec2::new(1, 2)).unwrap(),
-        content,
-        pixels,
-    }
+/// File a raster of `size` in `format`'s list under `key`, its bearing `(1, 2)`, as a pass files
+/// one, and say where it draws.
+fn insert(
+    atlas: &mut RasterAtlas<TestKey>,
+    pool: &mut AtlasPool,
+    key: TestKey,
+    format: AtlasFormat,
+    size: UVec2,
+) -> SlotPlacement {
+    let allocation: Allocation = pool.allocate(format, atlas.tenant(), size).unwrap();
+    atlas.insert_placed(key, allocation, I16Vec2::new(1, 2))
 }
 
 #[test]
@@ -69,72 +69,47 @@ fn packed_metadata_checks_every_wire_boundary() {
     }
 }
 
-/// A mask raster files in the pool's mask list and a color one in its color list, each at the
-/// origin of its first page, with its bearing and content; a touch finds each, and each queues its
-/// upload for its own list. A raster past a page is counted and takes a slot that draws nothing,
-/// which a touch hits, so its rasterizer runs once.
+/// A raster is found where the pool holds it, with its bearing, its content its list's: a mask at
+/// the origin of the mask list's first page, a color one at the color list's. A key never filed
+/// misses, and one filed as drawing nothing is found as nothing.
 #[test]
-fn a_raster_files_in_its_list_and_a_touch_finds_it() {
+fn a_raster_is_found_where_the_pool_holds_it() {
     let mut pool = pool();
-    let mut atlas = RasterAtlas::<TestKey>::new(Tenant::Glyphs, "test");
-    let mut pixels = Vec::new();
-    let mask = atlas
-        .insert(
-            &mut pool,
-            key(1),
-            raster(ContentType::Mask, U16Vec2::new(10, 12), &mut pixels),
-        )
-        .unwrap();
-    let color = atlas
-        .insert(
-            &mut pool,
-            key(2),
-            raster(ContentType::Color, U16Vec2::new(4, 4), &mut pixels),
-        )
-        .unwrap();
-    let mask_handle = atlas.placement(&pool, mask).unwrap().handle;
-    assert_eq!(mask_handle.format, AtlasFormat::R8);
+    let mut atlas = RasterAtlas::<TestKey>::new(Tenant::Glyphs);
+    let mask = insert(
+        &mut atlas,
+        &mut pool,
+        key(1),
+        AtlasFormat::R8,
+        UVec2::new(10, 12),
+    );
+    let color = insert(
+        &mut atlas,
+        &mut pool,
+        key(2),
+        AtlasFormat::Rgba8,
+        UVec2::splat(4),
+    );
     assert_eq!(
-        atlas.placement(&pool, mask),
-        Some(SlotPlacement {
-            handle: mask_handle,
+        mask,
+        SlotPlacement {
+            handle: mask.handle,
             page: 0,
             origin: U16Vec2::ZERO,
             size: U16Vec2::new(10, 12),
             bearing: I16Vec2::new(1, 2),
-            content: ContentType::Mask,
-        })
+        }
     );
+    assert_eq!(mask.content(), ContentType::Mask);
     assert_eq!(
-        atlas
-            .placement(&pool, color)
-            .map(|p| (p.page, p.origin, p.content)),
-        Some((0, U16Vec2::ZERO, ContentType::Color))
+        (color.page, color.origin, color.content()),
+        (0, U16Vec2::ZERO, ContentType::Color)
     );
-    assert_eq!(atlas.touch(&mut pool, &key(1)), Some(mask));
-    assert_eq!(atlas.touch(&mut pool, &key(3)), None);
-    assert_eq!(
-        atlas
-            .pending_copies
-            .iter()
-            .map(|copy| (copy.format, copy.size))
-            .collect::<Vec<_>>(),
-        [
-            (AtlasFormat::R8, UVec2::new(10, 12)),
-            (AtlasFormat::Rgba8, UVec2::new(4, 4))
-        ]
-    );
-    let wide = atlas
-        .insert(
-            &mut pool,
-            key(4),
-            raster(ContentType::Mask, U16Vec2::new(33, 1), &mut pixels),
-        )
-        .expect("a raster past the page takes a slot");
-    assert_eq!(atlas.counters.oversized.count(), 1);
-    assert_eq!(atlas.placement(&pool, wide), None, "which draws nothing");
-    assert_eq!(atlas.touch(&mut pool, &key(4)), Some(wide), "and hits");
-    assert_eq!(atlas.pending_copies.len(), 2, "with no upload");
+    assert_eq!(atlas.find(&mut pool, &key(1)), Some(Found::Raster(mask)));
+    assert_eq!(atlas.find(&mut pool, &key(3)), None);
+    atlas.insert_unplaced(key(4), 0);
+    assert_eq!(atlas.find(&mut pool, &key(4)), Some(Found::Nothing));
+    assert_eq!(atlas.cached_len(), 3);
 }
 
 /// With every mask page full of glyphs no frame drew this frame or the last, two icons evict two
@@ -144,48 +119,32 @@ fn a_raster_files_in_its_list_and_a_touch_finds_it() {
 #[test]
 fn an_eviction_reaches_its_tenant() {
     let mut pool = pool();
-    let mut glyphs = RasterAtlas::<TestKey>::new(Tenant::Glyphs, "glyphs");
-    let mut icons = RasterAtlas::<TestKey>::new(Tenant::Icons, "icons");
-    let mut pixels = Vec::new();
-    let full = U16Vec2::splat(32);
-    let held: Vec<(u32, AtlasHandle)> = (0..4)
-        .map(|id| {
-            let idx = glyphs
-                .insert(
-                    &mut pool,
-                    key(id),
-                    raster(ContentType::Mask, full, &mut pixels),
-                )
-                .unwrap();
-            (idx, glyphs.placement(&pool, idx).unwrap().handle)
-        })
+    let mut glyphs = RasterAtlas::<TestKey>::new(Tenant::Glyphs);
+    let mut icons = RasterAtlas::<TestKey>::new(Tenant::Icons);
+    let full = UVec2::splat(32);
+    let held: Vec<SlotPlacement> = (0..4)
+        .map(|id| insert(&mut glyphs, &mut pool, key(id), AtlasFormat::R8, full))
         .collect();
     pool.advance_to(2);
     for id in 0..2 {
-        assert!(
-            icons
-                .insert(
-                    &mut pool,
-                    key(id),
-                    raster(ContentType::Mask, full, &mut pixels)
-                )
-                .is_some()
-        );
+        insert(&mut icons, &mut pool, key(id), AtlasFormat::R8, full);
     }
     assert_eq!(
-        glyphs.touch(&mut pool, &key(0)),
+        glyphs.find(&mut pool, &key(0)),
         None,
         "evicted, found at the lookup"
     );
-    glyphs.end_frame(&mut pool, 1);
+    glyphs.drop_evicted(&mut pool);
     assert_eq!(glyphs.cached_len(), 2);
     assert_eq!(glyphs.counters.evictions.count(), 2);
-    for &(_, handle) in &held[..2] {
-        assert_eq!(pool.stamp(handle), None);
+    for placement in &held[..2] {
+        assert_eq!(pool.stamp(placement.handle), None);
     }
-    for (id, &(idx, handle)) in (2..4).zip(&held[2..]) {
-        assert_eq!(glyphs.touch(&mut pool, &key(id)), Some(idx));
-        assert!(pool.stamp(handle).is_some());
+    for (id, placement) in (2..4).zip(&held[2..]) {
+        assert_eq!(
+            glyphs.find(&mut pool, &key(id)),
+            Some(Found::Raster(*placement))
+        );
     }
 }
 
@@ -194,58 +153,50 @@ fn an_eviction_reaches_its_tenant() {
 #[test]
 fn forget_gives_its_rasters_back_to_the_pool() {
     let mut pool = pool();
-    let mut icons = RasterAtlas::<TestKey>::new(Tenant::Icons, "icons");
-    let mut pixels = Vec::new();
-    let kept = icons
-        .insert(
-            &mut pool,
-            key(1),
-            raster(ContentType::Mask, U16Vec2::splat(4), &mut pixels),
-        )
-        .unwrap();
-    let gone = icons
-        .insert(
-            &mut pool,
-            key(2),
-            raster(ContentType::Mask, U16Vec2::splat(8), &mut pixels),
-        )
-        .unwrap();
-    let handle = icons.placement(&pool, gone).unwrap().handle;
-    let live = || pool.list(AtlasFormat::R8).page(0).unwrap().live_texels();
-    assert_eq!(live(), 16 + 64);
-    icons.forget(&mut pool, |&id| id == key(1));
-    assert_eq!(
-        pool.list(AtlasFormat::R8).page(0).unwrap().live_texels(),
-        16
+    let mut icons = RasterAtlas::<TestKey>::new(Tenant::Icons);
+    let kept = insert(
+        &mut icons,
+        &mut pool,
+        key(1),
+        AtlasFormat::R8,
+        UVec2::splat(4),
     );
-    assert_eq!(pool.placement(handle), None);
+    let gone = insert(
+        &mut icons,
+        &mut pool,
+        key(2),
+        AtlasFormat::R8,
+        UVec2::splat(8),
+    );
+    let live = |pool: &AtlasPool| pool.list(AtlasFormat::R8).page(0).unwrap().live_texels();
+    assert_eq!(live(&pool), 16 + 64);
+    icons.forget(&mut pool, |&id| id == key(1));
+    assert_eq!(live(&pool), 16);
+    assert_eq!(pool.placement(gone.handle), None);
     assert_eq!(icons.cached_len(), 1);
-    assert!(icons.placement(&pool, kept).is_some());
+    assert_eq!(icons.find(&mut pool, &key(1)), Some(Found::Raster(kept)));
 }
 
-/// Each non-drawing entry retires on its own last use, not a shared tick. At
-/// frame 1024 with a 120-frame window an entry dies once
-/// `last_use + 120 + 1 <= 1024`, i.e. `last_use <= 903`.
+/// Each non-drawing entry retires on its own last use, not a shared tick. At display frame 1024
+/// with a 120-frame window an entry dies once `last_use + 120 + 1 <= 1024`, i.e.
+/// `last_use <= 903`.
 #[test]
 fn a_drained_ticket_retires_only_its_own_stale_empty() {
-    let placed = AtlasSlot {
-        state: SlotState::Placed(PlacedRaster {
-            handle: AtlasHandle {
-                format: AtlasFormat::R8,
-                idx: 0,
-                generation: 0,
-            },
-            bearing: I16Vec2::ZERO,
-            content: ContentType::Mask,
-        }),
-        last_use: 1,
-    };
+    let placed = AtlasSlot::Placed(PlacedRaster {
+        handle: AtlasHandle {
+            format: AtlasFormat::R8,
+            idx: 0,
+            generation: 0,
+        },
+        bearing: I16Vec2::ZERO,
+    });
+    let unplaced = |last_use| AtlasSlot::Unplaced { last_use };
     let mut slots = vec![
-        AtlasSlot::unplaced(1),    // 1 + 121 = 122 <= 1024 -> reclaimed
-        AtlasSlot::unplaced(903),  // 903 + 121 = 1024 <= 1024 -> reclaimed
-        AtlasSlot::unplaced(904),  // 904 + 121 = 1025 > 1024 -> re-filed
-        AtlasSlot::unplaced(1024), // freshly touched -> re-filed
-        placed,                    // placed -> the pool's to reclaim
+        unplaced(1),    // 1 + 121 = 122 <= 1024 -> reclaimed
+        unplaced(903),  // 903 + 121 = 1024 <= 1024 -> reclaimed
+        unplaced(904),  // 904 + 121 = 1025 > 1024 -> re-filed
+        unplaced(1024), // freshly found -> re-filed
+        placed,         // placed -> the pool's to reclaim
     ];
     let mut cache = FxHashMap::default();
     for i in 0..slots.len() as u32 {

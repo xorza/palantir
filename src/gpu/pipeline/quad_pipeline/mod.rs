@@ -7,7 +7,6 @@ mod cutout_tables;
 pub(crate) mod quad_draw;
 
 use crate::common::span::Span;
-use crate::gpu::atlas::AtlasPool;
 use crate::gpu::atlas::atlas_textures::AtlasTextures;
 use crate::gpu::atlas::page_slots::PageSlots;
 use crate::gpu::device::gpu::Gpu;
@@ -433,30 +432,21 @@ impl QuadPipeline {
     }
 
     /// Upload the shadows' corner stream and bake the tables `cutouts` plans into `atlas`'s mask
-    /// pages, a pass a page on `ctx`'s encoder, after the pool's commit and before the main pass
-    /// reads them.
+    /// pages where `placements` notes them unbaked, a pass a page on `ctx`'s encoder, after the
+    /// pool's commit and before the main pass reads them.
     pub(crate) fn prepare_cutouts(
         &mut self,
         ctx: &mut GpuCtx<'_>,
         cutouts: &CutoutPlan,
+        placements: &mut CutoutPlacements,
         atlas: &AtlasTextures,
     ) {
-        self.cutouts.prepare(ctx, cutouts, atlas);
+        self.cutouts.prepare(ctx, cutouts, placements, atlas);
     }
 
     /// Make the cutout tables' group follow `atlas`, outside a frame's upload.
     pub(crate) fn follow_cutouts(&mut self, gpu: &Gpu, atlas: &AtlasTextures) {
         self.cutouts.follow(gpu, atlas);
-    }
-
-    /// Drop the cutout tables `pool` evicted this submit.
-    pub(crate) fn end_frame(&mut self, pool: &mut AtlasPool) {
-        self.cutouts.end_frame(pool);
-    }
-
-    /// Where the mask pages hold each key's table, for a window's plan to build in.
-    pub(crate) const fn cutout_placements_mut(&mut self) -> &mut CutoutPlacements {
-        self.cutouts.placements_mut()
     }
 
     /// The runs of `instances`, a group's quads, that each draw through one [`QuadDraw`], in
@@ -637,12 +627,6 @@ pub(crate) mod internals {
     }
 
     impl QuadPipeline {
-        /// The cutout tables the mask pages hold baked in part or whole.
-        #[cfg(test)]
-        pub(crate) fn baked_cutout_tables(&self) -> usize {
-            self.cutouts.baked_len()
-        }
-
         /// Draw every shadow as one quad of the full form, the reference the template is compared
         /// with. Affects variants built afterwards.
         pub(crate) const fn disable_shadow_template(&mut self) {

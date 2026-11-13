@@ -3,7 +3,6 @@
 //! [`CutoutPlan`], kept on each window's render stream, which places its tables through the
 //! shared [`CutoutPlacements`].
 
-use crate::gpu::atlas::AtlasPool;
 use crate::gpu::atlas::atlas_format::AtlasFormat;
 use crate::gpu::atlas::atlas_textures::{self, AtlasTextures};
 use crate::gpu::atlas::page_group::{self, PageGroup};
@@ -17,13 +16,11 @@ use crate::gpu::resource::pipeline_recipe::{self, PipelineRecipe, vertex_attr};
 use bytemuck::{Pod, Zeroable};
 use std::mem::offset_of;
 
-/// The group the shadows read the tables through, the pool's mask pages; the bake pipeline; the
-/// placements; and this frame's tables.
+/// The group the shadows read the tables through, the pool's mask pages; the bake pipeline; and
+/// this frame's tables. Where each key's table sits is the backend's [`CutoutPlacements`], a map
+/// with no device.
 #[derive(Debug)]
 pub(crate) struct CutoutTables {
-    /// Where each key's table sits in the mask pages, lent to each window's plan for the frame it
-    /// plans.
-    placements: CutoutPlacements,
     pages: PageGroup<1>,
     bake_pipeline: wgpu::RenderPipeline,
     tables: DynamicBuffer<BakeInstance>,
@@ -79,7 +76,6 @@ impl CutoutTables {
         .build(gpu)
         .pipeline;
         Self {
-            placements: CutoutPlacements::default(),
             pages,
             bake_pipeline,
             tables: DynamicBuffer::vertex(gpu, "palantir.quad.cutouts.tables", 16),
@@ -87,11 +83,6 @@ impl CutoutTables {
             bakes: Vec::new(),
             instances: Vec::new(),
         }
-    }
-
-    /// Where the mask pages hold each key's table, for a window's plan to build in.
-    pub(crate) const fn placements_mut(&mut self) -> &mut CutoutPlacements {
-        &mut self.placements
     }
 
     /// Group 1 of the shadow pipeline: the mask pages.
@@ -107,17 +98,19 @@ impl CutoutTables {
             &CORNER_ATTRS,
         );
 
-    /// Upload `plan`'s corner tables and bake what of its tables the mask pages lack, on `ctx`'s
-    /// encoder after the pool's commit and before the shadow pass.
+    /// Upload `plan`'s corner tables and bake what of its tables the mask pages lack, as
+    /// `placements` notes them baked, on `ctx`'s encoder after the pool's commit and before the
+    /// shadow pass.
     pub(crate) fn prepare(
         &mut self,
         ctx: &mut GpuCtx<'_>,
         plan: &CutoutPlan,
+        placements: &mut CutoutPlacements,
         textures: &AtlasTextures,
     ) {
         self.follow(ctx.gpu, textures);
         self.corners.upload_instances(ctx, plan.corners());
-        self.placements.bakes(plan.tables(), &mut self.bakes);
+        placements.bakes(plan.tables(), &mut self.bakes);
         self.bake(ctx, textures);
     }
 
@@ -174,11 +167,6 @@ impl CutoutTables {
         self.pages.follow(gpu, textures);
     }
 
-    /// Drop the tables the pool evicted this submit.
-    pub(crate) fn end_frame(&mut self, pool: &mut AtlasPool) {
-        self.placements.drain_evicted(pool);
-    }
-
     /// Bind the mask pages and the corner stream for a shadow draw.
     pub(crate) fn bind<'a>(&'a self, rec: &mut PassRecorder<'a>) {
         rec.group(1, self.pages.group());
@@ -232,18 +220,6 @@ const CORNER_ATTRS: [wgpu::VertexAttribute; 1] = [vertex_attr(
     wgpu::VertexFormat::Uint32x4,
     offset_of!(CornerTables, 0),
 )];
-
-#[cfg(test)]
-pub(crate) mod internals {
-    use crate::gpu::pipeline::quad_pipeline::cutout_tables::CutoutTables;
-
-    impl CutoutTables {
-        /// The tables the mask pages hold baked in part or whole.
-        pub(crate) fn baked_len(&self) -> usize {
-            self.placements.baked_len()
-        }
-    }
-}
 
 #[cfg(test)]
 mod tests;

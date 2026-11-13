@@ -91,19 +91,18 @@ impl Default for EncodedCache {
 }
 
 impl EncodedCache {
-    /// Replay `run_key`'s template of `text` into `pass`, shifted to its origin. `false`
-    /// means no live template of `text` and the caller owes a full
-    /// [`TextEncoder::encode_run`](super::encoder::TextEncoder::encode_run), whose settle
-    /// replaces a row another text left under the key. Each glyph stamps its raster in the pool,
-    /// whose grace then keeps every raster this frame draws from eviction.
+    /// Replay `run_key`'s template of `text` into `pass`, shifted to its origin, the row used at
+    /// the shaper's `frame`. `false` means no live template of `text` and the caller owes a full
+    /// encode, whose settle replaces a row another text left under the key. Each glyph stamps its
+    /// raster in the pool, whose grace then keeps every raster this frame draws from eviction.
     pub(super) fn emit_cached(
         &mut self,
         pool: &mut AtlasPool,
         pass: &mut RasterPass<GlyphRasterKey>,
         run_key: &EncodedRunKey,
         text: &str,
+        frame: u64,
     ) -> bool {
-        let cur_frame = pass.atlas.frame();
         let Some(entry) = self.map.get_mut(&run_key.key) else {
             return false;
         };
@@ -132,7 +131,7 @@ impl EncodedCache {
             self.drop_stale(&run_key.key);
             return false;
         }
-        entry.last_use = cur_frame;
+        entry.last_use = frame;
         true
     }
 
@@ -299,7 +298,7 @@ pub(super) enum EncodeCoverage {
 /// shrinks. 30 frames is half a second at 60 Hz; the cost is a shaper walk (the
 /// buffer is still resident) for a run untouched 0.5–2 s that returns, the gain a
 /// 4x smaller population. A demotion signal would be better; this is the cheap lever.
-pub(super) const ENCODED_CACHE_KEEP_FRAMES: u64 = 30;
+pub(crate) const ENCODED_CACHE_KEEP_FRAMES: u64 = 30;
 
 /// The frame after `last_use` on which a row is first dead, shared by
 /// [`EncodedCache::settle`] and [`EncodedCache::sweep`].
