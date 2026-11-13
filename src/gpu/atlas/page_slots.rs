@@ -39,24 +39,6 @@ impl PageSlots {
     }
 }
 
-/// The open slots of the lists a frame's raster and shadow draws read, after the pool's commit:
-/// what their pipelines are built for.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct AtlasSlots {
-    /// The `R8` list's: glyph and icon masks, and the shadows' cutout tables.
-    pub(crate) mask: PageSlots,
-    /// The `Rgba8` list's: color glyphs and icons.
-    pub(crate) color: PageSlots,
-}
-
-impl AtlasSlots {
-    /// Slot 0 of each list.
-    pub(crate) const FIRST: Self = Self {
-        mask: PageSlots::FIRST,
-        color: PageSlots::FIRST,
-    };
-}
-
 #[cfg(test)]
 pub(crate) mod internals {
     use crate::gpu::atlas::page_slots::PageSlots;

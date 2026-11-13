@@ -20,6 +20,7 @@ use crate::gpu::atlas::row_texture::RowTexture;
 use crate::gpu::atlas::{AtlasPool, LIST_CONFIGS};
 use crate::gpu::bench_gpu::{BenchGpu, TARGET_FORMAT, Timing};
 use crate::gpu::device::gpu::Gpu;
+use crate::gpu::pipeline::atlas_binding::AtlasSlots;
 use crate::gpu::pipeline::clip_variant::Clipping;
 use crate::gpu::pipeline::instanced_pipeline::VariantTarget;
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
@@ -281,7 +282,7 @@ impl Fixture {
                 VariantTarget {
                     format: TARGET_FORMAT.get(),
                     clipping: Clipping::Off,
-                    slots: self.pool.slots(),
+                    slots: AtlasSlots::of(&self.pool),
                 },
             );
             self.group.follow(ctx.gpu, &self.atlas);
@@ -330,9 +331,11 @@ impl Fixture {
             },
         );
         rec.group(FRAME_GROUP, self.frame.group());
-        let pipelines = self
-            .pipelines
-            .pair(Clipping::Off, self.pool.slots(), self.group.group());
+        let pipelines = self.pipelines.pair(
+            Clipping::Off,
+            AtlasSlots::of(&self.pool),
+            self.group.group(),
+        );
         for idx in 0..batches {
             self.backend.render_batch(&mut rec, idx, pipelines);
         }

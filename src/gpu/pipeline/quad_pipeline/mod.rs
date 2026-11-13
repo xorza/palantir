@@ -707,7 +707,8 @@ mod tests {
     #[test]
     fn a_table_shadow_builds_one_pipeline_a_set_of_mask_slots() {
         use crate::gpu::atlas::atlas_textures::AtlasTextures;
-        use crate::gpu::atlas::page_slots::{AtlasSlots, PageSlots};
+        use crate::gpu::atlas::page_slots::PageSlots;
+        use crate::gpu::pipeline::atlas_binding::AtlasSlots;
         use crate::gpu::pipeline::clip_variant::Clipping;
         use crate::gpu::pipeline::instanced_pipeline::VariantTarget;
         use crate::gpu::pipeline::quad_pipeline::QuadVariants;

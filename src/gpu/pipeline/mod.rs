@@ -2,6 +2,7 @@
 //! concern where a pipeline holds several), and the pass recorder; the recipe, prelude and shader
 //! assembly they build by are `resource`'s.
 
+pub(crate) mod atlas_binding;
 pub(crate) mod blit_pipeline;
 pub(crate) mod clip_variant;
 pub(crate) mod curve_pipeline;

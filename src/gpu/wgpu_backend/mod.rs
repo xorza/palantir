@@ -56,7 +56,6 @@ use crate::effect::effect_store::EffectModule;
 use crate::gpu::atlas::AtlasPool;
 use crate::gpu::atlas::atlas_textures::AtlasTextures;
 use crate::gpu::atlas::page_group::PageGroup;
-use crate::gpu::atlas::page_slots::AtlasSlots;
 use crate::gpu::atlas::row_texture::RowTexture;
 use crate::gpu::backdrop::backdrops::{BackdropFrame, Backdrops};
 use crate::gpu::device::gpu::Gpu;
@@ -67,6 +66,7 @@ use crate::gpu::frame::gpu_timings::{BackdropPhase, FrameTiming, GpuTimings, Mar
 use crate::gpu::frame::main_segment::MainSegment;
 use crate::gpu::frame::schedule::{GroupSpan, RenderStep, Schedule};
 use crate::gpu::frame::submission::{Route, Submission};
+use crate::gpu::pipeline::atlas_binding::AtlasSlots;
 use crate::gpu::pipeline::blit_pipeline::BlitPipeline;
 use crate::gpu::pipeline::clip_variant::{ClipVariant, Clipping};
 use crate::gpu::pipeline::curve_pipeline::CurvePipeline;
@@ -585,7 +585,7 @@ impl WgpuBackend {
             "a view of the target exactly where a pass writes it"
         );
         // After the upload, whose inserts open the pages this frame's draws read.
-        let slots = self.atlas.slots();
+        let slots = AtlasSlots::of(&self.atlas);
         self.ensure_pipelines(format, buffer, slots);
         let effects = self.effect_store.read();
         let main_pass = self.run_steps(

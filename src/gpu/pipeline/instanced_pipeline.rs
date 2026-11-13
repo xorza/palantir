@@ -1,7 +1,7 @@
 //! [`InstancedPipeline`]: what the mesh, image and curve families share.
 
-use crate::gpu::atlas::page_slots::AtlasSlots;
 use crate::gpu::device::gpu::Gpu;
+use crate::gpu::pipeline::atlas_binding::AtlasSlots;
 use crate::gpu::pipeline::clip_variant::Clipping;
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use crate::gpu::resource::gpu_ctx::GpuCtx;

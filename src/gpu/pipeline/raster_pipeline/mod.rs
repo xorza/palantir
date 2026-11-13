@@ -7,8 +7,9 @@ pub(crate) mod raster_quad;
 
 use crate::gpu::atlas::atlas_format::AtlasFormat;
 use crate::gpu::atlas::page_group;
-use crate::gpu::atlas::page_slots::{AtlasSlots, PageSlots};
+use crate::gpu::atlas::page_slots::PageSlots;
 use crate::gpu::device::gpu::Gpu;
+use crate::gpu::pipeline::atlas_binding::AtlasSlots;
 use crate::gpu::pipeline::clip_variant::{ClipVariant, Clipping};
 use crate::gpu::pipeline::instanced_pipeline::VariantTarget;
 use crate::gpu::pipeline::raster_pipeline::raster_quad::{

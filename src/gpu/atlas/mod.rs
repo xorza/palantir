@@ -17,7 +17,6 @@ use crate::gpu::atlas::atlas_format::AtlasFormat;
 use crate::gpu::atlas::atlas_handle::{AtlasHandle, Placement};
 use crate::gpu::atlas::error::AtlasError;
 use crate::gpu::atlas::page_list::{MoveBudget, PageList, PageListConfig};
-use crate::gpu::atlas::page_slots::AtlasSlots;
 use crate::gpu::atlas::scratch_cache::ScratchId;
 use crate::gpu::atlas::tenant::Tenant;
 use glam::{U16Vec2, UVec2};
@@ -89,14 +88,6 @@ impl AtlasPool {
     /// The list of `format`.
     pub(crate) const fn list(&self, format: AtlasFormat) -> &PageList {
         &self.lists[format as usize]
-    }
-
-    /// The open slots a frame's raster and shadow draws read now.
-    pub(crate) fn slots(&self) -> AtlasSlots {
-        AtlasSlots {
-            mask: self.list(AtlasFormat::R8).slots(),
-            color: self.list(AtlasFormat::Rgba8).slots(),
-        }
     }
 
     /// Move to display frame `frame`, and drop the scratch textures idle for an expiry window.
