@@ -34,6 +34,7 @@ use crate::widgets::menu::Menu;
 use crate::widgets::menu::menu_item::MenuItem;
 use crate::widgets::menu::menu_landing::MenuLanding;
 use crate::widgets::scroll::Scroll;
+use crate::widgets::tabs::tab_carry::TabCarry;
 use crate::widgets::tabs::tab_chip::TabChip;
 use crate::widgets::tabs::tab_item::TabItem;
 use crate::widgets::tabs::tab_key::TabKey;
@@ -242,19 +243,16 @@ impl<'a> TabStrip<'a> {
         widget.configure().default_size(SizeSpec::FILL_W);
         let response = widget.response(ui);
         let id = response.id;
-        let was_carried = match drag {
+        let was_carried = TabCarry::new(match drag {
             ChipDrag::Reorder => ui.state::<StripState>(id).and_then(|s| s.carried),
             ChipDrag::Dock { .. } => None,
-        };
-        // A carried tab that left the strip ends its carry: no chip is left to report the
-        // release, and its caret would stay up.
-        let mut carried = was_carried.filter(|key| items.iter().any(|item| item.key == *key));
-        if carried.is_some() && ui.shortcut_pressed(Key::Escape) {
-            carried = None;
-        }
+        });
+        let mut carry = was_carried;
+        carry.end_if_gone(|key| items.iter().any(|item| item.key == key));
+        carry.cancel(ui);
         let keys = || items.iter().map(|item| item.key);
         let caret = match drag {
-            ChipDrag::Reorder => carried.and_then(|_| dropped_slot(ui, id, keys())),
+            ChipDrag::Reorder => carry.carried().and_then(|_| dropped_slot(ui, id, keys())),
             ChipDrag::Dock { caret } => caret,
         };
         let strip_chrome = t.strip.clone();
@@ -273,7 +271,9 @@ impl<'a> TabStrip<'a> {
             } else {
                 t.cap_unfocused
             },
-            hits: StripHits::default(),
+            chips: ChipHits::default(),
+            keyed: None,
+            menu_picked: None,
         };
         widget.record(ui, Some(&strip_chrome), |ui| {
             let row = Widget::hstack()
@@ -281,21 +281,27 @@ impl<'a> TabStrip<'a> {
                 .size(SizeSpec::FILL_W)
                 .gap(t.gap)
                 .child_align(VAlign::Bottom);
-            let reveal = pass.reveal_delta(ui);
+            // The selected chip asked to show is revealed once, from last frame's rects.
+            let reveal = ui.state::<StripState>(id).and_then(|state| state.reveal);
+            if reveal.is_some() {
+                ui.with_state::<StripState, _>(id, |_, s| s.reveal = None);
+            }
             row.record(ui, None, |ui| {
-                Scroll::horizontal()
-                    .id(Self::band_id(id))
-                    .size(SizeSpec::FILL_W)
-                    .hidden_bars()
-                    .pan_by(reveal)
-                    .padding(t.strip_padding)
-                    .gap(t.gap)
-                    .child_align(VAlign::Bottom)
-                    .show(ui, |ui| {
-                        for slot in 0..items.len() {
-                            pass.chip(ui, slot, &mut content);
-                        }
-                    });
+                let band = Scroll::horizontal().id(Self::band_id(id));
+                match reveal {
+                    Some(key) => band.reveal(Self::chip_id(id, key)),
+                    None => band,
+                }
+                .size(SizeSpec::FILL_W)
+                .hidden_bars()
+                .padding(t.strip_padding)
+                .gap(t.gap)
+                .child_align(VAlign::Bottom)
+                .show(ui, |ui| {
+                    for slot in 0..items.len() {
+                        pass.chip(ui, slot, &mut content);
+                    }
+                });
                 if overflow == TabOverflow::Menu {
                     pass.overflow_menu(ui);
                 }
@@ -311,12 +317,7 @@ impl<'a> TabStrip<'a> {
             }
             pass.keyboard_travel(ui);
         });
-        let hits = pass.hits;
-        if let Some(slot) = hits.keyed.or(hits.menu_picked) {
-            ui.with_state::<StripState, _>(id, |_, s| s.reveal = Some(items[slot].key));
-        }
-
-        let StripHits {
+        let StripPass {
             chips:
                 ChipHits {
                     clicked,
@@ -326,30 +327,32 @@ impl<'a> TabStrip<'a> {
                 },
             keyed,
             menu_picked,
-        } = hits;
+            ..
+        } = pass;
+        if let Some(slot) = keyed.or(menu_picked) {
+            ui.with_state::<StripState, _>(id, |_, s| s.reveal = Some(items[slot].key));
+        }
         let mut reordered = None;
         if matches!(drag, ChipDrag::Reorder) {
-            if let Some(slot) = drag_started {
-                carried = Some(items[slot].key);
-            }
-            if let Some(from) = drag_stopped {
-                let carried_from = carried == Some(items[from].key);
-                carried = None;
-                if carried_from
-                    && let Some(to) = caret
-                    && to != from
-                    && to != from + 1
-                {
-                    reordered = Some(TabMove { from, to });
-                }
+            carry.begin(drag_started.map(|slot| items[slot].key));
+            // Any chip's drag stop ends the carry; it moves the tab when it is the carried one.
+            if let Some(from) = drag_stopped
+                && carry.release(|_| true) == Some(items[from].key)
+                && let Some(to) = caret
+                && to != from
+                && to != from + 1
+            {
+                reordered = Some(TabMove { from, to });
             }
             // Written only on a change, so a strip nobody drags mints no row.
-            if carried != was_carried {
-                ui.with_state::<StripState, _>(id, |_, s| s.carried = carried);
+            if carry != was_carried {
+                ui.with_state::<StripState, _>(id, |_, s| s.carried = carry.carried());
             }
         }
         let unscanned = keyed.or(menu_picked);
-        let dragging = carried.and_then(|key| items.iter().position(|item| item.key == key));
+        let dragging = carry
+            .carried()
+            .and_then(|key| items.iter().position(|item| item.key == key));
         TabStripResponse {
             response,
             activated: clicked.or(unscanned),
@@ -427,13 +430,6 @@ impl ChipHits {
     }
 }
 
-#[derive(Debug, Default)]
-struct StripHits {
-    chips: ChipHits,
-    keyed: Option<usize>,
-    menu_picked: Option<usize>,
-}
-
 /// One record of a strip: what every chip reads, and what the chips and keys did.
 #[derive(Debug)]
 struct StripPass<'a> {
@@ -445,7 +441,12 @@ struct StripPass<'a> {
     selected: Option<usize>,
     /// The selection cap's color, as the strip's focus picks it.
     cap: RgbaF32,
-    hits: StripHits,
+    /// What the chips did.
+    chips: ChipHits,
+    /// The chip a key moved the selection to.
+    keyed: Option<usize>,
+    /// The chip the overflow menu picked.
+    menu_picked: Option<usize>,
 }
 
 impl StripPass<'_> {
@@ -453,26 +454,6 @@ impl StripPass<'_> {
     fn band_clip(&self, ui: &Ui) -> Option<Rect> {
         let band = ui.response_for(TabStrip::band_id(self.strip)).rect?;
         Some(band.deflated_by(self.theme.strip_padding))
-    }
-
-    /// The pan bringing the selected chip into the band's clip, from last frame's rects; forgets the request.
-    fn reveal_delta(&self, ui: &mut Ui) -> Vec2 {
-        let strip = self.strip;
-        let Some(key) = ui.state::<StripState>(strip).and_then(|state| state.reveal) else {
-            return Vec2::ZERO;
-        };
-        ui.with_state::<StripState, _>(strip, |_, s| s.reveal = None);
-        let (Some(clip), Some(chip)) = (self.band_clip(ui), TabStrip::chip_extent(ui, strip, key))
-        else {
-            return Vec2::ZERO;
-        };
-        if chip.min.x < clip.min.x {
-            Vec2::new(chip.min.x - clip.min.x, 0.0)
-        } else if chip.max().x > clip.max().x {
-            Vec2::new(chip.max().x - clip.max().x, 0.0)
-        } else {
-            Vec2::ZERO
-        }
     }
 
     /// A small glyph button wearing [`TabsTheme::close`], from its last frame's state.
@@ -586,8 +567,7 @@ impl StripPass<'_> {
             });
         });
 
-        self.hits
-            .chips
+        self.chips
             .add(slot, &state, close.as_ref().map(|c| &c.response));
     }
 
@@ -682,7 +662,7 @@ impl StripPass<'_> {
                 picked
             });
         if let Some(slot) = picked.and_then(|picked| picked.inner) {
-            self.hits.menu_picked = Some(slot);
+            self.menu_picked = Some(slot);
         }
     }
 
@@ -723,7 +703,7 @@ impl StripPass<'_> {
         if let Some(target) = target
             && Some(target) != selected
         {
-            self.hits.keyed = Some(target);
+            self.keyed = Some(target);
         }
     }
 }

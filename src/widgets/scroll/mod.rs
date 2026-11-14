@@ -239,11 +239,12 @@ impl<'a> Scroll<'a> {
         self
     }
 
-    /// Pan, on the frame this is shown, by the least distance that brings `child`'s last-frame
-    /// rect into the viewport on each panned axis, as the web's `scrollIntoView({block:
-    /// "nearest"})` and Qt's `ensureWidgetVisible` do: none while it is in view, and its start
-    /// at the viewport's start when it is larger. Goes through [`Self::pan_by`]'s clamp, and
-    /// does nothing before `child` has a rect.
+    /// Pan, on the frame this is shown, to bring `child`'s last-frame rect into the viewport on
+    /// each panned axis, as the web's `scrollIntoView({block: "nearest"})` and Qt's
+    /// `ensureWidgetVisible` do: none while it is in view or covers the viewport, else the edge
+    /// it crosses aligns with the viewport's, or its other edge when it is longer than the
+    /// viewport. Goes through
+    /// [`Self::pan_by`]'s clamp, and does nothing before `child` has a rect.
     pub const fn reveal(mut self, child: WidgetId) -> Self {
         self.reveal = Some(child);
         self
@@ -538,9 +539,9 @@ impl<'a> Scroll<'a> {
                 if !self.axes.pans(axis) {
                     return 0.0;
                 }
-                reveal_pan(
-                    axis.main_v(content),
-                    axis.main(rect.size) * zoom,
+                let start = axis.main_v(content);
+                scroll_state::reveal_pan(
+                    start..start + axis.main(rect.size) * zoom,
                     axis.main_v(offset),
                     axis.main(viewport),
                 )
@@ -679,20 +680,6 @@ impl Scroll<'_> {
     pub fn set_zoom(ui: &mut Ui, id: WidgetId, zoom: f32) {
         let zoom = domain::positive(zoom);
         ui.with_state::<ScrollState, _>(id, |_, state| state.set_zoom(zoom));
-    }
-}
-
-/// The pan on one axis that brings a span starting at `start`, `len` long, into a view at
-/// `offset`, `view` long: none while it is in view, and its start at the view's when it is
-/// larger.
-fn reveal_pan(start: f32, len: f32, offset: f32, view: f32) -> f32 {
-    let end = start + len;
-    if start < offset || len > view {
-        start - offset
-    } else if end > offset + view {
-        end - (offset + view)
-    } else {
-        0.0
     }
 }
 

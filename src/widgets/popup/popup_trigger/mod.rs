@@ -11,7 +11,7 @@ use crate::widget_core::configure::ConfigureDefaults;
 use crate::widget_core::overlay_response::OverlayResponse;
 use crate::widgets::menu::menu_landing::MenuLanding;
 use crate::widgets::popup::Popup;
-use crate::widgets::popup::trigger_state::{Opening, TriggerFrame, TriggerState};
+use crate::widgets::popup::trigger_state::{Opening, TriggerFrame, TriggerRow};
 
 /// A [`Popup`] dropped below a trigger: a click opens it; a second click, an
 /// outside press, Escape or a [`Ui::close_overlay`] in the body closes it. The whole protocol of a
@@ -112,19 +112,19 @@ impl PopupTrigger<'_> {
     /// Open the popup of the trigger `trigger`, e.g. from a keyboard shortcut; it
     /// records on that trigger's next `show`.
     pub fn open(ui: &mut Ui, trigger: WidgetId) {
-        TriggerState::<PopupTrigger<'static>>::open(ui, trigger, Opening::Below);
+        TriggerRow::<PopupTrigger<'static>>::open(ui, trigger, Opening::Below);
     }
 
     /// Close the popup of the trigger `trigger`, giving back the input it held at once. No-op if
     /// already closed.
     pub fn close(ui: &mut Ui, trigger: WidgetId) {
-        TriggerState::<PopupTrigger<'static>>::close(ui, trigger);
+        TriggerRow::<PopupTrigger<'static>>::close(ui, trigger);
     }
 
     /// `true` while the popup of the trigger `trigger` is open. No row is allocated
     /// for a never-opened trigger.
     pub fn is_open(ui: &Ui, trigger: WidgetId) -> bool {
-        TriggerState::<PopupTrigger<'static>>::is_open(ui, trigger)
+        TriggerRow::<PopupTrigger<'static>>::is_open(ui, trigger)
     }
 }
 

@@ -14,7 +14,7 @@ use crate::widgets::tabs::reindex;
 use crate::widgets::tabs::tab_item::{TabItem, TabItemBuf};
 use crate::widgets::tabs::tab_key::TabKey;
 use crate::widgets::tabs::tab_move::TabMove;
-use crate::widgets::tabs::tab_strip::{TabOverflow, TabStrip};
+use crate::widgets::tabs::tab_strip::{TabOverflow, TabStrip, TabStripResponse};
 use std::hash::Hash;
 use std::rc::Rc;
 
@@ -194,41 +194,35 @@ impl<'a, S, L: Fn(&S) -> &str, K: Fn(usize, &S) -> TabKey> TabbedView<'a, S, L, 
         let response = widget.response(ui);
         let strip_id = response.id.with("strip");
         let pass = widget.record(ui, None, |ui| {
-            let hit = ui.with_state::<TabItemBuf, _>(strip_id, |ui, buf| {
+            let strip = ui.with_state::<TabItemBuf, _>(strip_id, |ui, buf| {
                 buf.items.clear();
                 buf.items.reserve_exact(options.len());
-                for (i, option) in options.iter().enumerate() {
+                for (idx, option) in options.iter().enumerate() {
                     let text = ui.intern(label(option));
                     buf.items.push(TabItem {
-                        key: key(i, option),
+                        key: key(idx, option),
                         label: text,
                         closable,
                         draggable,
                     });
                 }
-                let strip = TabStrip::new(&buf.items)
+                TabStrip::new(&buf.items)
                     .id(strip_id)
                     .selected_idx(shown)
                     .overflow(overflow)
                     .style(t)
                     .menu_style(menu_style)
-                    .show(ui, |ui, chip| chip.show_label(ui));
-                StripHit {
-                    activated: strip.activated,
-                    closed: strip.closed,
-                    reordered: strip.reordered,
-                    dragging: strip.dragging,
-                }
+                    .show(ui, |ui, chip| chip.show_label(ui))
             });
-            let activated = hit.activated.filter(|_| hit.closed.is_none());
-            let mut bound = match hit.closed {
+            let activated = activated_page(&strip);
+            let mut bound = match strip.closed {
                 Some(idx) => shown.map(|page| reindex::after_removal(page, idx, options.len())),
                 None => activated,
             };
             if activated.is_some() {
                 shown = activated;
             }
-            if let (Some(TabMove { from, to }), Some(page)) = (hit.reordered, shown) {
+            if let (Some(TabMove { from, to }), Some(page)) = (strip.reordered, shown) {
                 bound = Some(reindex::after_move(page, from, to));
             }
             let inner = Panel::vstack()
@@ -237,10 +231,7 @@ impl<'a, S, L: Fn(&S) -> &str, K: Fn(usize, &S) -> TabKey> TabbedView<'a, S, L, 
                 .show(ui, |ui| shown.map(|page| body(ui, page)))
                 .inner;
             ViewPass {
-                activated,
-                closed: hit.closed,
-                reordered: hit.reordered,
-                dragging: hit.dragging,
+                strip,
                 bound,
                 inner,
             }
@@ -253,10 +244,10 @@ impl<'a, S, L: Fn(&S) -> &str, K: Fn(usize, &S) -> TabKey> TabbedView<'a, S, L, 
             response,
             inner: pass.inner,
             changed,
-            activated: pass.activated,
-            closed: pass.closed,
-            reordered: pass.reordered,
-            dragging: pass.dragging,
+            activated: activated_page(&pass.strip),
+            closed: pass.strip.closed,
+            reordered: pass.strip.reordered,
+            dragging: pass.strip.dragging,
         }
     }
 }
@@ -272,20 +263,17 @@ impl<S, L, K> Configure for TabbedView<'_, S, L, K> {
 /// returned.
 #[derive(Debug)]
 struct ViewPass<R> {
-    activated: Option<usize>,
-    closed: Option<usize>,
-    reordered: Option<TabMove>,
-    dragging: Option<usize>,
+    strip: TabStripResponse,
     bound: Option<usize>,
     inner: Option<R>,
 }
 
-#[derive(Debug)]
-struct StripHit {
-    activated: Option<usize>,
-    closed: Option<usize>,
-    reordered: Option<TabMove>,
-    dragging: Option<usize>,
+/// The page `strip` activated, unless the same press closed one, which the close wins.
+const fn activated_page(strip: &TabStripResponse) -> Option<usize> {
+    match strip.closed {
+        Some(_) => None,
+        None => strip.activated,
+    }
 }
 
 fn idx_key<S>(idx: usize, _: &S) -> TabKey {

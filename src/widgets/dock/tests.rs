@@ -634,24 +634,24 @@ fn serde_roundtrips_through_ron() {
 /// A saved layout that breaks an invariant fails to load with that error.
 #[test]
 fn loading_rejects_each_corruption() {
-    type Corrupt = fn(&mut DockState<Tab>);
+    type Corrupt = fn(&mut DockLayout<Tab>);
 
-    // Base: `[split, primary(Main, Prefs), viewer-pane(v1)]`, corrupted one
-    // invariant at a time through gated raw access, saved and read back.
+    // Base: `[split, primary(Main, Prefs), viewer-pane(v1)]`, its layout corrupted one
+    // invariant at a time, saved and read back.
     let base = {
         let mut d = seeded();
         let primary = d.primary().id;
         split_off(&mut d, viewer(1), primary, SplitSide::Right);
         d.validate().unwrap();
-        d
+        d.layout().clone()
     };
 
     let cases: [(&str, Corrupt, &str); 11] = [
         (
             "duplicate group id",
-            |d| {
-                let pid = d.primary().id;
-                for n in d.nodes_mut() {
+            |layout| {
+                let pid = layout.focused;
+                for n in &mut layout.nodes {
                     if let DockNode::Group(g) = n {
                         g.id = pid;
                     }
@@ -661,16 +661,13 @@ fn loading_rejects_each_corruption() {
         ),
         (
             "dangling focused",
-            |d| {
-                let gone = d.absent_group();
-                d.set_focused_unchecked(gone);
-            },
+            |layout| layout.focused = TabGroupId(layout.next_group + 1000),
             "focused group",
         ),
         (
             "active out of range",
-            |d| {
-                let DockNode::Group(g) = &mut d.nodes_mut()[1] else {
+            |layout| {
+                let DockNode::Group(g) = &mut layout.nodes[1] else {
                     panic!("slot 1 is the primary group");
                 };
                 g.active = g.tabs.len();
@@ -679,8 +676,8 @@ fn loading_rejects_each_corruption() {
         ),
         (
             "ratio out of bounds",
-            |d| {
-                let DockNode::Split(s) = &mut d.nodes_mut()[0] else {
+            |layout| {
+                let DockNode::Split(s) = &mut layout.nodes[0] else {
                     panic!("the root is a split");
                 };
                 s.ratio = 0.95;
@@ -690,18 +687,18 @@ fn loading_rejects_each_corruption() {
         (
             // The next split would mint an id a group already holds.
             "group counter repeats a live id",
-            |d| d.set_next_group_unchecked(0),
+            |layout| layout.next_group = 0,
             "cannot mint a fresh id",
         ),
         (
             "group counter has nowhere left to count",
-            |d| d.set_next_group_unchecked(u64::MAX),
+            |layout| layout.next_group = u64::MAX,
             "cannot mint a fresh id",
         ),
         (
             "children out of pre-order",
-            |d| {
-                let DockNode::Split(s) = &mut d.nodes_mut()[0] else {
+            |layout| {
+                let DockNode::Split(s) = &mut layout.nodes[0] else {
                     panic!("the root is a split");
                 };
                 mem::swap(&mut s.first, &mut s.second);
@@ -710,13 +707,13 @@ fn loading_rejects_each_corruption() {
         ),
         (
             "child index past the end",
-            |d| d.nodes_mut().truncate(2),
+            |layout| layout.nodes.truncate(2),
             "dock node index",
         ),
         (
             "unreachable trailing slot",
-            |d| {
-                let DockNode::Split(s) = &mut d.nodes_mut()[0] else {
+            |layout| {
+                let DockNode::Split(s) = &mut layout.nodes[0] else {
                     panic!("the root is a split");
                 };
                 // The root points only at slot 1; slots 2.. are orphaned.
@@ -730,8 +727,8 @@ fn loading_rejects_each_corruption() {
         ),
         (
             "empty group",
-            |d| {
-                let DockNode::Group(g) = &mut d.nodes_mut()[2] else {
+            |layout| {
+                let DockNode::Group(g) = &mut layout.nodes[2] else {
                     panic!("slot 2 is the split-off viewer pane");
                 };
                 g.tabs.clear();
@@ -740,8 +737,8 @@ fn loading_rejects_each_corruption() {
         ),
         (
             "no pinned tab anywhere",
-            |d| {
-                let DockNode::Group(g) = &mut d.nodes_mut()[1] else {
+            |layout| {
+                let DockNode::Group(g) = &mut layout.nodes[1] else {
                     panic!("slot 1 is the primary group");
                 };
                 g.tabs.retain(|t| *t != Tab::Main);
@@ -751,18 +748,18 @@ fn loading_rejects_each_corruption() {
         ),
     ];
     for (name, corrupt, expected) in cases {
-        let mut d = base.clone();
-        corrupt(&mut d);
-        let err = load_err(&d);
+        let mut layout = base.clone();
+        corrupt(&mut layout);
+        let err = load_err(&layout);
         assert!(err.contains(expected), "{name}: unexpected error: {err}");
     }
 }
 
-/// Save `d` and read it back, expecting the read to fail.
-fn load_err(d: &DockState<Tab>) -> String {
-    let text = ser::to_string(d.layout()).expect("a corrupt tree still serializes");
+/// Save `layout` and read it back, expecting the load to fail.
+fn load_err(layout: &DockLayout<Tab>) -> String {
+    let text = ser::to_string(layout).expect("a corrupt tree still serializes");
     let layout: DockLayout<Tab> = ron::from_str(&text).expect("a corrupt tree still parses");
-    DockState::load(layout, d.pinned())
+    DockState::load(layout, Tab::Main)
         .expect_err("a corrupt layout must not load")
         .to_string()
 }
@@ -774,11 +771,12 @@ fn loading_rejects_a_tab_that_appears_twice() {
     let mut d = seeded();
     let primary = d.primary().id;
     split_off(&mut d, viewer(1), primary, SplitSide::Right);
-    let DockNode::Group(g) = &mut d.nodes_mut()[1] else {
+    let mut layout = d.layout().clone();
+    let DockNode::Group(g) = &mut layout.nodes[1] else {
         panic!("slot 1 is the primary group");
     };
     g.tabs.push(viewer(1));
-    let err = load_err(&d);
+    let err = load_err(&layout);
     assert!(err.contains("appears twice"), "unexpected error: {err}");
 }
 

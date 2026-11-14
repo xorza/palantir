@@ -392,40 +392,6 @@ Files: `src/host/winit/input/wheel_steps.rs`, `src/host/winit/platform/windows.r
   every other build reads it as a dead variant, which only a `target_os` attribute outside the
   platform module silences.
 
-### Batch 11: overlays, tabs, dock, scroll, text edit
-
-Files: `src/widgets/{popup, menu, menu_bar, tabs, dock, scroll, splitter, text_edit}`.
-
-- [ ] `popup/trigger_state.rs:29-210`: `TriggerState<K>` carries a state-map key in the value type,
-  at four hand-written impls and a `K` on `Settled` and `settle`; `MenuBar` holds one whose `K`
-  means nothing. Target: plain `TriggerState { open, shown }` with derives; a private
-  `TriggerRow<K>` owns the map access.
-- [ ] `scroll/mod.rs:532-553,710-719`, `scroll/scroll_state.rs:260-272`,
-  `tabs/tab_strip.rs:458-476`: reveal-pan three times, under two rules for a span longer than the
-  view. Target: one `reveal_pan(span, offset, extent)` in `scroll_state.rs` that implements
-  CSSOM's `nearest` (a span covering the view does not move; otherwise the edge already in view
-  is aligned), with a table test of its six cases; `TabStrip` deletes `reveal_delta` and passes
-  `.reveal(chip_id)` to its band. Check the strip against a golden. Decided: `nearest`, not
-  "always the start"; the docs at `scroll/mod.rs:710-719` and `scroll_state.rs:260` are
-  rewritten to it, and `src/widgets/AGENTS.md` records the rule with the CSSOM link.
-- [ ] `tabs/tab_strip.rs:252-353`, `dock/dock_view.rs:263-305`, `dock/tab_drag.rs`: the drag
-  lifecycle twice. Target: `TabCarry<K>` in `tabs/` with `begin`, `cancel`, `end_if_gone`,
-  `release`.
-- [ ] `tabs/tabbed_view.rs:218-291`, `tabs/tab_strip.rs:316,352,431-436`: `StripHit`, `ViewPass`
-  and `TabbedViewResponse` copy the same four fields from a `Copy` `TabStripResponse`. Target: the
-  closure returns the response; `ViewPass { strip, bound, inner }`; `StripHit` and `StripHits` go.
-- [ ] `text_edit/shape_ctx.rs:17-35`, `text_layout.rs:13-103`, `view_state.rs:36,84-128`:
-  `ShapeCtx` exists only inside a `TextLayout` and stores what the layout derives;
-  `ViewState::wheel_axes` is read straight after it is written. Target: delete `shape_ctx.rs`;
-  `TextLayout::run(text)`; `ViewState::update` returns `ViewUpdate { caret_animation,
-  wheel_axes }`.
-- [ ] `splitter/mod.rs:189-229,358-365`, `widgets/axis_keys.rs:122-129`: `Seam` built twice from
-  the same four values; `KEYS_X` is `AxisKeys::SCROLL_X_ALONE`. Build once; one constant.
-- [ ] `combo_box/mod.rs:78-79`: the comment says the activation keys add `TEXT`; they add `SPACE`
-  and `ENTER`. `:268`: `i` → `idx`.
-- [ ] Tests: `dock/tests.rs` builds corrupt trees through 27 reach-ins where the contract is
-  `DockState::load(DockLayout)`; `Splitter::along` has no test.
-
 ### Batch 12: theme and `Ui`
 
 Files: `src/theme`, `src/ui`, `palantir-derive/src/lib.rs`.

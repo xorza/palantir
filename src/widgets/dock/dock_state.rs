@@ -548,29 +548,13 @@ impl<T: DockTab> DockState<T> {
 
 #[cfg(test)]
 mod internals {
-    use crate::widgets::dock::dock_node::DockNode;
     use crate::widgets::dock::dock_state::DockState;
     use crate::widgets::dock::dock_tab::DockTab;
     use crate::widgets::dock::tab_group::TabGroupId;
 
     impl<T: DockTab> DockState<T> {
-        /// Raw node access for the validation suite to build corrupt trees.
-        pub(crate) fn nodes_mut(&mut self) -> &mut Vec<DockNode<T>> {
-            &mut self.layout.nodes
-        }
-
-        /// Point `focused` at a group without checking it exists.
-        pub(crate) fn set_focused_unchecked(&mut self, group: TabGroupId) {
-            self.layout.focused = group;
-        }
-
         pub(crate) fn absent_group(&self) -> TabGroupId {
             TabGroupId(self.layout.next_group + 1000)
-        }
-
-        /// Park the id counter where no operation sequence could.
-        pub(crate) fn set_next_group_unchecked(&mut self, next: u64) {
-            self.layout.next_group = next;
         }
 
         /// Append `tab` to a live `group` without activating it or moving focus.

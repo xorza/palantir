@@ -180,18 +180,18 @@ impl<'a> Splitter<'a> {
         let mut drag_from = None;
         // The seam's center along the axis for a splitter `extent` px long.
         let center = |extent: f32| ratio * (extent - rule_thickness) + rule_thickness * 0.5;
+        // The axis as last frame arranged it, which both the drag and the keys map through.
+        let seam = response.layout_rect.map(|rect| Seam {
+            extent: axis.main(rect.size),
+            reserved: rule_thickness,
+            min_pane: self.min_pane,
+            min_ratio: self.min_ratio,
+        });
         if !response.disabled {
             if let Some(travel) = divider.left.drag.delta()
-                && let Some(rect) = response.layout_rect
+                && let Some(seam) = seam
             {
-                let extent = axis.main(rect.size);
-                let seam = Seam {
-                    extent,
-                    reserved: rule_thickness,
-                    min_pane: self.min_pane,
-                    min_ratio: self.min_ratio,
-                };
-                let from = state.drag_from.unwrap_or_else(|| center(extent));
+                let from = state.drag_from.unwrap_or_else(|| center(seam.extent));
                 drag_from = Some(from);
                 layout_ratio = seam.ratio_at(from + axis.main_v(travel));
                 resizing = true;
@@ -205,12 +205,12 @@ impl<'a> Splitter<'a> {
             // go to either end, through the drag's mapping (same floors), committed
             // on the next sync like a reset.
             if ui.is_focus_within(divider_id)
-                && let Some(rect) = response.layout_rect
+                && let Some(seam) = seam
             {
-                let extent = axis.main(rect.size);
+                let extent = seam.extent;
                 let at = center(extent);
                 let keys = match axis {
-                    Axis::X => KEYS_X,
+                    Axis::X => AxisKeys::SCROLL_X_ALONE,
                     Axis::Y => KEYS_Y,
                 };
                 let travel = keys.read(&mut divider_widget, ui);
@@ -220,12 +220,6 @@ impl<'a> Splitter<'a> {
                     None => (travel.steps != 0).then_some(at + travel.steps as f32 * KEY_STEP),
                 };
                 if let Some(pos) = target {
-                    let seam = Seam {
-                        extent,
-                        reserved: rule_thickness,
-                        min_pane: self.min_pane,
-                        min_ratio: self.min_ratio,
-                    };
                     layout_ratio = seam.ratio_at(pos);
                     resizing = true;
                     reset = true;
@@ -352,30 +346,18 @@ const fn sanitize_ratio(r: f32) -> f32 {
 
 const KEY_STEP: f32 = 10.0;
 
-/// WAI-ARIA window splitter keys on a row: Left and Right move the seam, Home and End go to
-/// either end.
-const KEYS_X: AxisKeys = AxisKeys {
-    steps: &[KeyPair {
-        back: Key::ArrowLeft,
-        forward: Key::ArrowRight,
-    }],
-    page: None,
-    ends: Some(KEY_ENDS),
-};
-
-/// [`KEYS_X`] on a column, with Up and Down.
+/// WAI-ARIA window splitter keys on a column: Up and Down move the seam, Home and End go to
+/// either end, as [`AxisKeys::SCROLL_X_ALONE`] does on a row.
 const KEYS_Y: AxisKeys = AxisKeys {
     steps: &[KeyPair {
         back: Key::ArrowUp,
         forward: Key::ArrowDown,
     }],
     page: None,
-    ends: Some(KEY_ENDS),
-};
-
-const KEY_ENDS: KeyPair = KeyPair {
-    back: Key::Home,
-    forward: Key::End,
+    ends: Some(KeyPair {
+        back: Key::Home,
+        forward: Key::End,
+    }),
 };
 
 /// The split axis as the divider maps it: the container's `extent`, the rule's

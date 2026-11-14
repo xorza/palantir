@@ -5,6 +5,7 @@ use crate::host::harness::internals::Passes;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::pointer::PointerButton;
+use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::sizing::Sizing;
 use crate::scene::layer::Layer;
 use crate::theme::Theme;
@@ -522,6 +523,9 @@ fn sanitize_ratio_clamps_and_pins_non_finite() {
     assert_eq!(sanitize_ratio(f32::INFINITY), 0.5);
 }
 
+/// A ratio at an end collapses one pane whole, on the axis the splitter lays them along: a
+/// 401 px square gives the first pane all 400 px past the 1 px rule, along X across and along Y
+/// down, the other axis full.
 #[test]
 fn endpoint_ratios_collapse_exactly_one_pane() {
     for (ratio, expected) in [(0.0, [0.0, 400.0]), (1.0, [400.0, 0.0])] {
@@ -541,6 +545,26 @@ fn endpoint_ratios_collapse_exactly_one_pane() {
             expected,
             "ratio {ratio}",
         );
+    }
+
+    for (axis, first_size, second_size) in [
+        (Axis::X, Vec2::new(400.0, 401.0), Vec2::new(0.0, 401.0)),
+        (Axis::Y, Vec2::new(401.0, 400.0), Vec2::new(401.0, 0.0)),
+    ] {
+        let mut h = Harness::mono(UVec2::new(500, 500));
+        let mut ratio = 1.0;
+        h.frame(|ui| {
+            Splitter::along(axis, &mut ratio)
+                .id(split_id())
+                .size((Sizing::fixed(401.0), Sizing::fixed(401.0)))
+                .show(ui, |_, _| {});
+        });
+        let first = h.node_for_widget_id(split_id().with("first"));
+        let second = h.node_for_widget_id(split_id().with("second"));
+        let rects = &h.ui().plane_layout(Layer::Main).rect;
+        let size = |idx: usize| Vec2::new(rects[idx].size.w, rects[idx].size.h);
+        assert_eq!(size(first.idx()), first_size, "{axis:?}: first");
+        assert_eq!(size(second.idx()), second_size, "{axis:?}: second");
     }
 }
 

@@ -13,7 +13,6 @@ use crate::widgets::text_edit::edit_end::EditEnd;
 use crate::widgets::text_edit::edit_state::EditState;
 use crate::widgets::text_edit::editor::{CaretMove, EditRules, Editor};
 use crate::widgets::text_edit::history::EditKind;
-use crate::widgets::text_edit::shape_ctx::ShapeCtx;
 use crate::widgets::text_edit::text_layout::TextLayout;
 use crate::widgets::text_edit::view_state::ViewState;
 use glam::Vec2;
@@ -70,7 +69,6 @@ impl InputPass<'_> {
             edit,
             view,
         } = self;
-        let ctx = &layout.ctx;
         let AcceptPolicy {
             rules,
             select_all_on_focus,
@@ -106,14 +104,14 @@ impl InputPass<'_> {
         {
             // Hit-testing runs against the unscrolled layout, so add back last
             // frame's scroll and block offset: the user clicked on what they saw.
-            let [pad_l, pad_t, _, _] = ctx.padding.to_array();
+            let [pad_l, pad_t, _, _] = layout.padding.to_array();
             let block = layout.prev_block_offset;
             let local_x = pointer_offset.x - pad_l - block.x + view.scroll.offset().x;
             let local_y = pointer_offset.y - pad_t - block.y + view.scroll.offset().y;
             // Single-line probes at `y=0`.
-            let hit = ui.probe_text(ctx.run(ed.text())).byte_at(Vec2::new(
+            let hit = ui.probe_text(layout.run(ed.text())).byte_at(Vec2::new(
                 local_x,
-                if ctx.multiline { local_y } else { 0.0 },
+                if layout.multiline { local_y } else { 0.0 },
             ));
             let clicks = resp_state.left.press_count();
             if clicks > 0 {
@@ -161,7 +159,7 @@ impl InputPass<'_> {
                     assert_only_repeats_after(ui.keyboard_events(KeyboardWake::NONE), i);
                     break;
                 }
-                KeyOutcome::Probe(probe) => probe.apply(&mut ed, ui, ctx),
+                KeyOutcome::Probe(probe) => probe.apply(&mut ed, ui, layout),
                 // A horizontal move ends a run of vertical ones, even one the text's edge stops.
                 KeyOutcome::None => ed.clear_goal(),
             }
@@ -276,10 +274,10 @@ impl ProbeMotion {
     /// Move the caret to the byte [`ProbeTarget::byte`] picks from its current
     /// position. Both queries share one `probe_text` borrow and cache dispatch. A vertical
     /// move aims at the goal column of the run it continues, or starts one at the caret's x.
-    fn apply(self, editor: &mut Editor<'_>, ui: &mut Ui, ctx: &ShapeCtx) {
+    fn apply(self, editor: &mut Editor<'_>, ui: &mut Ui, layout: &TextLayout) {
         let goal = editor.goal_x();
         let (byte, x) = {
-            let probe = ui.probe_text(ctx.run(editor.text()));
+            let probe = ui.probe_text(layout.run(editor.text()));
             let pos = probe.caret_at(editor.caret());
             let x = goal.unwrap_or(pos.x);
             (self.target.byte(&probe, pos, x), x)

@@ -1,7 +1,7 @@
 //! The editable text leaf and the machinery one edit costs: buffer, selection and undo
 //! ([`editor`], [`edit_state`], [`history`]), keys and gestures ([`action`], [`input_pass`]),
 //! the input method's composition ([`composition`]),
-//! placement and caret mapping ([`text_layout`], [`text_geometry`], [`shape_ctx`],
+//! placement and caret mapping ([`text_layout`], [`text_geometry`],
 //! [`paint_input`]), retained scroll and focus ([`view_state`]), and
 //! grapheme/word walks ([`unicode`]).
 
@@ -15,7 +15,6 @@ mod editor;
 mod history;
 mod input_pass;
 mod paint_input;
-mod shape_ctx;
 mod text_geometry;
 pub(crate) mod text_layout;
 mod unicode;
@@ -452,7 +451,6 @@ impl EditField<'_> {
             text_align: self.text_align,
             prev_block_offset,
         });
-        let ctx = layout.ctx;
         let rules = EditRules {
             multiline: self.multiline,
             max_chars: self.max_chars,
@@ -520,10 +518,10 @@ impl EditField<'_> {
             Vec2::ZERO
         } else {
             response.scroll.pan(
-                ctx.font.line_height,
+                layout.font.line_height,
                 response
                     .layout_rect
-                    .map_or(Size::ZERO, |rect| rect.deflated_by(ctx.padding).size),
+                    .map_or(Size::ZERO, |rect| rect.deflated_by(layout.padding).size),
             )
         };
 
@@ -560,7 +558,7 @@ impl EditField<'_> {
             &mut state.selection_rects,
         );
         let now = ui.now();
-        let caret_animation = state.view.update(ViewUpdateInput {
+        let view = state.view.update(ViewUpdateInput {
             geometry,
             wheel,
             caret_byte,
@@ -583,7 +581,7 @@ impl EditField<'_> {
                 .scroll
                 .transform(Vec2::ZERO, ui.display())
                 .apply_rect(local);
-            let [left, top, _, _] = ctx.padding.to_array();
+            let [left, top, _, _] = layout.padding.to_array();
             let origin = layout_rect.min + Vec2::new(left, top) + geometry.block_offset;
             ui.request_ime_area(response.transform.apply_rect(Rect {
                 min: scrolled.min + origin,
@@ -594,7 +592,7 @@ impl EditField<'_> {
         let sense = self.widget.authored().sense();
         self.widget
             .configure()
-            .sense(sense.difference(Sense::SCROLL.difference(state.view.wheel_axes)));
+            .sense(sense.difference(Sense::SCROLL.difference(view.wheel_axes)));
         let text_color = look.text.color;
         PaintInput {
             chrome: look.chrome,
@@ -612,7 +610,7 @@ impl EditField<'_> {
                 pos: geometry.caret_pos,
                 width: caret_width,
                 color: caret_color,
-                animation: caret_animation,
+                animation: view.caret_animation,
             }),
         }
         .record(ui, self.widget);

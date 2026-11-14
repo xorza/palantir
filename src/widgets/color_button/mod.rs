@@ -12,7 +12,7 @@ use crate::widget_core::value_response::ValueResponse;
 use crate::widgets::color_picker::ColorPicker;
 use crate::widgets::color_swatch::ColorSwatch;
 use crate::widgets::popup::popup_trigger::PopupTrigger;
-use crate::widgets::popup::trigger_state::{Opening, TriggerState};
+use crate::widgets::popup::trigger_state::{Opening, TriggerRow};
 use std::rc::Rc;
 
 /// A color chip that opens a [`ColorPicker`] popup when clicked.
@@ -85,18 +85,18 @@ impl ColorButton<'static> {
     /// Open the panel of the color button `id`, e.g. from a keyboard shortcut; it records on the
     /// button's next `show`.
     pub fn open(ui: &mut Ui, id: WidgetId) {
-        TriggerState::<Self>::open(ui, id, Opening::Below);
+        TriggerRow::<Self>::open(ui, id, Opening::Below);
     }
 
     /// Close the panel of the color button `id`, giving back the input it held at once. No-op if
     /// closed.
     pub fn close(ui: &mut Ui, id: WidgetId) {
-        TriggerState::<Self>::close(ui, id);
+        TriggerRow::<Self>::close(ui, id);
     }
 
     /// Whether the panel of the color button `id` is open. Allocates no row.
     pub fn is_open(ui: &Ui, id: WidgetId) -> bool {
-        TriggerState::<Self>::is_open(ui, id)
+        TriggerRow::<Self>::is_open(ui, id)
     }
 }
 

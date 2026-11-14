@@ -89,7 +89,7 @@ impl MenuBarRow {
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct OpenMenu {
     title: WidgetId,
-    trigger: TriggerState<MenuBar<'static>>,
+    trigger: TriggerState,
 }
 
 impl OpenMenu {
@@ -349,7 +349,7 @@ impl MenuBarMenus<'_> {
         // The menu's body may have driven the bar through `MenuBar::open` or `close`: what it
         // left stands, and this title's own outcome lands only on a slot the body left alone.
         if MenuBarRow::open_menu(ui, self.bar) == before {
-            let after = if settled.state.is_open_now() {
+            let after = if settled.state.is_open() {
                 // A title opening while another menu is open takes the bar's one slot from it.
                 if let Some(other) = before.filter(|open| open.title != title) {
                     other.trigger.release(ui);

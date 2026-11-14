@@ -3,7 +3,6 @@
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::interaction::response::Response;
-use crate::primitives::input::keyboard::key::Key;
 use crate::primitives::layout::sizing::SizeSpec;
 use crate::primitives::math::domain;
 use crate::scene::layer::Layer;
@@ -30,6 +29,7 @@ use crate::widgets::menu::Menu;
 use crate::widgets::panel::Panel;
 use crate::widgets::splitter::Splitter;
 use crate::widgets::splitter::split_half::SplitHalf;
+use crate::widgets::tabs::tab_carry::TabCarry;
 use crate::widgets::tabs::tab_item::{TabItem, TabItemBuf};
 use crate::widgets::tabs::tab_key::TabKey;
 use crate::widgets::tabs::tab_strip::{TabOverflow, TabStrip};
@@ -268,7 +268,7 @@ impl<'a, T: DockTab> DockView<'a, T, Emitting<'a, T>> {
         {
             operations.push(DockOperation::FocusGroup { group: group.id });
         }
-        let mut dragged = carried::<T>(ui, dock);
+        let mut carry = TabCarry::new(carried::<T>(ui, dock));
         for group in state.groups() {
             let hits = TabStrip::scan(
                 ui,
@@ -282,26 +282,27 @@ impl<'a, T: DockTab> DockView<'a, T, Emitting<'a, T>> {
             if let Some(tab) = tab_at(hits.clicked) {
                 operations.push(DockOperation::ActivateTab { tab });
             }
-            if dragged.is_none()
-                && let Some(tab) = tab_at(hits.drag_started)
+            if carry.begin(tab_at(hits.drag_started))
+                && let Some(tab) = carry.carried()
             {
-                dragged = Some(tab);
                 ui.set_state(dock, TabDrag { tab, target: None });
             }
         }
-        let Some(tab) = dragged else {
+        let was_carrying = carry.carried().is_some();
+        carry.end_if_gone(|tab| state.find_tab(tab).is_some());
+        carry.cancel(ui);
+        let Some(tab) = carry.carried() else {
+            if was_carrying {
+                end_drag::<T>(ui, dock);
+            }
             return;
         };
-        let Some(address) = state.find_tab(tab) else {
-            end_drag::<T>(ui, dock);
-            return;
-        };
-        if ui.shortcut_pressed(Key::Escape) {
-            end_drag::<T>(ui, dock);
-            return;
-        }
-        let chip = TabStrip::chip_id(address.group.strip_id(dock), TabKey::of(tab));
-        if ui.response_for(chip).left.drag.stopped() {
+        let group = state
+            .find_tab(tab)
+            .expect("the carry ends where its tab is gone")
+            .group;
+        let chip = TabStrip::chip_id(group.strip_id(dock), TabKey::of(tab));
+        if let Some(tab) = carry.release(|_| ui.response_for(chip).left.drag.stopped()) {
             let shown = ui.state::<TabDrag<T>>(dock).and_then(|d| d.target);
             if let Some(target) = shown {
                 operations.push(DockOperation::MoveTab {

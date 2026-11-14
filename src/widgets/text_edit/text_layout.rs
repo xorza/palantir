@@ -3,10 +3,12 @@
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::layout::align::VAlign;
 use crate::primitives::layout::align::{Align, HAlign};
 use crate::text::extent;
 use crate::text::glyph_font::GlyphFont;
-use crate::widgets::text_edit::shape_ctx::ShapeCtx;
+use crate::text::run::TextRun;
+use crate::text::wrap::TextWrap;
 use glam::Vec2;
 
 #[derive(Clone, Copy, Debug)]
@@ -23,7 +25,10 @@ pub(super) struct LayoutInput {
 /// What is known before the shape probe runs: the text box and its shaping parameters. The input pass hit-tests against this (last frame's layout); probe output lands in [`TextGeometry`](crate::widgets::text_edit::text_geometry::TextGeometry).
 #[derive(Clone, Copy, Debug)]
 pub(super) struct TextLayout {
-    pub(super) ctx: ShapeCtx,
+    pub(super) font: GlyphFont,
+    /// What turns a shaped position widget-local.
+    pub(super) padding: Spacing,
+    pub(super) multiline: bool,
     pub(super) text_align: Align,
     /// The caret's drawn width, clamped; the room the field reserves by.
     pub(super) caret_room: f32,
@@ -36,7 +41,7 @@ pub(super) struct TextLayout {
 impl TextLayout {
     /// The alignment the block is placed by; a multi-line field aligns vertically and lets the shaper align each line. Read by both the layout engine and the record pass's hit-test.
     pub(super) const fn block_align(&self) -> Align {
-        if self.ctx.multiline {
+        if self.multiline {
             Align::new(HAlign::Auto, self.text_align.valign())
         } else {
             self.text_align
@@ -58,13 +63,13 @@ impl TextLayout {
             display.w + self.caret_reserve(),
             display
                 .h
-                .max(extent::block_height(self.ctx.font.line_height, 1)),
+                .max(extent::block_height(self.font.line_height, 1)),
         )
     }
 
     /// Room a single line keeps for the caret past its glyphs at both ends; none for a wrapped block.
     pub(super) const fn caret_reserve(&self) -> f32 {
-        if self.ctx.multiline {
+        if self.multiline {
             0.0
         } else {
             single_line_caret_reserve(self.caret_room)
@@ -81,6 +86,26 @@ impl TextLayout {
         self.inner.map_or(Size::ZERO, |rect| rect.size)
     }
 
+    /// This field's shaping parameters as the run [`Ui::probe_text`](crate::Ui::probe_text)
+    /// shapes, as any caller widget probes: a multi-line field wraps at its inner width, aligning
+    /// each line; a single line is unbounded.
+    pub(super) fn run<'a>(&self, text: &'a str) -> TextRun<'a> {
+        TextRun {
+            text,
+            font: self.font,
+            wrap: if self.multiline {
+                TextWrap::Wrap
+            } else {
+                TextWrap::SingleLine
+            },
+            align: Align::new(self.text_align.halign(), VAlign::Auto),
+            max_width: self
+                .inner
+                .filter(|_| self.multiline)
+                .map(|rect| rect.size.w),
+        }
+    }
+
     /// Resolve the text box and shaping parameters from the field's rect, padding, and font.
     pub(super) fn resolve(input: LayoutInput) -> Self {
         let caret_room = caret_room(input.caret_width);
@@ -94,7 +119,9 @@ impl TextLayout {
             Align::LEFT
         });
         Self {
-            ctx: ShapeCtx::new(&input, inner, text_align.halign()),
+            font: input.font,
+            padding: input.padding,
+            multiline: input.multiline,
             text_align,
             caret_room,
             inner,

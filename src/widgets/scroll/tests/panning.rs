@@ -715,3 +715,32 @@ fn the_innermost_scroll_around_focus_takes_the_keys() {
         .map_or(Vec2::ZERO, ScrollState::offset);
     assert_eq!(outer.y, 0.0, "the outer holds");
 }
+
+/// A reveal aligns as CSSOM's `nearest` does, over a view 0..100 at offset 0: a span inside it
+/// and one covering it move nothing; a span crossing one edge aligns that edge when it fits,
+/// and its other edge when it is longer than the view, so what shows is nearest where the view
+/// was.
+#[test]
+fn a_reveal_aligns_the_nearest_edge() {
+    use crate::widgets::scroll::scroll_state::reveal_pan;
+
+    let cases = [
+        ("inside", 10.0..90.0, 0.0),
+        ("covering", -20.0..130.0, 0.0),
+        // Its start, -30 before the view's, aligns: pan by -30.
+        ("before, fitting", -30.0..40.0, -30.0),
+        // 150 long, crossing the start: its end aligns with the view's, 20 − 100 = −80.
+        ("before, longer", -130.0..20.0, -80.0),
+        // Its end, 30 past the view's, aligns: pan by 30.
+        ("after, fitting", 60.0..130.0, 30.0),
+        // 150 long, crossing the end: its start aligns with the view's.
+        ("after, longer", 40.0..190.0, 40.0),
+    ];
+    for (label, span, want) in cases {
+        assert_eq!(reveal_pan(span, 0.0, 100.0), want, "{label}");
+    }
+    // The offset matters: over a view 50..150, 60..130 is inside, and 10..60 crosses its start,
+    // which aligns: 10 − 50 = −40.
+    assert_eq!(reveal_pan(60.0..130.0, 50.0, 100.0), 0.0);
+    assert_eq!(reveal_pan(10.0..60.0, 50.0, 100.0), -40.0);
+}

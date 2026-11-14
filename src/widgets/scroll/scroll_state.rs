@@ -135,6 +135,27 @@ impl ThumbTravel {
     }
 }
 
+/// The pan that brings `span` into a view `extent` long at `offset`, as CSSOM's
+/// `scrollIntoView` aligns at `nearest`
+/// (<https://drafts.csswg.org/cssom-view/#element-scrolling-members>): none while it is in view
+/// or covers the view; else the edge it crosses aligns with the view's, unless the span is
+/// longer than the view, which aligns its other edge, so the part that shows is the part nearest
+/// where the view was.
+pub(crate) fn reveal_pan(span: Range<f32>, offset: f32, extent: f32) -> f32 {
+    let start_out = span.start < offset;
+    let end_out = span.end > offset + extent;
+    let fits = span.end - span.start <= extent;
+    let align_start = span.start - offset;
+    let align_end = span.end - (offset + extent);
+    match (start_out, end_out) {
+        (true, true) | (false, false) => 0.0,
+        (true, false) if fits => align_start,
+        (true, false) => align_end,
+        (false, true) if fits => align_end,
+        (false, true) => align_start,
+    }
+}
+
 impl ScrollState {
     /// The viewport's top-left in content pixels at [`Self::zoom`].
     pub(crate) const fn offset(&self) -> Vec2 {
@@ -257,18 +278,14 @@ impl ScrollState {
         }
     }
 
-    /// Pan along `axis` by the least distance that brings `span` inside the `extent`
-    /// the viewport shows from the offset; a span longer than the extent shows its start.
+    /// Pan along `axis` by [`reveal_pan`] of `span` in the `extent` the viewport shows from the
+    /// offset.
     pub(crate) fn reveal(&mut self, axis: Axis, span: Range<f32>, extent: f32) {
         let offset = match axis {
             Axis::X => &mut self.offset.x,
             Axis::Y => &mut self.offset.y,
         };
-        if span.start < *offset {
-            *offset = span.start;
-        } else if span.end > *offset + extent {
-            *offset = span.end - extent;
-        }
+        *offset += reveal_pan(span, *offset, extent);
     }
 
     pub(crate) fn clamp_to_natural(&mut self, bounds: ScrollBounds) {

@@ -20,7 +20,7 @@ use crate::widgets::menu::menu_separator::MenuSeparator;
 use crate::widgets::menu::tests::support::{SURFACE, menu_body, menu_rows, trigger_id};
 use crate::widgets::panel::Panel;
 use crate::widgets::popup::Popup;
-use crate::widgets::popup::trigger_state::TriggerState;
+use crate::widgets::popup::trigger_state::TriggerRow;
 use glam::UVec2;
 use glam::Vec2;
 
@@ -30,7 +30,7 @@ fn close_before_open_does_not_create_state() {
     Menu::close(h.ui_mut(), trigger_id());
     assert!(
         h.ui()
-            .state::<TriggerState<Menu<'static>>>(trigger_id())
+            .state::<TriggerRow<Menu<'static>>>(trigger_id())
             .is_none()
     );
 }

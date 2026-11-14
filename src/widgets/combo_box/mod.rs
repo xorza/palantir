@@ -25,7 +25,7 @@ use crate::widget_core::widget::Widget;
 use crate::widgets::menu::Menu;
 use crate::widgets::menu::menu_item::MenuItem;
 use crate::widgets::menu::menu_landing::MenuLanding;
-use crate::widgets::popup::trigger_state::{Opening, TriggerState};
+use crate::widgets::popup::trigger_state::{Opening, TriggerRow};
 use crate::widgets::text::Text;
 use std::rc::Rc;
 
@@ -84,8 +84,8 @@ where
     #[track_caller]
     pub fn labeled(selected: &'a mut T, options: I, label: L) -> Self {
         Self {
-            // Alt+Down, the arrows, Home and End are `CARET`; the activation keys add `TEXT` in
-            // `show`.
+            // Alt+Down, the arrows, Home and End are `CARET`; the activation keys add `SPACE` and
+            // `ENTER` in `show`.
             widget: Widget::hstack()
                 .sense(Sense::CLICK)
                 .focusable(true)
@@ -161,7 +161,7 @@ where
             }
             if (opens_pick || opens_first || opens_last)
                 && !response.clicked()
-                && !TriggerState::<ComboBoxList>::is_open(ui, id)
+                && !TriggerRow::<ComboBoxList>::is_open(ui, id)
             {
                 response.activate();
             }
@@ -218,11 +218,11 @@ where
             .min_size((response.rect.map_or(0.0, |rect| rect.size.w), 0.0))
             .show_as::<ComboBoxList, _>(ui, |ui| {
                 let mut picked = false;
-                for (i, opt) in options.into_iter().enumerate() {
+                for (idx, opt) in options.into_iter().enumerate() {
                     let lbl = ui.intern(label(&opt));
                     let row = MenuItem::new(lbl)
-                        .id(option_id(list, i))
-                        .selected(shown == Some(i));
+                        .id(option_id(list, idx))
+                        .selected(shown == Some(idx));
                     if row.show(ui).clicked() && *selected != opt {
                         *selected = opt;
                         picked = true;
@@ -254,25 +254,25 @@ impl ComboBoxList {
     /// Open the list of the combo box `id`, e.g. from a keyboard shortcut; it records on the
     /// combo's next `show`.
     pub fn open(ui: &mut Ui, id: WidgetId) {
-        TriggerState::<Self>::open(ui, id, Opening::Below);
+        TriggerRow::<Self>::open(ui, id, Opening::Below);
     }
 
     /// Close the list of the combo box `id`, giving back the input it held at once. No-op if
     /// closed.
     pub fn close(ui: &mut Ui, id: WidgetId) {
-        TriggerState::<Self>::close(ui, id);
+        TriggerRow::<Self>::close(ui, id);
     }
 
     /// `true` while the list of the combo box `id` is open.
     pub fn is_open(ui: &Ui, id: WidgetId) -> bool {
-        TriggerState::<Self>::is_open(ui, id)
+        TriggerRow::<Self>::is_open(ui, id)
     }
 }
 
-/// The row of option `i` in the list `list`. Keyed by index, so a keyboard open can land on the
-/// pick before the row records.
-fn option_id(list: WidgetId, i: usize) -> WidgetId {
-    list.with(("option", i))
+/// The row of option `idx` in the list `list`. Keyed by index, so a keyboard open can land on
+/// the pick before the row records.
+fn option_id(list: WidgetId, idx: usize) -> WidgetId {
+    list.with(("option", idx))
 }
 
 impl<T, I, L> Configure for ComboBox<'_, T, I, L> {

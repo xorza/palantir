@@ -19,6 +19,12 @@ API design", hold here too.
 - **Responses**: `show` returns `Response`, or a `*Response` that holds `response` beside the
   frame's edges, none derefing to `Response`; a bound value returns `ValueResponse`, and a
   discrete pick commits at once.
+- **A reveal aligns the nearest edge**, as CSSOM's `scrollIntoView` does at `nearest`
+  ([CSSOM View](https://drafts.csswg.org/cssom-view/#element-scrolling-members)): a span in view
+  or covering it moves nothing, else the edge it crosses aligns, or its other edge when it is
+  longer than the view. One `reveal_pan` serves a scroll's `reveal`, its focus reveal, a text
+  edit's caret and a tab strip's selected chip. Refused: always the start, which jumps a long
+  span away from where the view was.
 - **A value commits a change**, as HTML's `change` event fires: a release commits when it leaves
   the value apart from where its press found it, a key when it moved the value, so a click on the
   spot the value holds and a key at a bound commit nothing. A text edit commits its session

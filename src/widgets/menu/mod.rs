@@ -18,7 +18,9 @@ use crate::widget_core::configure::ConfigureDefaults;
 use crate::widget_core::overlay_response::OverlayResponse;
 use crate::widgets::menu::menu_landing::MenuLanding;
 use crate::widgets::popup::Popup;
-use crate::widgets::popup::trigger_state::{Opening, Settled, TriggerFrame, TriggerState};
+use crate::widgets::popup::trigger_state::{
+    Opening, Settled, TriggerFrame, TriggerRow, TriggerState,
+};
 
 use glam::Vec2;
 use std::rc::Rc;
@@ -177,12 +179,12 @@ impl Menu<'_, TriggerOwned> {
 
     /// [`Self::show`] over a `state` its owner keeps rather than the trigger's row, as a menu bar
     /// keeps one for the one menu it has open; the state to keep comes back.
-    pub(crate) fn settle<K, R>(
+    pub(crate) fn settle<R>(
         self,
         ui: &mut Ui,
-        state: TriggerState<K>,
+        state: TriggerState,
         body: impl FnOnce(&mut Ui) -> R,
-    ) -> Settled<K, R> {
+    ) -> Settled<R> {
         let landing = self.landing;
         let settled = self
             .opener
@@ -195,7 +197,7 @@ impl Menu<'_, TriggerOwned> {
     /// Open the menu of the trigger `trigger` below it, as a click on a menu button does.
     /// Idempotent.
     pub fn open(ui: &mut Ui, trigger: WidgetId) {
-        TriggerState::<Menu<'static>>::open(ui, trigger, Opening::Below);
+        TriggerRow::<Menu<'static>>::open(ui, trigger, Opening::Below);
     }
 
     /// Open the menu of the trigger `trigger` at surface-space `point`, as a right-click does.
@@ -206,7 +208,7 @@ impl Menu<'_, TriggerOwned> {
     /// Panics unless both axes of `point` are [offsets](crate::widget::domain::is_offset).
     #[track_caller]
     pub fn open_at(ui: &mut Ui, trigger: WidgetId, point: Vec2) {
-        TriggerState::<Menu<'static>>::open(ui, trigger, Opening::At(vec2::offset(point)));
+        TriggerRow::<Menu<'static>>::open(ui, trigger, Opening::At(vec2::offset(point)));
     }
 
     /// The menu of the trigger `trigger`, unless its `Configure` names another.
@@ -216,12 +218,12 @@ impl Menu<'_, TriggerOwned> {
 
     /// Close the menu of the trigger `trigger`, giving back the input it held at once. No-op if closed.
     pub fn close(ui: &mut Ui, trigger: WidgetId) {
-        TriggerState::<Menu<'static>>::close(ui, trigger);
+        TriggerRow::<Menu<'static>>::close(ui, trigger);
     }
 
     /// Whether the menu of the trigger `trigger` is open. Allocates no row.
     pub fn is_open(ui: &Ui, trigger: WidgetId) -> bool {
-        TriggerState::<Menu<'static>>::is_open(ui, trigger)
+        TriggerRow::<Menu<'static>>::is_open(ui, trigger)
     }
 }
 

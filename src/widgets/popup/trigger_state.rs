@@ -20,80 +20,26 @@ pub(crate) enum Opening {
     At(Vec2),
 }
 
-/// One trigger's overlay in the state map, keyed off the trigger's id. `K` is the widget that
-/// owns the row, so a trigger a [`PopupTrigger`](crate::PopupTrigger) drops a panel from and a
-/// [`Menu`](crate::Menu) raises a context menu on keeps two. A trigger has one menu row:
-/// [`Menu::context`](crate::Menu::context) and [`Menu::below`](crate::Menu::below) on one trigger
-/// share it, and [`Menu::menu_id`](crate::Menu::menu_id) with it.
-#[derive(Debug)]
-pub(crate) struct TriggerState<K> {
+/// One trigger's overlay: whether it is open, and the popup it showed last frame.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub(crate) struct TriggerState {
     open: Option<Opening>,
     /// The popup recorded for it last frame: its input scope is what a close gives back, since a
     /// popup that merely stops recording would own input one frame more.
     shown: Option<WidgetId>,
-    kind: PhantomData<fn() -> K>,
 }
 
-impl<K> Default for TriggerState<K> {
-    fn default() -> Self {
-        Self {
-            open: None,
-            shown: None,
-            kind: PhantomData,
-        }
-    }
-}
-
-impl<K> Clone for TriggerState<K> {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
-impl<K> Copy for TriggerState<K> {}
-
-impl<K> PartialEq for TriggerState<K> {
-    fn eq(&self, other: &Self) -> bool {
-        self.open == other.open && self.shown == other.shown
-    }
-}
-
-impl<K: 'static> TriggerState<K> {
-    /// The row of `for_id`, a closed one when there is none; allocates nothing.
-    fn of(ui: &Ui, for_id: WidgetId) -> Self {
-        ui.state::<Self>(for_id).copied().unwrap_or_default()
-    }
-
-    pub(crate) fn is_open(ui: &Ui, for_id: WidgetId) -> bool {
-        Self::of(ui, for_id).open.is_some()
-    }
-
-    pub(crate) fn open(ui: &mut Ui, for_id: WidgetId, opening: Opening) {
-        ui.with_state::<Self, _>(for_id, |_, state| state.open = Some(opening));
-    }
-
-    /// Close the popup of `for_id` and give back the input scope it held; a closed one stores
-    /// nothing.
-    pub(crate) fn close(ui: &mut Ui, for_id: WidgetId) {
-        let state = Self::of(ui, for_id);
-        if state.open.is_none() {
-            return;
-        }
-        state.release(ui);
-        ui.with_state::<Self, _>(for_id, |_, state| *state = Self::default());
-    }
-
+impl TriggerState {
     /// A state opened at `opening`, for an owner that keeps it rather than the trigger's row.
     pub(crate) const fn opened(opening: Opening) -> Self {
         Self {
             open: Some(opening),
             shown: None,
-            kind: PhantomData,
         }
     }
 
     /// Whether the popup is open.
-    pub(crate) const fn is_open_now(self) -> bool {
+    pub(crate) const fn is_open(self) -> bool {
         self.open.is_some()
     }
 
@@ -105,12 +51,53 @@ impl<K: 'static> TriggerState<K> {
     }
 }
 
+/// A trigger's [`TriggerState`] in the state map, keyed off the trigger's id. `K` is the widget
+/// that owns the row, so a trigger a [`PopupTrigger`](crate::PopupTrigger) drops a panel from and
+/// a [`Menu`](crate::Menu) raises a context menu on keeps two. A trigger has one menu row:
+/// [`Menu::context`](crate::Menu::context) and [`Menu::below`](crate::Menu::below) on one trigger
+/// share it, and [`Menu::menu_id`](crate::Menu::menu_id) with it.
+#[derive(Debug)]
+pub(crate) struct TriggerRow<K>(TriggerState, PhantomData<fn() -> K>);
+
+impl<K> Default for TriggerRow<K> {
+    fn default() -> Self {
+        Self(TriggerState::default(), PhantomData)
+    }
+}
+
+impl<K: 'static> TriggerRow<K> {
+    /// The state of `for_id`, a closed one when there is no row; allocates nothing.
+    fn of(ui: &Ui, for_id: WidgetId) -> TriggerState {
+        ui.state::<Self>(for_id)
+            .map_or_else(TriggerState::default, |row| row.0)
+    }
+
+    pub(crate) fn is_open(ui: &Ui, for_id: WidgetId) -> bool {
+        Self::of(ui, for_id).is_open()
+    }
+
+    pub(crate) fn open(ui: &mut Ui, for_id: WidgetId, opening: Opening) {
+        ui.with_state::<Self, _>(for_id, |_, row| row.0.open = Some(opening));
+    }
+
+    /// Close the popup of `for_id` and give back the input scope it held; a closed one stores
+    /// nothing.
+    pub(crate) fn close(ui: &mut Ui, for_id: WidgetId) {
+        let state = Self::of(ui, for_id);
+        if !state.is_open() {
+            return;
+        }
+        state.release(ui);
+        ui.with_state::<Self, _>(for_id, |_, row| row.0 = TriggerState::default());
+    }
+}
+
 /// What [`TriggerFrame::settle`] leaves: the popup's outcome, `None` while closed, and the state
 /// to keep.
 #[derive(Debug)]
-pub(crate) struct Settled<K, R> {
+pub(crate) struct Settled<R> {
     pub(crate) response: Option<OverlayResponse<R>>,
-    pub(crate) state: TriggerState<K>,
+    pub(crate) state: TriggerState,
 }
 
 /// One frame of a trigger's overlay: what the trigger did this frame, and where it stands.
@@ -150,23 +137,24 @@ impl TriggerFrame {
         body: impl FnOnce(&mut Ui) -> R,
     ) -> Option<OverlayResponse<R>> {
         let for_id = self.for_id;
-        let state = TriggerState::<K>::of(ui, for_id);
+        let state = TriggerRow::<K>::of(ui, for_id);
         let settled = self.settle(ui, state, popup, body);
+        // Written only on a change, so a trigger never opened mints no row.
         if settled.state != state {
-            ui.with_state::<TriggerState<K>, _>(for_id, |_, row| *row = settled.state);
+            ui.with_state::<TriggerRow<K>, _>(for_id, |_, row| row.0 = settled.state);
         }
         settled.response
     }
 
     /// [`Self::show`] over a `state` its owner keeps rather than the trigger's row, as a menu bar
     /// keeps one for the one menu it has open; the state to keep comes back.
-    pub(crate) fn settle<'p, K, R>(
+    pub(crate) fn settle<'p, R>(
         self,
         ui: &mut Ui,
-        state: TriggerState<K>,
+        state: TriggerState,
         popup: impl FnOnce(&Ui) -> Popup<'p>,
         body: impl FnOnce(&mut Ui) -> R,
-    ) -> Settled<K, R> {
+    ) -> Settled<R> {
         let mut open = state.open;
         if self.toggled {
             open = match open {
@@ -201,11 +189,7 @@ impl TriggerFrame {
         }
         Settled {
             response: resp,
-            state: TriggerState {
-                open,
-                shown,
-                kind: PhantomData,
-            },
+            state: TriggerState { open, shown },
         }
     }
 }
