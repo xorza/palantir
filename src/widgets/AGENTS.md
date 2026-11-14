@@ -19,6 +19,11 @@ API design", hold here too.
 - **Responses**: `show` returns `Response`, or a `*Response` that holds `response` beside the
   frame's edges, none derefing to `Response`; a bound value returns `ValueResponse`, and a
   discrete pick commits at once.
+- **A value commits a change**, as HTML's `change` event fires: a release commits when it leaves
+  the value apart from where its press found it, a key when it moved the value, so a click on the
+  spot the value holds and a key at a bound commit nothing. A text edit commits its session
+  instead, on Enter or the blur that ends it, changed or not, as a form's field submits what it
+  holds. Refused: a commit on every release, an undo step that changes nothing.
 - **A `Response` is owned**: `show` probes the widget's state once, with no borrow of the `Ui`, so
   one type serves a read, an overlay's anchor and a composite's gathering. Refused: a lazy
   `Response` over `&Ui`, which needs an owned twin of each response and a lifetime on each;

@@ -18,10 +18,40 @@ pub struct ValueResponse {
     ///
     /// A level, not an edge: true every frame an uncommitted draft exists; false on a drag pinned at a range end.
     pub changed: bool,
-    /// A gesture finished (drag released, edit ended by Enter or focus loss): one undoable edit.
+    /// A gesture finished with the value changed (a release that leaves it apart from where the
+    /// press found it, a key that moved it, an edit ended by Enter or focus loss): one undoable
+    /// edit. A commit is of a change, as HTML's `change` event is: a click that moves nothing and
+    /// a key at a bound commit nothing.
     ///
     /// The finishing frame re-writes the final value, so a caller re-seeding every frame sees it. Dropped if released while disabled.
     pub committed: bool,
+}
+
+impl ValueResponse {
+    /// A pick, which writes and commits at once: a toggle, a radio, a list's choice.
+    pub(crate) const fn pick(response: Response, changed: bool) -> Self {
+        Self {
+            response,
+            changed,
+            committed: changed,
+        }
+    }
+
+    /// A scrub: the pointer wrote the value this frame (`pointed`) or a key moved it (`keyed`),
+    /// and `release_moved` says the frame is the press's release and leaves the value apart from
+    /// where the press found it. A key commits at once, a pointer gesture at its release.
+    pub(crate) const fn gesture(
+        response: Response,
+        pointed: bool,
+        keyed: bool,
+        release_moved: bool,
+    ) -> Self {
+        Self {
+            response,
+            changed: pointed || keyed,
+            committed: !response.disabled && (keyed || release_moved),
+        }
+    }
 }
 
 #[cfg(test)]

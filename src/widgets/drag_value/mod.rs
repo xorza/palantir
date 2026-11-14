@@ -20,8 +20,8 @@ use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::value_response::ValueResponse;
 use crate::widget_core::widget::Widget;
-use crate::widgets::axis_keys::{self, AxisEnd, AxisKeys, Travel};
-use crate::widgets::bound_num::{BoundNum, MAX_DECIMALS, Num, StoreRule};
+use crate::widgets::axis_keys::{self, AxisKeys};
+use crate::widgets::bound_num::{BoundNum, MAX_DECIMALS, Num, StoreRule, TravelRule};
 use crate::widgets::text_edit::TextEdit;
 use crate::widgets::text_edit::edit_end::EditEnd;
 use crate::widgets::text_edit::text_layout;
@@ -276,7 +276,7 @@ impl<'a> DragValue<'a> {
                     *state = DragValueState::Idle;
                     if !response.disabled {
                         changed |= self.value.commit_drag(scrub.anchor, scrub.offset(), rule);
-                        committed = true;
+                        committed = self.value.read() != scrub.anchor;
                     }
                 }
             });
@@ -284,8 +284,16 @@ impl<'a> DragValue<'a> {
 
         if focused && !response.disabled {
             let travel = AxisKeys::SPIN_BUTTON.read(&mut self.widget, ui);
-            if let Some(moved) = self.commit_travel(travel, rule) {
-                changed |= moved;
+            let grain = self.value.unit(self.decimals);
+            let step = self.step.map_or(grain, |step| step.max(grain));
+            let keys = TravelRule {
+                step,
+                page: f64::from(axis_keys::COARSE) * step,
+                min: self.min,
+                max: self.max,
+            };
+            if self.value.commit_travel(travel, keys, rule) {
+                changed = true;
                 committed = true;
             }
         }
@@ -419,25 +427,6 @@ impl DragValue<'_> {
     /// How every write of this drag value stores the number.
     const fn rule(&self) -> StoreRule {
         StoreRule::new(self.min, self.max, self.decimals).step(self.step)
-    }
-
-    /// Store where `travel` sends the value, answering whether it changed, or `None` when the
-    /// keys asked for nothing: no travel, or an end on an unbounded side. The steps add through
-    /// [`BoundNum::commit_drag`], so an integer moves by whole steps from its exact value.
-    fn commit_travel(&mut self, travel: Travel, rule: StoreRule) -> Option<bool> {
-        let end = |bound: f64| bound.is_finite().then_some(bound);
-        match travel.end {
-            Some(AxisEnd::Start) => end(self.min).map(|min| self.value.commit_value(min, rule)),
-            Some(AxisEnd::End) => end(self.max).map(|max| self.value.commit_value(max, rule)),
-            None if travel.is_still() => None,
-            None => {
-                let grain = self.value.unit(self.decimals);
-                let unit = self.step.map_or(grain, |step| step.max(grain));
-                let steps = travel.steps + travel.pages * axis_keys::COARSE;
-                let by = f64::from(steps) * unit;
-                Some(self.value.commit_drag(self.value.read(), by, rule))
-            }
-        }
     }
 }
 

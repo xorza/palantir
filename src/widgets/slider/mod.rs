@@ -12,8 +12,9 @@ use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::value_response::ValueResponse;
 use crate::widget_core::widget::Widget;
-use crate::widgets::axis_keys::{AxisEnd, AxisKeys, Travel};
-use crate::widgets::bound_num::{BoundNum, MAX_DECIMALS, StoreRule};
+use crate::widgets::axis_keys::AxisKeys;
+use crate::widgets::bound_num::{BoundNum, MAX_DECIMALS, StoreRule, TravelRule};
+use crate::widgets::press_start;
 use std::ops::RangeInclusive;
 
 /// Horizontal value slider over a numeric range, binding the same [`BoundNum`] as
@@ -105,19 +106,25 @@ impl<'a> Slider<'a> {
 
         let range = self.range;
         let rule = StoreRule::new(range.min, range.max, self.decimals).step(range.step);
-        // The pointer drives the value on every gesture frame, release included; no
-        // anchor is retained.
+        // The pointer drives the value on every gesture frame, release included.
+        let before = self.value.read();
         let pressed = response
             .press_fraction(knob)
             .is_some_and(|at| self.value.commit_value(range.value_at(at.x), rule));
         let keyed = !response.disabled && ui.is_focus_within(id) && {
             let travel = AxisKeys::SLIDER.read(&mut self.widget, ui);
-            !travel.is_still() && self.commit_travel(travel, rule)
+            let keys = TravelRule {
+                step: range.key_unit(self.value.unit(self.decimals)),
+                page: (range.max - range.min) / 10.0,
+                min: range.min,
+                max: range.max,
+            };
+            self.value.commit_travel(travel, keys, rule)
         };
-        let changed = pressed | keyed;
-        // Edge, not level: a press and release on the track writes a value without
-        // latching a drag, so read `left.released()`, not `drag.stopped()`.
-        let committed = !response.disabled && (response.left.released() || keyed);
+        // Edge, not level: a press and release on the track writes a value without latching a
+        // drag, so the release, not a drag's stop, is the pointer's commit.
+        let release_moved =
+            press_start::moved_since_press(ui, &response, before, self.value.read());
         let fraction = range.fraction_of(self.value.read().widen());
 
         let pill = Corners::all(track_h * 0.5);
@@ -147,30 +154,7 @@ impl<'a> Slider<'a> {
                 .size((remainder, track))
                 .record(ui, Some(&track_chrome), |_| {});
         });
-        ValueResponse {
-            response,
-            changed,
-            committed,
-        }
-    }
-}
-
-impl Slider<'_> {
-    /// Store where `travel` sends the value, onto the rule's grid. The steps add to the stored
-    /// number through [`BoundNum::commit_drag`], so without a grid an integer past 2^53 moves by
-    /// whole steps where a round trip through `f64` could store a lower value.
-    fn commit_travel(&mut self, travel: Travel, rule: StoreRule) -> bool {
-        let range = self.range;
-        match travel.end {
-            Some(AxisEnd::Start) => self.value.commit_value(range.min, rule),
-            Some(AxisEnd::End) => self.value.commit_value(range.max, rule),
-            None => {
-                let unit = range.key_unit(self.value.unit(self.decimals));
-                let by = f64::from(travel.steps) * unit
-                    + f64::from(travel.pages) * (range.max - range.min) / 10.0;
-                self.value.commit_drag(self.value.read(), by, rule)
-            }
-        }
+        ValueResponse::gesture(response, pressed, keyed, release_moved)
     }
 }
 

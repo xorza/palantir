@@ -3,6 +3,7 @@
 use crate::primitives::math::libm_ext::Libm;
 use crate::primitives::text::interned_str::InternedStr;
 use crate::ui::Ui;
+use crate::widgets::axis_keys::{AxisEnd, Travel};
 use std::ops::RangeInclusive;
 
 /// The numeric target a value widget writes through: an `f32`, `f64`, `i32` or `i64`, borrowed
@@ -25,6 +26,16 @@ enum Repr<'a> {
     /// A 64-bit float target. A NaN or infinite value shows as it is, and a scrub or a key moves
     /// it from `0.0`, so the first write lands on a number inside the bounds.
     F64(&'a mut f64),
+}
+
+/// How keys move a bound number: a step's size, a page's, and the ends Home and End go to, where
+/// an infinite end takes no key.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct TravelRule {
+    pub(crate) step: f64,
+    pub(crate) page: f64,
+    pub(crate) min: f64,
+    pub(crate) max: f64,
 }
 
 /// A value read out of a [`BoundNum`] at its stored precision: the owned anchor a
@@ -178,6 +189,28 @@ impl BoundNum<'_> {
             Repr::I64(v) => store_int(*v, whole(), rule, I64_RANGE),
             Repr::F32(v) => store_f32(v, snapped(), rule),
             Repr::F64(v) => store_f64(v, snapped(), rule),
+        }
+    }
+
+    /// Store where `travel` sends the value under `keys`, onto `rule`, and answer whether it
+    /// moved. The steps and pages add to the stored number through [`Self::commit_drag`], so an
+    /// integer past 2^53 moves by whole steps where a round trip through `f64` could store a
+    /// lower value; an end key on an unbounded side, and keys that ask for nothing, move nothing.
+    pub(crate) fn commit_travel(
+        &mut self,
+        travel: Travel,
+        keys: TravelRule,
+        rule: StoreRule,
+    ) -> bool {
+        let end = |bound: f64| bound.is_finite().then_some(bound);
+        match travel.end {
+            Some(AxisEnd::Start) => end(keys.min).is_some_and(|min| self.commit_value(min, rule)),
+            Some(AxisEnd::End) => end(keys.max).is_some_and(|max| self.commit_value(max, rule)),
+            None if travel.is_still() => false,
+            None => {
+                let by = f64::from(travel.steps) * keys.step + f64::from(travel.pages) * keys.page;
+                self.commit_drag(self.read(), by, rule)
+            }
         }
     }
 

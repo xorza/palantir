@@ -115,14 +115,7 @@ impl<'a> Expander<'a> {
         let was_open = stored.map_or(start_open, |s| s.open);
         let height = stored.and_then(|s| s.height);
 
-        let mut pass = Pass {
-            header: Response::idle(header_id),
-            toggled: false,
-            openness: 0.0,
-            showing: false,
-            inner: None,
-        };
-        widget.record(ui, None, |ui| {
+        let pass = widget.record(ui, None, |ui| {
             let mut header = Widget::hstack()
                 .id(header_id)
                 .size(SizeSpec::FILL_W)
@@ -167,7 +160,7 @@ impl<'a> Expander<'a> {
                     .show(ui);
             });
 
-            if showing || keep_body {
+            let inner = (showing || keep_body).then(|| {
                 // The body records whole inside a wrapper whose clip reveals it;
                 // laying it out at a fraction of its height would reflow its text
                 // each tween frame and clip its own rect, so no frame could measure
@@ -187,12 +180,15 @@ impl<'a> Expander<'a> {
                     .id(body_id)
                     .size(SizeSpec::FILL_W)
                     .padding(t.body_padding);
-                pass.inner = Some(reveal.record(ui, None, |ui| body_panel.record(ui, None, body)));
+                reveal.record(ui, None, |ui| body_panel.record(ui, None, body))
+            });
+            Pass {
+                header: state,
+                toggled: activated,
+                openness,
+                showing,
+                inner,
             }
-            pass.header = state;
-            pass.toggled = activated;
-            pass.openness = openness;
-            pass.showing = showing;
         });
 
         let now_open = was_open != pass.toggled;

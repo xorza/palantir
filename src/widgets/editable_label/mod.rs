@@ -244,7 +244,7 @@ impl<'a> EditableLabel<'a> {
         if let Some(n) = self.max_chars {
             edit = edit.max_chars(n);
         }
-        edit = with_overrides(edit, self.overrides);
+        edit = edit.overrides(self.overrides);
         if let Some(min) = self.widget.authored().min_size() {
             edit = edit.min_size(min);
         }
@@ -309,37 +309,6 @@ impl<'a> EditableLabel<'a> {
         ui.state::<EditableLabelState>(id)
             .is_some_and(|state| state.editing)
     }
-}
-
-/// `edit` with each axis `overrides` sets, through the editor's own setters.
-const fn with_overrides(mut edit: TextEdit<'_>, overrides: TextStyleOverrides) -> TextEdit<'_> {
-    let TextStyleOverrides {
-        color,
-        font_size,
-        line_height_factor,
-        family,
-        weight,
-        slant,
-    } = overrides;
-    if let Some(color) = color {
-        edit = edit.color(color);
-    }
-    if let Some(px) = font_size {
-        edit = edit.font_size(px);
-    }
-    if let Some(factor) = line_height_factor {
-        edit = edit.line_height_factor(factor);
-    }
-    if let Some(family) = family {
-        edit = edit.family(family);
-    }
-    if let Some(weight) = weight {
-        edit = edit.weight(weight);
-    }
-    if let Some(slant) = slant {
-        edit = edit.slant(slant);
-    }
-    edit
 }
 
 impl Configure for EditableLabel<'_> {

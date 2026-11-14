@@ -2,8 +2,10 @@
 //! `style` setters, and what a hostile theme file renders as.
 
 mod deferred_commit;
+mod responses;
 mod style_override;
 mod theme_file_values;
+mod widget_core;
 
 use crate::host::harness::Harness;
 use crate::primitives::geometry::rect::Rect;

@@ -44,8 +44,8 @@ use crate::ui::Ui;
 use crate::widget_core::activation::Activation;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
+use crate::widget_core::inner_response::InnerResponse;
 use crate::widget_core::press_list::PressList;
-use crate::widget_core::response::InnerResponse;
 use glam::Vec2;
 use std::panic::Location;
 

@@ -142,11 +142,7 @@ impl ToggleRow<'_> {
                     .show(ui);
             }
         });
-        ValueResponse {
-            response,
-            changed,
-            committed: changed,
-        }
+        ValueResponse::pick(response, changed)
     }
 }
 

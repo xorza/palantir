@@ -6,7 +6,7 @@ use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::configure::ConfigureDefaults;
-use crate::widget_core::response::InnerResponse;
+use crate::widget_core::inner_response::InnerResponse;
 use crate::widget_core::widget::Widget;
 use std::rc::Rc;
 

@@ -30,6 +30,7 @@ pub(crate) mod menu_bar;
 pub(crate) mod modal;
 pub(crate) mod panel;
 pub(crate) mod popup;
+pub(crate) mod press_start;
 pub(crate) mod progress_bar;
 pub(crate) mod radio_group;
 pub(crate) mod scroll;

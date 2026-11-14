@@ -232,11 +232,7 @@ where
             });
         let changed = resp.is_some_and(|resp| resp.inner);
 
-        ValueResponse {
-            response,
-            changed,
-            committed: changed,
-        }
+        ValueResponse::pick(response, changed)
     }
 }
 

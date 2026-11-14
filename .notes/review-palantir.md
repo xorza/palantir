@@ -392,35 +392,6 @@ Files: `src/host/winit/input/wheel_steps.rs`, `src/host/winit/platform/windows.r
   every other build reads it as a dead variant, which only a `target_os` attribute outside the
   platform module silences.
 
-### Batch 10: value widgets
-
-Files: `src/widget_core/value_response.rs`, `src/widgets/{bound_num, slider, drag_value,
-value_area.rs, toggle_row, radio_group, combo_box, color_picker, expander, editable_label}`.
-
-- [ ] `ValueResponse` is assembled by hand: the pick form at `toggle_row/mod.rs:145-149`,
-  `radio_group/mod.rs:169-173,344-348`, `combo_box/mod.rs:225-229`; the gesture form at
-  `slider/mod.rs:117-154`, `value_area.rs:88-109`. Target: `ValueResponse::pick(response,
-  changed)` and `ValueResponse::gesture(response, pressed, keyed)`.
-- [ ] `drag_value/mod.rs:285-291,427-441`, `slider/mod.rs:113-174`: two `commit_travel` fns with
-  two return shapes; an arrow key at the bound gives `committed: true` on `DragValue` and `false`
-  on `Slider`, `ColorField` and `ColorStrip`. Target: one `BoundNum::commit_travel(travel,
-  keys: TravelRule, rule: StoreRule) -> bool` that returns whether the value moved, and one rule
-  for `committed`, HTML's `change` (decided): a commit is of a change, so a key that moves
-  nothing commits nothing. By the same rule a press and release that leave the value where it
-  was commit nothing; `slider/mod.rs:117-120` and `value_area.rs:88` commit on any release today,
-  so confirm that case with the owner before changing it. State the rule on
-  `ValueResponse::committed` and in `src/widgets/AGENTS.md` beside the text rule, which differs
-  on purpose. Test a key at a bound across all four widgets in one table.
-- [ ] `expander/mod.rs:124-133,201-207,267-274`, `color_picker/mod.rs:158-177`: results leave
-  record closures through pre-filled locals; return the closure's value. In `ColorPicker`: drop
-  the `Inputs` re-bundle (`:152-199`), compute `gap` once (`:141,313,430,590`), fold the three
-  gesture blocks (`:338-383`) into `Writes::gestured`.
-- [ ] `editable_label/mod.rs:241,315-343`: `with_overrides` unpacks `TextStyleOverrides` into six
-  setters that write the same struct. Target: `pub(crate) TextEdit::overrides(o)`.
-- [ ] `widget_core/response.rs:29-49`, `widget_core/widget/tests.rs:31-33`: `widget_core`'s tests
-  import the widgets to its right; move both groups to `src/widgets/tests/`. The file holds
-  `InnerResponse` → `inner_response.rs`.
-
 ### Batch 11: overlays, tabs, dock, scroll, text edit
 
 Files: `src/widgets/{popup, menu, menu_bar, tabs, dock, scroll, splitter, text_edit}`.

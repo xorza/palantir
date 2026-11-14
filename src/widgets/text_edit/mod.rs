@@ -262,6 +262,13 @@ impl<'a> TextEdit<'a> {
         self
     }
 
+    /// Every text axis at once, in place of what the setters above set: for a wrapper handing on
+    /// the overrides its own setters checked.
+    pub(crate) const fn overrides(mut self, overrides: TextStyleOverrides) -> Self {
+        self.field.overrides = overrides;
+        self
+    }
+
     /// Shape the buffer bold — [`Self::weight`] with [`FontWeight::BOLD`].
     pub const fn bold(mut self) -> Self {
         self.field.overrides.weight = Some(FontWeight::BOLD);
@@ -636,10 +643,10 @@ pub struct TextEditResponse {
     pub response: Response,
     /// The buffer was edited this frame.
     pub changed: bool,
-    /// The edit finished this frame and the buffer holds its result, as
-    /// [`ValueResponse::committed`](crate::ValueResponse::committed): on Enter in a
-    /// single-line editor or on the blur ending a focus session, never on Escape or a
-    /// blur because the editor turned disabled. A session commits once.
+    /// The edit finished this frame and the buffer holds its result: on Enter in a single-line
+    /// editor or on the blur ending a focus session, never on Escape or a blur because the
+    /// editor turned disabled. A session commits once, changed or not, where
+    /// [`ValueResponse::committed`](crate::ValueResponse::committed) commits a change alone.
     pub committed: bool,
     /// A [buffered](TextEdit::buffered) field's draft, on the frame it commits a text that
     /// differs from the field's current value; `None` on every other frame, and always for a

@@ -13,8 +13,8 @@ use crate::widget_core::configure::{Configure, ConfigureDefaults};
 use crate::widget_core::value_response::ValueResponse;
 use crate::widget_core::widget::Widget;
 use crate::widgets::axis_keys::AxisKeys;
-use crate::widgets::color_surface;
 use crate::widgets::color_surface::ColorSurface;
+use crate::widgets::{color_surface, press_start};
 use glam::Vec2;
 use std::rc::Rc;
 
@@ -35,6 +35,9 @@ pub(crate) struct ValueArea<'a> {
 pub(crate) trait AreaValue {
     /// Everything the texture fill reads, compared exactly; a change refills it.
     type Surface: Copy + PartialEq + 'static;
+    /// The value the area writes, compared exactly; a release that leaves it where the press
+    /// found it commits nothing.
+    type Value: Copy + PartialEq + 'static;
     /// The size the theme gives the area.
     fn themed(theme: &ColorPickerTheme) -> Size;
     /// Writes the value under a press at `at`, a fraction of the area from its top left, and
@@ -42,6 +45,8 @@ pub(crate) trait AreaValue {
     fn press(&mut self, at: Vec2) -> bool;
     /// Moves the value by this frame's keys, read through `widget`, and reports whether it moved.
     fn travel(&mut self, widget: &mut Widget, ui: &mut Ui) -> bool;
+    /// The value now.
+    fn value(&self) -> Self::Value;
     /// What the texture shows now.
     fn surface(&self) -> Self::Surface;
     /// Fills the texture for `surface`, sRGB-encoded.
@@ -66,7 +71,8 @@ impl ValueArea<'_> {
     }
 
     /// Records the area for `value`. A press writes on every gesture frame and commits on the
-    /// release; a key writes and commits at once.
+    /// release that leaves the value apart from where the press found it; a key that moves it
+    /// writes and commits at once.
     pub(crate) fn show<V: AreaValue>(self, ui: &mut Ui, mut value: V) -> ValueResponse {
         let Self {
             widget,
@@ -82,11 +88,12 @@ impl ValueArea<'_> {
         let id = response.id;
         let size = response.layout_rect.map_or(themed, |r| r.size);
 
+        let before = value.value();
         let pressed = response
             .press_fraction(0.0)
             .is_some_and(|at| value.press(at));
         let keyed = !response.disabled && ui.is_focus_within(id) && value.travel(&mut widget, ui);
-        let committed = !response.disabled && (response.left.released() || keyed);
+        let release_moved = press_start::moved_since_press(ui, &response, before, value.value());
 
         let texels = color_surface::texture_size(size, texel_size, ui);
         let surface = value.surface();
@@ -103,11 +110,7 @@ impl ValueArea<'_> {
                 ui.add_shape(Shape::rect(), theme.disabled_veil);
             }
         });
-        ValueResponse {
-            response,
-            changed: pressed | keyed,
-            committed,
-        }
+        ValueResponse::gesture(response, pressed, keyed, release_moved)
     }
 }
 

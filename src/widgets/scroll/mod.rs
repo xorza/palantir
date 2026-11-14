@@ -31,7 +31,7 @@ use crate::theme::scrollbar::ScrollbarTheme;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::response::InnerResponse;
+use crate::widget_core::inner_response::InnerResponse;
 use crate::widget_core::widget::Widget;
 use crate::widgets::axis_keys::{AxisEnd, AxisKeys};
 use crate::widgets::scroll::bars::{BarMode, Bars};

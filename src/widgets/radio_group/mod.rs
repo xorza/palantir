@@ -146,11 +146,7 @@ impl<T: PartialEq> RadioGroup<'_, T> {
                 changed
             })
         });
-        ValueResponse {
-            response,
-            changed,
-            committed: changed,
-        }
+        ValueResponse::pick(response, changed)
     }
 }
 
@@ -321,11 +317,7 @@ impl<'o, T: PartialEq> RadioOption<'o, '_, T> {
             OptionWidget::Segment(button) => {
                 let response = button.id(id).tab_stop(tab_stop).selected(checked).show(ui);
                 let Settled { changed, .. } = pick.settle(response.clicked());
-                ValueResponse {
-                    response,
-                    changed,
-                    committed: changed,
-                }
+                ValueResponse::pick(response, changed)
             }
         };
         if checked || shown.changed {
