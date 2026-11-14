@@ -6,7 +6,7 @@ use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::border::Border;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
-use crate::primitives::paint::image::{Image, ImageFit};
+use crate::primitives::paint::image::Image;
 use crate::primitives::paint::paint::Paint;
 use crate::primitives::paint::stroke::Stroke;
 use crate::primitives::reduction::Reductions;
@@ -267,9 +267,7 @@ fn builders_refuse_what_they_check() {
     use crate::primitives::geometry::quadratic_bezier::QuadraticBezier;
     use crate::primitives::math::domain;
     use crate::primitives::packed::serde::LaneCodec;
-    use crate::primitives::paint::brush::gradient::conic_geometry::ConicGradient;
-    use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
-    use crate::primitives::paint::brush::gradient::radial_geometry::RadialGradient;
+    use crate::primitives::paint::brush::gradient::Gradient;
     use crate::primitives::paint::material::Material;
     use crate::primitives::paint::shadow::Shadow;
     use crate::shape::paint::lowered_shadow::LoweredShadow;
@@ -309,11 +307,11 @@ fn builders_refuse_what_they_check() {
     panic_probe::assert_panics_with(domain::ANGLE_RULE, || {
         check(&(
             Shape::rect().at(ok_rect),
-            LinearGradient::new(N, [white, RgbaF32::BLACK]),
+            Gradient::linear(N, [white, RgbaF32::BLACK]),
         ));
     });
     let half = Vec2::splat(0.5);
-    let radial = |center, radius| RadialGradient::new(center, radius, [white, RgbaF32::BLACK]);
+    let radial = |center, radius| Gradient::radial(center, radius, [white, RgbaF32::BLACK]);
     for (center, radius) in [(Vec2::new(wide, 0.5), half), (half, Vec2::new(0.5, wide))] {
         panic_probe::assert_panics_with(domain::LANE_RULE, || {
             check(&(Shape::rect().at(ok_rect), radial(center, radius)));
@@ -322,7 +320,7 @@ fn builders_refuse_what_they_check() {
     panic_probe::assert_panics_with(domain::LANE_RULE, || {
         check(&(
             Shape::rect().at(ok_rect),
-            ConicGradient::new(Vec2::new(0.5, -wide), 0.0, [white, RgbaF32::BLACK]),
+            Gradient::conic(Vec2::new(0.5, -wide), 0.0, [white, RgbaF32::BLACK]),
         ));
     });
     check(&(
@@ -511,7 +509,7 @@ fn builders_refuse_what_they_check() {
     let tile = |offset, scale| {
         check(&(
             Shape::rect(),
-            ImagePaint::new(handle(1)).fit(ImageFit::Tile { offset, scale }),
+            ImagePaint::new(handle(1)).tile(offset, scale),
         ));
     };
     panic_probe::assert_panics_with(domain::OFFSET_RULE, || {
@@ -553,7 +551,7 @@ fn add<S: DrawWith<P>, P>(
     let effects = EffectRegistry::default();
     let resolve = Resolve {
         effects: &effects,
-        reductions: Reductions::FULL,
+        reductions: Reductions::NONE,
         material_fallback: RgbaF32::TRANSPARENT,
     };
     let paint = S::prepare(paint);

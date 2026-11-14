@@ -92,11 +92,9 @@ impl ThemeSlot for MenuItemTheme {
     type Pick = Selection;
 
     fn look(&self, response: &ResponseState, selection: Selection) -> &WidgetLook {
-        let pack = match selection {
-            Selection::Unselected => &self.unselected,
-            Selection::Selected => &self.selected,
-        };
-        pack.pick(response, Engagement::Pressed)
+        selection
+            .pack(&self.unselected, &self.selected)
+            .pick(response, Engagement::Pressed)
     }
 
     fn defaults(&self) -> SlotDefaults {

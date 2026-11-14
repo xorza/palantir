@@ -2,7 +2,7 @@
 
 use palantir::glam::{UVec2, Vec2};
 use palantir::widget::{Mesh, Shape};
-use palantir::{LinearGradient, Rect, RgbaF32};
+use palantir::{Gradient, Rect, RgbaF32};
 
 use crate::fixtures;
 use crate::visual_rig::VisualRig;
@@ -36,7 +36,7 @@ fn a_fade_to_transparent_keeps_its_color_midway() {
                 );
                 ui.add_shape(
                     Shape::rect().at(Rect::new(0.0, 90.0, 200.0, 20.0)),
-                    LinearGradient::horizontal([white, clear]),
+                    Gradient::horizontal([white, clear]),
                 );
             });
         })

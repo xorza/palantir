@@ -1,22 +1,18 @@
-//! What a menu bar's titles wear, closed and open, and which of the two applies.
+//! What a menu bar's band and titles wear.
 
 use crate::primitives::geometry::spacing::Spacing;
-use crate::primitives::input::interaction::response_state::ResponseState;
 use crate::primitives::paint::chrome::Chrome;
 use crate::theme::button::ButtonTheme;
-use crate::theme::look::WidgetLook;
-use crate::theme::look::engagement::Engagement;
-use crate::theme::look::slot_defaults::SlotDefaults;
-use crate::theme::look::stateful_look::StatefulLook;
-use crate::theme::look::theme_slot::ThemeSlot;
 use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
 
-/// Visuals for [`crate::MenuBar`]: its titles, by whether their menu is open. A title rests flat
-/// in the muted ink, so it reads as a menu rather than as a button, and fills and takes the full
-/// ink under the pointer, from [`ButtonTheme::subtle`]; the title whose menu is open rests lit
-/// as a hovered one, as macOS, Windows and GNOME light the open menu's title. The menus themselves
-/// wear [`Theme::menu`](crate::Theme::menu).
+/// Visuals for [`crate::MenuBar`]: its band, and its titles, a button each, picked by whether
+/// its menu is open, as [`Selection::Selected`](crate::widget::Selection::Selected). A title rests
+/// flat in the muted ink, so it reads as a menu rather than as a button, and fills and takes the
+/// full ink under the pointer, from [`ButtonTheme::subtle`]; the title whose menu is open rests
+/// lit as a hovered one, as macOS, Windows and GNOME light the open menu's title. The menus
+/// themselves wear [`Theme::menu`](crate::Theme::menu). Refused: a pick enum and a slot of its own,
+/// which re-declared a button with a selected pack.
 #[derive(
     Clone,
     Debug,
@@ -28,10 +24,9 @@ use crate::theme::palette::Palette;
 )]
 #[serde(deny_unknown_fields)]
 pub struct MenuBarTheme {
-    /// A title whose menu is closed, in each state.
-    pub title: StatefulLook,
-    /// The title whose menu is open.
-    pub open: WidgetLook,
+    /// A title, its `unselected` pack while its menu is closed and its `selected` pack while it is
+    /// open, with its padding and transition.
+    pub title: ButtonTheme,
     /// The band behind the titles; the palette's `surround` by default, as a tab strip's.
     pub bar: Chrome,
     /// Inset between the band's edges and the titles; its sides match a tab strip's, so the first
@@ -41,61 +36,24 @@ pub struct MenuBarTheme {
     /// Gutter between two titles.
     #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub gap: f32,
-    /// A title's padding and transition spec — see [`SlotDefaults`].
-    pub defaults: SlotDefaults,
-}
-
-/// Whether a menu bar title's menu is open, which picks [`MenuBarTheme::open`] over
-/// [`MenuBarTheme::title`].
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum MenuState {
-    /// The menu is closed.
-    Closed,
-    /// The menu is open.
-    Open,
-}
-
-impl From<bool> for MenuState {
-    /// `true` is [`Self::Open`].
-    fn from(open: bool) -> Self {
-        if open { Self::Open } else { Self::Closed }
-    }
 }
 
 impl MenuBarTheme {
-    /// [`ButtonTheme::subtle`]'s flat titles in the muted ink at rest, the open one wearing
-    /// the hovered look, an `xs` gutter apart, so two lit fills never touch, on the `surround`
-    /// band.
+    /// [`ButtonTheme::subtle`]'s flat titles in the muted ink at rest, the open one wearing the
+    /// hovered look in every state, an `xs` gutter apart, so two lit fills never touch, on the
+    /// `surround` band.
     pub fn from_parts(p: &Palette, m: &Metrics) -> Self {
-        let ButtonTheme {
-            unselected: mut looks,
-            selected: _,
-            defaults,
-        } = ButtonTheme::subtle(p, m);
-        looks.normal.text = looks.normal.text.with_color(p.text_muted);
+        let mut title = ButtonTheme::subtle(p, m);
+        title.unselected.normal.text = title.unselected.normal.text.with_color(p.text_muted);
+        let open = title.unselected.hovered.clone();
+        for look in title.selected.each_mut() {
+            look.clone_from(&open);
+        }
         Self {
-            open: looks.hovered.clone(),
-            title: looks,
+            title,
             bar: Chrome::new(p.surround),
             bar_padding: Spacing::xy(m.space.sm, m.space.xs),
             gap: m.space.xs,
-            defaults,
         }
-    }
-}
-
-impl ThemeSlot for MenuBarTheme {
-    type Pick = MenuState;
-
-    /// The open look, or the closed pack by state (`active` = pressed).
-    fn look(&self, response: &ResponseState, state: MenuState) -> &WidgetLook {
-        match state {
-            MenuState::Open => &self.open,
-            MenuState::Closed => self.title.pick(response, Engagement::Pressed),
-        }
-    }
-
-    fn defaults(&self) -> SlotDefaults {
-        self.defaults
     }
 }

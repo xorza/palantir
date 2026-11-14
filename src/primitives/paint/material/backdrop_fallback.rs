@@ -1,18 +1,18 @@
-//! [`MaterialFallback`]: what a material's box paints in place of its fill while transparency is
-//! reduced.
+//! [`BackdropFallback`]: what a backdrop effect paints in its place while transparency is reduced.
 
 use crate::primitives::math::lerp::Lerp;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::color::RgbaF32;
 
-/// What a [`Material`](crate::Material)'s box paints in place of its fill while transparency is
-/// reduced ([`Ui::is_transparency_reduced`](crate::Ui::is_transparency_reduced)): the box draws as
-/// a plain one, this its fill, its border and shadow as they are, with no capture, blur or effect.
-/// A backdrop [`EffectPaint`](crate::widget::EffectPaint) paints it over its shape alike.
+/// What a backdrop effect paints in its place while transparency is reduced
+/// ([`Ui::is_transparency_reduced`](crate::Ui::is_transparency_reduced)), a property of any
+/// backdrop effect: a [`Material`](crate::Material)'s box draws as a plain one, this its fill, its
+/// border and shadow as they are, with no capture, blur or effect, and a backdrop
+/// [`EffectPaint`](crate::widget::EffectPaint) paints it over its shape alike.
 #[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
-pub enum MaterialFallback {
+pub enum BackdropFallback {
     /// The theme's surface, [`Theme::material_fallback`](crate::Theme::material_fallback): its
     /// float surface, translucent at the least alpha that keeps its text readable over any page.
     /// Resolved where the box records, so it follows the theme and its scheme.
@@ -22,7 +22,7 @@ pub enum MaterialFallback {
     Brush(Brush),
 }
 
-impl MaterialFallback {
+impl BackdropFallback {
     /// Whether this is [`Self::ThemeSurface`], the default a file leaves out. Takes `&self`
     /// because serde names it in a `skip_serializing_if`.
     pub(crate) const fn is_theme_surface(&self) -> bool {
@@ -64,7 +64,7 @@ impl MaterialFallback {
 
 /// Two brushes blend as a [`Brush`] does; the theme's surface and a brush switch at `t = 0.5`, as
 /// the surface resolves only where the box records.
-impl Lerp for MaterialFallback {
+impl Lerp for BackdropFallback {
     fn lerp(a: &Self, b: &Self, t: f32) -> Self {
         match (a, b) {
             (Self::Brush(a), Self::Brush(b)) => Self::Brush(Brush::lerp(a, b, t)),
@@ -74,7 +74,7 @@ impl Lerp for MaterialFallback {
     }
 }
 
-impl NanCheck for MaterialFallback {
+impl NanCheck for BackdropFallback {
     fn has_nan(&self) -> bool {
         match self {
             Self::ThemeSurface => false,

@@ -504,43 +504,59 @@ pub(super) fn theme() -> Theme {
             },
         },
         menu_bar: MenuBarTheme {
-            title: StatefulLook {
-                normal: WidgetLook {
-                    chrome: Chrome::rounded(RgbaF32::hexa(0x00000000), Corners::all(4.0)),
-                    text: TextStyleOverrides {
-                        color: Some(RgbaF32::hex(0x5f6873)),
-                        ..TextStyleOverrides::NONE
+            title: ButtonTheme {
+                unselected: StatefulLook {
+                    normal: WidgetLook {
+                        chrome: Chrome::rounded(RgbaF32::hexa(0x00000000), Corners::all(4.0)),
+                        text: TextStyleOverrides {
+                            color: Some(RgbaF32::hex(0x5f6873)),
+                            ..TextStyleOverrides::NONE
+                        },
+                    },
+                    hovered: WidgetLook {
+                        chrome: Chrome::rounded(RgbaF32::hex(0xe4e6e8), Corners::all(4.0)),
+                        text: TextStyleOverrides::NONE,
+                    },
+                    active: WidgetLook {
+                        chrome: Chrome::rounded(RgbaF32::hex(0xd9dbdd), Corners::all(4.0)),
+                        text: TextStyleOverrides::NONE,
+                    },
+                    disabled: WidgetLook {
+                        chrome: Chrome::rounded(RgbaF32::hexa(0x00000000), Corners::all(4.0)),
+                        text: TextStyleOverrides {
+                            color: Some(RgbaF32::hex(0x9aa1aa)),
+                            ..TextStyleOverrides::NONE
+                        },
                     },
                 },
-                hovered: WidgetLook {
-                    chrome: Chrome::rounded(RgbaF32::hex(0xe4e6e8), Corners::all(4.0)),
-                    text: TextStyleOverrides::NONE,
-                },
-                active: WidgetLook {
-                    chrome: Chrome::rounded(RgbaF32::hex(0xd9dbdd), Corners::all(4.0)),
-                    text: TextStyleOverrides::NONE,
-                },
-                disabled: WidgetLook {
-                    chrome: Chrome::rounded(RgbaF32::hexa(0x00000000), Corners::all(4.0)),
-                    text: TextStyleOverrides {
-                        color: Some(RgbaF32::hex(0x9aa1aa)),
-                        ..TextStyleOverrides::NONE
+                selected: StatefulLook {
+                    normal: WidgetLook {
+                        chrome: Chrome::rounded(RgbaF32::hex(0xe4e6e8), Corners::all(4.0)),
+                        text: TextStyleOverrides::NONE,
+                    },
+                    hovered: WidgetLook {
+                        chrome: Chrome::rounded(RgbaF32::hex(0xe4e6e8), Corners::all(4.0)),
+                        text: TextStyleOverrides::NONE,
+                    },
+                    active: WidgetLook {
+                        chrome: Chrome::rounded(RgbaF32::hex(0xe4e6e8), Corners::all(4.0)),
+                        text: TextStyleOverrides::NONE,
+                    },
+                    disabled: WidgetLook {
+                        chrome: Chrome::rounded(RgbaF32::hex(0xe4e6e8), Corners::all(4.0)),
+                        text: TextStyleOverrides::NONE,
                     },
                 },
-            },
-            open: WidgetLook {
-                chrome: Chrome::rounded(RgbaF32::hex(0xe4e6e8), Corners::all(4.0)),
-                text: TextStyleOverrides::NONE,
+                defaults: SlotDefaults {
+                    padding: Spacing::xy(12.0, 8.0),
+                    margin: Spacing::all(0.0),
+                    transition: AnimationSpec::SNAP,
+                    press: None,
+                },
             },
             bar: Chrome::new(RgbaF32::hex(0xeff1f3)),
             bar_padding: Spacing::xy(8.0, 4.0),
             gap: 4.0,
-            defaults: SlotDefaults {
-                padding: Spacing::xy(12.0, 8.0),
-                margin: Spacing::all(0.0),
-                transition: AnimationSpec::SNAP,
-                press: None,
-            },
         },
         combo_box: ComboBoxTheme {
             gap: 12.0,

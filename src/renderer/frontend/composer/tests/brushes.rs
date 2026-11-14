@@ -72,11 +72,10 @@ fn compose_solid_brush_emits_kind_zero_quad() {
 #[test]
 fn compose_linear_brush_emits_kind_one_with_table_row() {
     use crate::primitives::packed::fill_kind::FillKind;
+    use crate::primitives::paint::brush::gradient::Gradient;
     use crate::primitives::paint::brush::gradient::Spread;
-    use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
     use crate::renderer::row_table::RowTable;
-    let g =
-        LinearGradient::horizontal([RgbaF32::WHITE, RgbaF32::BLACK]).with_spread(Spread::Reflect);
+    let g = Gradient::horizontal([RgbaF32::WHITE, RgbaF32::BLACK]).with_spread(Spread::Reflect);
     let expected_axis = g.axis();
     let mut table = RowTable::default();
     let row = table.register(&g.ramp);
@@ -106,9 +105,9 @@ fn compose_linear_brush_emits_kind_one_with_table_row() {
 #[test]
 fn compose_repeated_linear_brush_shares_table_row() {
     use crate::primitives::packed::fill_kind::FillKind;
-    use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
+    use crate::primitives::paint::brush::gradient::Gradient;
     use crate::renderer::row_table::RowTable;
-    let g = LinearGradient::new(0.5, [RgbaF32::hex(0x336699), RgbaF32::hex(0xddaa44)]);
+    let g = Gradient::linear(0.5, [RgbaF32::hex(0x336699), RgbaF32::hex(0xddaa44)]);
     let mut table = RowTable::default();
     let lowered = ResolvedGradient {
         axis: g.axis(),

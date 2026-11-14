@@ -3,53 +3,32 @@
 
 pub(crate) mod error;
 
+use crate::primitives::geometry::fit::Fit;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
-use crate::primitives::math::domain;
-use crate::primitives::math::domain::vec2;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::primitives::paint::image::error::ImageDataError;
 use glam::{UVec2, Vec2};
 
-/// How an image's intrinsic size maps onto its paint rect, as CSS `object-fit`.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub enum ImageFit {
-    /// Stretch to fill the rect exactly, ignoring aspect ratio. The default.
-    #[default]
-    Fill,
-    /// Preserve aspect ratio and fit inside the rect, letterboxing.
-    Contain,
-    /// Preserve aspect ratio and fill the rect, cropping the longer axis
-    /// (centered).
-    Cover,
-    /// Paint at intrinsic pixel size, centered; a larger image overflows
-    /// uncropped. CSS `object-fit: none`, named for what it keeps, as the variant `None` would
-    /// shadow `Option::None` under a glob import and in a match.
-    Natural,
-    /// Repeat across the paint rect. The UV is taken raw from `offset` and
-    /// `scale` (intrinsic size ignored) and wrapped with `fract()` in the
-    /// shader: `scale` is the repeat count (`uv_size`), `offset` the scroll
-    /// phase (`uv_min`).
-    Tile {
-        /// Scroll phase, as a raw UV origin.
-        offset: Vec2,
-        /// Repeats across the paint rect, as a raw UV extent.
-        scale: Vec2,
-    },
+/// How an image lies in its paint rect: fit by its intrinsic size, as CSS `object-fit`, or tiled
+/// across it, as CSS `background-repeat` and Flutter's `ImageRepeat` sit beside the fit.
+/// [`ImagePaint::fit`](crate::widget::ImagePaint::fit) and
+/// [`ImagePaint::tile`](crate::widget::ImagePaint::tile) set it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum ImagePlacement {
+    /// Fit by its intrinsic size; [`Fit::Natural`] centers it, as `object-fit: none` does.
+    Fit(Fit),
+    /// Repeat across the paint rect. The UV is taken raw from `offset` and `scale` (intrinsic size
+    /// ignored) and wrapped with `fract()` in the shader: `scale` is the repeat count
+    /// (`uv_size`), `offset` the scroll phase (`uv_min`).
+    Tile { offset: Vec2, scale: Vec2 },
 }
 
-impl ImageFit {
-    /// Panics unless a `Tile`'s `offset` is an offset and each axis of its `scale` is positive.
-    #[track_caller]
-    pub(crate) const fn validate(self) {
-        if let Self::Tile { offset, scale } = self {
-            let _ = vec2::offset(offset);
-            let _ = domain::positive(scale.x);
-            let _ = domain::positive(scale.y);
-        }
-    }
+impl ImagePlacement {
+    /// Stretched to the rect, as an image paints by default.
+    pub(crate) const FILL: Self = Self::Fit(Fit::Fill);
 }
 
 /// How texels are interpolated when an image paints at a size other than its
@@ -338,9 +317,10 @@ impl FitRect {
     }
 }
 
-impl ImageFit {
-    /// Fit an image of `intrinsic` logical px into `base`. The one resolver:
-    /// the encoder draws with it and the cascade bounds damage by its `rect`.
+impl ImagePlacement {
+    /// Place an image of `intrinsic` logical px in `base`. The one resolver: the encoder draws
+    /// with it and the cascade bounds damage by its `rect`. `Cover` crops by UV, as an image has
+    /// texels to drop, where a shape's overflows.
     ///
     /// An empty `intrinsic` or `base` paints `base` at full UV.
     pub(crate) const fn resolve(self, base: Rect, intrinsic: Size) -> FitRect {
@@ -350,12 +330,12 @@ impl ImageFit {
             return FitRect::whole(base);
         }
         match self {
-            Self::Fill => FitRect::whole(base),
-            Self::Contain => {
+            Self::Fit(Fit::Fill) => FitRect::whole(base),
+            Self::Fit(Fit::Contain) => {
                 let scale = (bw / iw).min(bh / ih);
                 FitRect::whole(centered_in(base, intrinsic.scaled_by(scale)))
             }
-            Self::Cover => {
+            Self::Fit(Fit::Cover) => {
                 // The larger axis ratio decides the scale; the UV crops the overhang.
                 let scale = (bw / iw).max(bh / ih);
                 let uv_w = bw / (iw * scale);
@@ -366,7 +346,7 @@ impl ImageFit {
                     uv_size: Vec2::new(uv_w, uv_h),
                 }
             }
-            Self::Natural => FitRect::whole(centered_in(base, intrinsic)),
+            Self::Fit(Fit::Natural) => FitRect::whole(centered_in(base, intrinsic)),
             // The shader wraps the raw UV with `fract`.
             Self::Tile { offset, scale } => FitRect {
                 rect: base,
@@ -388,11 +368,11 @@ const fn centered_in(base: Rect, size: Size) -> Rect {
     }
 }
 
-impl NanCheck for ImageFit {
+impl NanCheck for ImagePlacement {
     #[inline]
     fn has_nan(&self) -> bool {
         match self {
-            Self::Fill | Self::Contain | Self::Cover | Self::Natural => false,
+            Self::Fit(_) => false,
             Self::Tile { offset, scale } => offset.has_nan() || scale.has_nan(),
         }
     }

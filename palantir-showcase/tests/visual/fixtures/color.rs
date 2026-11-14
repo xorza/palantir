@@ -7,10 +7,9 @@
     reason = "test fixtures cast non-negative sizes, coordinates, indices and color channels"
 )]
 
-use palantir::Fit;
 use palantir::glam::{UVec2, Vec2};
 use palantir::widget::{Mesh, Shape};
-use palantir::{Block, Chrome, Configure, FontFamily, Panel, RgbaF32, Sizing, Text, Ui};
+use palantir::{Block, Chrome, Configure, Fit, FontFamily, Panel, RgbaF32, Sizing, Text, Ui};
 
 use crate::fixtures;
 use crate::fixtures::icon;

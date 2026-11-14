@@ -17,7 +17,7 @@ use crate::effect::effect_registry::{EffectRegistry, MaterialFit, ReducedName};
 use crate::effect::effect_source::{EffectSource, ReducedPaint};
 use crate::effect::effect_store::EffectModule;
 use crate::effect::error::{EffectError, EntryMismatch, ParamMismatch};
-use crate::effect::press_input::PressInput;
+use crate::effect::press_params::PressParams;
 use crate::effect::stock;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::test_gpu::headless_test_gpu;
@@ -41,8 +41,9 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::primitives::paint::image::Image;
 use crate::primitives::paint::material::Material;
-use crate::primitives::paint::material::frosted_input::FrostedInput;
-use crate::primitives::paint::material::glass_input::GlassInput;
+use crate::primitives::paint::material::backdrop_reach::BackdropReach;
+use crate::primitives::paint::material::frosted_params::FrostedParams;
+use crate::primitives::paint::material::glass_params::GlassParams;
 use crate::primitives::paint::material::lens::Lens;
 use crate::primitives::paint::material::material_effect::MaterialEffect;
 use crate::primitives::preference::Preference;
@@ -436,6 +437,30 @@ fn parameters_past_the_limit_are_refused() {
     assert_ne!(ReducedPaint::<Huge>::Same, ReducedPaint::Nothing);
 }
 
+/// A backdrop effect's reach is its source's, over each paint's own parameters, so two paints of
+/// one effect read as far as theirs give: `|dx|` here, 3 and 7. A color effect keeps none.
+#[test]
+fn a_backdrop_effects_reach_is_its_sources_over_each_paints_parameters() {
+    let registry = EffectRegistry::default();
+    registry
+        .load(
+            SHIFT,
+            &EffectSource::new(SHIFT_WGSL).reach(|shift: &Shift| BackdropReach::Px(shift.dx.abs())),
+        )
+        .unwrap();
+    let id = registry.id_of_name(SHIFT);
+    let reach = |dx: f32| registry.reach_of(id, bytemuck::bytes_of(&Shift { dx }));
+    assert_eq!(reach(-3.0), BackdropReach::Px(3.0));
+    assert_eq!(reach(7.0), BackdropReach::Px(7.0));
+    registry
+        .load(RING, &ring(ring_wgsl(RING_PARAMS, RING_ENTRY)))
+        .unwrap();
+    let ring_id = registry.id_of_name(RING);
+    assert_panics_with("a backdrop effect keeps its reach", || {
+        registry.reach_of(ring_id, &[0; 32])
+    });
+}
+
 /// A second load under a name replaces the first, its power-saver alternative with it; a reload
 /// that fails returns its error and leaves the effect loaded before.
 #[test]
@@ -489,7 +514,7 @@ fn the_stock_ripples_hold_their_reserved_names() {
         "the effect's name starts with `palantir.`, which palantir's stock effects hold"
     );
     assert!(!registry.contains(reserved));
-    let ripple = EffectName::<PressInput>::named("palantir.ripple").unwrap();
+    let ripple = EffectName::<PressParams>::named("palantir.ripple").unwrap();
     assert!(matches!(
         registry.load(ripple, &EffectSource::new("fn effect(")),
         Err(EffectError::ReservedName)
@@ -521,7 +546,7 @@ const RIPPLE_WGSL: &str = concat!(
     }"
 );
 
-/// A theme's press slots name only effects over `PressInput` that are loaded, and its chromes'
+/// A theme's press slots name only effects over `PressParams` that are loaded, and its chromes'
 /// materials only backdrop effects over `MaterialInput`: one nothing loaded and one of other
 /// parameters are each refused with the name, and the theme held before stays; a stock ripple, a
 /// stock material and an app's press effect are taken.
@@ -560,7 +585,7 @@ fn a_theme_names_only_loaded_effects() {
     );
     assert_eq!(
         ThemeEffectError::NotPress(blend).to_string(),
-        "the theme's press effect `blend` is not a color effect over `PressInput`"
+        "the theme's press effect `blend` is not a color effect over `PressParams`"
     );
     // A slot's material is checked as a press slot is: a name nothing loaded, one loaded as a
     // color effect, and parameters of another lane count are refused, in the tooltip's slot and
@@ -638,7 +663,7 @@ fn a_theme_names_only_loaded_effects() {
     h.ui_mut()
         .set_theme(scheme, naming("palantir.sparkle"))
         .unwrap();
-    let ours = EffectName::<PressInput>::named("ours").unwrap();
+    let ours = EffectName::<PressParams>::named("ours").unwrap();
     h.ui()
         .load_effect(ours, EffectSource::new(RIPPLE_WGSL))
         .unwrap();
@@ -1087,13 +1112,13 @@ fn the_ripples_paint_their_exact_values() {
                 Shape::rect().at(Rect::new(0.0, 0.0, 160.0, 40.0)),
                 EffectPaint::new(
                     effect,
-                    PressInput {
+                    PressParams {
                         color: RgbaF32::new(1.0, 1.0, 1.0, 0.5),
                         highlight: RgbaF32::new(1.0, 1.0, 1.0, 141.0 / 255.0),
                         point: Vec2::new(20.0, 20.0),
-                        released,
-                        enter: 0.225,
-                        exit: 0.15,
+                        released_seconds: released,
+                        enter_seconds: 0.225,
+                        exit_seconds: 0.15,
                         seed: 0.0,
                         pad0: 0.0,
                         pad1: 0.0,
@@ -1159,13 +1184,13 @@ fn the_sparkles_take_the_highlight() {
                 Shape::rect().at(Rect::new(0.0, 0.0, 160.0, 40.0)),
                 EffectPaint::new(
                     EffectName::SPARKLE,
-                    PressInput {
+                    PressParams {
                         color: RgbaF32::new(1.0, 1.0, 1.0, 0.25),
                         highlight,
                         point: Vec2::new(40.0, 20.0),
-                        released: -1.0,
-                        enter: 0.45,
-                        exit: 0.375,
+                        released_seconds: -1.0,
+                        enter_seconds: 0.45,
+                        exit_seconds: 0.375,
                         seed: 0.0,
                         pad0: 0.0,
                         pad1: 0.0,
@@ -1853,6 +1878,11 @@ struct Shift {
 
 const SHIFT: EffectName<Shift, BackdropEffect> = EffectName::named("shift").expect("the name fits");
 
+/// [`SHIFT`]'s source, which reads 8 px past its shape, as its `dx` reaches.
+fn reaching_shift() -> EffectSource<Shift, BackdropEffect> {
+    EffectSource::new(SHIFT_WGSL).reach(|_| BackdropReach::Px(8.0))
+}
+
 /// What is painted `dx` px to the right, opaque.
 const SHIFT_WGSL: &str = "
 struct Params { dx: f32 }
@@ -1901,9 +1931,7 @@ fn a_backdrop_effect_reads_under_its_reach_and_clamps_past_it() {
         .mono()
         .depth(Depth::gpu(gpu.handles()))
         .build();
-    h.ui()
-        .load_effect(SHIFT, EffectSource::new(SHIFT_WGSL))
-        .unwrap();
+    h.ui().load_effect(SHIFT, reaching_shift()).unwrap();
     let red = RgbaF32::new(1.0, 0.0, 0.0, 1.0);
     let blue = RgbaF32::new(0.0, 0.0, 1.0, 1.0);
     let green = RgbaF32::new(0.0, 1.0, 0.0, 1.0);
@@ -1914,7 +1942,7 @@ fn a_backdrop_effect_reads_under_its_reach_and_clamps_past_it() {
             ui.add_shape(Shape::rect().at(Rect::new(26.0, 0.0, 6.0, 16.0)), green);
             ui.add_shape(
                 Shape::rect().at(Rect::new(4.0, 0.0, 12.0, 16.0)),
-                EffectPaint::new(SHIFT, Shift { dx }).max_sample_offset(8.0),
+                EffectPaint::new(SHIFT, Shift { dx }),
             );
         }
     };
@@ -1961,7 +1989,11 @@ fn a_backdrop_effect_paints_its_fallback_while_transparency_is_reduced() {
             .filter(|kind| *kind == "Fill" || *kind == "Effect")
             .collect()
     };
-    let paint = |fallback: RgbaF32| EffectPaint::new(SHIFT, SHARP).blur(2.0).fallback(fallback);
+    let paint = |fallback: RgbaF32| {
+        EffectPaint::new(SHIFT, SHARP)
+            .backdrop_blur(2.0)
+            .fallback(fallback)
+    };
     h.frame(|ui| {
         ui.add_shape(Shape::rect(), paint(red));
     });
@@ -2044,7 +2076,7 @@ fn a_material_effect_is_a_backdrop_effect_over_lanes() {
             .image_slots(1),
         )
         .unwrap();
-    let ours = EffectName::<FrostedInput, BackdropEffect>::named("ours").unwrap();
+    let ours = EffectName::<FrostedParams, BackdropEffect>::named("ours").unwrap();
     registry
         .load(
             ours,
@@ -2064,15 +2096,15 @@ fn a_material_effect_is_a_backdrop_effect_over_lanes() {
             MaterialFit::Unloaded,
         ),
         (
-            MaterialEffect::new(EffectName::FROSTED, FrostedInput::DEFAULT),
+            MaterialEffect::new(EffectName::FROSTED, FrostedParams::DEFAULT),
             MaterialFit::Lanes(2),
         ),
         (
-            MaterialEffect::new(EffectName::GLASS, GlassInput::new(Lens::WINDOW_GLASS)),
+            MaterialEffect::new(EffectName::GLASS, GlassParams::new(Lens::WINDOW_GLASS)),
             MaterialFit::Lanes(7),
         ),
         (
-            MaterialEffect::new(ours, FrostedInput::DEFAULT),
+            MaterialEffect::new(ours, FrostedParams::DEFAULT),
             MaterialFit::Lanes(2),
         ),
     ] {
@@ -2134,7 +2166,10 @@ fn a_backdrop_effect_blurs_as_a_material() {
             .collect::<Vec<_>>()
     };
     let effect = row(&|ui| {
-        ui.add_shape(Shape::rect(), EffectPaint::new(SHIFT, SHARP).blur(3.0));
+        ui.add_shape(
+            Shape::rect(),
+            EffectPaint::new(SHIFT, SHARP).backdrop_blur(3.0),
+        );
     });
     let filter = row(&|ui| {
         ui.add_shape(Shape::rect(), Material::blur(3.0));
@@ -2265,9 +2300,7 @@ fn a_reach_past_the_window_reads_its_edge() {
         .mono()
         .depth(Depth::gpu(gpu.handles()))
         .build();
-    h.ui()
-        .load_effect(SHIFT, EffectSource::new(SHIFT_WGSL))
-        .unwrap();
+    h.ui().load_effect(SHIFT, reaching_shift()).unwrap();
     let green = RgbaF32::new(0.0, 1.0, 0.0, 1.0);
     h.prime(2, |ui: &mut Ui| {
         ui.add_shape(
@@ -2277,7 +2310,7 @@ fn a_reach_past_the_window_reads_its_edge() {
         ui.add_shape(Shape::rect().at(Rect::new(26.0, 0.0, 6.0, 16.0)), green);
         ui.add_shape(
             Shape::rect().at(Rect::new(16.0, 0.0, 16.0, 16.0)),
-            EffectPaint::new(SHIFT, Shift { dx: 12.0 }).max_sample_offset(8.0),
+            EffectPaint::new(SHIFT, Shift { dx: 12.0 }),
         );
     });
     assert_eq!(h.read_back().get_pixel(28, 8).0, bytes(green));
@@ -2325,9 +2358,7 @@ fn the_reach_runs_from_the_exact_rect() {
         .pixel_snap(false)
         .depth(Depth::gpu(gpu.handles()))
         .build();
-    h.ui()
-        .load_effect(SHIFT, EffectSource::new(SHIFT_WGSL))
-        .unwrap();
+    h.ui().load_effect(SHIFT, reaching_shift()).unwrap();
     let blue = RgbaF32::new(0.0, 0.0, 1.0, 1.0);
     h.prime(2, |ui: &mut Ui| {
         ui.add_shape(
@@ -2341,7 +2372,7 @@ fn the_reach_runs_from_the_exact_rect() {
         );
         ui.add_shape(
             Shape::rect().at(Rect::new(4.0, 0.0, 11.5, 16.0)),
-            EffectPaint::new(SHIFT, Shift { dx: 12.0 }).max_sample_offset(8.0),
+            EffectPaint::new(SHIFT, Shift { dx: 12.0 }),
         );
     });
     assert_eq!(h.read_back().get_pixel(14, 8).0, bytes(blue));

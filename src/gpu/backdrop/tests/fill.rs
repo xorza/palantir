@@ -6,7 +6,7 @@ use crate::internals::paint_capture::PaintCall;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::border::Border;
-use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
+use crate::primitives::paint::brush::gradient::Gradient;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
 use crate::primitives::paint::paint::Paint;
@@ -40,7 +40,7 @@ where
 fn a_gradient_fill_draws_in_the_material_draw() {
     let gpu = headless_test_gpu();
     let gradient =
-        LinearGradient::horizontal([RgbaF32::srgb(1.0, 0.1, 0.0), RgbaF32::srgb(0.0, 0.2, 1.0)]);
+        Gradient::horizontal([RgbaF32::srgb(1.0, 0.1, 0.0), RgbaF32::srgb(0.0, 0.2, 1.0)]);
     let mut plain = window(&gpu, SIZE, CLEAR);
     plain.frame(boxed(Paint::from(gradient.clone())));
     let mut material = window(&gpu, SIZE, CLEAR);

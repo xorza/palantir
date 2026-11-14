@@ -7,7 +7,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
-use crate::primitives::paint::material::frosted_input::FrostedInput;
+use crate::primitives::paint::material::frosted_params::FrostedParams;
 use crate::primitives::paint::paint::Paint;
 use crate::shape::Shape;
 use crate::ui::Ui;
@@ -64,7 +64,7 @@ fn scene(
                 }
                 let filter = Material::new(
                     EffectName::FROSTED,
-                    FrostedInput {
+                    FrostedParams {
                         saturation: 1.6,
                         noise: 0.0,
                     },

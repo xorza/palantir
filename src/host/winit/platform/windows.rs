@@ -515,7 +515,7 @@ mod tests {
         );
         assert_eq!(SaverSetting::of(GUID::zeroed()), None);
         for (energy_saver, battery_saver, power) in [
-            (0, 0, Reduction::Full),
+            (0, 0, Reduction::Unreduced),
             (1, 0, Reduction::Reduced),
             (2, 0, Reduction::Reduced),
             (0, 1, Reduction::Reduced),

@@ -10,6 +10,7 @@ use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::pointer::PointerButton;
+use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::text::interned_str::InternedStr;
 use crate::theme::Theme;
@@ -26,7 +27,7 @@ use crate::widgets::dock::dock_state::{DockState, RATIO_MIN};
 use crate::widgets::dock::dock_tabs::{DockTabMenu, DockTabs};
 use crate::widgets::dock::dock_view::DockView;
 use crate::widgets::dock::pane_geometry::{DropTarget, PaneGeometry};
-use crate::widgets::dock::split_side::{SplitDirection, SplitSide};
+use crate::widgets::dock::split_side::SplitSide;
 use crate::widgets::dock::tab_group::{TabGroup, TabGroupId};
 use crate::widgets::menu::Menu;
 use crate::widgets::menu::menu_item::MenuItem;
@@ -205,12 +206,12 @@ fn split_move_and_collapse_roundtrip() {
     let mut d = seeded();
     let primary = d.primary().id;
 
-    // Row split, primary first, new single-tab group second and focused;
+    // A split along x, primary first, new single-tab group second and focused;
     // pre-order `[split, primary, new]`.
     split_off(&mut d, viewer(1), primary, SplitSide::Right);
     d.validate().unwrap();
     let root = root_split(&d);
-    assert_eq!(root.split.direction, SplitDirection::Row);
+    assert_eq!(root.split.axis, Axis::X);
     assert_eq!(root.split.ratio(), 0.5);
     let DockNode::Group(first) = root.first else {
         panic!("primary stays first for a Right split");
@@ -246,21 +247,29 @@ fn split_move_and_collapse_roundtrip() {
 }
 
 #[test]
-fn left_and_top_splits_put_the_new_pane_first() {
-    for (side, direction) in [
-        (SplitSide::Left, SplitDirection::Row),
-        (SplitSide::Top, SplitDirection::Col),
+fn each_side_splits_along_its_axis_with_the_new_pane_on_its_half() {
+    for (side, axis, new_first) in [
+        (SplitSide::Left, Axis::X, true),
+        (SplitSide::Right, Axis::X, false),
+        (SplitSide::Top, Axis::Y, true),
+        (SplitSide::Bottom, Axis::Y, false),
     ] {
         let mut d = seeded();
         let primary = d.primary().id;
         split_off(&mut d, viewer(1), primary, side);
         d.validate().unwrap();
         let root = root_split(&d);
-        assert_eq!(root.split.direction, direction);
-        let DockNode::Group(first) = root.first else {
-            panic!("the first child is the new pane");
+        assert_eq!(root.split.axis, axis, "{side:?}");
+        let (DockNode::Group(first), DockNode::Group(second)) = (root.first, root.second) else {
+            panic!("{side:?}: both children are groups");
         };
-        assert_eq!(first.tabs, [viewer(1)], "{side:?} puts the new pane first");
+        let (fresh, kept) = if new_first {
+            (first, second)
+        } else {
+            (second, first)
+        };
+        assert_eq!(fresh.tabs, [viewer(1)], "{side:?}: the new pane's half");
+        assert_eq!(kept.id, primary, "{side:?}: the primary keeps the other");
     }
 }
 

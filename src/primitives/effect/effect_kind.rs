@@ -46,13 +46,13 @@ mod sealed {
         const FALLBACK: Self::Fallback;
 
         /// The fallback `fallback` names; `None` for a color effect.
-        fn fallback(fallback: &Self::Fallback) -> Option<&MaterialFallback>;
+        fn fallback(fallback: &Self::Fallback) -> Option<&BackdropFallback>;
     }
 
     use std::fmt;
 
     use crate::primitives::effect::effect_kind::{BackdropEffect, ColorEffect, KindId};
-    use crate::primitives::paint::material::material_fallback::MaterialFallback;
+    use crate::primitives::paint::material::backdrop_fallback::BackdropFallback;
 
     #[expect(
         private_interfaces,
@@ -64,7 +64,7 @@ mod sealed {
 
         const FALLBACK: () = ();
 
-        fn fallback((): &()) -> Option<&MaterialFallback> {
+        fn fallback((): &()) -> Option<&BackdropFallback> {
             None
         }
     }
@@ -74,11 +74,11 @@ mod sealed {
     )]
     impl Kind for BackdropEffect {
         const ID: KindId = KindId::Backdrop;
-        type Fallback = MaterialFallback;
+        type Fallback = BackdropFallback;
 
-        const FALLBACK: MaterialFallback = MaterialFallback::ThemeSurface;
+        const FALLBACK: BackdropFallback = BackdropFallback::ThemeSurface;
 
-        fn fallback(fallback: &MaterialFallback) -> Option<&MaterialFallback> {
+        fn fallback(fallback: &BackdropFallback) -> Option<&BackdropFallback> {
             Some(fallback)
         }
     }

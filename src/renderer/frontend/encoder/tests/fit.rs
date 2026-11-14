@@ -69,7 +69,8 @@ fn downsample_modes_encode_to_distinct_tap_flags() {
 #[test]
 fn an_image_carries_the_shape_that_clips_it() {
     use crate::primitives::geometry::corners::Corners;
-    use crate::primitives::paint::image::{Image, ImageFit};
+    use crate::primitives::geometry::fit::Fit;
+    use crate::primitives::paint::image::Image;
     use crate::shape::Shape;
     use crate::shape::geometry::box_geometry::PlacedBox;
     use crate::shape::geometry::closed_geometry::PlacedClosed;
@@ -89,16 +90,16 @@ fn an_image_carries_the_shape_that_clips_it() {
                 for corners in [Corners::all(6.0), Corners::ZERO] {
                     ui.add_shape(
                         Shape::rect().at(at).corners(corners),
-                        ImagePaint::new(handle.clone()).fit(ImageFit::Contain),
+                        ImagePaint::new(handle.clone()).fit(Fit::Contain),
                     );
                 }
                 ui.add_shape(
                     Shape::triangle(Vec2::ZERO, Vec2::new(40.0, 0.0), Vec2::new(0.0, 20.0)),
-                    ImagePaint::new(handle.clone()).fit(ImageFit::Contain),
+                    ImagePaint::new(handle.clone()).fit(Fit::Contain),
                 );
                 ui.add_shape(
                     Shape::circle().at(at),
-                    ImagePaint::new(handle.clone()).fit(ImageFit::Fill),
+                    ImagePaint::new(handle.clone()).fit(Fit::Fill),
                 );
             });
     });
@@ -146,23 +147,28 @@ fn an_image_carries_the_shape_that_clips_it() {
     );
 }
 
-/// The cascade bounds an image by the rect the encoder draws under every fit, so an `ImageFit::Natural` image overflowing its node is damaged and culled where it paints. A 200×100 image in a 100×100 node at (40, 40), no transform or clip.
+/// The cascade bounds an image by the rect the encoder draws under every fit, so an `Fit::Natural` image overflowing its node is damaged and culled where it paints. A 200×100 image in a 100×100 node at (40, 40), no transform or clip.
 #[test]
 fn the_cascade_bounds_an_image_by_the_rect_the_encoder_draws() {
+    use crate::primitives::geometry::fit::Fit;
     use crate::primitives::identity::widget_id::WidgetId;
-    use crate::primitives::paint::image::{Image, ImageFit};
+    use crate::primitives::paint::image::{Image, ImagePlacement};
     use crate::shape::Shape;
 
     let fits = [
-        ImageFit::Fill,
-        ImageFit::Contain,
-        ImageFit::Cover,
-        ImageFit::Natural,
-        ImageFit::Tile {
+        ImagePlacement::Fit(Fit::Fill),
+        ImagePlacement::Fit(Fit::Contain),
+        ImagePlacement::Fit(Fit::Cover),
+        ImagePlacement::Fit(Fit::Natural),
+        ImagePlacement::Tile {
             offset: Vec2::ZERO,
             scale: Vec2::splat(2.0),
         },
     ];
+    let placed = |paint: ImagePaint, placement| match placement {
+        ImagePlacement::Fit(fit) => paint.fit(fit),
+        ImagePlacement::Tile { offset, scale } => paint.tile(offset, scale),
+    };
     // Hand-computed: Contain scales min(100/200, 100/100) = 0.5 → 100×50, centered at y = 40 + 25;
     // Natural paints 200×100 centered, x = 40 + (100 - 200)/2 = -10, y = 40.
     let node = Rect::new(40.0, 40.0, 100.0, 100.0);
@@ -189,7 +195,10 @@ fn the_cascade_bounds_an_image_by_the_rect_the_encoder_draws() {
                         .at((node.min.x, node.min.y))
                         .size(node.size.w)
                         .show(ui, |ui| {
-                            ui.add_shape(Shape::rect(), ImagePaint::new(handle.clone()).fit(fit));
+                            ui.add_shape(
+                                Shape::rect(),
+                                placed(ImagePaint::new(handle.clone()), fit),
+                            );
                         });
                 });
         });
@@ -295,9 +304,10 @@ fn an_arc_of_no_sweep_paints_its_dot_in_the_ramp_start() {
 /// (40, 40, 40 × 20), grown by half a pixel of antialiasing at scale 1.
 #[test]
 fn the_cascade_bounds_a_triangles_image_as_its_triangle() {
+    use crate::primitives::geometry::fit::Fit;
     use crate::primitives::identity::widget_id::WidgetId;
     use crate::primitives::paint::color::RgbaF32;
-    use crate::primitives::paint::image::{Image, ImageFit};
+    use crate::primitives::paint::image::Image;
     use crate::shape::Shape;
 
     let mut h = Harness::mono(UVec2::new(300, 300));
@@ -318,7 +328,7 @@ fn the_cascade_bounds_a_triangles_image_as_its_triangle() {
                     .show(ui, |ui| {
                         ui.add_shape(
                             triangle(),
-                            ImagePaint::new(handle.clone()).fit(ImageFit::Natural),
+                            ImagePaint::new(handle.clone()).fit(Fit::Natural),
                         );
                         ui.add_shape(triangle(), RgbaF32::WHITE);
                     });

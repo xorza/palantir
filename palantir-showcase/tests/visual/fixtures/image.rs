@@ -9,8 +9,8 @@ use image::RgbaImage;
 use palantir::glam::{UVec2, Vec2};
 use palantir::widget::Shape;
 use palantir::{
-    Configure, Image, ImageDownsample, ImageFilter, ImageFit, ImageHandle, Panel, Rect, RgbaF32,
-    Sizing, SrgbaU8, Ui,
+    Configure, Fit, Image, ImageDownsample, ImageFilter, ImageHandle, Panel, Rect, RgbaF32, Sizing,
+    SrgbaU8, Ui,
 };
 
 use crate::fixtures;
@@ -55,7 +55,7 @@ fn cell(ui: &mut Ui, at: Rect, image: ImagePaint) {
 
 /// `handle` stretched over its cell.
 fn filled(handle: &ImageHandle) -> ImagePaint {
-    ImagePaint::new(handle.clone()).fit(ImageFit::Fill)
+    ImagePaint::new(handle.clone()).fit(Fit::Fill)
 }
 
 /// Each `(x, color, what)` probe on row `y` reads its color.
@@ -226,17 +226,13 @@ fn bilinear_both_nearest_and_tiled_sampling_paths_are_pinned() {
     assert_blend(strips.get_pixel(32, 16).0, "bilinear seam");
 
     let two = load(&h, &[RED, BLUE]);
-    let tile = ImageFit::Tile {
-        offset: Vec2::ZERO,
-        scale: Vec2::new(2.5, 1.0),
-    };
     let tiled = render(&mut h, UVec2::new(200, 16), |ui| {
         let size = Vec2::new(100.0, 16.0);
         cell(
             ui,
             Rect::new(0.0, 0.0, size.x, size.y),
             ImagePaint::new(two.clone())
-                .fit(tile)
+                .tile(Vec2::ZERO, Vec2::new(2.5, 1.0))
                 .min_filter(Linear)
                 .mag_filter(Linear),
         );
@@ -244,7 +240,7 @@ fn bilinear_both_nearest_and_tiled_sampling_paths_are_pinned() {
             ui,
             Rect::new(100.0, 0.0, size.x, size.y),
             ImagePaint::new(two.clone())
-                .fit(tile)
+                .tile(Vec2::ZERO, Vec2::new(2.5, 1.0))
                 .min_filter(Nearest)
                 .mag_filter(Nearest),
         );
@@ -302,7 +298,7 @@ fn downsample_modes_recover_a_texel_the_single_tap_misses() {
     let out = render(&mut h, UVec2::new(24, 16), |ui| {
         for (i, (mode, _, _)) in cases.iter().enumerate() {
             let image = ImagePaint::new(source.clone())
-                .fit(ImageFit::Fill)
+                .fit(Fit::Fill)
                 .downsample(*mode);
             cell(ui, Rect::new(i as f32 * CELL.x, 0.0, CELL.x, CELL.y), image);
         }
@@ -363,7 +359,7 @@ fn downsample_combines_taps_in_premultiplied_space() {
     let out = render(&mut h, UVec2::new(16, 16), |ui| {
         for (i, (_, mode, _, _)) in cases.iter().enumerate() {
             let image = ImagePaint::new(sources[i].clone())
-                .fit(ImageFit::Fill)
+                .fit(Fit::Fill)
                 .downsample(*mode);
             cell(ui, Rect::new(i as f32 * CELL.x, 0.0, CELL.x, CELL.y), image);
         }
@@ -393,7 +389,7 @@ fn a_magnified_transparent_edge_keeps_its_color() {
         cell(
             ui,
             Rect::new(0.0, 0.0, 16.0, 16.0),
-            ImagePaint::new(source.clone()).fit(ImageFit::Fill),
+            ImagePaint::new(source.clone()).fit(Fit::Fill),
         );
     });
 
@@ -418,10 +414,7 @@ fn downsample_taps_wrap_with_the_tile_instead_of_clamping() {
     let source = load(&h, &[STAR, SKY, SKY, SKY]);
     let out = render(&mut h, UVec2::new(8, 16), |ui| {
         let image = ImagePaint::new(source.clone())
-            .fit(ImageFit::Tile {
-                offset: Vec2::ZERO,
-                scale: Vec2::new(24.0, 1.0),
-            })
+            .tile(Vec2::ZERO, Vec2::new(24.0, 1.0))
             .downsample(ImageDownsample::Mean);
         cell(ui, Rect::new(0.0, 0.0, 8.0, 16.0), image);
     });

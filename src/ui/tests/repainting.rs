@@ -12,7 +12,7 @@ use crate::primitives::input::keyboard::key::Key;
 use crate::primitives::input::policy::InputPolicy;
 use crate::primitives::input::policy::InputSignal;
 use crate::primitives::layout::clip_mode::ClipMode;
-use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
+use crate::primitives::paint::brush::gradient::Gradient;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
@@ -291,7 +291,7 @@ fn paint_only_preserves_record_store_for_retained_shapes() {
             Block::new()
                 .id(WidgetId::from_hash("grad_bg"))
                 .size(50.0)
-                .chrome(Chrome::NONE.with_fill(LinearGradient::horizontal([
+                .chrome(Chrome::NONE.with_fill(Gradient::horizontal([
                     RgbaF32::srgb(1.0, 0.0, 0.0),
                     RgbaF32::srgb(0.0, 0.0, 1.0),
                 ])))
@@ -362,7 +362,7 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
         Panel::hstack().size(20.0).show(ui, |ui| {
             ui.add_shape(
                 Shape::rect().at(Rect::new(0.0, 0.0, 8.0, 8.0)),
-                LinearGradient::horizontal([RgbaF32::hex(0xff0000), RgbaF32::hex(0x0000ff)]),
+                Gradient::horizontal([RgbaF32::hex(0xff0000), RgbaF32::hex(0x0000ff)]),
             );
             support::add_blink_shape(ui, half);
         });
@@ -384,7 +384,7 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
             for idx in 0..SOFT_ROWS - 1 {
                 ui.add_shape(
                     Shape::rect().at(Rect::new(0.0, 0.0, 8.0, 8.0)),
-                    LinearGradient::horizontal([
+                    Gradient::horizontal([
                         RgbaF32::from_srgba8(SrgbaU8::rgb(
                             idx as u8,
                             (idx >> u8::BITS) as u8,

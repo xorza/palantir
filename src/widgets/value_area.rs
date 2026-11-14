@@ -1,9 +1,10 @@
 //! The shared scaffold behind the color picker's value areas: the field and the strips.
 
+use crate::primitives::geometry::fit::Fit;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::input::sense::Sense;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::image::{Image, ImageFit};
+use crate::primitives::paint::image::Image;
 use crate::shape::Shape;
 use crate::shape::image_paint::ImagePaint;
 use crate::theme::color_picker::ColorPickerTheme;
@@ -96,7 +97,7 @@ impl ValueArea<'_> {
                     .ensure(ui, texels, surface, |image| V::fill(surface, image))
                     .clone()
             });
-            ui.add_shape(Shape::rect(), ImagePaint::new(image).fit(ImageFit::Fill));
+            ui.add_shape(Shape::rect(), ImagePaint::new(image).fit(Fit::Fill));
             value.marker(ui, theme, size);
             if response.disabled {
                 ui.add_shape(Shape::rect(), theme.disabled_veil);

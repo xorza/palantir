@@ -11,7 +11,8 @@ use crate::shape::Shape;
 use crate::theme::Theme;
 use crate::theme::look::theme_slot::ThemeSlot;
 use crate::theme::menu::MenuTheme;
-use crate::theme::menu_bar::{MenuBarTheme, MenuState};
+use crate::theme::menu_bar::MenuBarTheme;
+use crate::theme::selection::Selection;
 use crate::ui::Ui;
 use crate::widget_core::activation::Activation;
 use crate::widget_core::configurator::Configurator;
@@ -318,9 +319,9 @@ impl MenuBarMenus<'_> {
                 response.state.activate();
             }
         }
-        let plan = self.style.plan(
+        let plan = self.style.title.plan(
             &response.state,
-            MenuState::from(here.is_some()),
+            Selection::from(here.is_some()),
             self.theme.text,
         );
         let look = widget.wear(ui, plan);

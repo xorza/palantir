@@ -1,4 +1,4 @@
-// The stock frosted glass: what the material reads, saturated and grained (`FrostedInput`).
+// The stock frosted glass: what the material reads, saturated and grained (`FrostedParams`).
 
 struct Params {
     saturation: f32,

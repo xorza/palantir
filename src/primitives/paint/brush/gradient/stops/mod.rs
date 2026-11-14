@@ -97,7 +97,7 @@ impl<'de> Deserialize<'de> for Stop {
 /// bake one LUT row. Hence no `DerefMut`.
 ///
 /// A `u8` count beside a fixed array (not `ArrayVec`'s `u16`) keeps
-/// `LinearGradient` at 48 B. Slots past `len` hold `Stop::default()` so `Eq` agrees
+/// `Gradient` at 64 B. Slots past `len` hold `Stop::default()` so `Eq` agrees
 /// with the live-stops-only `Hash`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct GradientStops {

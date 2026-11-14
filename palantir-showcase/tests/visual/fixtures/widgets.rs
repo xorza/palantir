@@ -292,7 +292,7 @@ fn light_theme_widgets_match_golden() {
                     let mut segment = 1;
                     RadioGroup::new(&mut segment)
                         .axis(Axis::X)
-                        .look(RadioLook::Segment)
+                        .look(RadioLook::Segment(None))
                         .id_salt("segments")
                         .size((Sizing::fixed(240.0), Sizing::HUG))
                         .show(ui, |ui, options| {
@@ -358,10 +358,10 @@ fn drag_value_matches_golden() {
 #[test]
 fn combo_box_closed_matches_golden() {
     let opts = ["Apple", "Banana", "Cherry"];
-    let mut selected = &opts[1];
+    let mut selected = opts[1];
     GoldenName::ComboBoxClosed.assert_scene(UVec2::new(220, 70), |ui| {
         padded(ui, 16.0, |ui| {
-            ComboBox::new(&mut selected, &opts)
+            ComboBox::new(&mut selected, opts)
                 .size((Sizing::fixed(160.0), Sizing::HUG))
                 .id_salt("cb")
                 .show(ui);

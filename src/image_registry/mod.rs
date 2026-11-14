@@ -7,7 +7,7 @@
 //! recorder: it keeps ids, sizes and generations and discards the texels.
 //!
 //! The pure data types live elsewhere —
-//! [`Image`] / [`ImageFit`](crate::primitives::paint::image::ImageFit) in
+//! [`Image`] / [`Fit`](crate::Fit) in
 //! `primitives`, [`TextureId`] and the counter it is minted from in
 //! `primitives::identity::texture_id`, and the device ceiling a source is
 //! measured against in

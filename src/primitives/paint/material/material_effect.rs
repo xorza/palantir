@@ -129,11 +129,6 @@ impl MaterialEffect {
         bytemuck::cast_slice(self.params())
     }
 
-    /// The lanes as `U`, which the loaded effect takes, its lane count checked against these.
-    pub(crate) fn read<U: EffectParams>(&self) -> U {
-        bytemuck::pod_read_unaligned(self.bytes())
-    }
-
     /// Each lane mapped by `f`, the name and count kept: the spring arithmetic.
     pub(crate) fn map(self, mut f: impl FnMut(f32) -> f32) -> Self {
         let mut lanes = self.lanes;

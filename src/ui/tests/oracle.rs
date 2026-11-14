@@ -3,11 +3,12 @@
 use crate::host::harness::Harness;
 use crate::image_registry::image_handle::ImageHandle;
 use crate::internals::oracle::Oracle;
+use crate::primitives::geometry::fit::Fit;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::image::{Image, ImageFit};
+use crate::primitives::paint::image::Image;
 use crate::primitives::paint::stroke::Stroke;
 use crate::scene::layer::Layer;
 use crate::shape::Shape;
@@ -105,11 +106,7 @@ fn scene(ui: &mut Ui, k: Knobs, picture: &ImageHandle) {
                 .id(WidgetId::from_hash("picture"))
                 .size(40.0)
                 .show(ui, |ui| {
-                    let fit = if k.fit_none {
-                        ImageFit::Natural
-                    } else {
-                        ImageFit::Fill
-                    };
+                    let fit = if k.fit_none { Fit::Natural } else { Fit::Fill };
                     ui.add_shape(Shape::rect(), ImagePaint::new(picture.clone()).fit(fit));
                 });
             if k.extra {
@@ -262,7 +259,7 @@ fn shape_becomes_animated() {
     ]);
 }
 
-/// A 100 px image in a 40 px node switches to `ImageFit::Natural` and back: damage covers the overflow both ways.
+/// A 100 px image in a 40 px node switches to `Fit::Natural` and back: damage covers the overflow both ways.
 #[test]
 fn image_fit_overflows_its_node() {
     run(&[

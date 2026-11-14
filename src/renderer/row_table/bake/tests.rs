@@ -9,9 +9,9 @@
 use crate::primitives::math::domain;
 use crate::primitives::math::domain::internals::assert_close;
 use crate::primitives::math::libm_ext::Libm;
+use crate::primitives::paint::brush::gradient::Gradient;
 use crate::primitives::paint::brush::gradient::Interpolation;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
-use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::paint::brush::gradient::stops::{GradientStops, Stop};
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::oklab::Oklab;
@@ -91,7 +91,7 @@ fn a_ramps_color_at_t_is_what_its_bake_holds() {
 /// read directly from the f16 store. An sRGB-space lerp would give ~0.215.
 #[test]
 fn linear_midpoint_black_to_white_is_half() {
-    let g = LinearGradient::horizontal([RgbaF32::BLACK, RgbaF32::WHITE])
+    let g = Gradient::horizontal([RgbaF32::BLACK, RgbaF32::WHITE])
         .with_interpolation(Interpolation::Linear);
     let mut out = fresh_row();
     bake::row(&g.ramp, &mut out);
@@ -106,7 +106,7 @@ fn linear_midpoint_black_to_white_is_half() {
 fn oklab_red_to_green_midpoint_avoids_muddy_brown() {
     let red = linear(255, 0, 0);
     let green = linear(0, 255, 0);
-    let g = LinearGradient::horizontal([red, green]).with_interpolation(Interpolation::Oklab);
+    let g = Gradient::horizontal([red, green]).with_interpolation(Interpolation::Oklab);
     let mut out = fresh_row();
     bake::row(&g.ramp, &mut out);
     // The midpoint is the stops' Oklab coordinates blended at t = 127/255 and
@@ -130,7 +130,7 @@ fn oklab_red_to_green_midpoint_avoids_muddy_brown() {
 #[test]
 fn endpoints_match_stops_exactly() {
     for interpolation in [Interpolation::Linear, Interpolation::Oklab] {
-        let g = LinearGradient::horizontal([linear(11, 22, 33), linear(244, 233, 222)])
+        let g = Gradient::horizontal([linear(11, 22, 33), linear(244, 233, 222)])
             .with_interpolation(interpolation);
         let mut out = fresh_row();
         bake::row(&g.ramp, &mut out);
@@ -148,7 +148,7 @@ fn endpoints_match_stops_exactly() {
 /// and 2 (bracketing).
 #[test]
 fn three_stop_quarter_brackets_first_pair() {
-    let g = LinearGradient::horizontal([linear(0, 0, 0), linear(255, 0, 0), linear(0, 0, 255)])
+    let g = Gradient::horizontal([linear(0, 0, 0), linear(255, 0, 0), linear(0, 0, 255)])
         .with_interpolation(Interpolation::Linear);
     let mut out = fresh_row();
     bake::row(&g.ramp, &mut out);
@@ -193,7 +193,7 @@ fn cursor_scan_matches_restart_scan_across_eight_stops() {
         linear[upper - 1].mix(linear[upper], (t - lower_offset) / denominator)
     }
 
-    let g = LinearGradient::horizontal([
+    let g = Gradient::horizontal([
         Stop::new(0.0, linear(0, 0, 0)),
         Stop::new(0.002, linear(255, 0, 0)), // narrower than one texel
         Stop::new(0.25, linear(0, 255, 0)),
@@ -213,7 +213,7 @@ fn cursor_scan_matches_restart_scan_across_eight_stops() {
     }
 }
 
-/// `LinearGradient::new` accepts stops in any order and sorts them as it builds the ramp, so the
+/// `Gradient::linear` accepts stops in any order and sorts them as it builds the ramp, so the
 /// bake gets them ascending and the output stays sensible.
 #[test]
 fn unsorted_stops_get_sorted_at_bake() {
@@ -221,7 +221,7 @@ fn unsorted_stops_get_sorted_at_bake() {
         Stop::new(1.0, linear(255, 0, 0)), // out of order
         Stop::new(0.0, linear(0, 0, 255)),
     ];
-    let g = LinearGradient::horizontal(stops);
+    let g = Gradient::horizontal(stops);
     let mut out = fresh_row();
     bake::row(&g.ramp, &mut out);
     let first = texel(&out, 0);
@@ -238,7 +238,7 @@ fn partial_range_clamps_at_edges() {
         Stop::new(0.25, linear(0, 255, 0)),
         Stop::new(0.75, linear(0, 0, 255)),
     ];
-    let g = LinearGradient::horizontal(stops);
+    let g = Gradient::horizontal(stops);
     let mut out = fresh_row();
     bake::row(&g.ramp, &mut out);
     assert_eq!(texel(&out, 0).g, 1.0);
@@ -257,7 +257,7 @@ fn dark_gradient_row_has_no_banding() {
     // Both stops linearize to tiny reds, 2.6/255 and 18.4/255, a span an 8-bit
     // linear row can't resolve.
     assert_eq!([navy.r, blue.r], [0.010329823, 0.07227185]);
-    let g = LinearGradient::horizontal([navy, blue]); // default Oklab
+    let g = Gradient::horizontal([navy, blue]); // default Oklab
     let mut out = fresh_row();
     bake::row(&g.ramp, &mut out);
 

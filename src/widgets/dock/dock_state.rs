@@ -22,6 +22,7 @@ use crate::widgets::dock::dock_tab::DockTab;
 use crate::widgets::dock::error::DockError;
 use crate::widgets::dock::split_side::SplitSide;
 use crate::widgets::dock::tab_group::{TabGroup, TabGroupId};
+use crate::widgets::splitter::split_half::SplitHalf;
 use crate::widgets::tabs::reindex;
 use std::mem;
 
@@ -391,15 +392,14 @@ impl<T: DockTab> DockState<T> {
         };
         let existing_idx = NodeIdx::at(self.layout.nodes.len());
         let fresh_idx = NodeIdx::at(self.layout.nodes.len() + 1);
-        let (first, second) = if side.new_pane_first() {
-            (fresh_idx, existing_idx)
-        } else {
-            (existing_idx, fresh_idx)
+        let (first, second) = match side.half() {
+            SplitHalf::First => (fresh_idx, existing_idx),
+            SplitHalf::Second => (existing_idx, fresh_idx),
         };
         let existing = mem::replace(
             &mut self.layout.nodes[slot],
             DockNode::Split(DockSplit {
-                direction: side.direction(),
+                axis: side.axis(),
                 ratio: 0.5,
                 first,
                 second,

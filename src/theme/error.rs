@@ -3,7 +3,7 @@
 use std::error;
 use std::fmt;
 
-use crate::effect::press_input::PressInput;
+use crate::effect::press_params::PressParams;
 use crate::primitives::effect::effect_name::EffectName;
 use crate::primitives::paint::material::material_effect::MaterialEffect;
 
@@ -13,10 +13,10 @@ use crate::primitives::paint::material::material_effect::MaterialEffect;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ThemeEffectError {
     /// Nothing is loaded under a press slot's name.
-    UnloadedPress(EffectName<PressInput>),
-    /// The effect under a press slot's name takes other parameters than [`PressInput`], or is a
+    UnloadedPress(EffectName<PressParams>),
+    /// The effect under a press slot's name takes other parameters than [`PressParams`], or is a
     /// backdrop effect.
-    NotPress(EffectName<PressInput>),
+    NotPress(EffectName<PressParams>),
     /// Nothing is loaded under the name of a material's effect.
     UnloadedMaterial(MaterialEffect),
     /// The effect under a material's name is no material's: a color effect, one that binds
@@ -44,7 +44,7 @@ impl fmt::Display for ThemeEffectError {
             ),
             Self::NotPress(name) => write!(
                 f,
-                "the theme's press effect `{}` is not a color effect over `PressInput`",
+                "the theme's press effect `{}` is not a color effect over `PressParams`",
                 name.name()
             ),
             Self::UnloadedMaterial(effect) => write!(

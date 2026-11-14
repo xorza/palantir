@@ -7,7 +7,7 @@ use crate::primitives::identity::effect_id::EffectId;
 use crate::primitives::identity::icon_handle::IconHandle;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
-use crate::primitives::paint::image::{ImageDownsample, ImageFilter, ImageFit};
+use crate::primitives::paint::image::{ImageDownsample, ImageFilter, ImagePlacement};
 use crate::shape::lower::LoweredPaint;
 use crate::shape::paint::capture_params::CaptureParams;
 use crate::shape::paint::image_source::ImageSource;
@@ -26,7 +26,7 @@ pub(crate) enum ClosedPaint {
     Image {
         tint: RgbaF16,
         source: ImageSource,
-        fit: ImageFit,
+        placement: ImagePlacement,
         min_filter: ImageFilter,
         mag_filter: ImageFilter,
         downsample: ImageDownsample,
@@ -87,7 +87,9 @@ impl NanCheck for ClosedPaint {
                 shadow,
                 material,
             }) => fill.has_nan() || border.has_nan() || shadow.has_nan() || material.has_nan(),
-            Self::Image { tint, fit, .. } => tint.has_nan() || fit.has_nan(),
+            Self::Image {
+                tint, placement, ..
+            } => tint.has_nan() || placement.has_nan(),
             Self::Icon { tint, .. } => tint.has_nan(),
             Self::Effect {
                 backdrop, outside, ..

@@ -352,8 +352,18 @@ fn reduced_motion_and_a_hidden_span_snap_every_transition() {
         "reduced power snaps a transition that follows the system"
     );
     for (system_reduced, power, preference, role) in [
-        (true, false, Preference::Fixed(Reduction::Full), decorative),
-        (false, true, Preference::Fixed(Reduction::Full), decorative),
+        (
+            true,
+            false,
+            Preference::Fixed(Reduction::Unreduced),
+            decorative,
+        ),
+        (
+            false,
+            true,
+            Preference::Fixed(Reduction::Unreduced),
+            decorative,
+        ),
         (true, false, Preference::System, MotionRole::Essential),
         (false, true, Preference::System, MotionRole::Essential),
     ] {

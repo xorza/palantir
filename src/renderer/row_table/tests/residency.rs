@@ -1,8 +1,7 @@
 //! Row assignment: reuse, dedup, and the reserved fallback at row zero.
 
+use crate::primitives::paint::brush::gradient::Gradient;
 use crate::primitives::paint::brush::gradient::Interpolation;
-use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
-use crate::primitives::paint::brush::gradient::radial_geometry::RadialGradient;
 use crate::primitives::paint::brush::gradient::stops::Stop;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
@@ -49,9 +48,8 @@ fn register_same_gradient_twice_reuses_row() {
 #[test]
 fn near_identical_keys_never_share_a_row() {
     let mut table = RowTable::default();
-    let base = LinearGradient::horizontal([SrgbaU8::rgb(10, 20, 30).into(), RgbaF32::WHITE]);
-    let one_byte_off =
-        LinearGradient::horizontal([SrgbaU8::rgb(10, 20, 31).into(), RgbaF32::WHITE]);
+    let base = Gradient::horizontal([SrgbaU8::rgb(10, 20, 30).into(), RgbaF32::WHITE]);
+    let one_byte_off = Gradient::horizontal([SrgbaU8::rgb(10, 20, 31).into(), RgbaF32::WHITE]);
 
     let mut rows = HashSet::new();
     for g in [&base, &one_byte_off] {
@@ -100,8 +98,8 @@ fn register_dedups_across_variants() {
         Stop::new(0.0, SrgbaU8::rgb(255, 64, 0)),
         Stop::new(1.0, SrgbaU8::rgb(0, 128, 255)),
     ];
-    let linear = LinearGradient::new(0.3, stops);
-    let radial = RadialGradient::centered(stops);
+    let linear = Gradient::linear(0.3, stops);
+    let radial = Gradient::centered_radial(stops);
     let curve = ColorRamp::new(stops);
     assert_eq!(
         linear.ramp.interpolation,

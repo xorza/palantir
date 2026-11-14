@@ -30,12 +30,11 @@ use crate::widgets::text::Text;
 use std::rc::Rc;
 
 /// A dropdown selector: a button-styled trigger showing the current choice,
-/// opening a [`Menu`] list on click. Picking a row points the bound `selected` at that option
-/// and closes; clicking outside or Esc dismisses. A pick binds the option, as egui's
-/// `selectable_value` binds a value, so the caller keeps its own type rather than an index; the
-/// binding is a reference into `options`, so an option that owns text or a record is never
-/// cloned, and a frame that picks nothing allocates nothing.
-/// Open state lives in the state map keyed off the combo's id; [`ComboBoxList::open`],
+/// opening a [`Menu`] list on click. Picking a row moves that row's value into the bound
+/// `selected` and closes; clicking outside or Esc dismisses. A pick binds a value, as egui's
+/// `selectable_value` hands each row its value, so the caller keeps its own type rather than an
+/// index; `T` may be a reference, so a caller holding a `&S` into a table binds it and clones
+/// nothing. Open state lives in the state map keyed off the combo's id; [`ComboBoxList::open`],
 /// [`ComboBoxList::close`] and [`ComboBoxList::is_open`] drive it from outside.
 ///
 /// A `*selected` no option equals shows its own label and marks no row; it is rewritten only
@@ -44,36 +43,46 @@ use std::rc::Rc;
 /// The trigger reuses [`crate::Theme::button`]; the list is a [`Menu`] of [`MenuItem`] rows
 /// ([`crate::Theme::menu`]).
 ///
-/// `options` is the caller's collection, uncopied: [`new`](Self::new) takes a
-/// slice whose elements *are* text (`&[&str]`, `&[String]`,
-/// `&[Cow<'_, str>]`), [`labeled`](Self::labeled) one whose elements carry it.
-/// A closed combo reads exactly one label.
+/// `options` is any collection that yields the values again when cloned: an array of `Copy`
+/// values, `slice.iter()` for references, `slice.iter().copied()`. A closed combo walks it once to
+/// find the pick and reads exactly one label; an open one walks it once more for the rows.
+/// [`new`](Self::new) takes values that *are* text (`&str`, `&String`), [`labeled`](Self::labeled)
+/// values that carry it.
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
-pub struct ComboBox<'a, 'o, S, L> {
+pub struct ComboBox<'a, T, I, L> {
     widget: Widget,
-    selected: &'a mut &'o S,
-    options: &'o [S],
+    selected: &'a mut T,
+    options: I,
     label: L,
     style: Option<&'a ComboBoxTheme>,
     button_style: Option<&'a ButtonTheme>,
     menu_style: Option<&'a MenuTheme>,
 }
 
-impl<'a, 'o, S: PartialEq + AsRef<str>> ComboBox<'a, 'o, S, fn(&S) -> &str> {
-    /// A dropdown over options that are themselves text, `selected` one of them.
+impl<'a, T, I> ComboBox<'a, T, I, fn(&T) -> &str>
+where
+    T: PartialEq + AsRef<str>,
+    I: IntoIterator<Item = T> + Clone,
+{
+    /// A dropdown over options that are themselves text, `selected` holding one of them.
     #[track_caller]
-    pub fn new(selected: &'a mut &'o S, options: &'o [S]) -> Self {
-        Self::labeled(selected, options, S::as_ref)
+    pub fn new(selected: &'a mut T, options: I) -> Self {
+        Self::labeled(selected, options, T::as_ref)
     }
 }
 
-impl<'a, 'o, S: PartialEq, L: Fn(&S) -> &str> ComboBox<'a, 'o, S, L> {
-    /// A dropdown over rows that *carry* a label: `label` reads each row's text.
-    /// For option types no `AsRef<str>` could serve, e.g. a record with an id beside
+impl<'a, T, I, L> ComboBox<'a, T, I, L>
+where
+    T: PartialEq,
+    I: IntoIterator<Item = T> + Clone,
+    L: Fn(&T) -> &str,
+{
+    /// A dropdown over options that *carry* a label: `label` reads each one's text.
+    /// For option types no `AsRef<str>` could serve, e.g. an enum or a record with an id beside
     /// a display name. `label` is any `Fn`, so it may capture a table.
     #[track_caller]
-    pub fn labeled(selected: &'a mut &'o S, options: &'o [S], label: L) -> Self {
+    pub fn labeled(selected: &'a mut T, options: I, label: L) -> Self {
         Self {
             // Alt+Down, the arrows, Home and End are `CARET`; the activation keys add `TEXT` in
             // `show`.
@@ -126,7 +135,8 @@ impl<'a, 'o, S: PartialEq, L: Fn(&S) -> &str> ComboBox<'a, 'o, S, L> {
         let list = ComboBoxList::menu_id(id);
         let shown = self
             .options
-            .iter()
+            .clone()
+            .into_iter()
             .position(|option| option == *self.selected);
         let mut landing = shown.map_or(MenuLanding::First, |pick| {
             MenuLanding::Row(option_id(list, pick))
@@ -174,7 +184,7 @@ impl<'a, 'o, S: PartialEq, L: Fn(&S) -> &str> ComboBox<'a, 'o, S, L> {
         let arrow_color = look.text.color;
         let text_style = look.text;
         // Interned: the label borrows from the caller's value, not `'static`.
-        let label = ui.intern((self.label)(*self.selected));
+        let label = ui.intern((self.label)(&*self.selected));
 
         self.widget.record(ui, Some(&look.chrome), |ui| {
             Text::new(label)
@@ -208,12 +218,12 @@ impl<'a, 'o, S: PartialEq, L: Fn(&S) -> &str> ComboBox<'a, 'o, S, L> {
             .min_size((response.rect.map_or(0.0, |rect| rect.size.w), 0.0))
             .show_as::<ComboBoxList, _>(ui, |ui| {
                 let mut picked = false;
-                for (i, opt) in options.iter().enumerate() {
-                    let lbl = ui.intern(label(opt));
+                for (i, opt) in options.into_iter().enumerate() {
+                    let lbl = ui.intern(label(&opt));
                     let row = MenuItem::new(lbl)
                         .id(option_id(list, i))
                         .selected(shown == Some(i));
-                    if row.show(ui).clicked() && **selected != *opt {
+                    if row.show(ui).clicked() && *selected != opt {
                         *selected = opt;
                         picked = true;
                     }
@@ -269,7 +279,7 @@ fn option_id(list: WidgetId, i: usize) -> WidgetId {
     list.with(("option", i))
 }
 
-impl<S, L> Configure for ComboBox<'_, '_, S, L> {
+impl<T, I, L> Configure for ComboBox<'_, T, I, L> {
     #[inline]
     fn configure(&mut self) -> Configurator<'_> {
         self.widget.configure()

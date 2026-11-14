@@ -23,12 +23,13 @@ use crate::gpu::device::gpu_wait::GpuWait;
 use crate::host::harness::Harness;
 use crate::image_registry::image_handle::ImageHandle;
 use crate::primitives::geometry::corners::Corners;
+use crate::primitives::geometry::fit::Fit;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::layout::clip_mode::ClipMode;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::image::{Image, ImageFit};
+use crate::primitives::paint::image::Image;
 use crate::renderer::render_buffer::draw_run::Lane;
 use crate::shape::Shape;
 use crate::shape::image_paint::ImagePaint;
@@ -196,7 +197,7 @@ impl Scene<'_> {
                             ui.add_shape(
                                 Shape::rect(),
                                 ImagePaint::new(handles[i % handles.len()].clone())
-                                    .fit(ImageFit::Fill)
+                                    .fit(Fit::Fill)
                                     .tint(color),
                             );
                         }

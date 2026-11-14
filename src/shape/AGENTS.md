@@ -22,6 +22,12 @@ the top `AGENTS.md`, "A shape is geometry, a paint what covers it"; how the GPU 
 - **A point shape's points are px in its rect, and `Fit` scales them**, with CSS `object-fit`'s
   names, as WPF's `Polygon` takes a `Stretch`; a stroke's width and a corner radius do not scale.
   Refused: fractions of the rect, which a glyph drawn to the pixel would divide by its size.
+- **One `Fit` for points, icons and images.** `Natural` is unscaled: content with a size of its
+  own, an image or an icon, centers, as CSS `object-fit: none` and Flutter's `BoxFit.none` do,
+  and points stay as given, as WPF's `Stretch.None` leaves a `Polygon` and centers an `Image`.
+  `Cover` crops an image by UV and lets a shape overflow. Tiling is no fit: `ImagePaint::tile`,
+  as `background-repeat` sits beside `object-fit`. Refused: a second enum for images, whose
+  `Natural` placed differently under the same name.
 
 ## Paints
 

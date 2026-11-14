@@ -16,8 +16,8 @@ use crate::primitives::effect::effect_name::{CheckedEffectName, EffectName, Eras
 use crate::primitives::effect::effect_params::EffectParams;
 use crate::primitives::identity::effect_id::EffectId;
 use crate::primitives::paint::material::Material;
+use crate::primitives::paint::material::backdrop_reach::BackdropReach;
 use crate::primitives::paint::material::material_effect::MaterialEffect;
-use crate::primitives::paint::material::material_reach::MaterialReach;
 use crate::primitives::reduction::Reductions;
 
 /// Every effect loaded under a name, for the app's life, as a font is: loading the same name again
@@ -52,39 +52,48 @@ struct LoadedEffect {
     image_slots: u8,
     /// What paints in its place for each preference, in [`ReducedBy`]'s order.
     alternatives: [ReducedName; ReducedBy::COUNT],
-    /// What a material over it reads of it; `None` for an effect no material wears.
-    material: Option<MaterialFacts>,
+    /// How many lanes a material over it holds; `None` for an effect no material wears.
+    material_lanes: Option<u8>,
+    /// How far past its shape a backdrop effect reads; `None` for a color effect.
+    reach: Option<ErasedReach>,
 }
 
-/// What a [`Material`] over an effect needs of it, the parameters' type erased: how many lanes
-/// they hold, and how far past its box it reads from them.
-struct MaterialFacts {
-    lanes: u8,
-    reach: Box<dyn Fn(&MaterialEffect) -> MaterialReach>,
+/// How many lanes a [`Material`] over an effect of `source` holds; `None` unless it is a backdrop
+/// effect that binds no image, over parameters a [`MaterialEffect`] holds
+/// ([`MaterialEffect::lanes_for`]), as a box hands its material no image.
+fn source_material_lanes<U: EffectParams, K: EffectKind>(
+    source: &EffectSource<U, K>,
+) -> Option<u8> {
+    if K::ID != KindId::Backdrop || source.image_slots > 0 {
+        return None;
+    }
+    let lanes = MaterialEffect::lanes_for::<U>()?;
+    Some(u8::try_from(lanes).expect("at most 8 lanes"))
 }
 
-impl fmt::Debug for MaterialFacts {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("MaterialFacts")
-            .field("lanes", &self.lanes)
-            .finish_non_exhaustive()
+/// A backdrop effect's [`EffectSource::reach`], its parameters' type erased, so a material and an
+/// `EffectPaint` over the effect read it alike from their parameter bytes.
+struct ErasedReach(Box<ReachOfBytes>);
+
+/// A reach over parameter bytes.
+type ReachOfBytes = dyn Fn(&[u8]) -> BackdropReach;
+
+impl ErasedReach {
+    /// `source`'s reach; `None` for a color effect, which reads nothing under it.
+    fn of<U: EffectParams, K: EffectKind>(source: &EffectSource<U, K>) -> Option<Self> {
+        if K::ID != KindId::Backdrop {
+            return None;
+        }
+        let reach = source.reach;
+        Some(Self(Box::new(move |params: &[u8]| {
+            reach(&bytemuck::pod_read_unaligned::<U>(params))
+        })))
     }
 }
 
-impl MaterialFacts {
-    /// What a material over an effect of `source` reads of it; `None` unless it is a backdrop
-    /// effect that binds no image, over parameters a [`MaterialEffect`] holds
-    /// ([`MaterialEffect::lanes_for`]), as a box hands its material no image.
-    fn of<U: EffectParams, K: EffectKind>(source: &EffectSource<U, K>) -> Option<Self> {
-        if K::ID != KindId::Backdrop || source.image_slots > 0 {
-            return None;
-        }
-        let lanes = MaterialEffect::lanes_for::<U>()?;
-        let reach = source.reach;
-        Some(Self {
-            lanes: u8::try_from(lanes).expect("at most 8 lanes"),
-            reach: Box::new(move |effect: &MaterialEffect| reach(&effect.read::<U>())),
-        })
+impl fmt::Debug for ErasedReach {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("ErasedReach")
     }
 }
 
@@ -105,7 +114,7 @@ pub(crate) enum MaterialFit {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct ResolvedMaterial {
     pub(crate) id: EffectId,
-    pub(crate) reach: MaterialReach,
+    pub(crate) reach: BackdropReach,
 }
 
 /// A preference an effect's source names an alternative for, in the order one wins over the
@@ -306,7 +315,8 @@ impl EffectRegistry {
                     ),
                     ReducedPaint::Nothing => ReducedName::Nothing,
                 }),
-                material: MaterialFacts::of(source),
+                material_lanes: source_material_lanes(source),
+                reach: ErasedReach::of(source),
             });
         if let Some(store) = &self.store {
             store.register(id, module);
@@ -398,11 +408,14 @@ impl EffectRegistry {
     pub(crate) fn material_fit(&self, effect: MaterialEffect) -> MaterialFit {
         match self.effects.borrow().get(effect.erased_name()) {
             None => MaterialFit::Unloaded,
-            Some(LoadedEffect { material: None, .. }) => MaterialFit::NotMaterial,
             Some(LoadedEffect {
-                material: Some(facts),
+                material_lanes: None,
                 ..
-            }) => MaterialFit::Lanes(facts.lanes),
+            }) => MaterialFit::NotMaterial,
+            Some(LoadedEffect {
+                material_lanes: Some(lanes),
+                ..
+            }) => MaterialFit::Lanes(*lanes),
         }
     }
 
@@ -446,7 +459,7 @@ impl EffectRegistry {
                 .ids
                 .get(&name)
                 .unwrap_or_else(|| panic!("no effect is loaded under `{}`", name.as_str()));
-            let want = Self::facts(&effects, id, name).lanes;
+            let want = Self::material_lanes(&effects, id, name);
             let got = material.effect.count();
             assert!(
                 want == got,
@@ -456,23 +469,38 @@ impl EffectRegistry {
             id
         };
         let painted = self.painted(id, reductions)?;
-        let effects = self.effects.borrow();
-        let facts = Self::facts(&effects, painted, name);
         Some(ResolvedMaterial {
             id: painted,
-            reach: (facts.reach)(&material.effect),
+            reach: self.reach_of(painted, material.effect.bytes()),
         })
     }
 
-    /// What a material over the effect at `id` reads of it, the effect a material over `name`
-    /// paints.
+    /// How far past its shape the backdrop effect at `id` reads over `params`, its parameter
+    /// bytes, as its source declares ([`EffectSource::reach`]), for a material and an
+    /// `EffectPaint` alike.
+    ///
+    /// # Panics
+    ///
+    /// When the effect is a color effect, which reads nothing under it: a paint's kind is its
+    /// name's, so only a logic error asks.
+    pub(crate) fn reach_of(&self, id: EffectId, params: &[u8]) -> BackdropReach {
+        let effects = self.effects.borrow();
+        let reach = effects.loaded[id.idx()]
+            .reach
+            .as_ref()
+            .expect("a backdrop effect keeps its reach");
+        (reach.0)(params)
+    }
+
+    /// How many lanes a material over the effect at `id` holds, the effect a material over
+    /// `name` paints.
     ///
     /// # Panics
     ///
     /// When the effect is no material's.
     #[track_caller]
-    fn facts(effects: &Effects, id: EffectId, name: ErasedEffectName) -> &MaterialFacts {
-        effects.loaded[id.idx()].material.as_ref().unwrap_or_else(|| {
+    fn material_lanes(effects: &Effects, id: EffectId, name: ErasedEffectName) -> u8 {
+        effects.loaded[id.idx()].material_lanes.unwrap_or_else(|| {
             panic!(
                 "a material over `{}` paints effect {}, which is no material's: a backdrop effect \
                  over at most {} f32 lanes that binds no image",

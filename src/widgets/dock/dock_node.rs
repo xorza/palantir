@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::widgets::dock::split_side::SplitDirection;
+use crate::primitives::layout::axis::Axis;
 use crate::widgets::dock::tab_group::TabGroup;
 use crate::widgets::splitter::split_half::SplitHalf;
 
@@ -33,21 +33,21 @@ pub(crate) enum DockNode<T> {
     Group(TabGroup<T>),
 }
 
-/// A division of one rect between two child nodes: `first` leads, left in a `Row` and top in a
-/// `Col`.
+/// A division of one rect between two child nodes along `axis`: `first` leads, left along
+/// [`Axis::X`] and top along [`Axis::Y`].
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct DockSplit {
-    pub(super) direction: SplitDirection,
+    pub(super) axis: Axis,
     pub(super) ratio: f32,
     pub(super) first: NodeIdx,
     pub(super) second: NodeIdx,
 }
 
 impl DockSplit {
-    /// How the two children are arranged.
-    pub(crate) const fn direction(self) -> SplitDirection {
-        self.direction
+    /// The axis the two children lie along.
+    pub(crate) const fn axis(self) -> Axis {
+        self.axis
     }
 
     /// The first child's share of the free space, inside the split clamp.

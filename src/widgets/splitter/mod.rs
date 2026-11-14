@@ -25,8 +25,7 @@ use crate::widgets::splitter::split_half::SplitHalf;
 use crate::window::cursor_icon::CursorIcon;
 
 /// Two panes split by a draggable divider: [`Splitter::row`] side by side,
-/// [`Splitter::col`] stacked (the words of
-/// [`SplitDirection`](crate::SplitDirection)). The caller owns the split as
+/// [`Splitter::col`] stacked, [`Splitter::along`] either. The caller owns the split as
 /// `ratio`, the first pane's share of the free space, `0..1`. While dragging, the
 /// pointer target feeds layout at once and the content-constrained share is written
 /// back on the next record. Double-clicking the divider recenters to `0.5`. Visuals

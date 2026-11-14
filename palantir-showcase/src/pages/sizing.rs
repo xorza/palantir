@@ -298,19 +298,19 @@ static JUSTIFIES: [(&str, Justify); 5] = [
 /// The playground's knobs: each child's sizing, and the row's padding, gap and justification.
 #[derive(Debug)]
 struct Playground {
-    sizing: [&'static (&'static str, Sizing); 3],
+    sizing: [(&'static str, Sizing); 3],
     padding: f32,
     gap: f32,
-    justify: &'static (&'static str, Justify),
+    justify: (&'static str, Justify),
 }
 
 impl Default for Playground {
     fn default() -> Self {
         Self {
-            sizing: [&SIZINGS[0], &SIZINGS[1], &SIZINGS[2]],
+            sizing: [SIZINGS[0], SIZINGS[1], SIZINGS[2]],
             padding: 8.0,
             gap: 8.0,
-            justify: &JUSTIFIES[0],
+            justify: JUSTIFIES[0],
         }
     }
 }
@@ -333,13 +333,13 @@ fn playground(ui: &mut Ui, k: Kit) {
                     for (i, (sizing, name)) in p.sizing.iter_mut().zip(["A", "B", "C"]).enumerate()
                     {
                         Text::new(name).style(&k.t.caption()).show(ui);
-                        ComboBox::labeled(sizing, &SIZINGS, |sizing| sizing.0)
+                        ComboBox::labeled(sizing, SIZINGS, |sizing| sizing.0)
                             .id_salt(("sizing", i))
                             .size((Sizing::fixed(110.0), Sizing::HUG))
                             .show(ui);
                     }
                     Text::new("justify").style(&k.t.caption()).show(ui);
-                    ComboBox::labeled(&mut p.justify, &JUSTIFIES, |justify| justify.0)
+                    ComboBox::labeled(&mut p.justify, JUSTIFIES, |justify| justify.0)
                         .id_salt("justify")
                         .size((Sizing::fixed(140.0), Sizing::HUG))
                         .show(ui);

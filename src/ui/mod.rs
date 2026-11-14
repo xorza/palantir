@@ -41,7 +41,7 @@ use crate::display::user_scale::UserScale;
 use crate::effect::effect_registry::MaterialFit;
 use crate::effect::effect_source::EffectSource;
 use crate::effect::error::EffectError;
-use crate::effect::press_input::PressInput;
+use crate::effect::press_params::PressParams;
 use crate::gpu::gpu_paint::gpu_views::RecordedView;
 use crate::icons::icon_set::IconSet;
 use crate::icons::icon_table::IconTable;
@@ -263,7 +263,7 @@ impl Ui {
     /// # Errors
     ///
     /// A [`ThemeEffectError`] when a press slot names an effect not loaded, or not one over
-    /// [`PressInput`], or a slot's material one not loaded, or no material's, or one that takes
+    /// [`PressParams`], or a slot's material one not loaded, or no material's, or one that takes
     /// another count of parameter lanes than the material holds; the theme held before stays.
     pub fn set_theme(
         &mut self,
@@ -272,7 +272,7 @@ impl Ui {
     ) -> Result<(), ThemeEffectError> {
         let theme = theme.into();
         let effects = self.resources.effects();
-        let press = EffectTypes::of::<PressInput, ColorEffect>();
+        let press = EffectTypes::of::<PressParams, ColorEffect>();
         let mut checked = Ok(());
         theme.press_effects(|name| {
             if checked.is_ok() {

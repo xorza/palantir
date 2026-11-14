@@ -10,11 +10,11 @@ use crate::effect::{MAX_IMAGE_SLOTS, MAX_PARAMS_SIZE};
 use crate::primitives::effect::effect_kind::{ColorEffect, EffectKind};
 use crate::primitives::effect::effect_name::EffectName;
 use crate::primitives::effect::effect_params::EffectParams;
-use crate::primitives::paint::material::material_reach::MaterialReach;
+use crate::primitives::paint::material::backdrop_reach::BackdropReach;
 
 /// An effect's WGSL, the image slots its shapes bind, and what paints while motion or power use is
 /// reduced. What a backdrop effect paints while transparency is reduced is each use's
-/// ([`MaterialFallback`](crate::MaterialFallback)).
+/// ([`BackdropFallback`](crate::BackdropFallback)).
 /// Consumed by [`Ui::load_effect`](crate::Ui::load_effect).
 ///
 /// The WGSL declares `fn effect(input: EffectInput, params: Params) -> EffectOutput`, where
@@ -37,9 +37,8 @@ use crate::primitives::paint::material::material_reach::MaterialReach;
 ///   edge, as `textureSample(effect_image0, effect_sampler, uv)` reads them;
 /// - for a [`BackdropEffect`](crate::BackdropEffect), `effect_backdrop(pos)`: what is painted
 ///   under the shape at `pos`, logical px from its rect's top-left, linear and opaque, blurred by
-///   its paint's [σ](crate::widget::EffectPaint::blur), and read within its
-///   [`max_sample_offset`](crate::widget::EffectPaint::max_sample_offset), a read past it
-///   reading its edge. A sample that needs no uniform control flow, so a loop or a branch may
+///   its paint's [σ](crate::widget::EffectPaint::backdrop_blur), and read within the
+///   [reach](Self::reach) its parameters give, a read past it reading its edge. A sample that needs no uniform control flow, so a loop or a branch may
 ///   read it.
 ///
 /// The WGSL declares no binding of its own, as palantir binds every resource an effect reads;
@@ -59,7 +58,7 @@ pub struct EffectSource<U: EffectParams, K: EffectKind = ColorEffect> {
     pub(crate) reduced_motion: ReducedPaint<U, K>,
     pub(crate) power_saver: ReducedPaint<U, K>,
     pub(crate) build: EffectBuild,
-    pub(crate) reach: fn(&U) -> MaterialReach,
+    pub(crate) reach: fn(&U) -> BackdropReach,
 }
 
 /// When a loaded effect builds its pipelines. Every build runs at the start of a frame's GPU phase,
@@ -93,16 +92,16 @@ impl<U: EffectParams, K: EffectKind> EffectSource<U, K> {
             reduced_motion: ReducedPaint::Same,
             power_saver: ReducedPaint::Same,
             build: EffectBuild::OnUse,
-            reach: |_| MaterialReach::NONE,
+            reach: |_| BackdropReach::NONE,
         }
     }
 
-    /// How far past its box a material over the effect reads, from the material's parameters:
-    /// [`MaterialReach::NONE`] by default, its box alone. How far a ray bends is the effect's, so
-    /// each material over it reads as far as its parameters bend, as the stock glass reads as far
-    /// as its lens. An [`EffectPaint`](crate::widget::EffectPaint) names its own
-    /// ([`EffectPaint::max_sample_offset`](crate::widget::EffectPaint::max_sample_offset)).
-    pub const fn reach(mut self, reach: fn(&U) -> MaterialReach) -> Self {
+    /// How far past its shape a backdrop effect reads, from its parameters:
+    /// [`BackdropReach::NONE`] by default, its shape alone. How far a ray bends is the effect's, so
+    /// each [`Material`](crate::Material) and [`EffectPaint`](crate::widget::EffectPaint) over it
+    /// reads as far as its parameters bend, as the stock glass reads as far as its lens. A color
+    /// effect reads nothing under it, so its reach goes unread.
+    pub const fn reach(mut self, reach: fn(&U) -> BackdropReach) -> Self {
         self.reach = reach;
         self
     }
@@ -168,7 +167,7 @@ impl<U: EffectParams, K: EffectKind> EffectSource<U, K> {
 /// is added, and a move of either preference records every window again. An alternative paints as
 /// itself: its own alternatives do not apply. Refused: a theme slot for each mode, which doubles
 /// every slot; a branch at each call site; transparency among them, as what a backdrop shows while
-/// it is reduced depends on each use's role ([`MaterialFallback`](crate::MaterialFallback)).
+/// it is reduced depends on each use's role ([`BackdropFallback`](crate::BackdropFallback)).
 pub enum ReducedPaint<U: EffectParams, K: EffectKind = ColorEffect> {
     /// The effect itself, as cheap enough already.
     Same,

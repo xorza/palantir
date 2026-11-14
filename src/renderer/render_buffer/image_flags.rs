@@ -9,7 +9,7 @@ pub(crate) struct ImageFlags(u32);
 
 impl ImageFlags {
     pub(crate) const NONE: Self = Self(0);
-    /// Wrap UVs with `fract` in the shader (`ImageFit::Tile`).
+    /// Wrap UVs with `fract` in the shader (`ImagePaint::tile`).
     pub(crate) const TILED: Self = Self(1 << 0);
     pub(crate) const MIN_NEAREST: Self = Self(1 << 1);
     pub(crate) const MAG_NEAREST: Self = Self(1 << 2);

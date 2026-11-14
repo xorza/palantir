@@ -6,8 +6,8 @@ use crate::support::{DemoCell, Kit, Knob, Section, Surface};
 use palantir::glam::Vec2;
 use palantir::widget::{CubicBezier, QuadraticBezier, Shape};
 use palantir::{
-    Align, Block, Border, Chrome, ComboBox, Configure, Corners, LineCap, LinearGradient, Paint,
-    Panel, Rect, RgbaF32, Sizing, Stroke, Text, TranslateScale, Ui, WidgetId,
+    Align, Block, Border, Chrome, ComboBox, Configure, Corners, Gradient, LineCap, Paint, Panel,
+    Rect, RgbaF32, Sizing, Stroke, Text, TranslateScale, Ui, WidgetId,
 };
 
 const CARD: f32 = 200.0;
@@ -265,7 +265,7 @@ fn four_radii(ui: &mut Ui, k: Kit) {
             layer(ui, |ui| {
                 ui.add_shape(
                     Shape::rect().at(Rect::new(-20.0, -20.0, size.x + 40.0, size.y + 40.0)),
-                    LinearGradient::new(0.6, [k.swatch.red, k.swatch.teal]),
+                    Gradient::linear(0.6, [k.swatch.red, k.swatch.teal]),
                 );
                 for i in 0..8 {
                     let x = i as f32 * 28.0 - 40.0;
@@ -527,14 +527,14 @@ static MODES: [(&str, Mode); 3] = [
 /// The live card's knobs: its clip mode and its padding.
 #[derive(Debug)]
 struct LiveClip {
-    mode: &'static (&'static str, Mode),
+    mode: (&'static str, Mode),
     padding: f32,
 }
 
 impl Default for LiveClip {
     fn default() -> Self {
         Self {
-            mode: &MODES[2],
+            mode: MODES[2],
             padding: 0.0,
         }
     }
@@ -555,7 +555,7 @@ fn live(ui: &mut Ui, k: Kit) {
             ui.with_state::<LiveClip, _>(id, |ui, l| {
                 support::row(ui, |ui| {
                     Text::new("clip").style(&k.t.caption()).show(ui);
-                    ComboBox::labeled(&mut l.mode, &MODES, |mode| mode.0)
+                    ComboBox::labeled(&mut l.mode, MODES, |mode| mode.0)
                         .size((Sizing::fixed(120.0), Sizing::HUG))
                         .show(ui);
                     Knob {

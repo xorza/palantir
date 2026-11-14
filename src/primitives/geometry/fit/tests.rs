@@ -1,4 +1,5 @@
 use super::*;
+use crate::primitives::paint::image::ImagePlacement;
 
 /// The extent (10, 20)–(30, 30), 20 × 10 about (20, 25), into the rect (0, 0)–(100, 100) about
 /// (50, 50): `Fill` scales by (100 / 20, 100 / 10) = (5, 10), offset `(0, 0) − (10, 20) · scale`
@@ -68,8 +69,10 @@ fn an_axis_of_no_extent_centers() {
 }
 
 /// Artwork 24 × 12 in the rect (10, 20) 100 × 100: `Contain` scales by 100 / 24 to 100 × 50,
-/// centered 25 down; `Fill` takes the rect; `Natural` keeps 24 × 12 at the rect's corner; `Cover`
-/// scales by 100 / 12 to 200 × 100, centered 50 left. A degenerate artwork centers.
+/// centered 25 down; `Fill` takes the rect; `Natural` keeps 24 × 12 centered, its corner at
+/// `(60 − 12, 70 − 6)`; `Cover` scales by 100 / 12 to 200 × 100, centered 50 left. A degenerate
+/// artwork centers. An image under each fit but `Cover`, which crops by UV, lands on the same
+/// rect, so one name places alike.
 #[test]
 fn artwork_places_by_hand() {
     let rect = Rect::new(10.0, 20.0, 100.0, 100.0);
@@ -81,8 +84,15 @@ fn artwork_places_by_hand() {
     assert_eq!(Fit::Fill.place_artwork(rect, art), rect);
     assert_eq!(
         Fit::Natural.place_artwork(rect, art),
-        Rect::new(10.0, 20.0, 24.0, 12.0)
+        Rect::new(48.0, 64.0, 24.0, 12.0)
     );
+    for fit in [Fit::Natural, Fit::Fill, Fit::Contain] {
+        assert_eq!(
+            ImagePlacement::Fit(fit).resolve(rect, art).rect,
+            fit.place_artwork(rect, art),
+            "{fit:?}"
+        );
+    }
     let cover = Fit::Cover.place_artwork(rect, art);
     assert!(
         cover.min.abs_diff_eq(Vec2::new(-40.0, 20.0), 1e-4),

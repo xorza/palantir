@@ -1,10 +1,6 @@
 //! The conic gradient's axis: color sweeps around a center by angle.
 
 use crate::primitives::math::float_hash::FloatHash;
-use crate::primitives::math::nan::NanCheck;
-use crate::primitives::paint::brush::gradient::Gradient;
-use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
-use crate::primitives::paint::brush::gradient::sealed::Geometry;
 use glam::Vec2;
 use std::f32::consts::TAU;
 use std::hash;
@@ -21,14 +17,11 @@ pub struct ConicGeometry {
     pub start_angle: f32,
 }
 
-/// Conic (sweep) gradient — see [`ConicGeometry`] for the sweep.
-pub type ConicGradient = Gradient<ConicGeometry>;
-
-impl Geometry for ConicGeometry {
+impl ConicGeometry {
     /// The shader reads these as `(cx, cy, start_angle, _)` on the conic branch. The angle is
     /// wrapped into one turn first: f16 steps 0.5 rad apart at 1000, so a raw large angle would turn
     /// the sweep.
-    fn axis_lanes(&self) -> [f32; 4] {
+    pub(crate) fn axis_lanes(&self) -> [f32; 4] {
         [
             self.center.x,
             self.center.y,
@@ -37,41 +30,8 @@ impl Geometry for ConicGeometry {
         ]
     }
 
-    fn hash_geometry<H: hash::Hasher>(&self, state: &mut H) {
+    pub(super) fn hash_visual<H: hash::Hasher>(&self, state: &mut H) {
         self.center.hash_visual(state);
         self.start_angle.hash_visual(state);
-    }
-
-    fn has_nan(&self) -> bool {
-        self.center.has_nan() || self.start_angle.is_nan()
-    }
-}
-
-impl ConicGradient {
-    /// A sweep around `center` from `start_angle` radians, one turn through `ramp`: `ramp` an array of colors
-    /// spread evenly, an array of [`Stop`](crate::Stop)s placed where they say, or a [`ColorRamp`].
-    ///
-    /// # Panics
-    ///
-    /// As [`ColorRamp::new`](crate::ColorRamp::new).
-    #[track_caller]
-    pub fn new(center: Vec2, start_angle: f32, ramp: impl Into<ColorRamp>) -> Self {
-        Self::from_ramp(
-            ConicGeometry {
-                center,
-                start_angle,
-            },
-            ramp.into(),
-        )
-    }
-
-    /// About the center, from angle 0, pointing right.
-    ///
-    /// # Panics
-    ///
-    /// As [`Self::new`].
-    #[track_caller]
-    pub fn centered(ramp: impl Into<ColorRamp>) -> Self {
-        Self::new(Vec2::splat(0.5), 0.0, ramp)
     }
 }

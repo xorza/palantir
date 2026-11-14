@@ -104,7 +104,7 @@ impl Nav {
             text: TextStyleOverrides::NONE.with_color(t.ink),
         };
         let [rest, hovered, pressed] = PILL_TINT;
-        let unselected = theme.menu_bar.title.clone();
+        let unselected = theme.menu_bar.title.unselected.clone();
         Self {
             theme: ButtonTheme {
                 selected: StatefulLook {
@@ -116,7 +116,7 @@ impl Nav {
                 unselected,
                 defaults: SlotDefaults {
                     padding: Spacing::xy(INSET, 0.0),
-                    ..theme.menu_bar.defaults
+                    ..theme.menu_bar.title.defaults
                 },
             },
         }
@@ -228,7 +228,7 @@ fn preference_rows(ui: &mut Ui, track: &Segmented) {
 /// under a "Reduce …" name, so the segment says what it does without the name.
 const REDUCE: [(Preference<Reduction>, &str); 3] = [
     (Preference::System, "Auto"),
-    (Preference::Fixed(Reduction::Full), "Full"),
+    (Preference::Fixed(Reduction::Unreduced), "Full"),
     (Preference::Fixed(Reduction::Reduced), "Less"),
 ];
 
@@ -294,8 +294,7 @@ impl Segmented {
             .align(Align::v(VAlign::Center))
             .show(ui);
         RadioGroup::new(&mut next)
-            .look(RadioLook::Segment)
-            .segmented_style(&self.style)
+            .look(RadioLook::Segment(Some(&self.style)))
             .axis(Axis::X)
             .id_salt((label, "track"))
             .grid_cell(GridCell::at(row, 1))

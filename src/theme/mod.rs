@@ -31,17 +31,15 @@ pub(crate) mod separator;
 pub(crate) mod slider;
 pub(crate) mod spinner;
 pub(crate) mod splitter;
-pub(crate) mod tab_strip_focus;
 pub(crate) mod tabs;
 pub(crate) mod text_edit;
 pub(crate) mod text_style;
 pub(crate) mod text_style_overrides;
 pub(crate) mod toggle;
-pub(crate) mod toggle_kind;
 pub(crate) mod tooltip;
 
 use crate::animation::animation_spec::AnimationSpec;
-use crate::effect::press_input::PressInput;
+use crate::effect::press_params::PressParams;
 use crate::primitives::effect::effect_name::EffectName;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
@@ -77,7 +75,6 @@ use crate::theme::text_edit::TextEditTheme;
 use crate::theme::text_style::TextStyle;
 use crate::theme::text_style_overrides::TextStyleOverrides;
 use crate::theme::toggle::ToggleTheme;
-use crate::theme::toggle_kind::ToggleKind;
 use crate::theme::tooltip::TooltipTheme;
 use ::serde::de::Error as _;
 use glam::Vec2;
@@ -165,7 +162,7 @@ pub struct Theme {
     pub window_bg: RgbaF32,
     /// What the box of a [`Material`] that names no fallback of its own paints in place of its
     /// fill while transparency is reduced
-    /// ([`MaterialFallback::ThemeSurface`](crate::MaterialFallback::ThemeSurface)): in a theme from
+    /// ([`BackdropFallback::ThemeSurface`](crate::BackdropFallback::ThemeSurface)): in a theme from
     /// parts the popup panel's fill at the least alpha that holds [`Palette::text`] at 4.5:1 over
     /// any page, opaque where none does, so the box reads as the theme's float surface,
     /// translucent and readable.
@@ -466,7 +463,7 @@ impl Theme {
     }
 
     /// The effect each press slot names, in field order, a name once for each slot that names it.
-    pub(crate) fn press_effects(&self, mut f: impl FnMut(EffectName<PressInput>)) {
+    pub(crate) fn press_effects(&self, mut f: impl FnMut(EffectName<PressParams>)) {
         self.each_press(&mut |press: &PressEffect| f(press.effect));
     }
 
@@ -523,10 +520,10 @@ impl Theme {
     pub fn from_parts(p: &Palette, m: &Metrics) -> Self {
         let theme = Self {
             button: ButtonTheme::from_parts(p, m),
-            checkbox: ToggleTheme::from_parts(ToggleKind::Checkbox, p, m),
-            radio: ToggleTheme::from_parts(ToggleKind::Radio, p, m),
+            checkbox: ToggleTheme::checkbox(p, m),
+            radio: ToggleTheme::radio(p, m),
             segmented: SegmentedTheme::from_parts(p, m),
-            switch: ToggleTheme::from_parts(ToggleKind::Switch, p, m),
+            switch: ToggleTheme::switch(p, m),
             scrollbar: ScrollbarTheme::from_parts(p, m),
             text_edit: TextEditTheme::from_parts(p, m),
             drag_value: DragValueTheme::from_parts(p, m),

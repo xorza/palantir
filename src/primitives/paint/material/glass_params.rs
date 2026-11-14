@@ -1,10 +1,10 @@
-//! [`GlassInput`]: what the stock glass reads.
+//! [`GlassParams`]: what the stock glass reads.
 
 use crate::primitives::effect::effect_params::{EffectParam, EffectParams, ParamType};
 use crate::primitives::paint::material::lens::Lens;
 
 /// The parameters of [`EffectName::GLASS`](crate::EffectName::GLASS): its saturation and grain, as
-/// [`FrostedInput`](crate::FrostedInput)'s, then the lens it bends what it reads through. The
+/// [`FrostedParams`](crate::FrostedParams)'s, then the lens it bends what it reads through. The
 /// WGSL declares, field for field, the lens flat:
 ///
 /// ```wgsl
@@ -23,7 +23,7 @@ use crate::primitives::paint::material::lens::Lens;
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
 #[must_use]
-pub struct GlassInput {
+pub struct GlassParams {
     /// The color's saturation as CSS `saturate()` scales it; 1 leaves it.
     pub saturation: f32,
     /// The amplitude of a grain fixed to the material; 0 is none.
@@ -32,7 +32,7 @@ pub struct GlassInput {
     pub lens: Lens,
 }
 
-impl GlassInput {
+impl GlassParams {
     /// Clear glass of `lens`: no saturation and no grain.
     pub const fn new(lens: Lens) -> Self {
         Self {
@@ -44,7 +44,7 @@ impl GlassInput {
 }
 
 /// By hand, as the lens is a struct of its own and the WGSL reads its fields flat.
-impl EffectParams for GlassInput {
+impl EffectParams for GlassParams {
     const FIELDS: &'static [EffectParam] = &[
         f32_field("saturation", 0),
         f32_field("noise", 4),

@@ -1,4 +1,4 @@
-//! [`FrostedInput`]: what the stock frosted glass reads.
+//! [`FrostedParams`]: what the stock frosted glass reads.
 
 /// The parameters of [`EffectName::FROSTED`](crate::EffectName::FROSTED): what it reads saturated
 /// as CSS `saturate()` scales it and grained. The WGSL declares, field for field:
@@ -14,7 +14,7 @@
     Clone, Copy, Debug, PartialEq, bytemuck::Pod, bytemuck::Zeroable, palantir_derive::EffectParams,
 )]
 #[must_use]
-pub struct FrostedInput {
+pub struct FrostedParams {
     /// The color's saturation as CSS `saturate()` scales it: 1 leaves it, 0 is gray, above 1
     /// deepens it.
     pub saturation: f32,
@@ -23,7 +23,7 @@ pub struct FrostedInput {
     pub noise: f32,
 }
 
-impl FrostedInput {
+impl FrostedParams {
     /// Apple's frost: the color deepened by 1.8 and grained by 0.04, so a fill over it reads as a
     /// material.
     pub const DEFAULT: Self = Self {

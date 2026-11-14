@@ -8,17 +8,15 @@ use crate::primitives::math::lerp::Lerp;
 use crate::primitives::packed::serde::LaneCodec;
 use crate::primitives::paint::border::Border;
 use crate::primitives::paint::brush::Brush;
+use crate::primitives::paint::brush::gradient::Gradient;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
-use crate::primitives::paint::brush::gradient::conic_geometry::ConicGradient;
-use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
-use crate::primitives::paint::brush::gradient::radial_geometry::RadialGradient;
 use crate::primitives::paint::brush::gradient::stops::Stop;
 use crate::primitives::paint::brush::gradient::{Interpolation, Spread};
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
+use crate::primitives::paint::material::backdrop_reach::BackdropReach;
 use crate::primitives::paint::material::material_paint::MaterialPaint;
-use crate::primitives::paint::material::material_reach::MaterialReach;
 use crate::primitives::paint::paint::Paint;
 use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::reduction::{Reduction, Reductions};
@@ -97,16 +95,13 @@ fn the_three_gradient_kinds_and_a_ramp_hash_apart_on_identical_stops() {
     ];
     let center = Vec2::splat(0.5);
     let hashes = [
-        brush(&mut store, &LinearGradient::horizontal(stops).into())
+        brush(&mut store, &Gradient::horizontal(stops).into())
             .hash_parts()
             .payload,
-        brush(
-            &mut store,
-            &RadialGradient::new(center, center, stops).into(),
-        )
-        .hash_parts()
-        .payload,
-        brush(&mut store, &ConicGradient::new(center, 0.0, stops).into())
+        brush(&mut store, &Gradient::radial(center, center, stops).into())
+            .hash_parts()
+            .payload,
+        brush(&mut store, &Gradient::conic(center, 0.0, stops).into())
             .hash_parts()
             .payload,
         match ramp(&mut store, &ColorRamp::new(stops)) {
@@ -141,7 +136,7 @@ fn a_material_lowers_as_it_reads() {
     let fallback = MaterialRead::Fallback { theme };
     let capture = MaterialRead::Capture(ResolvedMaterial {
         id,
-        reach: MaterialReach::NONE,
+        reach: BackdropReach::NONE,
     });
     for (worn, material, fill) in [
         (Some((&own, capture)), Some(id), color),
@@ -162,7 +157,7 @@ fn a_material_lowers_as_it_reads() {
     let effects = EffectRegistry::default();
     let reduced = Reductions {
         transparency: Reduction::Reduced,
-        ..Reductions::FULL
+        ..Reductions::NONE
     };
     let worn = paint.clone().with_material(own);
     let rect = |store: &mut RecordStore, reductions| {
@@ -177,7 +172,7 @@ fn a_material_lowers_as_it_reads() {
         )
     };
     for (reductions, material, fill) in
-        [(Reductions::FULL, Some(id), color), (reduced, None, panel)]
+        [(Reductions::NONE, Some(id), color), (reduced, None, panel)]
     {
         let Some(ShapeRecord::Closed {
             geometry: ClosedGeometry::Box(_),
@@ -252,7 +247,7 @@ fn chrome_lowering_keeps_an_authored_field() {
         .with_border(Border::new(RgbaF32::WHITE, 1.0))
         .with_shadow(shadow);
     let with_shadow = |shadow| base.clone().with_shadow(shadow);
-    let gradient: Brush = LinearGradient::horizontal([RgbaF32::BLACK, RgbaF32::WHITE]).into();
+    let gradient: Brush = Gradient::horizontal([RgbaF32::BLACK, RgbaF32::WHITE]).into();
     let variants = [
         ("base", base.clone()),
         (
@@ -326,13 +321,16 @@ fn a_nan_chrome_field_panics_at_the_record_door() {
 fn gradient_interning_identity_covers_geometry_kind_spread_and_interpolation() {
     let mut store = RecordStore::default();
     let colors = [RgbaF32::hex(0x1a1a2e), RgbaF32::hex(0x4c5cdb)];
-    let base = LinearGradient::new(0.25, [colors[0], colors[1]]);
-    let first = gradient_id(&mut store, &Brush::Linear(base.clone()));
-    assert_eq!(gradient_id(&mut store, &Brush::Linear(base.clone())), first);
+    let base = Gradient::linear(0.25, [colors[0], colors[1]]);
+    let first = gradient_id(&mut store, &Brush::Gradient(base.clone()));
+    assert_eq!(
+        gradient_id(&mut store, &Brush::Gradient(base.clone())),
+        first
+    );
 
     let changed_geometry = gradient_id(
         &mut store,
-        &LinearGradient::new(0.75, [colors[0], colors[1]]).into(),
+        &Gradient::linear(0.75, [colors[0], colors[1]]).into(),
     );
     assert_ne!(changed_geometry, first);
 
@@ -341,7 +339,7 @@ fn gradient_interning_identity_covers_geometry_kind_spread_and_interpolation() {
         for interpolation in [Interpolation::Oklab, Interpolation::Linear] {
             let id = gradient_id(
                 &mut store,
-                &Brush::Linear(
+                &Brush::Gradient(
                     base.clone()
                         .with_spread(spread)
                         .with_interpolation(interpolation),
@@ -357,11 +355,11 @@ fn gradient_interning_identity_covers_geometry_kind_spread_and_interpolation() {
 
     let radial = gradient_id(
         &mut store,
-        &RadialGradient::centered([colors[0], colors[1]]).into(),
+        &Gradient::centered_radial([colors[0], colors[1]]).into(),
     );
     let conic = gradient_id(
         &mut store,
-        &ConicGradient::centered([colors[0], colors[1]]).into(),
+        &Gradient::centered_conic([colors[0], colors[1]]).into(),
     );
     assert!(!mode_ids.contains(&radial));
     assert!(!mode_ids.contains(&conic));

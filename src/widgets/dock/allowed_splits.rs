@@ -1,9 +1,10 @@
 //! Which splits a dock offers.
 
-use crate::widgets::dock::split_side::{SplitDirection, SplitSide};
+use crate::primitives::layout::axis::Axis;
+use crate::widgets::dock::split_side::SplitSide;
 
 flag_set! {
-    /// The split directions a [`DockView`](crate::DockView) offers during a tab drag; a refused
+    /// The splits a [`DockView`](crate::DockView) offers during a tab drag; a refused
     /// one degrades to a join. `ALL` offers both, and `NONE` lets a dragged tab only join a strip.
     pub struct AllowedSplits: u8 {
         /// Side-by-side splits.
@@ -16,9 +17,9 @@ flag_set! {
 impl AllowedSplits {
     /// Whether a split onto `side` is offered.
     pub(crate) const fn allows(self, side: SplitSide) -> bool {
-        self.contains(match side.direction() {
-            SplitDirection::Row => Self::ROW,
-            SplitDirection::Col => Self::COL,
+        self.contains(match side.axis() {
+            Axis::X => Self::ROW,
+            Axis::Y => Self::COL,
         })
     }
 }

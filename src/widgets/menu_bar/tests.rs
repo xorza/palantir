@@ -1,6 +1,8 @@
 use super::*;
 use crate::host::harness::Harness;
 use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::input::interaction::button_phase::ButtonPhase;
+use crate::primitives::input::interaction::button_state::ButtonState;
 use crate::primitives::input::interaction::response_state::ResponseState;
 use crate::scene::layer::Layer;
 use crate::shape::paint::lowered_brush::LoweredBrush;
@@ -304,18 +306,38 @@ fn a_menu_dropped_before_the_open_one_leaves_it_open() {
     );
 }
 
-/// The open title wears [`MenuBarTheme::open`] whatever the pointer does, the hovered look of a
-/// closed one; a closed title picks from [`MenuBarTheme::title`] by state.
+/// The open title wears the hovered look of a closed one whatever the pointer does, a pressed or a
+/// disabled one alike; a closed title picks from its unselected pack by state.
 #[test]
 fn the_open_title_wears_the_open_look() {
-    let theme = Theme::stock(ColorScheme::Dark).menu_bar;
+    let theme = Theme::stock(ColorScheme::Dark).menu_bar.title;
+    let hovered = &theme.unselected.hovered;
+    let pressed = ResponseState {
+        pointer_over: true,
+        left: ButtonState {
+            phase: ButtonPhase::Held,
+            ..ButtonState::default()
+        },
+        ..ResponseState::default()
+    };
+    assert!(pressed.pressed(), "premise");
+    let disabled = ResponseState {
+        disabled: true,
+        ..ResponseState::default()
+    };
+    for (label, state) in [
+        ("rest", ResponseState::default()),
+        ("pressed", pressed),
+        ("disabled", disabled),
+    ] {
+        assert_eq!(theme.look(&state, Selection::Selected), hovered, "{label}");
+    }
     let rest = ResponseState::default();
-    assert_eq!(theme.look(&rest, MenuState::Open), &theme.open);
-    assert_eq!(theme.look(&rest, MenuState::Closed), &theme.title.normal);
-    assert_eq!(MenuState::from(true), MenuState::Open);
-    assert_eq!(MenuState::from(false), MenuState::Closed);
-    assert_eq!(theme.open, theme.title.hovered);
-    assert_ne!(theme.open, theme.title.normal);
+    assert_eq!(
+        theme.look(&rest, Selection::Unselected),
+        &theme.unselected.normal
+    );
+    assert_ne!(hovered, &theme.unselected.normal);
 }
 
 /// Unset, the bar spans its parent on the theme's band, its first title inset by the band's

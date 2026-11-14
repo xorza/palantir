@@ -15,7 +15,6 @@ use crate::theme::look::theme_slot::ThemeSlot;
 use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
 use crate::theme::selection::Selection;
-use crate::theme::tab_strip_focus::TabStripFocus;
 use crate::theme::text_style_overrides::TextStyleOverrides;
 
 /// Visuals for [`crate::TabStrip`], [`crate::TabbedView`] and every
@@ -103,14 +102,6 @@ pub struct TabsTheme {
 }
 
 impl TabsTheme {
-    /// The cap color a strip paints under its selected chip.
-    pub const fn cap(&self, focus: TabStripFocus) -> RgbaF32 {
-        match focus {
-            TabStripFocus::Focused => self.cap_focused,
-            TabStripFocus::Unfocused => self.cap_unfocused,
-        }
-    }
-
     /// Chips card-rounded at the top only, inset as a menu row, on the `surround` band a menu bar
     /// rides. The selected chip wears `window_bg`, so it joins the content under the strip. An
     /// unselected chip is a ghost in the muted ink that fills under the pointer as a menu-bar title
@@ -192,11 +183,9 @@ impl ThemeSlot for TabsTheme {
 
     /// The unselected or selected pack, then its state (`active` = pressed).
     fn look(&self, response: &ResponseState, selection: Selection) -> &WidgetLook {
-        let pack = match selection {
-            Selection::Unselected => &self.unselected,
-            Selection::Selected => &self.selected,
-        };
-        pack.pick(response, Engagement::Pressed)
+        selection
+            .pack(&self.unselected, &self.selected)
+            .pick(response, Engagement::Pressed)
     }
 
     fn defaults(&self) -> SlotDefaults {

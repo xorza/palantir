@@ -7,7 +7,7 @@ use crate::primitives::math::lerp::Lerp;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::border::Border;
 use crate::primitives::paint::brush::Brush;
-use crate::primitives::paint::brush::gradient::{Gradient, GradientGeometry};
+use crate::primitives::paint::brush::gradient::Gradient;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::paint::Paint;
 use crate::primitives::paint::shadow::Shadow;
@@ -167,12 +167,8 @@ impl From<RgbaF32> for Chrome {
 }
 
 /// A square box of `gradient`, as [`Chrome::new`].
-impl<G: GradientGeometry> From<Gradient<G>> for Chrome
-where
-    Brush: From<Gradient<G>>,
-    Paint: From<Gradient<G>>,
-{
-    fn from(gradient: Gradient<G>) -> Self {
+impl From<Gradient> for Chrome {
+    fn from(gradient: Gradient) -> Self {
         Self::new(gradient)
     }
 }
@@ -264,9 +260,7 @@ impl Animatable for Option<Chrome> {
 #[cfg(test)]
 mod tests {
     use crate::internals::panic_probe;
-    use crate::primitives::paint::brush::gradient::conic_geometry::ConicGradient;
-    use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
-    use crate::primitives::paint::brush::gradient::radial_geometry::RadialGradient;
+    use crate::primitives::paint::brush::gradient::gradient_geometry::GradientGeometry;
     use glam::Vec2;
 
     use super::*;
@@ -308,11 +302,13 @@ mod tests {
             match (&mut chrome.paint.fill, idx) {
                 (Brush::Solid(c), 0) => &mut c.r,
                 (Brush::Solid(c), _) => &mut c.a,
-                (Brush::Linear(g), _) => &mut g.geometry.angle,
-                (Brush::Radial(g), 0) => &mut g.geometry.center.x,
-                (Brush::Radial(g), _) => &mut g.geometry.radius.y,
-                (Brush::Conic(g), 0) => &mut g.geometry.center.y,
-                (Brush::Conic(g), _) => &mut g.geometry.start_angle,
+                (Brush::Gradient(g), idx) => match (&mut g.geometry, idx) {
+                    (GradientGeometry::Linear(g), _) => &mut g.angle,
+                    (GradientGeometry::Radial(g), 0) => &mut g.center.x,
+                    (GradientGeometry::Radial(g), _) => &mut g.radius.y,
+                    (GradientGeometry::Conic(g), 0) => &mut g.center.y,
+                    (GradientGeometry::Conic(g), _) => &mut g.start_angle,
+                },
             }
         }
         // How many of `values` each kind refuses. A lane (a color channel, an offset): ±65520,
@@ -336,15 +332,15 @@ mod tests {
         let fills: [(Brush, [usize; 2]); 4] = [
             (ink.into(), [LANE, LANE]),
             (
-                LinearGradient::new(0.5, [ink, RgbaF32::WHITE]).into(),
+                Gradient::linear(0.5, [ink, RgbaF32::WHITE]).into(),
                 [ANGLE, ANGLE],
             ),
             (
-                RadialGradient::centered([ink, RgbaF32::WHITE]).into(),
+                Gradient::centered_radial([ink, RgbaF32::WHITE]).into(),
                 [LANE, LENGTH_LANE],
             ),
             (
-                ConicGradient::new(Vec2::splat(0.5), 0.5, [ink, RgbaF32::WHITE]).into(),
+                Gradient::conic(Vec2::splat(0.5), 0.5, [ink, RgbaF32::WHITE]).into(),
                 [LANE, ANGLE],
             ),
         ];
@@ -415,9 +411,9 @@ mod tests {
         assert_eq!(rounded.corners, Corners::all(6.0));
 
         let bordered = rounded.with_border(Border::new(RgbaF32::BLACK, 2.0));
-        let gradient = LinearGradient::horizontal([RgbaF32::BLACK, RgbaF32::WHITE]);
+        let gradient = Gradient::horizontal([RgbaF32::BLACK, RgbaF32::WHITE]);
         let refilled = bordered.clone().with_fill(gradient.clone());
-        assert_eq!(refilled.paint.fill, Brush::Linear(gradient));
+        assert_eq!(refilled.paint.fill, Brush::Gradient(gradient));
         assert_eq!(refilled.with_fill(bordered.paint.fill.clone()), bordered);
         let recornered = bordered.clone().with_corners(Corners::top(3.0));
         assert_eq!(recornered.corners, Corners::top(3.0));

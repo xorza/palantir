@@ -18,7 +18,6 @@ use crate::theme::look::theme_slot::ThemeSlot;
 use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
 use crate::theme::selection::Selection;
-use crate::theme::tab_strip_focus::TabStripFocus;
 use crate::theme::text_style::TextStyle;
 use crate::theme::text_style_overrides::TextStyleOverrides;
 use std::ptr;
@@ -268,14 +267,8 @@ fn tabs_theme_pick_selects_pack_then_state_and_cap() {
     );
     assert_eq!(Selection::from(true), Selection::Selected);
     assert_eq!(Selection::from(false), Selection::Unselected);
-    assert_eq!(TabStripFocus::from(true), TabStripFocus::Focused);
-    assert_eq!(TabStripFocus::from(false), TabStripFocus::Unfocused);
-
-    assert_eq!(theme.cap(TabStripFocus::Focused), Palette::DARK.accent);
-    assert_eq!(
-        theme.cap(TabStripFocus::Unfocused),
-        Palette::DARK.element_strong
-    );
+    assert_eq!(theme.cap_focused, Palette::DARK.accent);
+    assert_eq!(theme.cap_unfocused, Palette::DARK.element_strong);
     assert_ne!(Palette::DARK.accent, Palette::DARK.element_strong);
 }
 
@@ -393,7 +386,12 @@ fn bundled_text_inherits_every_axis_but_color() {
     let shade = |look: &WidgetLook| look.to_animated(theme.text).text.color;
     let bar = &theme.menu_bar;
     assert_eq!(
-        [&bar.title.normal, &bar.title.hovered, &bar.open].map(shade),
+        [
+            &bar.title.unselected.normal,
+            &bar.title.unselected.hovered,
+            &bar.title.selected.normal,
+        ]
+        .map(shade),
         [p.text_muted, p.text, p.text],
     );
     let flat = ButtonTheme::subtle(&p, &Metrics::DEFAULT);

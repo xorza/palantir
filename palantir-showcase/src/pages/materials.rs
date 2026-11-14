@@ -8,8 +8,8 @@ use palantir::Paint;
 use palantir::glam::Vec2;
 use palantir::widget::{EffectPaint, GlyphFont, MotionRole, PaintAnimation, PaintRepeat, Shape};
 use palantir::{
-    Align, BackdropEffect, Border, Button, Chrome, Configure, Corners, EffectName, Lens,
-    LinearGradient, Material, MaterialFallback, Menu, MenuItem, MenuTheme, Panel, PopupTheme,
+    Align, BackdropEffect, BackdropFallback, Border, Button, Chrome, Configure, Corners,
+    EffectName, Gradient, Lens, Material, Menu, MenuItem, MenuTheme, Panel, PopupTheme,
     PopupTrigger, Rect, RgbaF32, Sizing, Switch, Text, Theme, Ui, WidgetId, fmt,
 };
 use std::time::Duration;
@@ -75,7 +75,7 @@ pub fn build(ui: &mut Ui, k: Kit) {
     Section::new("Reduced transparency")
         .apis(&[
             api!(Material::with_fallback as fn(Material, RgbaF32) -> Material),
-            api!(type MaterialFallback),
+            api!(type BackdropFallback),
             api!(
                 EffectPaint::fallback
                     as fn(
@@ -97,7 +97,7 @@ pub fn build(ui: &mut Ui, k: Kit) {
             let frosted = Material::frosted(16.0);
             let fill = RgbaF32::new(1.0, 1.0, 1.0, 0.48);
             let tint = |color: RgbaF32| color.with_alpha(0.85);
-            let own = LinearGradient::new(0.125, [tint(k.t.accent), tint(k.t.raised)]);
+            let own = Gradient::linear(0.125, [tint(k.t.accent), tint(k.t.raised)]);
             support::tiles(ui, |ui| {
                 look(
                     ui,

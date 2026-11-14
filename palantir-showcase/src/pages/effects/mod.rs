@@ -8,13 +8,17 @@ use palantir::glam::Vec2;
 use palantir::widget::EffectPaint;
 use palantir::widget::{GlyphFont, PaintAnimation, PaintRepeat, Shape};
 use palantir::{
-    BackdropEffect, Button, ButtonTheme, Configure, Corners, EffectError, EffectName, EffectParams,
-    EffectSource, Panel, PressEffect, PressInput, Rect, ReducedPaint, RgbaF32, Sizing, Ui,
+    BackdropEffect, BackdropReach, Button, ButtonTheme, Configure, Corners, EffectError,
+    EffectName, EffectParams, EffectSource, Panel, PressEffect, PressParams, Rect, ReducedPaint,
+    RgbaF32, Sizing, Ui,
 };
 use std::time::Duration;
 
 /// [`Ui::load_effect`] for the background's parameters, which its chip names.
 type LoadSky = fn(&Ui, EffectName<Sky>, EffectSource<Sky>) -> Result<(), EffectError>;
+/// [`EffectSource::reach`] over the water's parameters.
+type WaterReach = fn(WaterSource, fn(&Water) -> BackdropReach) -> WaterSource;
+type WaterSource = EffectSource<Water, BackdropEffect>;
 
 /// The size of a demo cell.
 const CELL: f32 = 260.0;
@@ -98,8 +102,8 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
     Section::new("Press ripples")
         .apis(&[
             api!(type PressEffect),
-            api!(EffectName::RIPPLE as EffectName<PressInput>),
-            api!(EffectName::SPARKLE as EffectName<PressInput>),
+            api!(EffectName::RIPPLE as EffectName<PressParams>),
+            api!(EffectName::SPARKLE as EffectName<PressParams>),
         ])
         .show(ui, k, |ui| {
             support::note(
@@ -176,13 +180,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
                         Water,
                     ) -> EffectPaint<Water, BackdropEffect>
             ),
-            api!(
-                EffectPaint::max_sample_offset
-                    as fn(
-                        EffectPaint<Water, BackdropEffect>,
-                        f32,
-                    ) -> EffectPaint<Water, BackdropEffect>
-            ),
+            api!(EffectSource::reach as WaterReach),
         ])
         .show(ui, k, |ui| {
             support::note(
@@ -190,7 +188,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
                 k,
                 "A backdrop effect reads what is painted under it. Rings run out from the center \
                  and bend the picture along their slope, reading up to 6 px past each pixel, the \
-                 largest offset the paint declares.",
+                 reach its source reads from the paint's amplitude.",
             );
             DemoCell::new("water").size(CELL, CELL).show(ui, k, |ui| {
                 Panel::canvas()
@@ -212,7 +210,13 @@ fn load(ui: &Ui) {
             EffectSource::new(include_str!("aurora.wgsl")).power_saver(ReducedPaint::Effect(DUSK)),
         ),
         ui.load_effect(RING, EffectSource::new(include_str!("ring.wgsl"))),
-        ui.load_effect(WATER, EffectSource::new(include_str!("water.wgsl"))),
+        // The waves bend each read up to their amplitude past the rect, so the capture reaches
+        // as far.
+        ui.load_effect(
+            WATER,
+            EffectSource::new(include_str!("water.wgsl"))
+                .reach(|water: &Water| BackdropReach::Px(water.amplitude)),
+        ),
     ];
     for load in loads {
         load.expect("the page's effects meet the contract");
@@ -306,8 +310,7 @@ fn water(ui: &mut Ui, k: Kit) {
                 pad0: 0.0,
                 pad1: 0.0,
             },
-        )
-        .max_sample_offset(WATER_AMPLITUDE),
+        ),
     ) {
         shape.animate(looping(WATER_LOOP_S));
     }

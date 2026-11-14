@@ -25,7 +25,7 @@ use crate::primitives::geometry::mesh::Mesh;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::layout::clip_mode::ClipMode;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
+use crate::primitives::paint::brush::gradient::Gradient;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
@@ -164,7 +164,7 @@ impl App for Scene {
                 ui.add_shape(Shape::rect().at(Rect::new(4.0, 4.0, 12.0, 12.0)), self.tile);
                 ui.add_shape(
                     Shape::rect().at(Rect::new(20.0, 4.0, 40.0, 12.0)),
-                    LinearGradient::horizontal([RgbaF32::hex(0xff0000), RgbaF32::hex(0x0000ff)]),
+                    Gradient::horizontal([RgbaF32::hex(0xff0000), RgbaF32::hex(0x0000ff)]),
                 );
                 for i in 0..4 {
                     Block::new()

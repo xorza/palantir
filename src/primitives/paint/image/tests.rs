@@ -1,8 +1,9 @@
+use crate::primitives::geometry::fit::Fit;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::primitives::paint::image::error::ImageDataError;
-use crate::primitives::paint::image::{Image, ImageFit, fitted_size};
+use crate::primitives::paint::image::{Image, ImagePlacement, fitted_size};
 use glam::{UVec2, Vec2};
 
 /// A 100×50 image in a 200×200 rect, per fit:
@@ -15,35 +16,47 @@ use glam::{UVec2, Vec2};
 fn image_fit_modes_resolve_to_expected_rects_and_uv() {
     let base = Rect::new(0.0, 0.0, 200.0, 200.0);
     let img = Size::new(100.0, 50.0);
-    let tile = ImageFit::Tile {
+    let tile = ImagePlacement::Tile {
         offset: Vec2::new(0.5, 0.25),
         scale: Vec2::new(3.0, 2.0),
     };
     let rows = [
-        (ImageFit::Fill, img, base, Vec2::ZERO, Vec2::ONE),
         (
-            ImageFit::Contain,
+            ImagePlacement::Fit(Fit::Fill),
+            img,
+            base,
+            Vec2::ZERO,
+            Vec2::ONE,
+        ),
+        (
+            ImagePlacement::Fit(Fit::Contain),
             img,
             Rect::new(0.0, 50.0, 200.0, 100.0),
             Vec2::ZERO,
             Vec2::ONE,
         ),
         (
-            ImageFit::Cover,
+            ImagePlacement::Fit(Fit::Cover),
             img,
             base,
             Vec2::new(0.25, 0.0),
             Vec2::new(0.5, 1.0),
         ),
         (
-            ImageFit::Natural,
+            ImagePlacement::Fit(Fit::Natural),
             img,
             Rect::new(50.0, 75.0, 100.0, 50.0),
             Vec2::ZERO,
             Vec2::ONE,
         ),
         (tile, img, base, Vec2::new(0.5, 0.25), Vec2::new(3.0, 2.0)),
-        (ImageFit::Contain, Size::ZERO, base, Vec2::ZERO, Vec2::ONE),
+        (
+            ImagePlacement::Fit(Fit::Contain),
+            Size::ZERO,
+            base,
+            Vec2::ZERO,
+            Vec2::ONE,
+        ),
     ];
     for (fit, intrinsic, rect, uv_min, uv_size) in rows {
         let got = fit.resolve(base, intrinsic);

@@ -102,7 +102,7 @@ A subsystem's decisions sit in an `AGENTS.md` beside it; read it before changing
   line, a color for text, a tint for a mesh, `ImagePaint`, `IconPaint`, `EffectPaint`. *Fill* is
   a box's brush; *brush* a color or a gradient; *border* a box's edge, inside its rect; *stroke* a
   line's paint, centered on its path; *tint* multiplies an image, an icon or a mesh; *fit* is how a
-  point shape or an icon fills its rect.
+  point shape, an icon or an image fills its rect.
 - **`Chrome` is a node's box**, its corners and its `Paint`, a node's box and a modal's scrim alike,
   as Flutter's `BoxDecoration`; `with_fill`, `with_border` and the rest are sugar over `Paint`'s.
   `bg` is a background color alone. Refused: `background` for a `Chrome`, which holds more than a

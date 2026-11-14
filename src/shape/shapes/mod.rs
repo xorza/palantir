@@ -6,7 +6,7 @@ use crate::common::hash::Hasher;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::image::{ImageDownsample, ImageFilter, ImageFit};
+use crate::primitives::paint::image::{ImageDownsample, ImageFilter, ImagePlacement};
 use crate::shape::Shape;
 use crate::shape::geometry::closed_geometry::ClosedGeometry;
 use crate::shape::paint::closed_paint::ClosedPaint;
@@ -72,7 +72,7 @@ impl Shapes {
             paint: ClosedPaint::Image {
                 tint: RgbaF32::WHITE.to_f16(),
                 source: ImageSource::GpuView { id, epoch },
-                fit: ImageFit::Fill,
+                placement: ImagePlacement::FILL,
                 min_filter: ImageFilter::Linear,
                 mag_filter: ImageFilter::Linear,
                 // A view's target is allocated to the rect it composites into, so it is

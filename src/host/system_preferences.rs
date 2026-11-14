@@ -25,7 +25,7 @@ impl SystemPreferences {
     pub(crate) const NONE: Self = Self {
         color_scheme: None,
         double_click: None,
-        reductions: Reductions::FULL,
+        reductions: Reductions::NONE,
     };
 
     /// Write the settings into the host's shared cells: the scheme, the motion, the transparency
@@ -89,12 +89,12 @@ mod tests {
         assert!(SystemPreferences::NONE.apply(&resources));
         assert_eq!(resources.settings().system_color_scheme(), None);
         assert_eq!(resources.settings().double_click_interval(), ms(250));
-        assert_eq!(resources.settings().system_reductions(), Reductions::FULL);
+        assert_eq!(resources.settings().system_reductions(), Reductions::NONE);
 
         let saver = SystemPreferences {
             reductions: Reductions {
                 power: Reduction::Reduced,
-                ..Reductions::FULL
+                ..Reductions::NONE
             },
             ..SystemPreferences::NONE
         };

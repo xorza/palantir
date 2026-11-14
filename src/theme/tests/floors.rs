@@ -2,8 +2,8 @@ use std::fmt::Write as _;
 
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::material::backdrop_fallback::BackdropFallback;
 use crate::primitives::paint::material::lens::Lens;
-use crate::primitives::paint::material::material_fallback::MaterialFallback;
 use crate::primitives::paint::material::{Material, fallback_alpha};
 use crate::theme::Theme;
 use crate::theme::button::ButtonTheme;
@@ -204,7 +204,7 @@ fn the_stock_text_and_floats_are_the_stock_themes() {
             assert_eq!(material.backdrop_blur, 20.0, "{float} {scheme:?}");
             let fill = panel.paint.fill.as_solid().expect(float);
             assert_eq!(fill.a, 184.0 / 255.0, "{float} {scheme:?}");
-            let MaterialFallback::Brush(Brush::Solid(fallback)) = material.fallback else {
+            let BackdropFallback::Brush(Brush::Solid(fallback)) = material.fallback else {
                 panic!("{float} {scheme:?}: a fallback of its panel");
             };
             assert_eq!(fallback.with_alpha(1.0), fill.with_alpha(1.0), "{float}");

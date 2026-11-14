@@ -7,7 +7,7 @@ use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
-use crate::primitives::paint::material::material_fallback::MaterialFallback;
+use crate::primitives::paint::material::backdrop_fallback::BackdropFallback;
 use crate::primitives::paint::shadow::Shadow;
 use crate::theme::color_scheme::ColorScheme;
 use crate::theme::metrics::{
@@ -211,7 +211,7 @@ fn every_recipe_reads_its_geometry_from_the_metrics() {
         assert_eq!(material.backdrop_blur, 31.0, "{slot} blur");
         let fill = panel.paint.fill.as_solid().expect(slot);
         assert_eq!(fill.a, 0.5, "{slot} fill");
-        let MaterialFallback::Brush(Brush::Solid(fallback)) = material.fallback else {
+        let BackdropFallback::Brush(Brush::Solid(fallback)) = material.fallback else {
             panic!("{slot}: a fallback of its panel");
         };
         assert_eq!(
@@ -258,7 +258,7 @@ fn every_recipe_reads_its_geometry_from_the_metrics() {
     assert_eq!(t.tabs.selected.normal.chrome.corners, Corners::top(15.0));
     for (slot, animation) in [
         ("button", t.button.defaults.transition),
-        ("menu bar title", t.menu_bar.defaults.transition),
+        ("menu bar title", t.menu_bar.title.defaults.transition),
         ("menu item", t.menu.item.defaults.transition),
         ("tab chip", t.tabs.defaults.transition),
         ("drag value", t.drag_value.defaults.transition),

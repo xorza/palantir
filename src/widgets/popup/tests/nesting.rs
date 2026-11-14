@@ -32,11 +32,11 @@ enum Opener {
     ModalInModal,
 }
 
-fn dropdown(ui: &mut Ui, selected: &mut &'static &'static str) {
-    ComboBox::new(selected, &OPTIONS).id(combo()).show(ui);
+fn dropdown(ui: &mut Ui, selected: &mut &'static str) {
+    ComboBox::new(selected, OPTIONS).id(combo()).show(ui);
 }
 
-fn record(ui: &mut Ui, opener: Opener, selected: &mut &'static &'static str) {
+fn record(ui: &mut Ui, opener: Opener, selected: &mut &'static str) {
     Panel::vstack()
         .id(menu_trigger())
         .size((Sizing::FILL, Sizing::FILL))
@@ -72,7 +72,7 @@ fn a_dropdown_opens_and_picks_inside_every_overlay() {
         Opener::Menu,
         Opener::ModalInModal,
     ] {
-        let mut selected = &OPTIONS[0];
+        let mut selected = OPTIONS[0];
         let mut h = Harness::mono(UVec2::new(400, 300));
         h.frame(|ui| {
             if matches!(opener, Opener::Menu) {
@@ -106,7 +106,7 @@ fn a_dropdown_opens_and_picks_inside_every_overlay() {
         );
         h.click(last_row);
         h.frame(|ui| record(ui, opener, &mut selected));
-        assert_eq!(*selected, "Three", "{opener:?}: the last row was picked");
+        assert_eq!(selected, "Three", "{opener:?}: the last row was picked");
         assert!(
             h.rect(list).is_none(),
             "{opener:?}: the pick closed the list"

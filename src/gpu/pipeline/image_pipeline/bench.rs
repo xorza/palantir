@@ -16,9 +16,10 @@ use crate::diagnostics::gpu_pass_stats::BatchKind;
 use crate::gpu::bench_gpu::{BenchGpu, Timing};
 use crate::host::harness::Harness;
 use crate::image_registry::image_handle::ImageHandle;
+use crate::primitives::geometry::fit::Fit;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::image::{Image, ImageDownsample, ImageFilter, ImageFit};
+use crate::primitives::paint::image::{Image, ImageDownsample, ImageFilter};
 use crate::shape::Shape;
 use crate::shape::image_paint::ImagePaint;
 use crate::ui::Ui;
@@ -147,7 +148,7 @@ impl Scene<'_> {
                             ui.add_shape(
                                 Shape::rect(),
                                 ImagePaint::new(image.clone())
-                                    .fit(ImageFit::Fill)
+                                    .fit(Fit::Fill)
                                     .min_filter(filter)
                                     .mag_filter(filter)
                                     .downsample(workload.downsample())

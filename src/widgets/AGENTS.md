@@ -39,10 +39,16 @@ API design", hold here too.
 - **A popup raised at a point stays where it landed** until it stops fitting; one beside a rect
   is placed each frame
   ([`TrackPopupMenu`](https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-trackpopupmenu)).
-- **A pick binds a reference into its options**, so it clones nothing and needs only
-  `PartialEq`. Refused: an index, which each caller maps back (egui's `show_index`); a bound
-  value, which a caller that re-seeds it clones each frame. A pick over a list the widget itself
-  shortens or reorders binds the index, as a reference would go stale.
+- **A pick binds a value**, `&mut T` beside options that yield `T`, the picked row's value moved
+  in, as egui's `selectable_value` hands each row its value
+  ([egui](https://docs.rs/egui/latest/egui/struct.Ui.html#method.selectable_value)); `T` may be a
+  reference, so a caller that holds a borrow into a table binds it and clones nothing, the reason
+  iced's `pick_list` takes its selection as a `Borrow`
+  ([iced](https://docs.rs/iced/latest/iced/widget/fn.pick_list.html)). A value no option equals
+  shows as itself and is never written back. Refused: a slice of owned values, which makes a
+  caller holding a reference clone it every frame; an index, which each caller maps back (egui's
+  `show_index`). A pick over a list the widget itself shortens or reorders binds the index, as a
+  value there names no row the widget keeps.
 - **One pick from a few is a `RadioGroup`**, whatever it looks like, as SwiftUI's `pickerStyle`
   restyles one `Picker`: one Tab stop, an arrow moving focus and the pick together
   ([APG radio group](https://www.w3.org/WAI/ARIA/apg/patterns/radio/)). Refused: a free-standing

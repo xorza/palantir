@@ -1,8 +1,8 @@
 // Android's sparkle ripple, ported from AOSP `RippleShader.java` and the timing of
 // `RippleAnimationSession.java` (Copyright (C) 2021 The Android Open Source Project, Apache License
 // 2.0): a soft disc of the theme's color under a ring of sparkles of its highlight, both from the
-// press toward the rect's center. Its progress runs to 0.5 over `enter` along FastOutSlowIn, then
-// linearly to 1 over `exit`. It works in physical px, as Android does, and the sparkles' noise
+// press toward the rect's center. Its progress runs to 0.5 over `enter_seconds` along FastOutSlowIn, then
+// linearly to 1 over `exit_seconds`. It works in physical px, as Android does, and the sparkles' noise
 // starts at the press's `seed` in place of Android's clock.
 
 const SPARKLE_PI: f32 = 3.1415926535897932384626;
@@ -106,7 +106,7 @@ fn effect(input: EffectInput, params: Params) -> EffectOutput {
     let size = input.size * input.scale;
     let touch = params.point * input.scale;
     let origin = size * 0.5;
-    let progress = 0.5 * press_fast_out_slow_in(press_through(input.time, params.enter))
+    let progress = 0.5 * press_fast_out_slow_in(press_through(input.time, params.enter_seconds))
         + 0.5 * press_fade(params, input.time);
     // Android's noise phase in ms: its start, then 7000 / 214 = 32 more over a 7 s loop.
     let phase = params.seed * 1000.0 + 32.0 * min(input.time, 7.0) / 7.0;

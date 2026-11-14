@@ -24,7 +24,7 @@ pub(crate) enum ImageSource {
 }
 
 impl ImageSource {
-    /// The intrinsic size [`ImageFit::resolve`](crate::primitives::paint::image::ImageFit::resolve) fits; a view has none.
+    /// The intrinsic size [`ImagePlacement::resolve`](crate::primitives::paint::image::ImagePlacement::resolve) fits; a view has none.
     pub(crate) const fn intrinsic(&self) -> Size {
         match self {
             Self::Texture { size, .. } => Size::new(size.x as f32, size.y as f32),

@@ -36,7 +36,7 @@ const BASELINE: RecordBaseline = RecordBaseline {
     font_epoch: 7,
     effect_epoch: 4,
     device_epoch: 1,
-    reductions: Reductions::FULL,
+    reductions: Reductions::NONE,
 };
 
 /// A warm frame with only an animation wake pending paints without recording.
@@ -159,7 +159,7 @@ fn frame_classification_covers_external_entry_facts() {
             recorded: Some(RecordBaseline {
                 reductions: Reductions {
                     transparency: Reduction::Reduced,
-                    ..Reductions::FULL
+                    ..Reductions::NONE
                 },
                 ..BASELINE
             }),
@@ -173,7 +173,7 @@ fn frame_classification_covers_external_entry_facts() {
             recorded: Some(RecordBaseline {
                 reductions: Reductions {
                     power: Reduction::Reduced,
-                    ..Reductions::FULL
+                    ..Reductions::NONE
                 },
                 ..BASELINE
             }),
@@ -187,7 +187,7 @@ fn frame_classification_covers_external_entry_facts() {
             recorded: Some(RecordBaseline {
                 reductions: Reductions {
                     motion: Reduction::Reduced,
-                    ..Reductions::FULL
+                    ..Reductions::NONE
                 },
                 ..BASELINE
             }),
@@ -356,7 +356,7 @@ fn a_frame_takes_its_reduced_frame_rate_slot_within_the_slack() {
         assert_eq!(at(held, time, Reduction::Reduced), want, "{label}");
     }
     assert_eq!(
-        at(Some(slot), slot, Reduction::Full),
+        at(Some(slot), slot, Reduction::Unreduced),
         None,
         "a full frame rate"
     );

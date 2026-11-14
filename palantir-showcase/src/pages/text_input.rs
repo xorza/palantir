@@ -273,7 +273,7 @@ struct LiveField {
     text: String,
     max_chars: i64,
     multiline: bool,
-    align: &'static (&'static str, HAlign),
+    align: (&'static str, HAlign),
     select_all: bool,
 }
 
@@ -283,7 +283,7 @@ impl Default for LiveField {
             text: String::from("Edit me"),
             max_chars: 40,
             multiline: false,
-            align: &ALIGNS[0],
+            align: ALIGNS[0],
             select_all: false,
         }
     }
@@ -313,7 +313,7 @@ fn live(ui: &mut Ui, k: Kit, l: &mut LiveField) {
                         .size((Sizing::fixed(64.0), Sizing::HUG))
                         .show(ui);
                     Text::new("align").style(&k.t.caption()).show(ui);
-                    ComboBox::labeled(&mut l.align, &ALIGNS, |align| align.0)
+                    ComboBox::labeled(&mut l.align, ALIGNS, |align| align.0)
                         .size((Sizing::fixed(100.0), Sizing::HUG))
                         .show(ui);
                 });

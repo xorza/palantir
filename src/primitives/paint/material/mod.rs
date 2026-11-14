@@ -79,14 +79,14 @@
 //!   lane by lane. An absent material blends through the target at rest ([`Material::at_rest`]),
 //!   its parameters kept, as no effect names a neutral for them.
 
-pub(crate) mod frosted_input;
-pub(crate) mod glass_input;
+pub(crate) mod backdrop_fallback;
+pub(crate) mod backdrop_reach;
+pub(crate) mod frosted_params;
+pub(crate) mod glass_params;
 pub(crate) mod lens;
 pub(crate) mod lens_optics;
 pub(crate) mod material_effect;
-pub(crate) mod material_fallback;
 pub(crate) mod material_paint;
-pub(crate) mod material_reach;
 
 use crate::primitives::effect::effect_kind::BackdropEffect;
 use crate::primitives::effect::effect_name::EffectName;
@@ -99,11 +99,11 @@ use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::primitives::paint::color::{RgbaF32, TEXT_CONTRAST};
-use crate::primitives::paint::material::frosted_input::FrostedInput;
-use crate::primitives::paint::material::glass_input::GlassInput;
+use crate::primitives::paint::material::backdrop_fallback::BackdropFallback;
+use crate::primitives::paint::material::frosted_params::FrostedParams;
+use crate::primitives::paint::material::glass_params::GlassParams;
 use crate::primitives::paint::material::lens::Lens;
 use crate::primitives::paint::material::material_effect::MaterialEffect;
-use crate::primitives::paint::material::material_fallback::MaterialFallback;
 
 /// A backdrop effect a box wears under its fill: the pixels painted before it in paint order,
 /// blurred by the capture's σ, shown through the effect, held within its luminance bounds, under
@@ -161,8 +161,8 @@ pub struct Material {
     pub min_luminance: Option<f32>,
     /// What the box paints in place of its fill while transparency is reduced, a plain box with
     /// no material then: the theme's surface by default.
-    #[serde(default, skip_serializing_if = "MaterialFallback::is_theme_surface")]
-    pub fallback: MaterialFallback,
+    #[serde(default, skip_serializing_if = "BackdropFallback::is_theme_surface")]
+    pub fallback: BackdropFallback,
 }
 
 impl Material {
@@ -180,7 +180,7 @@ impl Material {
             backdrop_blur: 0.0,
             max_luminance: None,
             min_luminance: None,
-            fallback: MaterialFallback::ThemeSurface,
+            fallback: BackdropFallback::ThemeSurface,
         }
     }
 
@@ -189,7 +189,7 @@ impl Material {
     pub const fn blur(sigma: f32) -> Self {
         Self::new(
             EffectName::FROSTED,
-            FrostedInput {
+            FrostedParams {
                 saturation: 1.0,
                 noise: 0.0,
             },
@@ -198,16 +198,16 @@ impl Material {
     }
 
     /// Frosted glass: the pixels behind blurred by σ `sigma` logical px, read through
-    /// [`FrostedInput::DEFAULT`], so a fill over it reads as a material:
+    /// [`FrostedParams::DEFAULT`], so a fill over it reads as a material:
     /// [`EffectName::FROSTED`].
     pub const fn frosted(sigma: f32) -> Self {
-        Self::new(EffectName::FROSTED, FrostedInput::DEFAULT).with_backdrop_blur(sigma)
+        Self::new(EffectName::FROSTED, FrostedParams::DEFAULT).with_backdrop_blur(sigma)
     }
 
     /// Clear glass: the pixels behind, sharp, seen through `lens`, with no saturation or grain:
     /// [`EffectName::GLASS`]; [`Self::with_backdrop_blur`] frosts it.
     pub const fn glass(lens: Lens) -> Self {
-        Self::new(EffectName::GLASS, GlassInput::new(lens))
+        Self::new(EffectName::GLASS, GlassParams::new(lens))
     }
 
     /// This material with the pixels under the box blurred by σ `sigma` logical px before its
@@ -220,7 +220,7 @@ impl Material {
     /// This material falling back to `fallback` while transparency is reduced, in place of the
     /// theme's surface: the box's fill then, with no material.
     pub fn with_fallback(mut self, fallback: impl Into<Brush>) -> Self {
-        self.fallback = MaterialFallback::Brush(fallback.into());
+        self.fallback = BackdropFallback::Brush(fallback.into());
         self
     }
 
@@ -480,7 +480,7 @@ impl InkBound {
     }
 }
 
-/// The blur and the fallback blend, the fallback as a [`MaterialFallback`] does, and the
+/// The blur and the fallback blend, the fallback as a [`BackdropFallback`] does, and the
 /// parameters lane by lane where both ends name one effect; the effect switches at `t = 0.5`, its
 /// parameters with it where the ends name two, as two effects do not blend. An absent floor
 /// blends through 0, which lifts nothing; the ceiling switches at `t = 0.5`, as its neutral, no
@@ -509,7 +509,7 @@ impl Lerp for Material {
                 (None, None) => None,
                 (a, b) => Some(f32::lerp(&a.unwrap_or(0.0), &b.unwrap_or(0.0), t)),
             },
-            fallback: MaterialFallback::lerp(&a.fallback, &b.fallback, t),
+            fallback: BackdropFallback::lerp(&a.fallback, &b.fallback, t),
         };
         blend.coerce();
         blend

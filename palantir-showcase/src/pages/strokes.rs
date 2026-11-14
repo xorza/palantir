@@ -302,16 +302,16 @@ static CAPS: [(&str, LineCap); 3] = [
 #[derive(Debug)]
 struct LiveStroke {
     width: f32,
-    join: &'static (&'static str, LineJoin),
-    cap: &'static (&'static str, LineCap),
+    join: (&'static str, LineJoin),
+    cap: (&'static str, LineCap),
 }
 
 impl Default for LiveStroke {
     fn default() -> Self {
         Self {
             width: 10.0,
-            join: &JOINS[0],
-            cap: &CAPS[2],
+            join: JOINS[0],
+            cap: CAPS[2],
         }
     }
 }
@@ -333,12 +333,12 @@ fn live(ui: &mut Ui, k: Kit) {
                     }
                     .show(ui, k, &mut l.width);
                     Text::new("join").style(&k.t.caption()).show(ui);
-                    ComboBox::labeled(&mut l.join, &JOINS, |join| join.0)
+                    ComboBox::labeled(&mut l.join, JOINS, |join| join.0)
                         .id_salt("join")
                         .size((Sizing::fixed(100.0), Sizing::HUG))
                         .show(ui);
                     Text::new("cap").style(&k.t.caption()).show(ui);
-                    ComboBox::labeled(&mut l.cap, &CAPS, |cap| cap.0)
+                    ComboBox::labeled(&mut l.cap, CAPS, |cap| cap.0)
                         .id_salt("cap")
                         .size((Sizing::fixed(100.0), Sizing::HUG))
                         .show(ui);

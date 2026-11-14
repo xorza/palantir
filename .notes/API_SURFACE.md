@@ -121,12 +121,23 @@ App
         impl<F: FnMut(&mut Ui)> App for F
 
 Axis
-    enum Axis: Clone, Copy, Debug, DockTab (blanket), Eq, Hash, PartialEq
+    enum Axis: Clone, Copy, Debug, Deserialize<'de>, DockTab (blanket), Eq, Hash, PartialEq, Serialize
         X
         Y
 
 BackdropEffect
     struct BackdropEffect: Clone, Copy, Debug, DockTab (blanket), EffectKind, Eq, Hash, PartialEq
+
+BackdropFallback
+    enum BackdropFallback: Clone, Debug, Default, Deserialize<'de>, Lerp, PartialEq, Serialize
+        ThemeSurface
+        Brush(Brush)
+
+BackdropReach
+    enum BackdropReach: Clone, Copy, Debug, PartialEq
+        Px(f32)
+        Lens(Lens)
+        pub const NONE: Self
 
 BarMode
     enum BarMode: Clone, Copy, Debug, Default, Eq, PartialEq
@@ -173,11 +184,9 @@ BoundNum
         F64(&'a mut f64)
 
 Brush
-    enum Brush: Animatable, Clone, Debug, Default, Deserialize<'de>, From<Gradient<ConicGeometry>>, From<Gradient<LinearGeometry>>, From<Gradient<RadialGeometry>>, From<RgbaF32>, From<SrgbaU8>, Lerp, PartialEq, Serialize
+    enum Brush: Animatable, Clone, Debug, Default, Deserialize<'de>, From<Gradient>, From<RgbaF32>, From<SrgbaU8>, Lerp, PartialEq, Serialize
         Solid(RgbaF32)
-        Linear(LinearGradient)
-        Radial(RadialGradient)
-        Conic(ConicGradient)
+        Gradient(Gradient)
         pub const TRANSPARENT: Self
         pub const fn is_noop(&self) -> bool
         pub const fn as_solid(&self) -> Option<RgbaF32>
@@ -222,11 +231,6 @@ ButtonTheme
         pub fn accent(p: &Palette, m: &Metrics) -> Self
         pub fn subtle(p: &Palette, m: &Metrics) -> Self
 
-CheckState
-    enum CheckState: Clone, Copy, Debug, Default, DockTab (blanket), Eq, From<bool>, Hash, PartialEq
-        Unchecked
-        Checked
-
 Checkbox
     struct Checkbox<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn new(value: &'a mut bool) -> Self
@@ -235,7 +239,7 @@ Checkbox
         pub fn show(self, ui: &mut Ui) -> ValueResponse
 
 Chrome
-    struct Chrome: Animatable, Clone, Debug, Default, Deserialize<'de>, From<Brush>, From<Paint>, From<RgbaF32>, Lerp, PartialEq, Serialize
+    struct Chrome: Animatable, Clone, Debug, Default, Deserialize<'de>, From<Brush>, From<Gradient>, From<Paint>, From<RgbaF32>, Lerp, PartialEq, Serialize
         pub corners: Corners
         pub paint: Paint
         pub const NONE: Self
@@ -247,7 +251,6 @@ Chrome
         pub fn with_fill(self, brush: impl Into<Brush>) -> Self
         pub const fn with_border(self, border: Border) -> Self
         pub const fn with_shadow(self, shadow: Shadow) -> Self
-        impl<G: GradientGeometry> From<Gradient<G>> for Chrome where Brush: From<Gradient<G>>, Paint: From<Gradient<G>>
 
 ClickOutside
     enum ClickOutside: Clone, Copy, Debug, Eq, PartialEq
@@ -382,16 +385,16 @@ ColorSwatch
         pub fn show(self, ui: &mut Ui) -> Response
 
 ComboBox
-    struct ComboBox<'a, 'o, S, L>: Configure, ThemeDefaults (blanket)
-        impl<'a, 'o, S: PartialEq + AsRef<str>> ComboBox<'a, 'o, S, fn(&S) -> &str>
-            pub fn new(selected: &'a mut &'o S, options: &'o [S]) -> Self
-        impl<'a, 'o, S: PartialEq, L: Fn(&S) -> &str> ComboBox<'a, 'o, S, L>
-            pub fn labeled(selected: &'a mut &'o S, options: &'o [S], label: L) -> Self
+    struct ComboBox<'a, T, I, L>: Configure, ThemeDefaults (blanket)
+        impl<'a, T, I> ComboBox<'a, T, I, fn(&T) -> &str> where T: PartialEq + AsRef<str>, I: IntoIterator<Item = T> + Clone
+            pub fn new(selected: &'a mut T, options: I) -> Self
+        impl<'a, T, I, L> ComboBox<'a, T, I, L> where T: PartialEq, I: IntoIterator<Item = T> + Clone, L: Fn(&T) -> &str
+            pub fn labeled(selected: &'a mut T, options: I, label: L) -> Self
             pub fn style(self, s: impl Into<Option<&'a ComboBoxTheme>>) -> Self
             pub fn button_style(self, s: impl Into<Option<&'a ButtonTheme>>) -> Self
             pub fn menu_style(self, s: impl Into<Option<&'a MenuTheme>>) -> Self
             pub fn show(self, ui: &mut Ui) -> ValueResponse
-        impl<'a, 'o, S: Debug, L: Debug> Debug for ComboBox<'a, 'o, S, L>
+        impl<'a, T: Debug, I: Debug, L: Debug> Debug for ComboBox<'a, T, I, L>
 
 ComboBoxList
     struct ComboBoxList: Debug
@@ -443,12 +446,9 @@ Configure
         fn clip_rounded(self) -> Self { .. }
 
 ConicGeometry
-    struct ConicGeometry: Clone, Copy, Debug, Deserialize<'de>, GradientGeometry (blanket), PartialEq, Serialize
+    struct ConicGeometry: Clone, Copy, Debug, Deserialize<'de>, PartialEq, Serialize
         pub center: Vec2
         pub start_angle: f32
-
-ConicGradient
-    type ConicGradient = Gradient<ConicGeometry>
 
 ControlCharError
     struct ControlCharError: Clone, Copy, Debug, Display, Eq, Error, PartialEq
@@ -746,12 +746,12 @@ EffectKind
 
 EffectName
     struct EffectName<U: EffectParams, K: EffectKind = ColorEffect>: DockTab (blanket)
-        impl EffectName<PressInput>
+        impl EffectName<PressParams>
             pub const RIPPLE: Self
             pub const SPARKLE: Self
-        impl EffectName<FrostedInput, BackdropEffect>
+        impl EffectName<FrostedParams, BackdropEffect>
             pub const FROSTED: Self
-        impl EffectName<GlassInput, BackdropEffect>
+        impl EffectName<GlassParams, BackdropEffect>
             pub const GLASS: Self
         impl<U: EffectParams, K: EffectKind> EffectName<U, K>
             pub const MAX_NAME_LEN: usize
@@ -781,7 +781,7 @@ EffectSource
             pub const MAX_IMAGE_SLOTS: u8
             pub const MAX_PARAMS_SIZE: usize
             pub fn new(wgsl: impl Into<Cow<'static, str>>) -> Self
-            pub const fn reach(self, reach: fn(&U) -> MaterialReach) -> Self
+            pub const fn reach(self, reach: fn(&U) -> BackdropReach) -> Self
             pub const fn build(self, build: EffectBuild) -> Self
             pub const fn image_slots(self, slots: u8) -> Self
             pub const fn reduced_motion(self, paint: ReducedPaint<U, K>) -> Self
@@ -920,14 +920,14 @@ FrameReport
         pub earliest_repaint_at: Option<Duration>
         pub const fn paint(&self) -> FramePaint
 
-FrostedInput
-    struct FrostedInput: Clone, Copy, Debug, EffectParams, PartialEq, Pod, Zeroable
+FrostedParams
+    struct FrostedParams: Clone, Copy, Debug, EffectParams, PartialEq, Pod, Zeroable
         pub saturation: f32
         pub noise: f32
         pub const DEFAULT: Self
 
-GlassInput
-    struct GlassInput: Clone, Copy, Debug, EffectParams, PartialEq, Pod, Zeroable
+GlassParams
+    struct GlassParams: Clone, Copy, Debug, EffectParams, PartialEq, Pod, Zeroable
         pub saturation: f32
         pub noise: f32
         pub lens: Lens
@@ -995,38 +995,30 @@ GpuWait
         TimedOut
 
 Gradient
-    struct Gradient<G>
-        pub geometry: G
+    struct Gradient: Clone, Debug, Deserialize<'de>, Hash, PartialEq, Serialize
+        pub geometry: GradientGeometry
         pub ramp: ColorRamp
         pub spread: Spread
-        impl Gradient<ConicGeometry>
-            pub fn new(center: Vec2, start_angle: f32, ramp: impl Into<ColorRamp>) -> Self
-            pub fn centered(ramp: impl Into<ColorRamp>) -> Self
-        impl Gradient<LinearGeometry>
-            pub fn new(angle: f32, ramp: impl Into<ColorRamp>) -> Self
-            pub fn horizontal(ramp: impl Into<ColorRamp>) -> Self
-            pub fn vertical(ramp: impl Into<ColorRamp>) -> Self
-        impl Gradient<RadialGeometry>
-            pub fn new(center: Vec2, radius: Vec2, ramp: impl Into<ColorRamp>) -> Self
-            pub fn centered(ramp: impl Into<ColorRamp>) -> Self
+        pub fn new(geometry: GradientGeometry, ramp: impl Into<ColorRamp>) -> Self
+        pub fn linear(angle: f32, ramp: impl Into<ColorRamp>) -> Self
+        pub fn horizontal(ramp: impl Into<ColorRamp>) -> Self
+        pub fn vertical(ramp: impl Into<ColorRamp>) -> Self
+        pub fn radial(center: Vec2, radius: Vec2, ramp: impl Into<ColorRamp>) -> Self
+        pub fn centered_radial(ramp: impl Into<ColorRamp>) -> Self
+        pub fn conic(center: Vec2, start_angle: f32, ramp: impl Into<ColorRamp>) -> Self
+        pub fn centered_conic(ramp: impl Into<ColorRamp>) -> Self
         pub const fn with_spread(self, spread: Spread) -> Self
         pub const fn with_interpolation(self, interpolation: Interpolation) -> Self
         pub const fn is_noop(&self) -> bool
-        impl From<Gradient<ConicGeometry>> for Brush
-        impl From<Gradient<LinearGeometry>> for Brush
-        impl From<Gradient<RadialGeometry>> for Brush
-        impl<'de, G> Deserialize<'de> where G: Deserialize<'de>
-        impl<G: Clone> Clone for Gradient<G>
-        impl<G: Debug> Debug for Gradient<G>
-        impl<G: GradientGeometry> From<Gradient<G>> for Chrome where Brush: From<Gradient<G>>, Paint: From<Gradient<G>>
-        impl<G: GradientGeometry> From<Gradient<G>> for Paint where Brush: From<Gradient<G>>
-        impl<G: GradientGeometry> Hash for Gradient<G>
-        impl<G: PartialEq> PartialEq for Gradient<G>
-        impl<G> Serialize where G: Serialize
+        impl From<Gradient> for Brush
+        impl From<Gradient> for Chrome
+        impl From<Gradient> for Paint
 
 GradientGeometry
-    trait GradientGeometry: Geometry
-        impl<T: Geometry> GradientGeometry for T
+    enum GradientGeometry: Clone, Copy, Debug, Deserialize<'de>, PartialEq, Serialize
+        Linear(LinearGeometry)
+        Radial(RadialGeometry)
+        Conic(ConicGeometry)
 
 GradientStops
     struct GradientStops: Clone, Copy, Debug, Deref, Deserialize<'de>, DockTab (blanket), Eq, Hash, PartialEq, Serialize
@@ -1211,14 +1203,6 @@ ImageFilter
     enum ImageFilter: Clone, Copy, Debug, Default, Deserialize<'de>, Eq, PartialEq, Serialize
         Linear
         Nearest
-
-ImageFit
-    enum ImageFit: Clone, Copy, Debug, Default, PartialEq
-        Fill
-        Contain
-        Cover
-        Natural
-        Tile { offset: Vec2, scale: Vec2 }
 
 ImageHandle
     struct ImageHandle: Clone, Debug
@@ -1440,11 +1424,8 @@ LineJoin
         Round = 2
 
 LinearGeometry
-    struct LinearGeometry: Clone, Copy, Debug, Deserialize<'de>, GradientGeometry (blanket), PartialEq, Serialize
+    struct LinearGeometry: Clone, Copy, Debug, Deserialize<'de>, PartialEq, Serialize
         pub angle: f32
-
-LinearGradient
-    type LinearGradient = Gradient<LinearGeometry>
 
 Locate
     trait Locate<A>: Clone + Debug + Send + 'static
@@ -1486,7 +1467,7 @@ Material
         pub backdrop_blur: f32
         pub max_luminance: Option<f32>
         pub min_luminance: Option<f32>
-        pub fallback: MaterialFallback
+        pub fallback: BackdropFallback
         pub const fn new<U: EffectParams>(effect: EffectName<U, BackdropEffect>, params: U) -> Self
         pub const fn blur(sigma: f32) -> Self
         pub const fn frosted(sigma: f32) -> Self
@@ -1510,11 +1491,6 @@ MaterialEffect
         pub fn name(&self) -> &str
         pub fn params(&self) -> &[f32]
 
-MaterialFallback
-    enum MaterialFallback: Clone, Debug, Default, Deserialize<'de>, Lerp, PartialEq, Serialize
-        ThemeSurface
-        Brush(Brush)
-
 MaterialPaint
     struct MaterialPaint: Clone, Debug, From<Material>, PartialEq
         pub paint: Paint
@@ -1522,12 +1498,6 @@ MaterialPaint
         impl PaintedBy<MaterialPaint> for CircleShape
         impl PaintedBy<MaterialPaint> for RectShape
         impl PaintedBy<MaterialPaint> for TriangleShape
-
-MaterialReach
-    enum MaterialReach: Clone, Copy, Debug, PartialEq
-        Px(f32)
-        Lens(Lens)
-        pub const NONE: Self
 
 Menu
     struct Menu<'a>: Configure, Debug, ThemeDefaults (blanket)
@@ -1561,13 +1531,11 @@ MenuBarMenus
         pub fn menu<'l, R>(&mut self, label: impl Into<TextInput<'l>>, body: impl FnOnce(&mut Ui) -> R) -> Option<OverlayResponse<R>>
 
 MenuBarTheme
-    struct MenuBarTheme: Clone, Debug, Deserialize<'de>, Lerp, PartialEq, Serialize, ThemeSlot
-        pub title: StatefulLook
-        pub open: WidgetLook
+    struct MenuBarTheme: Clone, Debug, Deserialize<'de>, Lerp, PartialEq, Serialize
+        pub title: ButtonTheme
         pub bar: Chrome
         pub bar_padding: Spacing
         pub gap: f32
-        pub defaults: SlotDefaults
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
 
 MenuItem
@@ -1599,11 +1567,6 @@ MenuSeparator
         pub fn new() -> Self
         pub fn style(self, s: impl Into<Option<&'a SeparatorTheme>>) -> Self
         pub fn show(self, ui: &mut Ui) -> Response
-
-MenuState
-    enum MenuState: Clone, Copy, Debug, DockTab (blanket), Eq, From<bool>, Hash, PartialEq
-        Closed
-        Open
 
 MenuTheme
     struct MenuTheme: Clone, Debug, Deserialize<'de>, Lerp, PartialEq, Serialize
@@ -1734,7 +1697,7 @@ PLATFORM
     const PLATFORM: Platform
 
 Paint
-    struct Paint: Animatable, Clone, Debug, Default, Deserialize<'de>, From<Border>, From<Brush>, From<RgbaF32>, From<Shadow>, Lerp, PartialEq, Serialize
+    struct Paint: Animatable, Clone, Debug, Default, Deserialize<'de>, From<Border>, From<Brush>, From<Gradient>, From<RgbaF32>, From<Shadow>, Lerp, PartialEq, Serialize
         pub fill: Brush
         pub border: Border
         pub shadow: Shadow
@@ -1745,7 +1708,6 @@ Paint
         pub const fn with_material(self, material: Material) -> MaterialPaint
         pub const fn is_noop(&self) -> bool
         impl From<Paint> for Chrome
-        impl<G: GradientGeometry> From<Gradient<G>> for Paint where Brush: From<Gradient<G>>
 
 Palette
     struct Palette: Clone, Debug, Deserialize<'de>, PartialEq, Serialize
@@ -1950,24 +1912,22 @@ Preference
 
 PressEffect
     struct PressEffect: Clone, Copy, Debug, Deserialize<'de>, PartialEq, Serialize
-        pub effect: EffectName<PressInput>
+        pub effect: EffectName<PressParams>
         pub color: RgbaF32
         pub highlight: RgbaF32
         pub enter: Duration
         pub exit: Duration
         pub const MAX_PRESSES: usize
 
-PressInput
-    struct PressInput: Clone, Copy, Debug, EffectParams, PartialEq, Pod, Zeroable
+PressParams
+    struct PressParams: Clone, Copy, Debug, EffectParams, PartialEq, Pod, Zeroable
         pub color: RgbaF32
         pub highlight: RgbaF32
         pub point: Vec2
-        pub released: f32
-        pub enter: f32
-        pub exit: f32
+        pub released_seconds: f32
+        pub enter_seconds: f32
+        pub exit_seconds: f32
         pub seed: f32
-        pub pad0: f32
-        pub pad1: f32
 
 ProgressBar
     struct ProgressBar<'a>: Configure, Debug, ThemeDefaults (blanket)
@@ -1983,28 +1943,23 @@ ProgressBarTheme
         pub const fn from_parts(p: &Palette, _m: &Metrics) -> Self
 
 RadialGeometry
-    struct RadialGeometry: Clone, Copy, Debug, Deserialize<'de>, GradientGeometry (blanket), PartialEq, Serialize
+    struct RadialGeometry: Clone, Copy, Debug, Deserialize<'de>, PartialEq, Serialize
         pub center: Vec2
         pub radius: Vec2
 
-RadialGradient
-    type RadialGradient = Gradient<RadialGeometry>
-
 RadioGroup
     struct RadioGroup<'a, T>: Configure, ThemeDefaults (blanket)
-        pub fn new(cur: &'a mut T) -> Self
+        pub fn new(selected: &'a mut T) -> Self
         pub const fn axis(self, axis: Axis) -> Self
-        pub const fn look(self, look: RadioLook) -> Self
-        pub fn style(self, s: impl Into<Option<&'a ToggleTheme>>) -> Self
-        pub fn segmented_style(self, s: impl Into<Option<&'a SegmentedTheme>>) -> Self
+        pub const fn look(self, look: RadioLook<'a>) -> Self
         impl<T: PartialEq> RadioGroup<'_, T>
             pub fn show(self, ui: &mut Ui, body: impl FnOnce(&mut Ui, &mut RadioOptions<'_, T>)) -> ValueResponse
         impl<'a, T: Debug> Debug for RadioGroup<'a, T>
 
 RadioLook
-    enum RadioLook: Clone, Copy, Debug, Default, DockTab (blanket), Eq, Hash, PartialEq
-        Pip
-        Segment
+    enum RadioLook<'a>: Clone, Copy, Debug
+        Pip(Option<&'a ToggleTheme>)
+        Segment(Option<&'a SegmentedTheme>)
 
 RadioOption
     struct RadioOption<'o, 'g, T>: Configure, ThemeDefaults (blanket)
@@ -2068,7 +2023,7 @@ ReducedPaint
 
 Reduction
     enum Reduction: Clone, Copy, Debug, Default, Deserialize<'de>, DockTab (blanket), Eq, Hash, PartialEq, Serialize
-        Full
+        Unreduced
         Reduced
 
 Remote  [features: winit]
@@ -2197,11 +2152,6 @@ SegmentedTheme
         pub track_padding: Spacing
         pub segment: ButtonTheme
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
-
-Selection
-    enum Selection: Clone, Copy, Debug, Default, DockTab (blanket), Eq, From<bool>, Hash, PartialEq
-        Unselected
-        Selected
 
 Sense
     struct Sense: BitOr, Clone, Copy, Debug, Default, DockTab (blanket), Eq, Hash, PartialEq
@@ -2407,11 +2357,6 @@ SpinnerTheme
         pub min_stroke_width: f32
         pub const fn from_parts(p: &Palette, m: &Metrics) -> Self
 
-SplitDirection
-    enum SplitDirection: Clone, Copy, Debug, Deserialize<'de>, Eq, PartialEq, Serialize
-        Row
-        Col
-
 SplitHalf
     enum SplitHalf: Clone, Copy, Debug, Eq, PartialEq
         First
@@ -2423,7 +2368,8 @@ SplitSide
         Right
         Top
         Bottom
-        pub const fn direction(self) -> SplitDirection
+        pub const fn axis(self) -> Axis
+        pub const fn half(self) -> SplitHalf
 
 Splitter
     struct Splitter<'a>: Configure, Debug, ThemeDefaults (blanket)
@@ -2613,11 +2559,6 @@ TabStrip
         pub fn close_id(strip: WidgetId, key: TabKey) -> WidgetId
         pub fn show(self, ui: &mut Ui, content: impl FnMut(&mut Ui, &TabChip)) -> TabStripResponse
 
-TabStripFocus
-    enum TabStripFocus: Clone, Copy, Debug, Eq, From<bool>, PartialEq
-        Focused
-        Unfocused
-
 TabStripResponse
     struct TabStripResponse: Clone, Copy, Debug
         pub response: Response
@@ -2682,7 +2623,6 @@ TabsTheme
         pub caret_width: f32
         pub label_gap: f32
         pub defaults: SlotDefaults
-        pub const fn cap(&self, focus: TabStripFocus) -> RgbaF32
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
 
 TargetFormat
@@ -2858,17 +2798,11 @@ Theme
 
 ThemeEffectError
     enum ThemeEffectError: Clone, Copy, Debug, Display, Error, PartialEq
-        UnloadedPress(EffectName<PressInput>)
-        NotPress(EffectName<PressInput>)
+        UnloadedPress(EffectName<PressParams>)
+        NotPress(EffectName<PressParams>)
         UnloadedMaterial(MaterialEffect)
         NotMaterial(MaterialEffect)
         MaterialParams { effect: MaterialEffect, want: u8, got: u8 }
-
-ToggleKind
-    enum ToggleKind: Clone, Copy, Debug, DockTab (blanket), Eq, Hash, PartialEq
-        Checkbox
-        Radio
-        Switch
 
 ToggleTheme
     struct ToggleTheme: Clone, Debug, Deserialize<'de>, Lerp, PartialEq, Serialize, ThemeSlot
@@ -2883,7 +2817,9 @@ ToggleTheme
         pub gap: f32
         pub track_aspect: f32
         pub defaults: SlotDefaults
-        pub fn from_parts(kind: ToggleKind, p: &Palette, m: &Metrics) -> Self
+        pub fn checkbox(p: &Palette, m: &Metrics) -> Self
+        pub fn radio(p: &Palette, m: &Metrics) -> Self
+        pub fn switch(p: &Palette, m: &Metrics) -> Self
 
 Tooltip
     struct Tooltip<'a>: Configure, Debug, ThemeDefaults (blanket)
@@ -3341,6 +3277,11 @@ widget::Caret
         pub y_top: f32
         pub line_height: f32
 
+widget::CheckState
+    enum CheckState: Clone, Copy, Debug, Default, DockTab (blanket), Eq, From<bool>, Hash, PartialEq
+        Unchecked
+        Checked
+
 widget::CircleShape
     struct CircleShape: Clone, Copy, Debug, PaintedBy<ImagePaint>, PaintedBy<Material>, PaintedBy<MaterialPaint>, PaintedBy<Stroke>
         pub const fn at(self, rect: Rect) -> Self
@@ -3421,8 +3362,7 @@ widget::EffectPaint
         impl<U: EffectParams> EffectPaint<U, ColorEffect>
             pub const fn outside(self, reach: f32) -> Self
         impl<U: EffectParams> EffectPaint<U, BackdropEffect>
-            pub const fn blur(self, sigma: f32) -> Self
-            pub const fn max_sample_offset(self, px: f32) -> Self
+            pub const fn backdrop_blur(self, sigma: f32) -> Self
             pub fn fallback(self, fallback: impl Into<Brush>) -> Self
         impl<U: EffectParams, K: EffectKind> Debug for EffectPaint<U, K>
         impl<U: EffectParams, K: EffectKind> PaintedBy<EffectPaint<U, K>> for CircleShape
@@ -3458,7 +3398,8 @@ widget::IconPaint
 widget::ImagePaint
     struct ImagePaint: Clone, Debug
         pub fn new(handle: ImageHandle) -> Self
-        pub const fn fit(self, fit: ImageFit) -> Self
+        pub const fn fit(self, fit: Fit) -> Self
+        pub const fn tile(self, offset: Vec2, scale: Vec2) -> Self
         pub const fn min_filter(self, min_filter: ImageFilter) -> Self
         pub const fn mag_filter(self, mag_filter: ImageFilter) -> Self
         pub const fn downsample(self, downsample: ImageDownsample) -> Self
@@ -3595,6 +3536,11 @@ widget::RectShape
         pub fn corners(self, corners: impl Into<Corners>) -> Self
         impl<P: Into<Paint>> PaintedBy<P> for RectShape
         impl<U: EffectParams, K: EffectKind> PaintedBy<EffectPaint<U, K>> for RectShape
+
+widget::Selection
+    enum Selection: Clone, Copy, Debug, Default, DockTab (blanket), Eq, From<bool>, Hash, PartialEq
+        Unselected
+        Selected
 
 widget::Shape
     struct Shape: Clone, Copy, Debug

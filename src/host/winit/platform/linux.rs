@@ -285,7 +285,7 @@ mod tests {
                 POWER_PROFILE_MONITOR,
                 changed(OwnedValue::from(false)),
                 &[][..],
-                PortalChange::Value(Reduction::Full),
+                PortalChange::Value(Reduction::Unreduced),
             ),
             (
                 POWER_PROFILE_MONITOR,

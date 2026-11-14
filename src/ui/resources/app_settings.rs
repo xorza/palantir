@@ -218,7 +218,7 @@ mod tests {
                 s.set_system_reductions(Reductions {
                     transparency: Reduction::Reduced,
                     motion: Reduction::Reduced,
-                    power: Reduction::Full,
+                    power: Reduction::Unreduced,
                 })
             },
             &|s| {
@@ -230,7 +230,7 @@ mod tests {
             &|s| {
                 s.set_preferences(UiPreferences {
                     scheme: Preference::Fixed(ColorScheme::Light),
-                    motion: Preference::Fixed(Reduction::Full),
+                    motion: Preference::Fixed(Reduction::Unreduced),
                     transparency: Preference::System,
                     power: Preference::System,
                     frame_rate: Preference::System,
@@ -238,7 +238,7 @@ mod tests {
             },
             &|s| {
                 s.set_preferences(UiPreferences {
-                    power: Preference::Fixed(Reduction::Full),
+                    power: Preference::Fixed(Reduction::Unreduced),
                     ..s.preferences()
                 })
             },
@@ -258,7 +258,7 @@ mod tests {
         assert_eq!(settings.color_scheme(), ColorScheme::Light, "the pick wins");
         assert_eq!(
             settings.reductions().motion,
-            Reduction::Full,
+            Reduction::Unreduced,
             "the pick wins over the system"
         );
         assert_eq!(
@@ -268,7 +268,7 @@ mod tests {
         );
         assert_eq!(
             settings.reductions().power,
-            Reduction::Full,
+            Reduction::Unreduced,
             "the last pick of full wins over the system's saver mode"
         );
         assert!(settings.set_preferences(UiPreferences {
@@ -281,12 +281,12 @@ mod tests {
             "System follows the saver mode"
         );
         assert!(settings.set_system_reductions(Reductions {
-            power: Reduction::Full,
+            power: Reduction::Unreduced,
             ..settings.system_reductions()
         }));
         assert_eq!(
             settings.reductions().power,
-            Reduction::Full,
+            Reduction::Unreduced,
             "the mode turned off"
         );
         assert!(settings.set_preferences(UiPreferences {
@@ -309,7 +309,7 @@ mod tests {
     #[test]
     fn reduced_power_reduces_what_follows_the_system() {
         use Preference::{Fixed, System};
-        use Reduction::{Full, Reduced};
+        use Reduction::{Reduced, Unreduced as Full};
         let rows = [
             (
                 Full,

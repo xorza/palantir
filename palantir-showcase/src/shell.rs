@@ -420,9 +420,9 @@ impl Shell {
     /// system. Each entry point sets them on its `Ui`, as an app sets the picks it saved.
     pub const PREFERENCES: UiPreferences = UiPreferences {
         scheme: Preference::System,
-        motion: Preference::Fixed(Reduction::Full),
-        transparency: Preference::Fixed(Reduction::Full),
-        power: Preference::Fixed(Reduction::Full),
+        motion: Preference::Fixed(Reduction::Unreduced),
+        transparency: Preference::Fixed(Reduction::Unreduced),
+        power: Preference::Fixed(Reduction::Unreduced),
         frame_rate: Preference::System,
     };
 
@@ -718,11 +718,10 @@ fn accent_id(idx: usize) -> WidgetId {
 /// re-lay-out under the pointer mid-drag.
 fn ui_scale_row(ui: &mut Ui, k: Kit) {
     let scale = ui.user_scale();
-    let step = ui.theme().menu_bar.title.clone();
+    let title = &ui.theme().menu_bar.title;
     let step = ButtonTheme {
-        selected: step.clone(),
-        unselected: step,
-        defaults: ui.theme().menu_bar.defaults,
+        selected: title.unselected.clone(),
+        ..title.clone()
     };
     let mut next = scale;
     Panel::hstack()
@@ -960,7 +959,7 @@ mod tests {
         h.session(&mut shell).settle().expect("the frames settle");
         assert_eq!(
             h.ui().preferences().motion,
-            Preference::Fixed(Reduction::Full)
+            Preference::Fixed(Reduction::Unreduced)
         );
         h.key(Key::ArrowRight);
         h.session(&mut shell).settle().expect("the frames settle");

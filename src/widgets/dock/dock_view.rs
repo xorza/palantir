@@ -23,7 +23,6 @@ use crate::widgets::dock::dock_tab::DockTab;
 use crate::widgets::dock::dock_tabs::{DockTabMenu, DockTabs};
 use crate::widgets::dock::pane_geometry::DropTarget;
 use crate::widgets::dock::pane_geometry::PaneGeometry;
-use crate::widgets::dock::split_side::SplitDirection;
 use crate::widgets::dock::tab_drag::TabDrag;
 use crate::widgets::dock::tab_group::TabGroup;
 use crate::widgets::dock::tab_group::TabGroupId;
@@ -436,12 +435,8 @@ impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
             DockNode::Split(split) => {
                 let split = *split;
                 let mut live = split.ratio();
-                let splitter = match split.direction() {
-                    SplitDirection::Row => Splitter::row(&mut live),
-                    SplitDirection::Col => Splitter::col(&mut live),
-                };
                 // The split clamp floors the drag too, so a release keeps what the drag drew.
-                let hit = splitter
+                let hit = Splitter::along(&mut live, split.axis())
                     .id(path.splitter_id(self.dock))
                     .min_pane(self.min_pane)
                     .min_ratio(RATIO_MIN)

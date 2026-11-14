@@ -13,8 +13,8 @@ use palantir::glam::{UVec2, Vec2};
 use palantir::widget::ImagePaint;
 use palantir::widget::Shape;
 use palantir::{
-    ComboBox, Configure, Image, ImageDownsample, ImageFilter, ImageFit, ImageHandle, RgbaF32,
-    Sizing, Switch, Text, Ui, WidgetId,
+    ComboBox, Configure, Fit, Image, ImageDownsample, ImageFilter, ImageHandle, RgbaF32, Sizing,
+    Switch, Text, Ui, WidgetId,
 };
 
 fn checker() -> Image {
@@ -136,7 +136,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
     live(ui, k, &src);
 
     Section::new("Fit")
-        .apis(&[api!(type ImageFit)])
+        .apis(&[api!(type Fit)])
         .show(ui, k, |ui| {
             support::note(
                 ui,
@@ -145,10 +145,10 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
             );
             support::tiles(ui, |ui| {
                 for (label, fit) in [
-                    ("Fill — stretch to the rect", ImageFit::Fill),
-                    ("Contain — whole image, letterboxed", ImageFit::Contain),
-                    ("Cover — fill the rect, crop", ImageFit::Cover),
-                    ("Natural — 1:1, centered", ImageFit::Natural),
+                    ("Fill — stretch to the rect", Fit::Fill),
+                    ("Contain — whole image, letterboxed", Fit::Contain),
+                    ("Cover — fill the rect, crop", Fit::Cover),
+                    ("Natural — 1:1, centered", Fit::Natural),
                 ] {
                     DemoCell::new(label).size(232.0, 132.0).show(ui, k, |ui| {
                         ui.add_shape(Shape::rect(), fitted(src.checker.handle(), fit));
@@ -163,18 +163,18 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
             support::note(ui, k, "The tint multiplies each sampled texel.");
             support::tiles(ui, |ui| {
                 DemoCell::new("no tint").show(ui, k, |ui| {
-                    ui.add_shape(Shape::rect(), fitted(src.gradient.handle(), ImageFit::Fill));
+                    ui.add_shape(Shape::rect(), fitted(src.gradient.handle(), Fit::Fill));
                 });
                 DemoCell::new("red tint").show(ui, k, |ui| {
                     ui.add_shape(
                         Shape::rect(),
-                        fitted(src.gradient.handle(), ImageFit::Fill).tint(k.swatch.red),
+                        fitted(src.gradient.handle(), Fit::Fill).tint(k.swatch.red),
                     );
                 });
                 DemoCell::new("half alpha").show(ui, k, |ui| {
                     ui.add_shape(
                         Shape::rect(),
-                        fitted(src.gradient.handle(), ImageFit::Fill)
+                        fitted(src.gradient.handle(), Fit::Fill)
                             .tint(RgbaF32::WHITE.with_alpha(0.5)),
                     );
                 });
@@ -185,18 +185,18 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
         support::note(ui, k, "The UVs wrap, with a scale and an offset.");
         support::tiles(ui, |ui| {
             DemoCell::new("tile 3×3").show(ui, k, |ui| {
-                let fit = ImageFit::Tile {
-                    offset: Vec2::ZERO,
-                    scale: Vec2::splat(3.0),
-                };
-                ui.add_shape(Shape::rect(), fitted(src.checker.handle(), fit));
+                ui.add_shape(
+                    Shape::rect(),
+                    ImagePaint::new(src.checker.handle().clone())
+                        .tile(Vec2::ZERO, Vec2::splat(3.0)),
+                );
             });
             DemoCell::new("tile 2×4, offset 0.25").show(ui, k, |ui| {
-                let fit = ImageFit::Tile {
-                    offset: Vec2::new(0.25, 0.0),
-                    scale: Vec2::new(2.0, 4.0),
-                };
-                ui.add_shape(Shape::rect(), fitted(src.gradient.handle(), fit));
+                ui.add_shape(
+                    Shape::rect(),
+                    ImagePaint::new(src.gradient.handle().clone())
+                        .tile(Vec2::new(0.25, 0.0), Vec2::new(2.0, 4.0)),
+                );
             });
         });
     });
@@ -250,7 +250,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
         });
 }
 
-fn fitted(handle: &ImageHandle, fit: ImageFit) -> ImagePaint {
+fn fitted(handle: &ImageHandle, fit: Fit) -> ImagePaint {
     ImagePaint::new(handle.clone()).fit(fit)
 }
 
@@ -258,7 +258,7 @@ fn magnified(ui: &mut Ui, handle: &ImageHandle, filter: ImageFilter) {
     ui.add_shape(
         Shape::rect(),
         ImagePaint::new(handle.clone())
-            .fit(ImageFit::Fill)
+            .fit(Fit::Fill)
             .mag_filter(filter),
     );
 }
@@ -267,7 +267,7 @@ fn downsampled(ui: &mut Ui, handle: &ImageHandle, downsample: ImageDownsample) {
     ui.add_shape(
         Shape::rect(),
         ImagePaint::new(handle.clone())
-            .fit(ImageFit::Contain)
+            .fit(Fit::Contain)
             .downsample(downsample),
     );
 }
@@ -276,48 +276,64 @@ fn minified(ui: &mut Ui, handle: &ImageHandle, filter: ImageFilter) {
     ui.add_shape(
         Shape::rect(),
         ImagePaint::new(handle.clone())
-            .fit(ImageFit::Tile {
-                offset: Vec2::ZERO,
-                scale: Vec2::splat(32.0),
-            })
+            .tile(Vec2::ZERO, Vec2::splat(32.0))
             .min_filter(filter),
     );
 }
 
-static FITS: [(&str, ImageFit); 5] = [
-    ("Fill", ImageFit::Fill),
-    ("Contain", ImageFit::Contain),
-    ("Cover", ImageFit::Cover),
-    ("Natural", ImageFit::Natural),
-    (
-        "Tile 3×3",
-        ImageFit::Tile {
-            offset: Vec2::ZERO,
-            scale: Vec2::splat(3.0),
-        },
-    ),
-];
-
-/// The live image's knobs: its fit, and whether a magnified texel shows as a block.
-#[derive(Debug)]
-struct LiveImage {
-    fit: &'static (&'static str, ImageFit),
-    nearest: bool,
+/// What the live image's picker offers: each fit, and a 3 × 3 tile.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+enum Placement {
+    #[default]
+    Fill,
+    Contain,
+    Cover,
+    Natural,
+    Tile,
 }
 
-impl Default for LiveImage {
-    fn default() -> Self {
-        Self {
-            fit: &FITS[0],
-            nearest: false,
+impl Placement {
+    const ALL: [Self; 5] = [
+        Self::Fill,
+        Self::Contain,
+        Self::Cover,
+        Self::Natural,
+        Self::Tile,
+    ];
+
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Fill => "Fill",
+            Self::Contain => "Contain",
+            Self::Cover => "Cover",
+            Self::Natural => "Natural",
+            Self::Tile => "Tile 3×3",
         }
     }
+
+    fn paint(self, handle: &ImageHandle) -> ImagePaint {
+        let paint = ImagePaint::new(handle.clone());
+        match self {
+            Self::Fill => paint.fit(Fit::Fill),
+            Self::Contain => paint.fit(Fit::Contain),
+            Self::Cover => paint.fit(Fit::Cover),
+            Self::Natural => paint.fit(Fit::Natural),
+            Self::Tile => paint.tile(Vec2::ZERO, Vec2::splat(3.0)),
+        }
+    }
+}
+
+/// The live image's knobs: its placement, and whether a magnified texel shows as a block.
+#[derive(Debug, Default)]
+struct LiveImage {
+    placement: Placement,
+    nearest: bool,
 }
 
 /// The 4×4 sprite in a wide rect, its fit and its sampling from the knobs.
 fn live(ui: &mut Ui, k: Kit, src: &Sources) {
     Section::new("Live image")
-        .apis(&[api!(type ImageFit), api!(type ImageFilter)])
+        .apis(&[api!(type Fit), api!(type ImageFilter)])
         .show(ui, k, |ui| {
             support::note(
                 ui,
@@ -329,12 +345,14 @@ fn live(ui: &mut Ui, k: Kit, src: &Sources) {
             ui.with_state::<LiveImage, _>(id, |ui, l| {
                 support::row(ui, |ui| {
                     Text::new("fit").style(&k.t.caption()).show(ui);
-                    ComboBox::labeled(&mut l.fit, &FITS, |fit| fit.0)
-                        .size((Sizing::fixed(120.0), Sizing::HUG))
-                        .show(ui);
+                    ComboBox::labeled(&mut l.placement, Placement::ALL, |placement| {
+                        placement.label()
+                    })
+                    .size((Sizing::fixed(120.0), Sizing::HUG))
+                    .show(ui);
                     Switch::new(&mut l.nearest).label("Nearest").show(ui);
                 });
-                let fit = l.fit.1;
+                let placement = l.placement;
                 let filter = if l.nearest {
                     ImageFilter::Nearest
                 } else {
@@ -345,7 +363,7 @@ fn live(ui: &mut Ui, k: Kit, src: &Sources) {
                     .show(ui, k, |ui| {
                         ui.add_shape(
                             Shape::rect(),
-                            fitted(src.sprite.handle(), fit).mag_filter(filter),
+                            placement.paint(src.sprite.handle()).mag_filter(filter),
                         );
                     });
             });

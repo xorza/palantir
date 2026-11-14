@@ -507,43 +507,62 @@ pub(super) fn theme() -> Theme {
             },
         },
         menu_bar: MenuBarTheme {
-            title: StatefulLook {
-                normal: WidgetLook {
-                    chrome: Chrome::rounded(RgbaF32::hexa(0x00000000), Corners::all(4.0)),
-                    text: TextStyleOverrides {
-                        color: Some(RgbaF32::hex(0x9ad2a0)),
-                        ..TextStyleOverrides::NONE
+            title: ButtonTheme {
+                unselected: StatefulLook {
+                    normal: WidgetLook {
+                        chrome: Chrome::rounded(RgbaF32::hexa(0x00000000), Corners::all(4.0)),
+                        text: TextStyleOverrides {
+                            color: Some(RgbaF32::hex(0x9ad2a0)),
+                            ..TextStyleOverrides::NONE
+                        },
+                    },
+                    hovered: WidgetLook {
+                        chrome: Chrome::rounded(RgbaF32::hex(0x1e4048), Corners::all(4.0)),
+                        text: TextStyleOverrides::NONE,
+                    },
+                    active: WidgetLook {
+                        chrome: Chrome::rounded(RgbaF32::hex(0x3d4f1e), Corners::all(4.0)),
+                        text: TextStyleOverrides::NONE,
+                    },
+                    disabled: WidgetLook {
+                        chrome: Chrome::rounded(RgbaF32::hexa(0x00000000), Corners::all(4.0)),
+                        text: TextStyleOverrides {
+                            color: Some(RgbaF32::hex(0xd9a05e)),
+                            ..TextStyleOverrides::NONE
+                        },
                     },
                 },
-                hovered: WidgetLook {
-                    chrome: Chrome::rounded(RgbaF32::hex(0x1e4048), Corners::all(4.0)),
-                    text: TextStyleOverrides::NONE,
-                },
-                active: WidgetLook {
-                    chrome: Chrome::rounded(RgbaF32::hex(0x3d4f1e), Corners::all(4.0)),
-                    text: TextStyleOverrides::NONE,
-                },
-                disabled: WidgetLook {
-                    chrome: Chrome::rounded(RgbaF32::hexa(0x00000000), Corners::all(4.0)),
-                    text: TextStyleOverrides {
-                        color: Some(RgbaF32::hex(0xd9a05e)),
-                        ..TextStyleOverrides::NONE
+                selected: StatefulLook {
+                    normal: WidgetLook {
+                        chrome: Chrome::rounded(RgbaF32::hex(0x1e4048), Corners::all(4.0)),
+                        text: TextStyleOverrides::NONE,
+                    },
+                    hovered: WidgetLook {
+                        chrome: Chrome::rounded(RgbaF32::hex(0x1e4048), Corners::all(4.0)),
+                        text: TextStyleOverrides::NONE,
+                    },
+                    active: WidgetLook {
+                        chrome: Chrome::rounded(RgbaF32::hex(0x1e4048), Corners::all(4.0)),
+                        text: TextStyleOverrides::NONE,
+                    },
+                    disabled: WidgetLook {
+                        chrome: Chrome::rounded(RgbaF32::hex(0x1e4048), Corners::all(4.0)),
+                        text: TextStyleOverrides::NONE,
                     },
                 },
-            },
-            open: WidgetLook {
-                chrome: Chrome::rounded(RgbaF32::hex(0x1e4048), Corners::all(4.0)),
-                text: TextStyleOverrides::NONE,
+                defaults: SlotDefaults {
+                    padding: Spacing::xy(12.0, 8.0),
+                    margin: Spacing::all(0.0),
+                    transition: AnimationSpec::duration(
+                        Duration::from_millis(120),
+                        Easing::OutCubic,
+                    ),
+                    press: None,
+                },
             },
             bar: Chrome::new(RgbaF32::hex(0x3a1a14)),
             bar_padding: Spacing::xy(8.0, 4.0),
             gap: 4.0,
-            defaults: SlotDefaults {
-                padding: Spacing::xy(12.0, 8.0),
-                margin: Spacing::all(0.0),
-                transition: AnimationSpec::duration(Duration::from_millis(120), Easing::OutCubic),
-                press: None,
-            },
         },
         combo_box: ComboBoxTheme {
             gap: 12.0,

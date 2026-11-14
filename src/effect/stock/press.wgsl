@@ -1,12 +1,12 @@
-// What both stock press effects read, palantir's `PressInput`, and the timing they share.
+// What both stock press effects read, palantir's `PressParams`, and the timing they share.
 
 struct Params {
     color: vec4<f32>,
     highlight: vec4<f32>,
     point: vec2<f32>,
-    released: f32,
-    enter: f32,
-    exit: f32,
+    released_seconds: f32,
+    enter_seconds: f32,
+    exit_seconds: f32,
     seed: f32,
     pad0: f32,
     pad1: f32,
@@ -21,13 +21,13 @@ fn press_through(time: f32, span: f32) -> f32 {
     return saturate(time / span);
 }
 
-// How far the fade-out is, in [0, 1]: 0 while the press is held, then over `exit` from the
-// release or the end of `enter`, whichever is later, as `PressInput` times it.
+// How far the fade-out is, in [0, 1]: 0 while the press is held, then over `exit_seconds` from the
+// release or the end of `enter_seconds`, whichever is later, as `PressParams` times it.
 fn press_fade(params: Params, time: f32) -> f32 {
-    if (params.released < 0.0) {
+    if (params.released_seconds < 0.0) {
         return 0.0;
     }
-    return press_through(time - max(params.released, params.enter), params.exit);
+    return press_through(time - max(params.released_seconds, params.enter_seconds), params.exit_seconds);
 }
 
 // `cubic-bezier(0.4, 0, 0.2, 1)`, Material's FastOutSlowIn, at `u` in [0, 1]: Newton's method

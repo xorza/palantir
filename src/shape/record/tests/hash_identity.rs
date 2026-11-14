@@ -176,7 +176,7 @@ fn image_source_hashes_apart_by_source() {
         paint: ClosedPaint::Image {
             tint: RgbaF32::WHITE.to_f16(),
             source,
-            fit: ImageFit::Fill,
+            placement: ImagePlacement::FILL,
             min_filter: ImageFilter::Linear,
             mag_filter: ImageFilter::Linear,
             downsample: ImageDownsample::Single,
@@ -250,7 +250,7 @@ fn shape_image_hash_distinguishes_handle_dimensions_tint_and_filters() {
                     size,
                     generation: 0,
                 },
-                fit: ImageFit::Fill,
+                placement: ImagePlacement::FILL,
                 min_filter,
                 mag_filter,
                 downsample: ImageDownsample::Single,

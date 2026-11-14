@@ -26,7 +26,6 @@ use crate::theme::look::engagement::Engagement;
 use crate::theme::look::theme_slot::ThemeSlot;
 use crate::theme::menu::MenuTheme;
 use crate::theme::selection::Selection;
-use crate::theme::tab_strip_focus::TabStripFocus;
 use crate::theme::tabs::TabsTheme;
 use crate::theme::text_style::TextStyle;
 use crate::ui::Ui;
@@ -104,7 +103,7 @@ pub struct TabStrip<'a> {
     widget: Widget,
     items: &'a [TabItem],
     selected: Option<usize>,
-    focus: TabStripFocus,
+    focused: bool,
     overflow: TabOverflow,
     drag: ChipDrag,
     style: Option<&'a TabsTheme>,
@@ -122,7 +121,7 @@ impl<'a> TabStrip<'a> {
                 .input_scope(KeyFilter::CARET | KeyFilter::CYCLE),
             items,
             selected: None,
-            focus: TabStripFocus::Focused,
+            focused: true,
             overflow: TabOverflow::default(),
             drag: ChipDrag::Reorder,
             style: None,
@@ -138,11 +137,7 @@ impl<'a> TabStrip<'a> {
 
     /// Whether this strip's view holds focus; `false` dims the cap to [`TabsTheme::cap_unfocused`]. Default `true`.
     pub const fn focused(mut self, focused: bool) -> Self {
-        self.focus = if focused {
-            TabStripFocus::Focused
-        } else {
-            TabStripFocus::Unfocused
-        };
+        self.focused = focused;
         self
     }
 
@@ -239,7 +234,7 @@ impl<'a> TabStrip<'a> {
             mut widget,
             items,
             selected,
-            focus,
+            focused,
             overflow,
             drag,
             style: _,
@@ -275,7 +270,11 @@ impl<'a> TabStrip<'a> {
             strip: id,
             items,
             selected,
-            focus,
+            cap: if focused {
+                t.cap_focused
+            } else {
+                t.cap_unfocused
+            },
             hits: StripHits::default(),
         };
         widget.record(ui, Some(&strip_chrome), |ui| {
@@ -446,7 +445,8 @@ struct StripPass<'a> {
     strip: WidgetId,
     items: &'a [TabItem],
     selected: Option<usize>,
-    focus: TabStripFocus,
+    /// The selection cap's color, as the strip's focus picks it.
+    cap: RgbaF32,
     hits: StripHits,
 }
 
@@ -567,7 +567,7 @@ impl StripPass<'_> {
                 Widget::leaf()
                     .id(chip_id.with("cap"))
                     .size((Sizing::FILL, Sizing::fixed(cap)))
-                    .record(ui, Some(&Chrome::new(t.cap(self.focus))), |_| {});
+                    .record(ui, Some(&Chrome::new(self.cap)), |_| {});
             }
             inner.record(ui, None, |ui| {
                 content(ui, &chip);

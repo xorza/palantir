@@ -58,7 +58,7 @@ struct State {
     wifi: bool,
     bluetooth: bool,
     metered: bool,
-    region: &'static &'static str,
+    region: &'static str,
     updates: Updates,
     volume: f64,
     fps: i64,
@@ -78,7 +78,7 @@ impl Default for State {
             wifi: true,
             bluetooth: false,
             metered: false,
-            region: &REGIONS[0],
+            region: REGIONS[0],
             updates: Updates::Automatic,
             volume: 0.6,
             fps: 120,
@@ -219,7 +219,7 @@ fn form(ui: &mut Ui, k: Kit, s: &mut State, themes: &Themes) {
                         .show(ui);
                     support::row(ui, |ui| {
                         Text::new("Region").style(&k.t.caption()).show(ui);
-                        ComboBox::new(&mut s.region, &REGIONS)
+                        ComboBox::new(&mut s.region, REGIONS)
                             .size((Sizing::fixed(170.0), Sizing::HUG))
                             .show(ui);
                     });

@@ -9,13 +9,14 @@ use crate::icons::icon_table::IconTable;
 use crate::icons::internals::ONE_COLOR;
 use crate::image_registry::image_handle::ImageHandle;
 use crate::primitives::geometry::corners::Corners;
+use crate::primitives::geometry::fit::Fit;
 use crate::primitives::geometry::mesh::Mesh;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::icon_handle::IconHandle;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::image::{Image, ImageFit};
+use crate::primitives::paint::image::Image;
 use crate::primitives::paint::stroke::Stroke;
 use crate::renderer::render_buffer::rounded_clip::RoundedClip;
 use crate::shape::Shape;
@@ -66,7 +67,7 @@ impl Family {
             Self::Image => {
                 ui.add_shape(
                     Shape::rect().at(cover),
-                    ImagePaint::new(covers.white.clone()).fit(ImageFit::Fill),
+                    ImagePaint::new(covers.white.clone()).fit(Fit::Fill),
                 );
             }
             Self::Mesh => {

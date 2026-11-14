@@ -116,7 +116,7 @@ struct Forms {
     checked: bool,
     on: bool,
     pick: u8,
-    quality: &'static &'static str,
+    quality: &'static str,
     value: f64,
     split: f32,
 }
@@ -128,7 +128,7 @@ impl Default for Forms {
             checked: true,
             on: true,
             pick: 1,
-            quality: &QUALITIES[1],
+            quality: QUALITIES[1],
             value: 0.5,
             split: 0.5,
         }
@@ -160,7 +160,7 @@ fn forms(ui: &mut Ui, f: &mut Forms) {
                         options.option(pick).label("radio").show(ui);
                     }
                 });
-            ComboBox::new(&mut f.quality, &QUALITIES)
+            ComboBox::new(&mut f.quality, QUALITIES)
                 .id_salt("probe-combo")
                 .show(ui);
             Slider::new(&mut f.value, 0.0..=1.0)

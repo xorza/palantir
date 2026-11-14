@@ -13,8 +13,8 @@ use crate::primitives::packed::fill_axis::FillAxis;
 use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::border::Border;
 use crate::primitives::paint::brush::Brush;
+use crate::primitives::paint::brush::gradient::Gradient;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
-use crate::primitives::paint::brush::gradient::{Gradient, GradientGeometry};
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::paint::Paint;
 use crate::shape::geometry::closed_geometry::ClosedGeometry;
@@ -35,11 +35,8 @@ fn gradient_hash<G: hash::Hash>(kind: FillKind, g: &G) -> ContentHash {
     ContentHash::of((kind.0, g))
 }
 
-fn gradient_brush<G: GradientGeometry>(
-    store: &mut RecordStore,
-    kind: FillKind,
-    gradient: &Gradient<G>,
-) -> LoweredBrush {
+fn gradient_brush(store: &mut RecordStore, gradient: &Gradient) -> LoweredBrush {
+    let kind = gradient.fill_kind();
     let hash = gradient_hash(kind, gradient);
     let id = store.gradients.intern(
         hash,
@@ -61,9 +58,7 @@ pub(crate) fn brush(store: &mut RecordStore, b: &Brush) -> LoweredBrush {
     );
     match b {
         Brush::Solid(color) => LoweredBrush::Solid(color.to_f16()),
-        Brush::Linear(g) => gradient_brush(store, FillKind::linear(g.spread), g),
-        Brush::Radial(g) => gradient_brush(store, FillKind::radial(g.spread), g),
-        Brush::Conic(g) => gradient_brush(store, FillKind::conic(g.spread), g),
+        Brush::Gradient(g) => gradient_brush(store, g),
     }
 }
 

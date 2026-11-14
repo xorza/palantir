@@ -313,7 +313,7 @@ mod press {
     use glam::{UVec2, Vec2};
 
     use crate::animation::animation_spec::AnimationSpec;
-    use crate::effect::press_input::PressInput;
+    use crate::effect::press_params::PressParams;
     use crate::host::harness::Harness;
     use crate::internals::paint_capture::PaintCall;
     use crate::primitives::effect::effect_name::EffectName;
@@ -351,7 +351,7 @@ mod press {
         time: f32,
         rect: Rect,
         corners: Corners,
-        input: PressInput,
+        input: PressParams,
     }
 
     /// The press effect draws of the frame `h` shows.
@@ -383,7 +383,7 @@ mod press {
 
     /// A window whose buttons press with `effect` in Material's times, 0.225 s in and 0.15 s
     /// out, and the button it records, 80 × 30 at the top left; one frame shown at 0.
-    fn pressing(effect: EffectName<PressInput>) -> (Harness, impl FnMut(&mut Ui)) {
+    fn pressing(effect: EffectName<PressParams>) -> (Harness, impl FnMut(&mut Ui)) {
         let mut h = Harness::mono(UVec2::new(200, 80));
         let scheme = h.ui().color_scheme();
         let mut theme = Theme::stock(scheme);
@@ -407,14 +407,14 @@ mod press {
 
     /// What the stock theme's button reads of a press at (30, 10), 1 s in, `released` s after
     /// it.
-    fn input(released: f32) -> PressInput {
-        PressInput {
+    fn input(released: f32) -> PressParams {
+        PressParams {
             color: COLOR,
             highlight: HIGHLIGHT,
             point: Vec2::new(30.0, 10.0),
-            released,
-            enter: 0.225,
-            exit: 0.15,
+            released_seconds: released,
+            enter_seconds: 0.225,
+            exit_seconds: 0.15,
             seed: 1.0,
             pad0: 0.0,
             pad1: 0.0,
@@ -479,7 +479,7 @@ mod press {
         h.at(ms(1100)).frame(&mut disabled);
         let read: Vec<(f32, f32)> = press_draws(&h)
             .iter()
-            .map(|draw| (draw.time, draw.input.released))
+            .map(|draw| (draw.time, draw.input.released_seconds))
             .collect();
         assert_eq!(read, [(0.1, 0.1)]);
     }
@@ -497,7 +497,7 @@ mod press {
         h.frame(&mut record);
         let read: Vec<(Vec2, f32, f32)> = press_draws(&h)
             .iter()
-            .map(|draw| (draw.input.point, draw.time, draw.input.released))
+            .map(|draw| (draw.input.point, draw.time, draw.input.released_seconds))
             .collect();
         assert_eq!(read, [(Vec2::new(40.0, 15.0), 0.0, 0.0)]);
     }
@@ -515,7 +515,7 @@ mod press {
         let times = |h: &Harness| -> Vec<(f32, f32)> {
             press_draws(h)
                 .iter()
-                .map(|draw| (draw.time, draw.input.released))
+                .map(|draw| (draw.time, draw.input.released_seconds))
                 .collect()
         };
         assert_eq!(times(&h), [(0.225, -1.0)], "held");

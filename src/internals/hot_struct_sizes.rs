@@ -24,8 +24,8 @@ use crate::primitives::layout::layout_mode::LayoutMode;
 use crate::primitives::layout::packed_layout_meta::PackedLayoutMeta;
 use crate::primitives::paint::border::Border;
 use crate::primitives::paint::brush::Brush;
+use crate::primitives::paint::brush::gradient::Gradient;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
-use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::paint::brush::gradient::stops::{GradientStops, MAX_STOPS};
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::material::Material;
@@ -172,27 +172,27 @@ const PINS: &[Pin] = &[
     // so its size is copied through recording and animation: a paint 116 B larger measured
     // record +2.8 to +4.6 % and animation +1 to +26 % (`.notes/PERF.md`, "A paint carries a
     // short effect name"). A material sits in a shape's `MaterialPaint`, out of both.
-    pin::<Chrome>("primitives::Chrome", 124, 4),
-    pin::<paint::Paint>("primitives::Paint", 116, 4),
+    pin::<Chrome>("primitives::Chrome", 128, 4),
+    pin::<paint::Paint>("primitives::Paint", 120, 4),
     pin::<Border>("primitives::Border", 20, 4),
     pin::<Shadow>("primitives::Shadow", 36, 4),
-    // Of which the effect's inline name, `ErasedEffectName`, and 56 the fallback, a brush and its
-    // tag.
-    pin::<Option<Material>>("primitives::Option<Material>", 140, 4),
+    // Of which 60 the effect with its inline name, `MaterialEffect`, and 64 the fallback, a brush
+    // that holds the fallback's tag in its own.
+    pin::<Option<Material>>("primitives::Option<Material>", 144, 4),
     // A material box's paint, what `add_shape` takes for one: a paint and a material.
-    pin::<MaterialPaint>("primitives::MaterialPaint", 256, 4),
+    pin::<MaterialPaint>("primitives::MaterialPaint", 264, 4),
     pin::<EffectName<(), BackdropEffect>>("primitives::EffectName", 24, 1),
     pin::<MaterialEffect>("primitives::MaterialEffect", 60, 4),
     pin::<Stroke>("primitives::Stroke", 64, 4),
     pin::<ImagePaint>("shape::ImagePaint", 48, 8),
     pin::<IconPaint>("shape::IconPaint", 36, 4),
     // What `add_shape` hands the record store, matched once a shape.
-    pin::<Draw<'static>>("shape::Draw", 200, 8),
+    pin::<Draw<'static>>("shape::Draw", 192, 8),
     pin::<LoweredPaint>("shape::LoweredPaint", 88, 8),
     // A look, its plan and what it wears, each built or copied per themed widget a frame.
-    pin::<WidgetLook>("theme::WidgetLook", 232, 4),
+    pin::<WidgetLook>("theme::WidgetLook", 236, 4),
     pin::<LookPlan>("theme::LookPlan", 360, 8),
-    pin::<AnimatedLook>("theme::AnimatedLook", 216, 4),
+    pin::<AnimatedLook>("theme::AnimatedLook", 220, 4),
     pin::<TextStyle>("theme::TextStyle", 92, 4),
     pin::<FontFamily>("text::FontFamily", 64, 1),
     // Every `show` returns one.
@@ -201,24 +201,27 @@ const PINS: &[Pin] = &[
     // `Pod` free of padding.
     pin::<Spacing>("primitives::Spacing", 8, 2),
     pin::<Corners>("primitives::Corners", 8, 2),
-    // Inline in every `Brush::Linear`, so it sets the floor for `Brush`. Stops:
-    // 1 (len) + `MAX_STOPS` * 5; ramp adds 1 (interpolation); gradient adds 4
-    // (angle), 1 (spread) and 1 tail pad to align 4.
+    // Inline in `Brush::Gradient`, so it sets the floor for `Brush`, whose tag sits in the
+    // geometry's. Stops: 1 (len) + `MAX_STOPS` * 5; ramp adds 1 (interpolation); gradient adds
+    // 20 (the radial's 16 behind a tag padded to align 4), 1 (spread) and 1 tail pad.
     pin::<GradientStops>("brush::GradientStops", 1 + 5 * MAX_STOPS, 1),
     pin::<ColorRamp>("brush::ColorRamp", 1 + 5 * MAX_STOPS + 1, 1),
-    pin::<LinearGradient>("brush::LinearGradient", 48, 4),
-    pin::<Brush>("primitives::Brush", 60, 4),
+    pin::<Gradient>("brush::Gradient", 64, 4),
+    pin::<Brush>("primitives::Brush", 64, 4),
     pin::<Span>("common::Span", 8, 4),
     pin::<Button<'static>>("widgets::Button", 168, 8),
     pin::<Checkbox<'static>>("widgets::Checkbox", 168, 8),
     pin::<Switch<'static>>("widgets::Switch", 168, 8),
-    pin::<ComboBox<'static, 'static, &'static str, for<'a> fn(&'a &'static str) -> &'a str>>(
-        "widgets::ComboBox",
-        184,
-        8,
-    ),
+    pin::<
+        ComboBox<
+            'static,
+            &'static str,
+            std::iter::Copied<std::slice::Iter<'static, &'static str>>,
+            for<'a> fn(&'a &'static str) -> &'a str,
+        >,
+    >("widgets::ComboBox", 184, 8),
     pin::<DragValue<'static>>("widgets::DragValue", 232, 8),
-    pin::<RadioGroup<'static, u8>>("widgets::RadioGroup<u8>", 160, 8),
+    pin::<RadioGroup<'static, u8>>("widgets::RadioGroup<u8>", 152, 8),
     pin::<TextEdit<'static>>("widgets::TextEdit", 320, 8),
     pin::<Text<'static>>("widgets::Text", 272, 8),
     pin::<Slider<'static>>("widgets::Slider", 192, 8),
@@ -231,16 +234,16 @@ const PINS: &[Pin] = &[
     pin::<Scroll<'static>>("widgets::Scroll", 312, 8),
     pin::<Separator<'static>>("widgets::Separator", 160, 8),
     pin::<Spinner<'static>>("widgets::Spinner", 168, 8),
-    pin::<Popup<'static>>("widgets::Popup", 432, 8),
-    pin::<Modal<'static>>("widgets::Modal", 392, 8),
-    pin::<Tooltip<'static>>("widgets::Tooltip", 464, 8),
+    pin::<Popup<'static>>("widgets::Popup", 440, 8),
+    pin::<Modal<'static>>("widgets::Modal", 400, 8),
+    pin::<Tooltip<'static>>("widgets::Tooltip", 472, 8),
     pin::<GpuView>("widgets::GpuView", 152, 8),
-    pin::<Menu<'static>>("widgets::Menu", 512, 8),
+    pin::<Menu<'static>>("widgets::Menu", 520, 8),
     pin::<MenuItem<'static>>("widgets::MenuItem", 176, 8),
     pin::<ShapedText>("layout::ShapedText", 40, 8),
     pin::<TextShapeKey>("text::TextShapeKey", 24, 8),
     pin::<MeasureSnapshot>("layout::MeasureSnapshot", 392, 8),
-    pin::<AnimationRow<AnimatedLook>>("animation::AnimationRow<AnimatedLook>", 248, 8),
+    pin::<AnimationRow<AnimatedLook>>("animation::AnimationRow<AnimatedLook>", 256, 8),
     pin::<ContentHash>("common::ContentHash", 8, 8),
     pin::<CascadeInputHash>("cascade::CascadeInputHash", 8, 8),
     pin::<EntryRow>("cascade::EntryRow", 32, 4),

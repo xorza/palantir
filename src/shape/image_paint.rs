@@ -2,9 +2,11 @@
 //! a `ShapeRecord::Closed` of `ClosedPaint::Image`.
 
 use crate::image_registry::image_handle::ImageHandle;
+use crate::primitives::geometry::fit::Fit;
 use crate::primitives::math::domain;
+use crate::primitives::math::domain::vec2;
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::image::{ImageDownsample, ImageFilter, ImageFit};
+use crate::primitives::paint::image::{ImageDownsample, ImageFilter, ImagePlacement};
 use crate::shape::PaintedBy;
 use crate::shape::circle::CircleShape;
 use crate::shape::draw::{ClosedPaintRef, Draw};
@@ -12,17 +14,18 @@ use crate::shape::geometry::closed_geometry::ClosedGeometry;
 use crate::shape::rect::RectShape;
 use crate::shape::sealed;
 use crate::shape::triangle::TriangleShape;
+use glam::Vec2;
 
 /// A registered [`ImageHandle`] painted over a [`RectShape`], a [`CircleShape`] or a
 /// [`TriangleShape`] ([`Ui::add_shape`](crate::Ui::add_shape)), as Skia's `SkImageShader` fills a
 /// shape. The image fits the rect, a circle's square or a triangle's covering rect, by its
-/// [`ImageFit`], and the shape clips it, as CSS's `border-radius` clips an `object-fit` image: a
-/// contained image shows nothing past its own rect.
+/// [`Fit`], or tiles across it ([`Self::tile`]), and the shape clips it, as CSS's `border-radius`
+/// clips an `object-fit` image: a contained image shows nothing past its own rect.
 #[derive(Clone, Debug)]
 #[must_use]
 pub struct ImagePaint {
     pub(crate) handle: ImageHandle,
-    pub(crate) fit: ImageFit,
+    pub(crate) placement: ImagePlacement,
     pub(crate) min_filter: ImageFilter,
     pub(crate) mag_filter: ImageFilter,
     pub(crate) downsample: ImageDownsample,
@@ -30,11 +33,11 @@ pub struct ImagePaint {
 }
 
 impl ImagePaint {
-    /// The image `handle`, fit by [`ImageFit::default`], linear-filtered, untinted.
+    /// The image `handle`, stretched to the rect ([`Fit::Fill`]), linear-filtered, untinted.
     pub fn new(handle: ImageHandle) -> Self {
         Self {
             handle,
-            fit: ImageFit::default(),
+            placement: ImagePlacement::FILL,
             min_filter: ImageFilter::default(),
             mag_filter: ImageFilter::default(),
             downsample: ImageDownsample::default(),
@@ -42,15 +45,26 @@ impl ImagePaint {
         }
     }
 
-    /// How the image is placed inside the rect.
+    /// Fit the image in the rect by its intrinsic size; [`Fit::Fill`] by default. `Natural`
+    /// paints it unscaled and centered, `Cover` crops it by UV to the rect.
+    pub const fn fit(mut self, fit: Fit) -> Self {
+        self.placement = ImagePlacement::Fit(fit);
+        self
+    }
+
+    /// Repeat the image across the rect, its intrinsic size ignored: `scale` repeats on each axis,
+    /// `offset` the scroll phase, both in UV, which the shader wraps.
     ///
     /// # Panics
     ///
-    /// Panics unless a [`ImageFit::Tile`]'s `offset` is an [offset](crate::widget::domain::offset) and each axis of its `scale` is [positive](crate::widget::domain::positive).
+    /// Panics unless `offset` is an [offset](crate::widget::domain::offset) and each axis of
+    /// `scale` is [positive](crate::widget::domain::positive).
     #[track_caller]
-    pub const fn fit(mut self, fit: ImageFit) -> Self {
-        fit.validate();
-        self.fit = fit;
+    pub const fn tile(mut self, offset: Vec2, scale: Vec2) -> Self {
+        self.placement = ImagePlacement::Tile {
+            offset: vec2::offset(offset),
+            scale: Vec2::new(domain::positive(scale.x), domain::positive(scale.y)),
+        };
         self
     }
 

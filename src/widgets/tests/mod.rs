@@ -513,7 +513,7 @@ fn widget_setters_check_their_kinds() {
 fn coercing_inputs_at_their_worst_paint_no_nan() {
     use crate::primitives::layout::sizing::Sizing;
     use crate::primitives::layout::track::Track;
-    use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
+    use crate::primitives::paint::brush::gradient::Gradient;
     use crate::primitives::paint::brush::gradient::stops::Stop;
     use crate::primitives::paint::color::color_coords::ColorCoords;
     use crate::primitives::paint::color::color_model::ColorModel;
@@ -535,11 +535,11 @@ fn coercing_inputs_at_their_worst_paint_no_nan() {
     let mut h = Harness::mono(UVec2::new(800, 1200));
     let mut ratio = f32::NAN;
     let gone = "gone";
-    let (mut stale, mut empty, mut page, mut no_page) = (&gone, &gone, 9_usize, 0_usize);
+    let (mut stale, mut empty, mut page, mut no_page) = (gone, gone, 9_usize, 0_usize);
     let mut slid = f64::NAN;
     let mut dragged = f64::NAN;
     let mut coords = ColorCoords::new(ColorModel::Okhsv, f32::NAN, f32::INFINITY, f32::NAN);
-    let gradient = LinearGradient::horizontal([
+    let gradient = Gradient::horizontal([
         Stop::new(f32::NAN, RgbaF32::WHITE),
         Stop::new(f32::INFINITY, RgbaF32::BLACK),
     ]);
@@ -553,8 +553,8 @@ fn coercing_inputs_at_their_worst_paint_no_nan() {
                 Splitter::row(&mut ratio)
                     .size((Sizing::fixed(200.0), Sizing::fixed(40.0)))
                     .show(ui, |_, _| {});
-                ComboBox::new(&mut stale, &OPTIONS).show(ui);
-                ComboBox::new(&mut empty, &[]).show(ui);
+                ComboBox::new(&mut stale, OPTIONS).show(ui);
+                ComboBox::new(&mut empty, []).show(ui);
                 TabbedView::new(&mut page, &OPTIONS)
                     .size((Sizing::fixed(200.0), Sizing::fixed(60.0)))
                     .show(ui, |ui, i| {
@@ -603,7 +603,7 @@ fn coercing_inputs_at_their_worst_paint_no_nan() {
     let paint = format!("{:?}", h.encode_paint());
     assert!(!paint.contains("NaN"), "a NaN reached paint");
     assert_eq!(
-        (*stale, *empty, page, no_page),
+        (stale, empty, page, no_page),
         ("gone", "gone", 9, 0),
         "no binding was written back"
     );
@@ -694,16 +694,16 @@ fn a_scoped_widget_takes_its_keys_under_an_enclosing_scope() {
     assert!(open, "Expander");
 
     let options = ["a", "b"];
-    let mut picked = &options[0];
+    let mut picked = options[0];
     let mut listed = false;
     press(id, Key::ArrowDown, |ui| {
         under_root(ui, |ui| {
-            ComboBox::new(&mut picked, &options).id(id).show(ui);
+            ComboBox::new(&mut picked, options).id(id).show(ui);
         });
         listed |= ComboBoxList::is_open(ui, id);
     });
     assert!(
-        listed && *picked == "a",
+        listed && picked == "a",
         "ComboBox: Down opens the list and picks nothing"
     );
 

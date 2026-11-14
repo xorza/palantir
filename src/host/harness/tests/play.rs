@@ -18,7 +18,7 @@ use crate::primitives::input::keyboard::modifiers::Modifiers;
 use crate::primitives::input::pointer::PointerButton;
 use crate::primitives::input::shortcut::{Shortcut, ShortcutMods};
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
+use crate::primitives::paint::brush::gradient::Gradient;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
@@ -101,7 +101,7 @@ fn a_composing_window_evicts_its_idle_rows() {
             let [r, g, _, _] = i.to_le_bytes();
             ui.add_shape(
                 Shape::rect().at(Rect::new(0.0, 0.0, 8.0, 8.0)),
-                LinearGradient::horizontal([SrgbaU8::rgb(r, g, 1).into(), RgbaF32::WHITE]),
+                Gradient::horizontal([SrgbaU8::rgb(r, g, 1).into(), RgbaF32::WHITE]),
             );
         });
     }

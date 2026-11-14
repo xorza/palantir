@@ -7,8 +7,8 @@ use crate::primitives::geometry::quadratic_bezier::QuadraticBezier;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::align::Align;
+use crate::primitives::paint::brush::gradient::Gradient;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
-use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::line_style::LineCap;
 use crate::primitives::paint::paint::Paint;
@@ -50,7 +50,7 @@ fn lower_in<S: DrawWith<P>, P>(
     let effects = EffectRegistry::default();
     let resolve = Resolve {
         effects: &effects,
-        reductions: Reductions::FULL,
+        reductions: Reductions::NONE,
         material_fallback: RgbaF32::TRANSPARENT,
     };
     let paint = S::prepare(paint);
@@ -188,7 +188,7 @@ fn triangle_noop_rejects_scale_relative_zero_area_without_winding_bias() {
 /// does, so the two share one gradient.
 #[test]
 fn a_triangle_records_its_gradient_as_a_rect_does() {
-    let gradient = LinearGradient::new(0.5, [RgbaF32::WHITE, RgbaF32::BLACK]);
+    let gradient = Gradient::linear(0.5, [RgbaF32::WHITE, RgbaF32::BLACK]);
     let triangle = Shape::triangle(Vec2::ZERO, Vec2::X * 4.0, Vec2::Y * 4.0);
     let _ = internals::check(&triangle, gradient.clone());
     let mut store = RecordStore::default();

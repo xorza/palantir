@@ -3,8 +3,10 @@
 
 use std::hash;
 
+use crate::primitives::math::domain;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::packed::half_simd::F16x4;
+use crate::primitives::paint::material::backdrop_reach::BackdropReach;
 use crate::primitives::paint::material::lens_optics::LensOptics;
 
 /// What the cascade plans a backdrop effect's capture from, in logical px, a material's and an
@@ -19,30 +21,44 @@ pub(crate) struct CaptureParams {
 /// past the shape by what its bend and the shape's size give.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum CaptureReach {
-    /// A fixed reach in logical px, as [`EffectPaint::max_sample_offset`](crate::widget::EffectPaint::max_sample_offset)
-    /// sets it.
+    /// A fixed reach in logical px, as an effect's source declares it
+    /// ([`EffectSource::reach`](crate::EffectSource::reach)).
     Px(f32),
     /// A material's lens, `(bezel, thickness, refractive_index, dispersion)` in logical px, as
     /// its lane packs it; no bezel reads nothing past the shape.
     Lens(F16x4),
 }
 
-impl CaptureParams {
-    /// Sharp, reading under its shape alone.
-    pub(crate) const ZERO: Self = Self {
-        sigma: 0.0,
-        reach: CaptureReach::Px(0.0),
-    };
-}
-
 impl CaptureReach {
+    /// What `reach`, an effect source's, plans a capture from: a lens coerced into its domain and
+    /// packed to its lanes.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless a fixed reach is a [length](crate::widget::domain::length): the source's
+    /// `reach` is app code, and a wrong value would draw quietly wrong.
+    pub(crate) fn of(reach: BackdropReach) -> Self {
+        match reach {
+            BackdropReach::Px(px) => Self::Px(domain::length(px)),
+            BackdropReach::Lens(mut lens) => {
+                lens.coerce();
+                Self::Lens(F16x4::from_lanes_saturating([
+                    lens.bezel,
+                    lens.thickness,
+                    lens.refractive_index,
+                    lens.dispersion,
+                ]))
+            }
+        }
+    }
+
     /// How far past the shape, in whole physical px under `scale` physical px per logical px, the
     /// composite reads: a fixed reach rounded out, or a lens's
     /// [`LensOptics::margin`] where `narrowest` gives the shape's narrowest side in physical px,
     /// else [`LensOptics::reach`], at its densest color; zero with no bezel.
     #[expect(
         clippy::cast_sign_loss,
-        reason = "a reach is a length, which `EffectPaint::max_sample_offset` checks, and a scale is positive"
+        reason = "a reach is a length, which `Self::of` checks, and a scale is positive"
     )]
     pub(crate) fn margin(self, scale: f32, narrowest: Option<f32>) -> u32 {
         match self {
@@ -94,9 +110,41 @@ impl NanCheck for CaptureParams {
 mod tests {
     use std::hash::{BuildHasher, BuildHasherDefault, DefaultHasher};
 
+    use crate::internals::panic_probe;
+    use crate::primitives::math::domain;
     use crate::primitives::packed::half_simd::F16x4;
+    use crate::primitives::paint::material::backdrop_reach::BackdropReach;
+    use crate::primitives::paint::material::lens::Lens;
     use crate::primitives::paint::material::lens_optics::LensOptics;
     use crate::shape::paint::capture_params::{CaptureParams, CaptureReach};
+
+    /// A source's reach plans the capture as it gives it: a fixed one as is, a lens packed to its
+    /// four lanes, `(bezel, thickness, refractive index, dispersion)`; a fixed reach that is no
+    /// length is the source's logic error and panics, whichever paint asks.
+    #[test]
+    fn a_sources_reach_plans_the_capture() {
+        assert_eq!(
+            CaptureReach::of(BackdropReach::Px(6.0)),
+            CaptureReach::Px(6.0)
+        );
+        assert_eq!(CaptureReach::of(BackdropReach::NONE), CaptureReach::Px(0.0));
+        let lens = Lens {
+            bezel: 16.0,
+            thickness: 24.0,
+            refractive_index: 1.5,
+            dispersion: 0.25,
+            ..Lens::WINDOW_GLASS
+        };
+        assert_eq!(
+            CaptureReach::of(BackdropReach::Lens(lens)),
+            CaptureReach::Lens(F16x4::from_lanes([16.0, 24.0, 1.5, 0.25])),
+        );
+        for bad in [-1.0, f32::NAN, f32::INFINITY] {
+            panic_probe::assert_panics_with(domain::LENGTH_RULE, || {
+                CaptureReach::of(BackdropReach::Px(bad))
+            });
+        }
+    }
 
     /// A fixed reach rounds out to whole physical px whatever the shape's side: 2.3 logical px at
     /// scale 2 is 4.6, so 5, and 2.5 is exactly 5. A lens with no bezel reads nothing past the

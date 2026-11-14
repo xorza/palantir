@@ -12,7 +12,7 @@ use crate::primitives::math::domain::is_invisible;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
-use crate::primitives::paint::image::{FitRect, ImageDownsample, ImageFilter, ImageFit};
+use crate::primitives::paint::image::{FitRect, ImageDownsample, ImageFilter, ImagePlacement};
 use crate::primitives::paint::lut_row::LutRow;
 use crate::renderer::backdrop_captures::BackdropTicket;
 use crate::renderer::frontend::encoder::cull_region::CullRegion;
@@ -387,7 +387,7 @@ impl PlaneCtx<'_, '_> {
                     ClosedPaint::Image {
                         tint,
                         source,
-                        fit,
+                        placement,
                         min_filter,
                         mag_filter,
                         downsample,
@@ -413,9 +413,9 @@ impl PlaneCtx<'_, '_> {
                             rect,
                             uv_min,
                             uv_size,
-                        } = fit.resolve(placed.bounds(), source.intrinsic());
+                        } = placement.resolve(placed.bounds(), source.intrinsic());
                         let mut flags = ImageFlags::NONE;
-                        if matches!(*fit, ImageFit::Tile { .. }) {
+                        if matches!(*placement, ImagePlacement::Tile { .. }) {
                             flags = flags.union(ImageFlags::TILED);
                         }
                         if *min_filter == ImageFilter::Nearest {

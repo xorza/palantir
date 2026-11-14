@@ -8,8 +8,8 @@ use palantir::widget::{
     CubicBezier, IconPaint, ImagePaint, Mesh, PaintAnimation, PaintedBy, RectShape, Shape,
 };
 use palantir::{
-    Block, Chrome, Configure, Corners, Fit, Image, ImageFit, Paint, Panel, Rect, RgbaF32, Shadow,
-    Sizing, Stroke, Text, Ui,
+    Block, Chrome, Configure, Corners, Fit, Image, Paint, Panel, Rect, RgbaF32, Shadow, Sizing,
+    Stroke, Text, Ui,
 };
 
 use crate::fixtures::{self, icon};
@@ -58,7 +58,7 @@ fn every_draw_kind_at_a_clip_edge_matches_golden() {
             let icons = ui.load_icons(Rc::clone(&atlas));
             let solid =
                 IconPaint::new(icons.by_name("solid").expect("fixture icon")).fit(Fit::Fill);
-            let picture = ImagePaint::new(handle.clone()).fit(ImageFit::Fill);
+            let picture = ImagePaint::new(handle.clone()).fit(Fit::Fill);
             fixtures::canvas(ui, |ui| {
                 Panel::canvas()
                     .id_salt("clip")

@@ -1,13 +1,21 @@
-//! Gradients: one [`Gradient`] type parameterized by the geometry payload that
-//! distinguishes linear, radial and conic; everything else is shared.
+//! Gradients: one [`Gradient`] over the [`GradientGeometry`] that tells linear, radial and conic
+//! apart; everything else is shared.
 
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::packed::fill_axis::FillAxis;
+use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
+use crate::primitives::paint::brush::gradient::conic_geometry::ConicGeometry;
+use crate::primitives::paint::brush::gradient::gradient_geometry::GradientGeometry;
+use crate::primitives::paint::brush::gradient::linear_geometry::LinearGeometry;
+use crate::primitives::paint::brush::gradient::radial_geometry::RadialGeometry;
+use glam::Vec2;
+use std::f32::consts::FRAC_PI_2;
 use std::hash;
 
 pub(crate) mod color_ramp;
 pub(crate) mod conic_geometry;
+pub(crate) mod gradient_geometry;
 pub(crate) mod linear_geometry;
 pub(crate) mod radial_geometry;
 pub(crate) mod stops;
@@ -44,69 +52,124 @@ pub enum Interpolation {
     Linear,
 }
 
-/// The per-kind half of a gradient: the geometry the shader projects a
-/// fragment onto. One implementor per kind ([`LinearGeometry`],
-/// [`RadialGeometry`], [`ConicGeometry`]).
-///
-/// Sealed: the renderer draws exactly these kinds. The items live on the
-/// crate-private `sealed::Geometry`.
-///
-/// [`LinearGeometry`]: crate::LinearGeometry
-/// [`RadialGeometry`]: crate::RadialGeometry
-/// [`ConicGeometry`]: crate::ConicGeometry
-pub trait GradientGeometry: sealed::Geometry {}
-
-impl<T: sealed::Geometry> GradientGeometry for T {}
-
-pub(crate) mod sealed {
-    use std::hash;
-
-    /// The renderer's view of one gradient kind.
-    #[expect(
-        unnameable_types,
-        reason = "sealed: code outside the crate may use it, never name or implement it"
-    )]
-    pub trait Geometry {
-        /// The four axis lanes the shader reads, before `FillAxis` packs them to f16.
-        fn axis_lanes(&self) -> [f32; 4];
-
-        /// Fold the geometry into a cache key; f32 fields use `float_hash::canon_bits`
-        /// so `-0.0`/`+0.0` and NaN patterns don't fragment dedup.
-        fn hash_geometry<H: hash::Hasher>(&self, state: &mut H);
-
-        /// Whether the geometry holds a NaN.
-        fn has_nan(&self) -> bool;
-    }
-}
-
 /// A gradient of any kind: `geometry` maps each fill point to a value,
 /// `spread` folds values outside `0..=1` back in, and `ramp` maps the value to
-/// a color.
+/// a color. One type over an enum of the three geometries, as peniko's `Gradient` holds its
+/// `GradientKind` ([peniko](https://docs.rs/peniko/latest/peniko/struct.Gradient.html)).
+/// Refused: a type per kind, generic over a sealed geometry trait, which exports a name per kind
+/// and gives `Brush` a variant per kind.
 ///
 /// **Not `Copy`**: the inline [`GradientStops`](crate::GradientStops) made implicit copies expensive
 /// through the recording chain (see `Brush`). `.clone()` is one memcpy.
-// `repr(C)`, here and on `ColorRamp`, pins the two enum bytes last: `Brush`
-// stores its tag in values `interpolation` and `spread` never take, which only
-// works if that byte sits past the end of every smaller variant.
-#[repr(C)]
 #[derive(Clone, Debug, PartialEq, ::serde::Serialize, ::serde::Deserialize)]
-#[expect(
-    clippy::derive_partial_eq_without_eq,
-    reason = "no geometry is `Eq`, as each holds `f32`, so a derived `impl<G: Eq> Eq` would never apply"
-)]
+#[serde(deny_unknown_fields)]
 #[must_use]
-pub struct Gradient<G> {
-    #[serde(flatten)]
+pub struct Gradient {
     /// Where the gradient runs.
-    pub geometry: G,
+    pub geometry: GradientGeometry,
     /// The colors along that axis.
-    #[serde(flatten)]
     pub ramp: ColorRamp,
     /// What happens outside `0..=1`.
     pub spread: Spread,
 }
 
-impl<G> Gradient<G> {
+impl Gradient {
+    /// A gradient over `geometry` through `ramp`: `ramp` an array of colors spread evenly, an
+    /// array of [`Stop`](crate::Stop)s placed where they say, or a [`ColorRamp`]. Spread
+    /// [`Spread::Pad`]; the kinds' constructors land here.
+    ///
+    /// # Panics
+    ///
+    /// As [`ColorRamp::new`](crate::ColorRamp::new).
+    #[track_caller]
+    pub fn new(geometry: GradientGeometry, ramp: impl Into<ColorRamp>) -> Self {
+        Self {
+            geometry,
+            ramp: ramp.into(),
+            spread: Spread::Pad,
+        }
+    }
+
+    /// A linear gradient along `angle` radians ([`LinearGeometry`]).
+    ///
+    /// # Panics
+    ///
+    /// As [`Self::new`].
+    #[track_caller]
+    pub fn linear(angle: f32, ramp: impl Into<ColorRamp>) -> Self {
+        Self::new(GradientGeometry::Linear(LinearGeometry { angle }), ramp)
+    }
+
+    /// Left to right, angle 0, as Compose's `Brush.horizontalGradient`.
+    ///
+    /// # Panics
+    ///
+    /// As [`Self::new`].
+    #[track_caller]
+    pub fn horizontal(ramp: impl Into<ColorRamp>) -> Self {
+        Self::linear(0.0, ramp)
+    }
+
+    /// Top to bottom, angle π/2, as Compose's `Brush.verticalGradient`.
+    ///
+    /// # Panics
+    ///
+    /// As [`Self::new`].
+    #[track_caller]
+    pub fn vertical(ramp: impl Into<ColorRamp>) -> Self {
+        Self::linear(FRAC_PI_2, ramp)
+    }
+
+    /// A radial gradient out from `center` to `radius` ([`RadialGeometry`]).
+    ///
+    /// # Panics
+    ///
+    /// As [`Self::new`].
+    #[track_caller]
+    pub fn radial(center: Vec2, radius: Vec2, ramp: impl Into<ColorRamp>) -> Self {
+        Self::new(
+            GradientGeometry::Radial(RadialGeometry { center, radius }),
+            ramp,
+        )
+    }
+
+    /// The inscribed ellipse: from the center out to each side's midpoint.
+    ///
+    /// # Panics
+    ///
+    /// As [`Self::new`].
+    #[track_caller]
+    pub fn centered_radial(ramp: impl Into<ColorRamp>) -> Self {
+        Self::radial(Vec2::splat(0.5), Vec2::splat(0.5), ramp)
+    }
+
+    /// A sweep around `center` from `start_angle` radians, one turn through the ramp
+    /// ([`ConicGeometry`]).
+    ///
+    /// # Panics
+    ///
+    /// As [`Self::new`].
+    #[track_caller]
+    pub fn conic(center: Vec2, start_angle: f32, ramp: impl Into<ColorRamp>) -> Self {
+        Self::new(
+            GradientGeometry::Conic(ConicGeometry {
+                center,
+                start_angle,
+            }),
+            ramp,
+        )
+    }
+
+    /// About the center, from angle 0, pointing right.
+    ///
+    /// # Panics
+    ///
+    /// As [`Self::new`].
+    #[track_caller]
+    pub fn centered_conic(ramp: impl Into<ColorRamp>) -> Self {
+        Self::conic(Vec2::splat(0.5), 0.0, ramp)
+    }
+
     /// Override how the gradient fills outside 0..1.
     pub const fn with_spread(mut self, spread: Spread) -> Self {
         self.spread = spread;
@@ -124,29 +187,27 @@ impl<G> Gradient<G> {
     pub const fn is_noop(&self) -> bool {
         self.ramp.is_noop()
     }
-}
-
-impl<G: GradientGeometry> Gradient<G> {
-    /// The one general constructor the per-kind `new` shorthands land in.
-    const fn from_ramp(geometry: G, ramp: ColorRamp) -> Self {
-        Self {
-            geometry,
-            ramp,
-            spread: Spread::Pad,
-        }
-    }
 
     pub(crate) fn axis(&self) -> FillAxis {
         FillAxis::from_lanes(self.geometry.axis_lanes())
+    }
+
+    /// The fill kind the shader branches on, with the spread packed in.
+    pub(crate) const fn fill_kind(&self) -> FillKind {
+        match self.geometry {
+            GradientGeometry::Linear(_) => FillKind::linear(self.spread),
+            GradientGeometry::Radial(_) => FillKind::radial(self.spread),
+            GradientGeometry::Conic(_) => FillKind::conic(self.spread),
+        }
     }
 }
 
 /// Hand-written: the geometry needs canonical f32 bit encoding and the stops
 /// hash through their packed form. For command-buffer dedup; the atlas keys on
 /// the kind-agnostic [`ColorRamp`] alone.
-impl<G: GradientGeometry> hash::Hash for Gradient<G> {
+impl hash::Hash for Gradient {
     fn hash<H: hash::Hasher>(&self, state: &mut H) {
-        self.geometry.hash_geometry(state);
+        self.geometry.hash_visual(state);
         state.write_u64(gradient_tag(self.spread, self.ramp.interpolation));
         hash::Hash::hash(&self.ramp.stops, state);
     }
@@ -154,7 +215,7 @@ impl<G: GradientGeometry> hash::Hash for Gradient<G> {
 
 /// Stop offsets and colors are integer-encoded, so the geometry is the only
 /// place a NaN can hide.
-impl<G: GradientGeometry> NanCheck for Gradient<G> {
+impl NanCheck for Gradient {
     #[inline]
     fn has_nan(&self) -> bool {
         self.geometry.has_nan()

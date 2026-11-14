@@ -14,10 +14,10 @@ use palantir::glam::Vec2;
 use palantir::widget::Shape;
 use palantir::{
     Align, App, Block, Border, Button, Checkbox, Chrome, ClipMode, ColorScheme, ComboBox,
-    Configure, Corners, DockOperation, DockState, DockView, FontFamily, GpuView, Justify, Layer,
-    Lens, LinearGradient, Material, Metrics, Palette, Panel, Preference, RgbaF32, Scroll,
-    ScrollbarTheme, Shadow, Sizing, Slider, Switch, Text, TextEdit, TextSteps, Theme, Ui,
-    UiPreferences, WidgetId, WindowToken, ZoomConfig, fmt,
+    Configure, Corners, DockOperation, DockState, DockView, FontFamily, GpuView, Gradient, Justify,
+    Layer, Lens, Material, Metrics, Palette, Panel, Preference, RgbaF32, Scroll, ScrollbarTheme,
+    Shadow, Sizing, Slider, Switch, Text, TextEdit, TextSteps, Theme, Ui, UiPreferences, WidgetId,
+    WindowToken, ZoomConfig, fmt,
 };
 
 use crate::cube::{Cube, CubeHandle};
@@ -129,7 +129,7 @@ pub(crate) struct Deck {
     flash: Option<Duration>,
     switch: bool,
     slider: f64,
-    combo: &'static &'static str,
+    combo: &'static str,
     name: String,
     check: bool,
     dock: DockState<Tab>,
@@ -148,7 +148,7 @@ impl Deck {
             flash: None,
             switch: false,
             slider: 0.25,
-            combo: &BLENDS[0],
+            combo: BLENDS[0],
             name: String::new(),
             check: true,
             dock: dock::state(),
@@ -339,7 +339,7 @@ impl Deck {
                         .id(id(3, "slider"))
                         .size((Sizing::FILL, Sizing::HUG))
                         .show(ui);
-                    ComboBox::new(combo, &BLENDS)
+                    ComboBox::new(combo, BLENDS)
                         .id(id(3, "combo"))
                         .size((Sizing::fixed(220.0), Sizing::HUG))
                         .show(ui);
@@ -460,7 +460,7 @@ impl Deck {
                             .chrome(Chrome {
                                 corners: Corners::all(28.0),
                                 paint: Paint {
-                                    fill: LinearGradient::new(
+                                    fill: Gradient::linear(
                                         0.6,
                                         [RgbaF32::hex(0x6d8cff), RgbaF32::hex(0xec4899)],
                                     )

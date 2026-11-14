@@ -337,7 +337,7 @@ fn the_selection_cap_is_a_band_across_the_chip_top() {
 
     let t = h.ui().theme().tabs.clone();
     assert_eq!(selected.size.w, 160.0, "premise: the floor holds the chip");
-    let fill = |id: WidgetId| {
+    let fill = |h: &Harness, id: WidgetId| {
         let chrome = h
             .ui()
             .tree(Layer::Main)
@@ -349,14 +349,26 @@ fn the_selection_cap_is_a_band_across_the_chip_top() {
         fill
     };
     assert_eq!(
-        fill(chip),
+        fill(&h, chip),
         Palette::DARK.window_bg.to_f16(),
         "the chip's whole box paints its fill, so no cap color shows past its label",
     );
     let band = h.rect(chip.with("cap")).expect("the cap arranged");
     assert_eq!(band.min, selected.min);
     assert_eq!((band.size.w, band.size.h), (160.0, t.cap_thickness));
-    assert_eq!(fill(chip.with("cap")), t.cap_focused.to_f16());
+    assert_eq!(fill(&h, chip.with("cap")), t.cap_focused.to_f16());
+
+    // A strip whose view is not focused dims its cap to the unfocused color.
+    h.frame(|ui| {
+        let items = items(ui);
+        TabStrip::new(&items)
+            .id(strip_id())
+            .selected(0)
+            .focused(false)
+            .show(ui, |ui, chip| chip.show_label(ui));
+    });
+    assert_ne!(t.cap_focused, t.cap_unfocused, "premise");
+    assert_eq!(fill(&h, chip.with("cap")), t.cap_unfocused.to_f16());
 }
 
 /// A pinned chip is as tall as a closable one when the close box is taller than the label, so

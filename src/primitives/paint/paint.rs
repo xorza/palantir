@@ -4,7 +4,7 @@ use crate::primitives::math::domain::is_invisible;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::border::Border;
 use crate::primitives::paint::brush::Brush;
-use crate::primitives::paint::brush::gradient::{Gradient, GradientGeometry};
+use crate::primitives::paint::brush::gradient::Gradient;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
 use crate::primitives::paint::material::material_paint::MaterialPaint;
@@ -157,11 +157,8 @@ impl From<RgbaF32> for Paint {
 }
 
 /// A plain fill of `gradient`.
-impl<G: GradientGeometry> From<Gradient<G>> for Paint
-where
-    Brush: From<Gradient<G>>,
-{
-    fn from(gradient: Gradient<G>) -> Self {
+impl From<Gradient> for Paint {
+    fn from(gradient: Gradient) -> Self {
         Self::from(Brush::from(gradient))
     }
 }

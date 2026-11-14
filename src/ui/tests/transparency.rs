@@ -10,7 +10,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::brush::Brush;
-use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
+use crate::primitives::paint::brush::gradient::Gradient;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
 use crate::primitives::paint::paint::Paint;
@@ -63,7 +63,7 @@ fn reduced_transparency_records_every_material_by_its_fallback() {
     assert!(!filtered(&h), "the system's ask");
 
     h.ui_mut().set_preferences(UiPreferences {
-        transparency: Preference::Fixed(Reduction::Full),
+        transparency: Preference::Fixed(Reduction::Unreduced),
         ..UiPreferences::default()
     });
     h.frame(record);
@@ -133,7 +133,7 @@ fn a_material_draws_as_a_plain_box_of_its_fallback_while_transparency_is_reduced
         plain(half_black),
         "a translucent one"
     );
-    let ramp: Brush = LinearGradient::horizontal([
+    let ramp: Brush = Gradient::horizontal([
         RgbaF32::new(1.0, 0.0, 0.0, 1.0),
         RgbaF32::new(0.0, 0.0, 1.0, 1.0),
     ])

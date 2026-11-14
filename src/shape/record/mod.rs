@@ -10,7 +10,7 @@ use crate::primitives::layout::align::Align;
 use crate::primitives::math::float_hash::FloatHash;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
-use crate::primitives::paint::image::ImageFit;
+use crate::primitives::paint::image::ImagePlacement;
 use crate::primitives::text::recorded_text::RecordedText;
 use crate::shape::geometry::closed_geometry::ClosedGeometry;
 use crate::shape::geometry::point_placement::PointPlacement;
@@ -226,7 +226,7 @@ fn hash_closed_paint(paint: &ClosedPaint, h: &mut Hasher) {
         ClosedPaint::Image {
             tint,
             source,
-            fit,
+            placement,
             min_filter,
             mag_filter,
             downsample,
@@ -255,10 +255,10 @@ fn hash_closed_paint(paint: &ClosedPaint, h: &mut Hasher) {
                     h.write_u64(*epoch);
                 }
             }
-            // The fit (including `Tile`'s UV transform, which changes every pan/zoom placement),
-            // both sampling filters and the minification tap mode: two 1-bit filters in the low
-            // bits, the 3-variant `downsample` above.
-            hash_fit(fit, h);
+            // The placement (including `Tile`'s UV transform, which changes every pan/zoom
+            // placement), both sampling filters and the minification tap mode: two 1-bit filters
+            // in the low bits, the 3-variant `downsample` above.
+            hash_placement(placement, h);
             h.write_u8(
                 (*min_filter as u8) | ((*mag_filter as u8) << 1) | ((*downsample as u8) << 2),
             );
@@ -299,13 +299,19 @@ fn hash_brush(fill: LoweredBrush, h: &mut Hasher) {
     h.write_u64(payload);
 }
 
-/// Fold an [`ImageFit`] into the shape hash: the discriminant plus, for `Tile`, the
-/// UV transform bits.
-fn hash_fit(fit: &ImageFit, h: &mut Hasher) {
-    mem::discriminant(fit).hash(h);
-    if let ImageFit::Tile { offset, scale } = fit {
-        offset.hash_visual(h);
-        scale.hash_visual(h);
+/// Fold an [`ImagePlacement`] into the shape hash: a tag, then the fit or `Tile`'s UV transform
+/// bits.
+fn hash_placement(placement: &ImagePlacement, h: &mut Hasher) {
+    match placement {
+        ImagePlacement::Fit(fit) => {
+            h.write_u8(0);
+            h.write_u8(*fit as u8);
+        }
+        ImagePlacement::Tile { offset, scale } => {
+            h.write_u8(1);
+            offset.hash_visual(h);
+            scale.hash_visual(h);
+        }
     }
 }
 

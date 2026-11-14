@@ -1,10 +1,6 @@
 //! The radial gradient's axis: color runs outward from a center, with a radius per axis for ellipses.
 
 use crate::primitives::math::float_hash::FloatHash;
-use crate::primitives::math::nan::NanCheck;
-use crate::primitives::paint::brush::gradient::Gradient;
-use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
-use crate::primitives::paint::brush::gradient::sealed::Geometry;
 use glam::Vec2;
 use std::hash;
 
@@ -23,44 +19,14 @@ pub struct RadialGeometry {
     pub radius: Vec2,
 }
 
-/// Radial gradient — see [`RadialGeometry`] for the projection.
-pub type RadialGradient = Gradient<RadialGeometry>;
-
-impl Geometry for RadialGeometry {
+impl RadialGeometry {
     /// The shader reads these as `(cx, cy, rx, ry)` on the radial branch.
-    fn axis_lanes(&self) -> [f32; 4] {
+    pub(crate) const fn axis_lanes(&self) -> [f32; 4] {
         [self.center.x, self.center.y, self.radius.x, self.radius.y]
     }
 
-    fn hash_geometry<H: hash::Hasher>(&self, state: &mut H) {
+    pub(super) fn hash_visual<H: hash::Hasher>(&self, state: &mut H) {
         self.center.hash_visual(state);
         self.radius.hash_visual(state);
-    }
-
-    fn has_nan(&self) -> bool {
-        self.center.has_nan() || self.radius.has_nan()
-    }
-}
-
-impl RadialGradient {
-    /// A gradient out from `center` to `radius` through `ramp`: `ramp` an array of colors
-    /// spread evenly, an array of [`Stop`](crate::Stop)s placed where they say, or a [`ColorRamp`].
-    ///
-    /// # Panics
-    ///
-    /// As [`ColorRamp::new`](crate::ColorRamp::new).
-    #[track_caller]
-    pub fn new(center: Vec2, radius: Vec2, ramp: impl Into<ColorRamp>) -> Self {
-        Self::from_ramp(RadialGeometry { center, radius }, ramp.into())
-    }
-
-    /// The inscribed ellipse: from the center out to each side's midpoint.
-    ///
-    /// # Panics
-    ///
-    /// As [`Self::new`].
-    #[track_caller]
-    pub fn centered(ramp: impl Into<ColorRamp>) -> Self {
-        Self::new(Vec2::splat(0.5), Vec2::splat(0.5), ramp)
     }
 }

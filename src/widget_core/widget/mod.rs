@@ -4,7 +4,7 @@
 
 use crate::animation::animation_request::AnimationRequest;
 use crate::animation::animation_slot::AnimationSlot;
-use crate::effect::press_input::PressInput;
+use crate::effect::press_params::PressParams;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
@@ -630,12 +630,12 @@ impl Authored<'_> {
     }
 }
 
-/// The span [`PressInput::seed`] wraps in, seconds: the sparkle ripple reads it as a noise phase
+/// The span [`PressParams::seed`] wraps in, seconds: the sparkle ripple reads it as a noise phase
 /// in ms, which an f32 then holds to 1/128 ms.
 const SEED_PERIOD_S: f64 = 64.0;
 
 /// Draw each live press of the widget `id` opened, in the effect its [`PressList`] holds, over
-/// `chrome` and under the content, inside the chrome's corners, each timed as [`PressInput`] says.
+/// `chrome` and under the content, inside the chrome's corners, each timed as [`PressParams`] says.
 fn draw_presses(ui: &mut Ui, id: WidgetId, chrome: Option<&Chrome>) {
     let corners = chrome.map_or(Corners::ZERO, |chrome| chrome.corners);
     let presses = ui
@@ -649,13 +649,13 @@ fn draw_presses(ui: &mut Ui, id: WidgetId, chrome: Option<&Chrome>) {
         let period = live
             .ends_at(&press)
             .map_or(press.enter, |end| end - live.pressed_at);
-        let input = PressInput {
+        let input = PressParams {
             color: press.color,
             highlight: press.highlight,
             point: live.point,
-            released,
-            enter: press.enter.as_secs_f32(),
-            exit: press.exit.as_secs_f32(),
+            released_seconds: released,
+            enter_seconds: press.enter.as_secs_f32(),
+            exit_seconds: press.exit.as_secs_f32(),
             seed: (live.pressed_at.as_secs_f64() % SEED_PERIOD_S) as f32,
             pad0: 0.0,
             pad1: 0.0,

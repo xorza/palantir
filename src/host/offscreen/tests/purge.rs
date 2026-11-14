@@ -9,7 +9,7 @@ use crate::gpu::test_gpu::{TestGpu, headless_test_gpu};
 use crate::host::offscreen::OffscreenHost;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
+use crate::primitives::paint::brush::gradient::Gradient;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
@@ -63,7 +63,7 @@ fn gradients(ui: &mut Ui, count: u32) {
         let [r, g, _, _] = (40 * i).to_le_bytes();
         ui.add_shape(
             Shape::rect().at(Rect::new(4.0 + 12.0 * i as f32, 4.0, 10.0, 10.0)),
-            LinearGradient::horizontal([SrgbaU8::rgb(r, g, 9).into(), RgbaF32::WHITE]),
+            Gradient::horizontal([SrgbaU8::rgb(r, g, 9).into(), RgbaF32::WHITE]),
         );
     }
 }

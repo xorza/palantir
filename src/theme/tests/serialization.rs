@@ -6,7 +6,7 @@ use crate::primitives::paint::border::Border;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
-use crate::primitives::paint::material::frosted_input::FrostedInput;
+use crate::primitives::paint::material::frosted_params::FrostedParams;
 use crate::primitives::paint::material::lens::Lens;
 use crate::primitives::paint::paint::Paint;
 use crate::primitives::paint::shadow::Shadow;
@@ -183,7 +183,7 @@ fn materials_load_by_their_kinds() {
             Some(
                 Material::new(
                     EffectName::FROSTED,
-                    FrostedInput {
+                    FrostedParams {
                         saturation: 0.0,
                         noise: 0.04,
                     },

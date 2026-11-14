@@ -10,12 +10,11 @@ use crate::primitives::effect::effect_name::{CheckedEffectName, EffectName};
 use crate::primitives::effect::effect_params::EffectParams;
 use crate::primitives::math::domain;
 use crate::primitives::paint::brush::Brush;
-use crate::primitives::paint::material::material_fallback::MaterialFallback;
+use crate::primitives::paint::material::backdrop_fallback::BackdropFallback;
 use crate::shape::PaintedBy;
 use crate::shape::circle::CircleShape;
 use crate::shape::draw::{ClosedPaintRef, Draw};
 use crate::shape::geometry::closed_geometry::ClosedGeometry;
-use crate::shape::paint::capture_params::{CaptureParams, CaptureReach};
 use crate::shape::rect::RectShape;
 use crate::shape::sealed;
 use crate::shape::triangle::TriangleShape;
@@ -30,8 +29,9 @@ use crate::shape::triangle::TriangleShape;
 /// theme file saves where no parameters fit.
 ///
 /// A backdrop effect is a backdrop capture: what is painted under it is copied out of the frame at
-/// its place in paint order, blurred by its [σ](Self::blur), and kept across frames until
-/// something under its reads ([`Self::max_sample_offset`]) changes, as a material's is.
+/// its place in paint order, blurred by its [σ](Self::backdrop_blur), and kept across frames until
+/// something under its reads changes, as a material's is; how far past its shape it reads is its
+/// source's [reach](crate::EffectSource::reach) over these parameters.
 ///
 /// Its time comes from a [`PaintAnimation`](crate::widget::PaintAnimation) through
 /// [`AddedShape::animate`](crate::widget::AddedShape::animate), [`PaintAnimation::clock`] when only
@@ -46,8 +46,9 @@ use crate::shape::triangle::TriangleShape;
 pub struct EffectPaint<U: EffectParams, K: EffectKind = ColorEffect> {
     name: EffectName<U, K>,
     params: U,
-    /// What a backdrop effect reads under it; zero for a color effect, which reads none.
-    capture: CaptureParams,
+    /// The σ a backdrop effect blurs what it reads by, logical px; 0 for a color effect, which
+    /// reads none.
+    backdrop_blur: f32,
     /// What a backdrop effect paints in its place while transparency is reduced; `()` for a color
     /// effect, which reads nothing under it.
     fallback: K::Fallback,
@@ -64,7 +65,7 @@ impl<U: EffectParams, K: EffectKind> EffectPaint<U, K> {
         Self {
             name,
             params,
-            capture: CaptureParams::ZERO,
+            backdrop_blur: 0.0,
             fallback: K::FALLBACK,
             images: [const { None }; MAX_IMAGE_SLOTS as usize],
             outside: None,
@@ -111,29 +112,15 @@ impl<U: EffectParams> EffectPaint<U, ColorEffect> {
 }
 
 impl<U: EffectParams> EffectPaint<U, BackdropEffect> {
-    /// Blur what the effect reads by a Gaussian of σ `sigma`; 0, the default, reads it sharp.
+    /// Blur what the effect reads by a Gaussian of σ `sigma`; 0, the default, reads it sharp. As
+    /// [`Material::with_backdrop_blur`](crate::Material::with_backdrop_blur) names it.
     ///
     /// # Panics
     ///
     /// Panics unless `sigma` is a [length](crate::widget::domain::length).
     #[track_caller]
-    pub const fn blur(mut self, sigma: f32) -> Self {
-        self.capture.sigma = domain::length(sigma);
-        self
-    }
-
-    /// Read up to `px` past each pixel of the effect's rect, as a lens's bent ray does, SwiftUI's
-    /// `maxSampleOffset`, rounded out to whole physical px; a read past it reads its edge. 0 by default: the effect reads under its own rect alone. The capture grows by it, so
-    /// damage under it repaints.
-    /// Refused: one bound per effect, which its largest shape sets for all; the whole surface, as
-    /// Flutter reads without a `ClipRect`, which captures and blurs what no shape reads.
-    ///
-    /// # Panics
-    ///
-    /// Panics unless `px` is a [length](crate::widget::domain::length).
-    #[track_caller]
-    pub const fn max_sample_offset(mut self, px: f32) -> Self {
-        self.capture.reach = CaptureReach::Px(domain::length(px));
+    pub const fn backdrop_blur(mut self, sigma: f32) -> Self {
+        self.backdrop_blur = domain::length(sigma);
         self
     }
 
@@ -141,7 +128,7 @@ impl<U: EffectParams> EffectPaint<U, BackdropEffect> {
     /// place of the theme's, as [`Material::with_fallback`](crate::Material::with_fallback) does;
     /// [`Brush::TRANSPARENT`] paints nothing then.
     pub fn fallback(mut self, fallback: impl Into<Brush>) -> Self {
-        self.fallback = MaterialFallback::Brush(fallback.into());
+        self.fallback = BackdropFallback::Brush(fallback.into());
         self
     }
 }
@@ -150,7 +137,7 @@ impl<U: EffectParams, K: EffectKind> fmt::Debug for EffectPaint<U, K> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("EffectPaint")
             .field("name", &self.name)
-            .field("capture", &self.capture)
+            .field("backdrop_blur", &self.backdrop_blur)
             .field("fallback", &self.fallback)
             .field("images", &self.images)
             .field("outside", &self.outside)
@@ -231,7 +218,7 @@ impl<U: EffectParams, K: EffectKind> EffectPaint<U, K> {
         let Self {
             name,
             params,
-            capture,
+            backdrop_blur,
             fallback,
             images,
             outside,
@@ -239,7 +226,7 @@ impl<U: EffectParams, K: EffectKind> EffectPaint<U, K> {
         ErasedEffectPaint {
             name: name.checked(),
             params: bytemuck::bytes_of(params),
-            capture: *capture,
+            backdrop_blur: *backdrop_blur,
             fallback: K::fallback(fallback),
             images,
             outside: *outside,
@@ -253,9 +240,10 @@ impl<U: EffectParams, K: EffectKind> EffectPaint<U, K> {
 pub(crate) struct ErasedEffectPaint<'a> {
     pub(crate) name: CheckedEffectName,
     pub(crate) params: &'a [u8],
-    pub(crate) capture: CaptureParams,
+    /// A backdrop effect's σ, logical px; 0 for a color effect.
+    pub(crate) backdrop_blur: f32,
     /// A backdrop effect's fallback; `None` for a color effect, which reads nothing under it.
-    pub(crate) fallback: Option<&'a MaterialFallback>,
+    pub(crate) fallback: Option<&'a BackdropFallback>,
     pub(crate) images: &'a [Option<ImageHandle>; MAX_IMAGE_SLOTS as usize],
     /// A halo's reach, logical px; `None` paints over the shape.
     pub(crate) outside: Option<f32>,

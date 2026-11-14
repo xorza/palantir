@@ -17,7 +17,6 @@ use crate::theme::look::theme_slot::ThemeSlot;
 use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
 use crate::theme::text_style_overrides::TextStyleOverrides;
-use crate::theme::toggle_kind::ToggleKind;
 use glam::Vec2;
 
 /// Visuals for [`crate::Checkbox`], the pips of [`crate::RadioGroup`] and [`crate::Switch`]: a 4-state look pack per checked branch plus geometry knobs.
@@ -76,33 +75,41 @@ impl ToggleTheme {
         self.check_points.map(|p| p * side)
     }
 
-    /// The recipe for `kind` over `p` and `m`; [`ToggleKind`] names each one's geometry.
-    pub fn from_parts(kind: ToggleKind, p: &Palette, m: &Metrics) -> Self {
-        match kind {
-            ToggleKind::Checkbox => ToggleGeometry {
-                corner: m.radius.control,
-                box_size: 16.0,
-                indicator_inset: 4.0,
-            }
-            .theme(p, m),
-            ToggleKind::Radio => ToggleGeometry {
-                corner: 8.0,
-                box_size: 16.0,
-                indicator_inset: 4.0,
-            }
-            .theme(p, m),
-            ToggleKind::Switch => {
-                let mut t = ToggleGeometry {
-                    corner: 10.0,
-                    box_size: 20.0,
-                    indicator_inset: 3.0,
-                }
-                .theme(p, m);
-                t.track_aspect = 1.75;
-                t.defaults.transition = AnimationSpec::SPRING;
-                t
-            }
+    /// [`Checkbox`](crate::Checkbox)'s recipe over `p` and `m`: a 16 px box, control-rounded. A
+    /// named constructor per toggle, as each wears its own geometry, as
+    /// [`ButtonTheme::accent`](crate::ButtonTheme::accent) names its kind.
+    pub fn checkbox(p: &Palette, m: &Metrics) -> Self {
+        ToggleGeometry {
+            corner: m.radius.control,
+            box_size: 16.0,
+            indicator_inset: 4.0,
         }
+        .theme(p, m)
+    }
+
+    /// [`RadioGroup`](crate::RadioGroup)'s pips over `p` and `m`: 16 px with pill radius.
+    pub fn radio(p: &Palette, m: &Metrics) -> Self {
+        ToggleGeometry {
+            corner: 8.0,
+            box_size: 16.0,
+            indicator_inset: 4.0,
+        }
+        .theme(p, m)
+    }
+
+    /// [`Switch`](crate::Switch)'s recipe over `p` and `m`: a 20 px-tall pill track, its height
+    /// [`Self::box_size`], whose knob wears `on_accent` when on and `text` when off, with a
+    /// sprung slide and cross-fade.
+    pub fn switch(p: &Palette, m: &Metrics) -> Self {
+        let mut t = ToggleGeometry {
+            corner: 10.0,
+            box_size: 20.0,
+            indicator_inset: 3.0,
+        }
+        .theme(p, m);
+        t.track_aspect = 1.75;
+        t.defaults.transition = AnimationSpec::SPRING;
+        t
     }
 }
 

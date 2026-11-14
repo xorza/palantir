@@ -33,7 +33,7 @@ const INTEREST: Interest = Interest::All;
 /// on macOS.
 pub(super) fn read() -> SystemPreferences {
     Preferences::once_blocking(INTEREST, FIRST_READ_TIMEOUT).map_or(UNREAD, |preferences| {
-        from_mundy(preferences, Reduction::Full)
+        from_mundy(preferences, Reduction::Unreduced)
     })
 }
 
@@ -201,7 +201,7 @@ mod tests {
                 SystemPreferences {
                     color_scheme: want_scheme,
                     double_click: want_double_click,
-                    reductions: Reductions::FULL,
+                    reductions: Reductions::NONE,
                 },
                 "{scheme:?}, {double_click:?}"
             );
@@ -219,7 +219,7 @@ mod tests {
         let saving = SystemPreferences {
             reductions: Reductions {
                 power: Reduction::Reduced,
-                ..Reductions::FULL
+                ..Reductions::NONE
             },
             ..SystemPreferences::NONE
         };
@@ -230,17 +230,17 @@ mod tests {
                 color_scheme: Some(ColorScheme::Light),
                 double_click: platform::DOUBLE_CLICK_FALLBACK,
                 reductions: Reductions {
-                    transparency: Reduction::Full,
+                    transparency: Reduction::Unreduced,
                     motion: Reduction::Reduced,
                     power: Reduction::Reduced,
                 },
             }
         );
         assert_eq!(
-            system_preferences::folded(light, SystemReport::PowerSaver(Reduction::Full)),
+            system_preferences::folded(light, SystemReport::PowerSaver(Reduction::Unreduced)),
             SystemPreferences {
                 reductions: Reductions {
-                    power: Reduction::Full,
+                    power: Reduction::Unreduced,
                     ..light.reductions
                 },
                 ..light

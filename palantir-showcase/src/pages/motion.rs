@@ -19,8 +19,8 @@ use palantir::widget::{
 };
 use palantir::{
     Align, Animated, AnimationSpec, Block, Border, Button, Chrome, Configure, Corners, Easing, Fit,
-    IconHandle, IconSet, IconTable, Image, ImageFit, Panel, Rect, RgbaF32, Sense, Shadow, Sizing,
-    Spinner, Text, TranslateScale, Ui, VAlign, WidgetId,
+    IconHandle, IconSet, IconTable, Image, Panel, Rect, RgbaF32, Sense, Shadow, Sizing, Spinner,
+    Text, TranslateScale, Ui, VAlign, WidgetId,
 };
 use std::array;
 use std::rc::Rc;
@@ -232,7 +232,7 @@ fn turn(ui: &mut Ui, k: Kit) {
                 cell(ui, "image", &mut |ui| {
                     if let Some(shape) = ui.add_shape(
                         Shape::rect().at(source),
-                        ImagePaint::new(sources.image.handle().clone()).fit(ImageFit::Fill),
+                        ImagePaint::new(sources.image.handle().clone()).fit(Fit::Fill),
                     ) {
                         shape.animate(spin);
                     }

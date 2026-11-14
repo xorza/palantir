@@ -9,12 +9,11 @@
 )]
 
 use image::RgbaImage;
-use palantir::Fit;
 use palantir::glam::{UVec2, Vec2};
 use palantir::widget::Shape;
 use palantir::{
-    ColorScheme, Configure, IconSet, IconTable, Panel, Rect, RgbaF32, Sizing, SystemScale, Text,
-    TextStyle, Ui,
+    ColorScheme, Configure, Fit, IconSet, IconTable, Panel, Rect, RgbaF32, Sizing, SystemScale,
+    Text, TextStyle, Ui,
 };
 use std::ops;
 use std::rc::Rc;

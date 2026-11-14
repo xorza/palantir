@@ -13,8 +13,8 @@ use std::hash::Hash;
 /// [`Self::plan`] then [`Widget::wear`](crate::widget::Widget::wear) are the two calls every
 /// themed widget makes:
 /// ```
-/// # use palantir::widget::{ThemeSlot, Widget};
-/// # use palantir::{Selection, Ui};
+/// # use palantir::widget::{Selection, ThemeSlot, Widget};
+/// # use palantir::Ui;
 /// # fn demo(ui: &mut Ui) {
 /// let mut widget = Widget::leaf();
 /// let response = widget.response(ui);
@@ -27,7 +27,7 @@ use std::hash::Hash;
 ///
 /// A new box default goes in [`SlotDefaults`]; the compiler names every implementor.
 pub trait ThemeSlot {
-    /// What the state pick needs past the response: `()` normally, which look pack applies for toggles ([`CheckState`](crate::CheckState)) and tab chips and buttons ([`Selection`](crate::Selection)).
+    /// What the state pick needs past the response: `()` normally, which look pack applies for toggles ([`CheckState`](crate::widget::CheckState)) and tab chips and buttons ([`Selection`](crate::widget::Selection)).
     type Pick: Copy + Hash;
 
     /// The look for the response state and pick. It reads only the pick and the response's

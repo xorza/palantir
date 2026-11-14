@@ -12,7 +12,6 @@ use crate::primitives::math::nan::NanCheck;
 use crate::primitives::packed::half_simd::F16x4;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
-use crate::primitives::paint::material::material_reach::MaterialReach;
 use crate::shape::paint::capture_params::{CaptureParams, CaptureReach};
 use crate::shape::record_store::{RecordStore, Resolve};
 
@@ -100,18 +99,7 @@ impl LoweredMaterial {
             effect,
             capture: CaptureParams {
                 sigma: F16x4::saturate_lane(domain::raised_to(material.backdrop_blur, 0.0)),
-                reach: match reach {
-                    MaterialReach::Px(px) => CaptureReach::Px(px),
-                    MaterialReach::Lens(mut lens) => {
-                        lens.coerce();
-                        CaptureReach::Lens(F16x4::from_lanes_saturating([
-                            lens.bezel,
-                            lens.thickness,
-                            lens.refractive_index,
-                            lens.dispersion,
-                        ]))
-                    }
-                },
+                reach: CaptureReach::of(reach),
             },
             params: store.stage_effect_params(bytes),
             input_hash: h.finish(),

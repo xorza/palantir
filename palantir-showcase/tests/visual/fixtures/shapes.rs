@@ -4,8 +4,8 @@
 use palantir::glam::{UVec2, Vec2};
 use palantir::widget::{CubicBezier, QuadraticBezier, Shape};
 use palantir::{
-    Block, Border, Chrome, ColorRamp, Configure, Corners, LinearGradient, Panel, Rect, RgbaF32,
-    Sizing, Ui,
+    Block, Border, Chrome, ColorRamp, Configure, Corners, Gradient, Panel, Rect, RgbaF32, Sizing,
+    Ui,
 };
 
 use crate::fixtures;
@@ -391,7 +391,6 @@ fn an_unsnapped_rect_covers_the_pixels_across_each_edge() {
 /// thin bars, mixed radii, capsules, circles, triangles, gradients and turned shapes,
 /// all off the pixel grid and translucent, so a pixel shaded twice or missed moves its value.
 fn template_sweep(ui: &mut Ui) {
-    use palantir::RadialGradient;
     use palantir::widget::{PaintAnimation, PaintRepeat};
     use std::time::Duration;
     const CELL: f32 = 72.0;
@@ -470,7 +469,7 @@ fn template_sweep(ui: &mut Ui) {
         );
         ui.add_shape(
             Shape::rect().at(cell(next(), 56.0, 40.0)).corners(10.0),
-            LinearGradient::new(
+            Gradient::linear(
                 0.6,
                 [
                     RgbaF32::srgba(1.0, 0.3, 0.2, 0.9),
@@ -480,7 +479,7 @@ fn template_sweep(ui: &mut Ui) {
         );
         ui.add_shape(
             Shape::circle().at(cell(next(), 50.0, 50.0)),
-            RadialGradient::centered([
+            Gradient::centered_radial([
                 RgbaF32::srgba(1.0, 1.0, 1.0, 0.9),
                 RgbaF32::srgba(0.2, 0.3, 1.0, 0.4),
             ]),

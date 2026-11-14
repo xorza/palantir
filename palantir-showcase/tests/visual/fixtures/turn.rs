@@ -1,12 +1,11 @@
 //! A turn paint animation on each shape kind that turns, held at 30°.
 
-use palantir::Fit;
 use palantir::glam::{UVec2, Vec2};
 
 use palantir::widget::{GlyphFont, Mesh, PaintAnimation, Shape};
 use palantir::{
-    Border, Configure, Corners, Image, ImageFit, LinearGradient, Panel, RadialGradient, Rect,
-    RgbaF32, Shadow, Sizing, Ui, WidgetId,
+    Border, Configure, Corners, Fit, Gradient, Image, Panel, Rect, RgbaF32, Shadow, Sizing, Ui,
+    WidgetId,
 };
 
 use std::rc::Rc;
@@ -79,8 +78,8 @@ fn triangle_gradients_match_golden() {
             Vec2::new(50.0, 15.0),
         )
     };
-    let linear = LinearGradient::horizontal([RgbaF32::hex(0xff5e44), RgbaF32::hex(0xfacc15)]);
-    let radial = RadialGradient::centered([RgbaF32::hex(0xfacc15), RgbaF32::hex(0x2563eb)]);
+    let linear = Gradient::horizontal([RgbaF32::hex(0xff5e44), RgbaF32::hex(0xfacc15)]);
+    let radial = Gradient::centered_radial([RgbaF32::hex(0xfacc15), RgbaF32::hex(0x2563eb)]);
     GoldenName::TriangleGradients.assert_scene(UVec2::new(320, 120), |ui| {
         Panel::hstack().auto_id().padding(10.0).show(ui, |ui| {
             owner(ui, "linear", |ui| {
@@ -122,7 +121,7 @@ fn turned_quads_match_golden() {
             owner(ui, "gradient", |ui| {
                 if let Some(shape) = ui.add_shape(
                     Shape::rect().at(source),
-                    LinearGradient::horizontal([RgbaF32::hex(0xff5e44), RgbaF32::hex(0xfacc15)]),
+                    Gradient::horizontal([RgbaF32::hex(0xff5e44), RgbaF32::hex(0xfacc15)]),
                 ) {
                     shape.animate(thirty_degrees());
                 }
@@ -187,7 +186,7 @@ fn turned_images_match_golden() {
             owner(ui, "fill", |ui| {
                 if let Some(shape) = ui.add_shape(
                     Shape::rect().at(source),
-                    ImagePaint::new(handle.clone()).fit(ImageFit::Fill),
+                    ImagePaint::new(handle.clone()).fit(Fit::Fill),
                 ) {
                     shape.animate(thirty_degrees());
                 }
@@ -195,10 +194,7 @@ fn turned_images_match_golden() {
             owner(ui, "tile", |ui| {
                 if let Some(shape) = ui.add_shape(
                     Shape::rect().at(source),
-                    ImagePaint::new(handle.clone()).fit(ImageFit::Tile {
-                        offset: Vec2::ZERO,
-                        scale: Vec2::splat(3.0),
-                    }),
+                    ImagePaint::new(handle.clone()).tile(Vec2::ZERO, Vec2::splat(3.0)),
                 ) {
                     shape.animate(thirty_degrees());
                 }
@@ -227,17 +223,14 @@ fn rounded_images_match_golden() {
     let capture = h.size(UVec2::new(340, 120)).settled_frame(0, |ui| {
         Panel::hstack().auto_id().padding(10.0).show(ui, |ui| {
             owner(ui, "fill", |ui| {
-                ui.add_shape(rounded, ImagePaint::new(handle.clone()).fit(ImageFit::Fill));
+                ui.add_shape(rounded, ImagePaint::new(handle.clone()).fit(Fit::Fill));
             });
             owner(ui, "contain", |ui| {
-                ui.add_shape(
-                    rounded,
-                    ImagePaint::new(handle.clone()).fit(ImageFit::Contain),
-                );
+                ui.add_shape(rounded, ImagePaint::new(handle.clone()).fit(Fit::Contain));
             });
             owner(ui, "turned", |ui| {
                 if let Some(shape) =
-                    ui.add_shape(rounded, ImagePaint::new(handle.clone()).fit(ImageFit::Fill))
+                    ui.add_shape(rounded, ImagePaint::new(handle.clone()).fit(Fit::Fill))
                 {
                     shape.animate(thirty_degrees());
                 }
@@ -277,19 +270,19 @@ fn triangle_images_match_golden() {
             owner(ui, "fill", |ui| {
                 ui.add_shape(
                     rounded.clone(),
-                    ImagePaint::new(handle.clone()).fit(ImageFit::Fill),
+                    ImagePaint::new(handle.clone()).fit(Fit::Fill),
                 );
             });
             owner(ui, "contain", |ui| {
                 ui.add_shape(
                     wide.clone(),
-                    ImagePaint::new(handle.clone()).fit(ImageFit::Contain),
+                    ImagePaint::new(handle.clone()).fit(Fit::Contain),
                 );
             });
             owner(ui, "turned", |ui| {
                 if let Some(shape) = ui.add_shape(
                     rounded.clone(),
-                    ImagePaint::new(handle.clone()).fit(ImageFit::Fill),
+                    ImagePaint::new(handle.clone()).fit(Fit::Fill),
                 ) {
                     shape.animate(thirty_degrees());
                 }

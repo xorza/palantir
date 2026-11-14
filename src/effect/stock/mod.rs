@@ -6,23 +6,23 @@ use std::sync::LazyLock;
 
 use crate::effect::effect_source::{EffectSource, ReducedPaint};
 use crate::effect::effect_store::EffectModule;
-use crate::effect::press_input::PressInput;
+use crate::effect::press_params::PressParams;
 use crate::primitives::effect::effect_kind::{BackdropEffect, ColorEffect, EffectKind};
 use crate::primitives::effect::effect_name::EffectName;
 use crate::primitives::effect::effect_params::EffectParams;
-use crate::primitives::paint::material::frosted_input::FrostedInput;
-use crate::primitives::paint::material::glass_input::GlassInput;
+use crate::primitives::paint::material::backdrop_reach::BackdropReach;
+use crate::primitives::paint::material::frosted_params::FrostedParams;
+use crate::primitives::paint::material::glass_params::GlassParams;
 use crate::primitives::paint::material::lens_optics::{
     LINE_C, LINE_D, LINE_F, SPECTRUM_RED, SPECTRUM_SAMPLES, SPECTRUM_VIOLET,
 };
-use crate::primitives::paint::material::material_reach::MaterialReach;
 
 /// The prefix of every name palantir loads itself, which
 /// [`Ui::load_effect`](crate::Ui::load_effect) refuses, so an app's effect never replaces a stock
 /// one a theme names.
 pub(crate) const RESERVED_PREFIX: &str = "palantir.";
 
-impl EffectName<PressInput> {
+impl EffectName<PressParams> {
     /// Material's flat ripple, as Compose's `RippleAnimation` draws it: a disc of the press
     /// color that grows from the press to the widget's center. Material's times are 0.225 s to
     /// enter and 0.15 s to exit.
@@ -35,13 +35,13 @@ impl EffectName<PressInput> {
     pub const SPARKLE: Self = reserved("palantir.sparkle");
 }
 
-impl EffectName<FrostedInput, BackdropEffect> {
+impl EffectName<FrostedParams, BackdropEffect> {
     /// Frosted glass: what the material reads, its color saturated as CSS `saturate()` scales it
     /// and grained, so a fill over it reads as a material, as Apple's materials deepen theirs.
     pub const FROSTED: Self = reserved("palantir.frosted");
 }
 
-impl EffectName<GlassInput, BackdropEffect> {
+impl EffectName<GlassParams, BackdropEffect> {
     /// Glass: what the material reads, bent through the input's lens across a rounded bezel at
     /// its edge, every wavelength at its own index where the lens disperses, with the lamp's glint,
     /// then saturated and grained as [`EffectName::FROSTED`] is. A material over it reads past its
@@ -71,9 +71,9 @@ pub(crate) fn effects() -> &'static StockEffects {
 /// what names it.
 #[derive(Debug)]
 pub(crate) struct StockEffects {
-    pub(crate) press: [StockEffect<PressInput, ColorEffect>; 2],
-    pub(crate) frosted: StockEffect<FrostedInput, BackdropEffect>,
-    pub(crate) glass: StockEffect<GlassInput, BackdropEffect>,
+    pub(crate) press: [StockEffect<PressParams, ColorEffect>; 2],
+    pub(crate) frosted: StockEffect<FrostedParams, BackdropEffect>,
+    pub(crate) glass: StockEffect<GlassParams, BackdropEffect>,
 }
 
 /// A stock effect's name, its source and the module checking the source made.
@@ -118,7 +118,7 @@ impl StockEffects {
             ),
             glass: StockEffect::check(
                 EffectName::GLASS,
-                EffectSource::new(glass_wgsl()).reach(|input| MaterialReach::Lens(input.lens)),
+                EffectSource::new(glass_wgsl()).reach(|input| BackdropReach::Lens(input.lens)),
             ),
         }
     }

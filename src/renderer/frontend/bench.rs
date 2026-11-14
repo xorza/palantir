@@ -7,7 +7,7 @@ use crate::damage::Damage;
 use crate::host::harness::Harness;
 use crate::host::harness::harness_builder::Depth;
 use crate::primitives::paint::brush::Brush;
-use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
+use crate::primitives::paint::brush::gradient::Gradient;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::renderer::render_plan::RenderPlan;
@@ -41,7 +41,7 @@ impl FillCase {
         let fill = match self {
             Self::Solid => Brush::Solid(RgbaF32::srgb(0.12, 0.24, 0.48)),
             Self::Gradient => {
-                LinearGradient::new(0.5, [RgbaF32::hex(0x1a1a2e), RgbaF32::hex(0x4c5cdb)]).into()
+                Gradient::linear(0.5, [RgbaF32::hex(0x1a1a2e), RgbaF32::hex(0x4c5cdb)]).into()
             }
         };
         Chrome::new(fill)

@@ -12,7 +12,7 @@ use crate::theme::combo_box::ComboBoxTheme;
 use crate::ui::Ui;
 use crate::ui::frame_report::FrameProcessing;
 use crate::widget_core::configure::Configure;
-use crate::widgets::combo_box::{ComboBox, ComboBoxList};
+use crate::widgets::combo_box::{ComboBox, ComboBoxList, option_id};
 use crate::widgets::menu::Menu;
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};
@@ -30,8 +30,8 @@ fn a_value_no_option_equals_shows_its_own_label_without_writing_back() {
         WidgetId::from_hash("combo-literal"),
     );
     let missing = "Missing";
-    let mut picks = [&OPTIONS[0], &OPTIONS[1], &missing];
-    let (mut none, mut alone) = (&missing, &missing);
+    let mut picks = [OPTIONS[0], OPTIONS[1], missing];
+    let (mut none, mut alone) = (missing, missing);
     let mut h = Harness::mono(SURFACE);
     h.frame(|ui| {
         Panel::vstack()
@@ -39,10 +39,10 @@ fn a_value_no_option_equals_shows_its_own_label_without_writing_back() {
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
                 for (selected, id) in picks.iter_mut().zip(ids) {
-                    ComboBox::new(selected, &OPTIONS).id(id).show(ui);
+                    ComboBox::new(selected, OPTIONS).id(id).show(ui);
                 }
-                ComboBox::new(&mut none, &[]).id(empty).show(ui);
-                ComboBox::new(&mut alone, &["Missing"]).id(literal).show(ui);
+                ComboBox::new(&mut none, []).id(empty).show(ui);
+                ComboBox::new(&mut alone, ["Missing"]).id(literal).show(ui);
             });
     });
     let width = |id: WidgetId| h.rect(id.with("label")).expect("label arranged").size.w;
@@ -55,18 +55,19 @@ fn a_value_no_option_equals_shows_its_own_label_without_writing_back() {
     );
     assert_eq!(width(empty), width(literal), "so does one over no options");
     assert_eq!(
-        picks.map(|pick| *pick),
+        picks,
         ["A", "Longer", "Missing"],
         "nothing was written back"
     );
-    assert_eq!(*none, "Missing");
+    assert_eq!(none, "Missing");
+    assert_eq!(alone, "Missing");
 }
 
 /// `labeled` reads the row's projected field, not the row: measured through the trigger label's width, since the two candidate fields differ in length.
 #[test]
 fn a_labeled_dropdown_reads_the_projected_field() {
     /// A row that is not text, which no `AsRef<str>` could pick between.
-    #[derive(Debug, PartialEq)]
+    #[derive(Clone, Copy, Debug, PartialEq)]
     struct Row {
         name: &'static str,
         display: &'static str,
@@ -81,20 +82,20 @@ fn a_labeled_dropdown_reads_the_projected_field() {
         WidgetId::from_hash("other"),
         WidgetId::from_hash("literal"),
     );
-    let (mut a, mut b, mut c) = (&rows[0], &rows[0], &"Elderberry");
+    let (mut a, mut b, mut c) = (rows[0], rows[0], "Elderberry");
     let mut h = Harness::mono(SURFACE);
     h.frame(|ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                ComboBox::labeled(&mut a, &rows, |r| r.display)
+                ComboBox::labeled(&mut a, rows, |r| r.display)
                     .id(projected)
                     .show(ui);
-                ComboBox::labeled(&mut b, &rows, |r| r.name)
+                ComboBox::labeled(&mut b, rows, |r| r.name)
                     .id(other)
                     .show(ui);
-                ComboBox::new(&mut c, &["Elderberry"]).id(literal).show(ui);
+                ComboBox::new(&mut c, ["Elderberry"]).id(literal).show(ui);
             });
     });
 
@@ -116,18 +117,57 @@ fn a_labeled_dropdown_reads_the_projected_field() {
     );
 }
 
+/// A caller holding a reference into a table binds the reference: the options yield `&Row`, a
+/// pick moves the picked row's reference in, and the row type needs no `Clone`, so nothing is
+/// cloned: the bound value is the table's row itself.
+#[test]
+fn a_reference_binds_and_a_pick_moves_the_rows_reference_in() {
+    #[derive(Debug, PartialEq)]
+    struct Row {
+        name: String,
+        idx: u8,
+    }
+    fn frame<'r>(h: &mut Harness, rows: &'r [Row], picked: &mut &'r Row) -> bool {
+        h.frame_value(|ui| {
+            ComboBox::labeled(picked, rows.iter(), |row| row.name.as_str())
+                .id(WidgetId::from_hash("combo-ref"))
+                .show(ui)
+                .changed
+        })
+    }
+    let rows = [0, 1, 2].map(|idx| Row {
+        name: String::from("Row"),
+        idx,
+    });
+    let id = WidgetId::from_hash("combo-ref");
+    let mut picked = &rows[0];
+    let mut h = Harness::mono(SURFACE);
+    frame(&mut h, &rows, &mut picked);
+    ComboBoxList::open(h.ui_mut(), id);
+    frame(&mut h, &rows, &mut picked);
+    let third = h
+        .rect(option_id(ComboBoxList::menu_id(id), 2))
+        .expect("premise: the list is open");
+    h.click(third.center());
+    assert!(frame(&mut h, &rows, &mut picked), "the click picks");
+    assert!(
+        std::ptr::eq(picked, &raw const rows[2]),
+        "{picked:?} is the third row itself"
+    );
+}
+
 #[test]
 fn dropdown_aligns_to_the_full_trigger_rect_when_flipped_above() {
     static OPTIONS: [&str; 3] = ["One", "Two", "Three"];
     let mut h = Harness::mono(SURFACE);
     let id = WidgetId::from_hash("combo");
-    let mut selected = &OPTIONS[0];
-    let build = |ui: &mut Ui, selected: &mut &'static &'static str| {
+    let mut selected = OPTIONS[0];
+    let build = |ui: &mut Ui, selected: &mut &'static str| {
         Panel::canvas()
             .id(WidgetId::from_hash("root"))
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                ComboBox::new(selected, &OPTIONS)
+                ComboBox::new(selected, OPTIONS)
                     .id(id)
                     .at(Vec2::new(120.0, 250.0))
                     .size((Sizing::fixed(140.0), Sizing::fixed(30.0)))
@@ -177,12 +217,12 @@ fn trigger_geometry_follows_the_combo_box_theme() {
         let mut h = Harness::mono(SURFACE);
         h.ui_mut().theme_mut().combo_box.arrow_size = arrow;
         h.ui_mut().theme_mut().combo_box.gap = gap;
-        let mut selected = &options[0];
+        let mut selected = options[0];
         h.frame(|ui| {
             Panel::hstack()
                 .id(WidgetId::from_hash("root"))
                 .show(ui, |ui| {
-                    let mut combo = ComboBox::new(&mut selected, &options)
+                    let mut combo = ComboBox::new(&mut selected, options)
                         .id(id)
                         .style(instance)
                         .size((Sizing::HUG, Sizing::HUG));
@@ -253,9 +293,9 @@ fn trigger_chrome_follows_button_style() {
             .paint
             .fill
             .clone();
-        let mut selected = &options[0];
+        let mut selected = options[0];
         h.frame(|ui| {
-            ComboBox::new(&mut selected, &options)
+            ComboBox::new(&mut selected, options)
                 .id(id)
                 .button_style(style)
                 .show(ui);
@@ -302,13 +342,13 @@ fn the_dropdown_takes_the_menu_theme_it_documents() {
             };
             h.ui_mut().set_theme(ColorScheme::Dark, theme).unwrap();
         }
-        let mut selected = &options[0];
+        let mut selected = options[0];
         let mut build = |ui: &mut Ui| {
             Panel::canvas()
                 .id(WidgetId::from_hash("root"))
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
-                    ComboBox::new(&mut selected, &options)
+                    ComboBox::new(&mut selected, options)
                         .id(id)
                         .menu_style(styled.then_some(&menu))
                         .at(Vec2::new(40.0, 40.0))
@@ -340,11 +380,11 @@ fn disabling_an_open_trigger_closes_its_list() {
     static OPTIONS: [&str; 3] = ["One", "Two", "Three"];
     let combo = WidgetId::from_hash("combo");
     let list = ComboBoxList::menu_id(combo);
-    let mut selected = &OPTIONS[0];
-    let record = |h: &mut Harness, disabled: bool, selected: &mut &'static &'static str| {
+    let mut selected = OPTIONS[0];
+    let record = |h: &mut Harness, disabled: bool, selected: &mut &'static str| {
         h.frame(|ui| {
             Panel::vstack().auto_id().show(ui, |ui| {
-                ComboBox::new(selected, &OPTIONS)
+                ComboBox::new(selected, OPTIONS)
                     .id(combo)
                     .disabled(disabled)
                     .show(ui);
@@ -366,7 +406,7 @@ fn disabling_an_open_trigger_closes_its_list() {
     );
     h.click(last_row);
     record(&mut h, true, &mut selected);
-    assert_eq!(*selected, "One", "a click where a row was picks nothing");
+    assert_eq!(selected, "One", "a click where a row was picks nothing");
 }
 
 /// A focused, closed combo box opens on the keys of the WAI-ARIA APG's select-only combobox and
@@ -383,9 +423,9 @@ fn the_keys_open_a_closed_list_and_change_no_pick() {
     static MISSING: &str = "Missing";
     let id = WidgetId::from_hash("combo-keys");
     let mut h = Harness::mono(SURFACE);
-    let frame = |h: &mut Harness, selected: &mut &'static &'static str| {
+    let frame = |h: &mut Harness, selected: &mut &'static str| {
         h.frame_value(|ui| {
-            let r = ComboBox::new(selected, &OPTIONS).id(id).show(ui);
+            let r = ComboBox::new(selected, OPTIONS).id(id).show(ui);
             (r.changed, r.committed)
         })
     };
@@ -396,15 +436,15 @@ fn the_keys_open_a_closed_list_and_change_no_pick() {
             .map(|widget| widget.id)
     };
     // Tab focuses the combo box from the keyboard, as the ring a keyboard open needs.
-    let mut pick = &OPTIONS[1];
+    let mut pick = OPTIONS[1];
     frame(&mut h, &mut pick);
     h.key(Key::Tab);
     frame(&mut h, &mut pick);
-    for start in [&OPTIONS[1], &MISSING] {
+    for start in [OPTIONS[1], MISSING] {
         let mut selected = start;
         // A binding no option equals marks no row, so the keys that land on the pick land first.
-        let shown = if OPTIONS.contains(start) {
-            *start
+        let shown = if OPTIONS.contains(&start) {
+            start
         } else {
             OPTIONS[0]
         };
@@ -442,7 +482,7 @@ fn the_keys_open_a_closed_list_and_change_no_pick() {
         assert_eq!(selected, start, "no key changed the pick");
     }
 
-    let mut selected = &OPTIONS[1];
+    let mut selected = OPTIONS[1];
     ComboBoxList::open(h.ui_mut(), id);
     frame(&mut h, &mut selected);
     assert!(ComboBoxList::is_open(h.ui(), id), "an outside open records");
@@ -456,10 +496,10 @@ fn the_keyboard_alone_picks_from_the_dropdown() {
 
     static OPTIONS: [&str; 3] = ["A", "B", "C"];
     let id = WidgetId::from_hash("combo-walk");
-    let mut selected = &OPTIONS[0];
+    let mut selected = OPTIONS[0];
     let mut h = Harness::mono(SURFACE);
-    let frame = |h: &mut Harness, selected: &mut &'static &'static str| {
-        h.frame_value(|ui| ComboBox::new(selected, &OPTIONS).id(id).show(ui).changed)
+    let frame = |h: &mut Harness, selected: &mut &'static str| {
+        h.frame_value(|ui| ComboBox::new(selected, OPTIONS).id(id).show(ui).changed)
     };
     frame(&mut h, &mut selected);
     h.key(Key::Tab);
@@ -486,7 +526,7 @@ fn the_keyboard_alone_picks_from_the_dropdown() {
 
     h.key(Key::Enter);
     let changed = frame(&mut h, &mut selected);
-    assert!(changed && *selected == "B", "Enter picks the second row");
+    assert!(changed && selected == "B", "Enter picks the second row");
     frame(&mut h, &mut selected);
     assert!(
         !ComboBoxList::is_open(h.ui(), id),
@@ -505,12 +545,12 @@ fn a_callers_justify_wins_over_the_space_between() {
         WidgetId::from_hash("plain"),
         WidgetId::from_hash("centered"),
     );
-    let (mut a, mut b) = (&OPTIONS[0], &OPTIONS[0]);
+    let (mut a, mut b) = (OPTIONS[0], OPTIONS[0]);
     let mut h = Harness::mono(SURFACE);
     h.frame(|ui| {
         Panel::vstack().auto_id().show(ui, |ui| {
-            ComboBox::new(&mut a, &OPTIONS).id(plain).show(ui);
-            ComboBox::new(&mut b, &OPTIONS)
+            ComboBox::new(&mut a, OPTIONS).id(plain).show(ui);
+            ComboBox::new(&mut b, OPTIONS)
                 .id(centered)
                 .justify(Justify::Center)
                 .show(ui);
@@ -532,13 +572,13 @@ fn the_list_and_a_context_menu_on_the_combo_do_not_collide() {
 
     static OPTIONS: [&str; 2] = ["A", "B"];
     let id = WidgetId::from_hash("combo-with-menu");
-    let mut selected = &OPTIONS[0];
-    let record = |ui: &mut Ui, selected: &mut &'static &'static str| {
+    let mut selected = OPTIONS[0];
+    let record = |ui: &mut Ui, selected: &mut &'static str| {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                let combo = ComboBox::new(selected, &OPTIONS).id(id).show(ui);
+                let combo = ComboBox::new(selected, OPTIONS).id(id).show(ui);
                 Menu::context(&combo.response).show(ui, |ui| {
                     MenuItem::new("Reset").show(ui);
                 });

@@ -4,7 +4,7 @@
 
 use palantir::glam::UVec2;
 use palantir::widget::Shape;
-use palantir::{ColorScheme, Configure, LinearGradient, Panel, Rect, RgbaF32, Sizing, Stop};
+use palantir::{ColorScheme, Configure, Gradient, Panel, Rect, RgbaF32, Sizing, Stop};
 use palantir_showcase::pages::gradients;
 use palantir_showcase::support;
 use palantir_showcase::support::Kits;
@@ -60,10 +60,7 @@ fn overflowing_gradient_atlas_paints_every_swatch() {
                         SWATCH as f32,
                         SWATCH as f32,
                     );
-                    ui.add_shape(
-                        Shape::rect().at(rect),
-                        LinearGradient::horizontal([color, color]),
-                    );
+                    ui.add_shape(Shape::rect().at(rect), Gradient::horizontal([color, color]));
                 }
             });
         })
@@ -99,7 +96,7 @@ fn a_gradient_samples_its_lut_at_texel_centers() {
             fixtures::canvas(ui, |ui| {
                 ui.add_shape(
                     Shape::rect().at(Rect::new(0.0, 0.0, 1024.0, 16.0)),
-                    LinearGradient::horizontal([Stop::new(0.25, red), Stop::new(0.25, blue)]),
+                    Gradient::horizontal([Stop::new(0.25, red), Stop::new(0.25, blue)]),
                 );
             });
         })
@@ -136,7 +133,7 @@ fn add_shape_rounded_rect_linear_gradient_matches_golden() {
                     Shape::rect()
                         .at(Rect::new(0.0, 0.0, 180.0, 100.0))
                         .corners(12.0),
-                    LinearGradient::horizontal([RgbaF32::hex(0xff5e44), RgbaF32::hex(0xfacc15)]),
+                    Gradient::horizontal([RgbaF32::hex(0xff5e44), RgbaF32::hex(0xfacc15)]),
                 );
             });
     });

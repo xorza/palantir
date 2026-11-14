@@ -192,11 +192,6 @@ Kept, as no single owner can exist:
 
 ### Where the code and a recorded decision disagree
 
-- **`src/widgets/AGENTS.md:42-45`** says a pick binds a reference into its options and refuses a
-  bound value. `RadioGroup::new(&mut T)` binds a value (`radio_group/mod.rs:70,257`), and the
-  by-reference `ComboBox` costs the showcase eight `&'static (&'static str, T)` state fields over
-  `static` tuple tables read back as `.1`. **Decided: a pick binds a value.** `ComboBox` changes,
-  `RadioGroup` stays, and the decision in `src/widgets/AGENTS.md` is amended (batch 2).
 - **`Response: Deref<Target = ResponseState>`** (`primitives/input/interaction/response.rs:12`,
   documented, so `r.hovered()` reads like the state) is what the Rust API Guidelines rule out:
   "Only smart pointers implement `Deref` and `DerefMut`"
@@ -390,74 +385,6 @@ Files: as listed per item. No exported signature changes.
   `nearest` all show the start. Not local: fixed by the shared `reveal_pan` of batch 11, which
   carries this item's test of the three oversized cases.
 
-### Batch 2: one type per concept (API)
-
-Files: `src/primitives/{geometry/fit, paint/image, paint/brush, layout/axis, effect, paint/material,
-reduction.rs}`, `src/effect`, `src/shape/{effect_paint.rs, image_paint.rs, icon_paint.rs}`,
-`src/widgets/{dock, splitter}`, `src/theme/{selection.rs, check_state.rs, tab_strip_focus.rs,
-menu_bar.rs, toggle.rs, toggle_kind.rs, tabs.rs}`, `src/lib.rs`.
-
-- [ ] `primitives/geometry/fit/mod.rs:14-25`, `primitives/paint/image/mod.rs:18-41,346-377`: `Fit`
-  and `ImageFit` share `Fill`/`Contain`/`Cover`/`Natural`; `Natural` pins top-left in one and
-  centers in the other, both citing CSS `object-fit: none`. Target (decided): one `Fit
-  { Natural, Fill, Contain, Cover }`; delete `ImageFit`; `ImagePaint::fit(Fit)` and
-  `ImagePaint::tile(offset, scale)`. `Natural` means unscaled: artwork with a size of its own
-  centers (`Fit::place_artwork`, `fit/mod.rs:117-123`, so an icon moves from the corner to the
-  center), and a point shape's points stay as given (`Fit::map`), as WPF's `Stretch.None` leaves
-  a `Polygon` and centers an `Image`. `Cover` stays per consumer: an image crops by UV, a shape
-  overflows. `Fit` takes no `Default`; each consumer keeps its own (`Fill` for an image,
-  `Natural` for a point shape). Rewrite `Fit`'s doc and `src/shape/AGENTS.md:22-24` to say so;
-  run `cargo visual` for the icon change.
-- [ ] `widgets/dock/split_side.rs:6-41`, `allowed_splits.rs:8-23`, `dock_node.rs:41-51`,
-  `dock_view.rs:424-427`: `SplitDirection { Row, Col }` is `Axis`, and `new_pane_first() -> bool`
-  is a `SplitHalf`. Target: `Axis: Serialize + Deserialize`; `SplitSide::axis()` and
-  `SplitSide::half()`; `DockSplit { axis }`; the dock calls `Splitter::along`; delete
-  `SplitDirection`. The serialized layout changes.
-- [ ] `primitives/paint/brush/gradient/mod.rs:57-98`, `{linear,radial,conic}_geometry.rs`,
-  `brush/mod.rs:24-33`: a sealed set of three is a generic, at eight exported names and 24
-  three-arm matches. Target (decided), as peniko: `enum GradientGeometry { Linear(LinearGeometry),
-  Radial(RadialGeometry), Conic(ConicGeometry) }` over the three existing structs,
-  `struct Gradient { geometry, ramp, spread }`, `Brush::{Solid, Gradient}`, constructors
-  `Gradient::{linear, radial, conic, horizontal, vertical, centered_radial, centered_conic}`; the
-  sealed trait, the type parameter and the aliases `LinearGradient`/`RadialGradient`/
-  `ConicGradient` go. Measure `Brush`'s size (`internals/hot_struct_sizes.rs:209`) and the frame
-  bench first, and read one gradient brush back from a theme file, as the file's shape changes.
-- [ ] `primitives/paint/material/{frosted_input.rs:17, glass_input.rs:26}`,
-  `effect/press_input.rs:33`: parameters are `*Input` here and `params` everywhere else, and
-  collide with the contract's `EffectInput`. Target: `FrostedParams`, `GlassParams`, `PressParams`;
-  `PressParams` fields `released_seconds`, `enter_seconds`, `exit_seconds`; its pads private.
-- [ ] `effect/effect_source.rs:62,105`, `effect/effect_registry.rs:59-89`,
-  `shape/effect_paint.rs:120-135`, `primitives/paint/material/{material_reach.rs:11,
-  material_fallback.rs:15}`: a `Material` derives its read reach from the source; an `EffectPaint`
-  over the same effect takes `max_sample_offset(px)` by hand and cannot express a lens. Target: the
-  registry keeps the erased `reach` for every backdrop effect; `max_sample_offset` goes;
-  `MaterialReach` → `BackdropReach`, `MaterialFallback` → `BackdropFallback`,
-  `EffectPaint::blur` → `backdrop_blur`.
-- [ ] `theme/{selection.rs, check_state.rs, tab_strip_focus.rs}`, `theme/menu_bar.rs:30-101`:
-  four `From<bool>` pick enums differ in name, variant order and derives. Target: delete
-  `TabStripFocus` with `TabsTheme::cap` (the strip reads `cap_focused`/`cap_unfocused`); delete
-  `MenuState` by making `MenuBarTheme { title: ButtonTheme, bar: Chrome, bar_padding, gap }`
-  picked with `Selection`; `Selection` and `CheckState` keep the negative variant first and one
-  derive set, and move to `palantir::widget`. The `Selection` → pack match at
-  `theme/button.rs:130-180`, `tabs.rs:190-205`, `menu/menu_item.rs:91-105` becomes one private
-  helper.
-- [ ] `theme/toggle.rs:80-106`, `toggle_kind.rs`: `ToggleTheme::from_parts(kind, p, m)` is the one
-  `from_parts` with a third argument. Target: `ToggleTheme::{checkbox, radio, switch}(p, m)`;
-  delete `ToggleKind`.
-- [ ] `primitives/reduction.rs:13-19`: `Reduction::Full` means "runs whole". Target:
-  `Reduction::{Unreduced, Reduced}`.
-- [ ] `window/vsync.rs:7`: `Vsync { On, Off }` reads as a breach of "a boolean takes a `bool`".
-  Keep the enum and write the reason beside it: presentation has more than two modes.
-- [ ] `widgets/radio_group/mod.rs:86-132`: `look(Segment).style(&toggle)` compiles and does
-  nothing. Target: `RadioLook::{Pip(Option<&ToggleTheme>), Segment(Option<&SegmentedTheme>)}`.
-- [ ] `widgets/combo_box/mod.rs`, `widgets/radio_group/mod.rs:70`, `src/widgets/AGENTS.md:42-45`
-  (decided): a pick binds a value. `ComboBox::new(selected: &mut T, options: &[T])` and
-  `labeled(..)` with `T: PartialEq + Clone`, cloning on the pick alone; `RadioGroup` unchanged
-  but for its bound parameter, `cur` → `selected`; the decision in `AGENTS.md` rewritten: a pick
-  binds a value, as egui, iced and Flutter do, refused: a reference into the options, which
-  types the caller's state as a borrow of a table. The showcase's eight tuple tables and
-  `&'static (&'static str, T)` fields go.
-
 ### Batch 3: second routes removed (API)
 
 Files: per item.
@@ -560,8 +487,6 @@ Files: per item; each is a rename with its callers.
   `Reductions { transparency, motion, power }` as plain data and `Reduction::is_reduced()`;
   `Ui::reductions()` (resolved for this frame) and `Ui::system_reductions()` replace the six
   bool getters; `color_scheme()`, `system_color_scheme()` and `is_frame_rate_reduced()` stay.
-  With the `Reduction` rename of batch 2, `Reductions::FULL` becomes `Reductions::NONE`, nothing
-  reduced.
 - [ ] `ui/mod.rs:210,216,268`: `set_theme(scheme, theme)` writes what `scheme_theme(scheme)`
   reads, not what `theme()` reads. Target: `set_scheme_theme`.
 - [ ] `ui/mod.rs:1480-1487`: the action `focus_within` differs from the predicate

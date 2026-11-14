@@ -45,6 +45,7 @@ use crate::shape::icon_paint::IconPaint;
 use crate::shape::image_paint::ImagePaint;
 use crate::shape::lower;
 use crate::shape::mesh::MeshShape;
+use crate::shape::paint::capture_params::{CaptureParams, CaptureReach};
 use crate::shape::paint::closed_paint::ClosedPaint;
 use crate::shape::paint::curve_ramp::CurveRamp;
 use crate::shape::paint::image_source::ImageSource;
@@ -350,14 +351,14 @@ impl RecordStore {
     fn record_image(&self, geometry: ClosedGeometry, paint: &ImagePaint) -> Option<ClosedPaint> {
         let ImagePaint {
             handle,
-            fit,
+            placement,
             min_filter,
             mag_filter,
             downsample,
             tint,
         } = paint;
-        let (fit, min_filter, mag_filter, downsample, tint) =
-            (*fit, *min_filter, *mag_filter, *downsample, *tint);
+        let (placement, min_filter, mag_filter, downsample, tint) =
+            (*placement, *min_filter, *mag_filter, *downsample, *tint);
         if geometry.is_paint_empty() || tint.is_noop() {
             return None;
         }
@@ -368,7 +369,7 @@ impl RecordStore {
                 size: handle.size(),
                 generation: handle.generation(),
             },
-            fit,
+            placement,
             min_filter,
             mag_filter,
             downsample,
@@ -422,7 +423,7 @@ impl RecordStore {
         let ErasedEffectPaint {
             name,
             params,
-            capture,
+            backdrop_blur,
             fallback,
             images,
             outside,
@@ -452,11 +453,16 @@ impl RecordStore {
             )));
         }
         let resolved = resolved?;
-        let backdrop = fallback.map(|_| capture);
         if geometry.is_paint_empty() {
             return None;
         }
         let effect = resolved.id;
+        // How far a backdrop effect reads is its source's, from these parameters, as a
+        // material's is.
+        let backdrop = fallback.map(|_| CaptureParams {
+            sigma: backdrop_blur,
+            reach: CaptureReach::of(resolve.effects.reach_of(effect, params)),
+        });
         let mut h = Hasher::new();
         h.write_u32(effect.0);
         h.pod_slice(params);

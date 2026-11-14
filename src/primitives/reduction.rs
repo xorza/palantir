@@ -11,9 +11,10 @@
 )]
 #[serde(deny_unknown_fields)]
 pub enum Reduction {
-    /// The effect runs whole.
+    /// The effect runs whole. Refused: `Full`, which reads as "fully reduced"; `None`, which
+    /// shadows `Option::None` under a glob import.
     #[default]
-    Full,
+    Unreduced,
     /// The effect is reduced.
     Reduced,
 }
@@ -21,7 +22,11 @@ pub enum Reduction {
 impl Reduction {
     /// `true` is [`Self::Reduced`], as a system reports its setting.
     pub(crate) const fn of(reduced: bool) -> Self {
-        if reduced { Self::Reduced } else { Self::Full }
+        if reduced {
+            Self::Reduced
+        } else {
+            Self::Unreduced
+        }
     }
 
     pub(crate) const fn is_reduced(self) -> bool {
@@ -41,10 +46,10 @@ pub(crate) struct Reductions {
 
 impl Reductions {
     /// Nothing reduced.
-    pub(crate) const FULL: Self = Self {
-        transparency: Reduction::Full,
-        motion: Reduction::Full,
-        power: Reduction::Full,
+    pub(crate) const NONE: Self = Self {
+        transparency: Reduction::Unreduced,
+        motion: Reduction::Unreduced,
+        power: Reduction::Unreduced,
     };
 }
 
@@ -55,8 +60,8 @@ mod tests {
     #[test]
     fn a_system_flag_reads_as_its_reduction() {
         assert_eq!(Reduction::of(true), Reduction::Reduced);
-        assert_eq!(Reduction::of(false), Reduction::Full);
+        assert_eq!(Reduction::of(false), Reduction::Unreduced);
         assert!(Reduction::Reduced.is_reduced());
-        assert!(!Reduction::Full.is_reduced());
+        assert!(!Reduction::Unreduced.is_reduced());
     }
 }

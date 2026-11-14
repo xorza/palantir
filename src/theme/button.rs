@@ -167,11 +167,9 @@ impl ThemeSlot for ButtonTheme {
     /// The resting or the selected pack, then its state: `active` = pressed. Disabled wins over hover and press, pressed over hover; `response.disabled` already carries the node's own flag.
     #[inline(always)]
     fn look(&self, response: &ResponseState, selection: Selection) -> &WidgetLook {
-        let pack = match selection {
-            Selection::Unselected => &self.unselected,
-            Selection::Selected => &self.selected,
-        };
-        pack.pick(response, Engagement::Pressed)
+        selection
+            .pack(&self.unselected, &self.selected)
+            .pick(response, Engagement::Pressed)
     }
 
     fn defaults(&self) -> SlotDefaults {

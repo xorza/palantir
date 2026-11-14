@@ -30,7 +30,7 @@ struct State {
     dark: bool,
     volume: f64,
     size: Size,
-    plan: &'static &'static str,
+    plan: &'static str,
     seats: i64,
     search: String,
     picked: usize,
@@ -52,7 +52,7 @@ impl Default for State {
             dark: false,
             volume: 0.4,
             size: Size::Medium,
-            plan: &PLANS[1],
+            plan: PLANS[1],
             seats: 3,
             search: String::new(),
             picked: 0,
@@ -200,7 +200,7 @@ fn form(ui: &mut Ui, k: Kit, s: &mut State, seen: &mut Seen) {
                         seen.note(label, r.response.focused);
                     }
                 });
-            let r = ComboBox::new(&mut s.plan, &PLANS)
+            let r = ComboBox::new(&mut s.plan, PLANS)
                 .grid_cell((6, 1))
                 .size((Sizing::fixed(160.0), Sizing::HUG))
                 .show(ui);

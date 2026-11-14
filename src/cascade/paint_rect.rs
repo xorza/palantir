@@ -316,13 +316,17 @@ impl PaintRectCtx<'_> {
                         shape_clip,
                     ),
                     // Bounded by the rect the encoder draws, which overflows the base under
-                    // `ImageFit::Natural`.
+                    // `Fit::Natural`.
                     ShapeRecord::Closed {
                         geometry: ClosedGeometry::Box(geometry),
-                        paint: ClosedPaint::Image { source, fit, .. },
+                        paint:
+                            ClosedPaint::Image {
+                                source, placement, ..
+                            },
                     } => shape.to_screen(
                         spun_if_animated(
-                            fit.resolve(geometry.place(layout_rect.size).rect, source.intrinsic())
+                            placement
+                                .resolve(geometry.place(layout_rect.size).rect, source.intrinsic())
                                 .rect,
                             idx,
                         ),

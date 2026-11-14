@@ -25,22 +25,23 @@ use crate::widgets::button::Button;
 use crate::widgets::toggle_row::{Settled, ToggleBox, ToggleFace, ToggleRow};
 use std::rc::Rc;
 
-/// How a [`RadioGroup`]'s options draw. The keys work alike in each, so the look changes what the
-/// group shows and never how it answers, as SwiftUI's `pickerStyle` restyles one `Picker`
-/// (<https://developer.apple.com/documentation/swiftui/pickerstyle>).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
-pub enum RadioLook {
-    /// A round pip beside each label, in [`Theme::radio`](crate::Theme::radio).
-    #[default]
-    Pip,
+/// How a [`RadioGroup`]'s options draw, each with the theme slot it reads: `None` for the
+/// theme's own, `Some` for a per-instance override. The keys work alike in each, so the look
+/// changes what the group shows and never how it answers, as SwiftUI's `pickerStyle` restyles one
+/// `Picker` (<https://developer.apple.com/documentation/swiftui/pickerstyle>). The slot rides in
+/// the variant, so no look takes the other's slot.
+#[derive(Clone, Copy, Debug)]
+pub enum RadioLook<'a> {
+    /// A round pip beside each label, in [`Theme::radio`](crate::Theme::radio) unless overridden.
+    Pip(Option<&'a ToggleTheme>),
     /// The labels as segments of one track, the checked one on a pill, in
-    /// [`Theme::segmented`](crate::Theme::segmented), as Ark UI's segment group and Mantine's
-    /// segmented control are radio groups.
-    Segment,
+    /// [`Theme::segmented`](crate::Theme::segmented) unless overridden, as Ark UI's segment group
+    /// and Mantine's segmented control are radio groups.
+    Segment(Option<&'a SegmentedTheme>),
 }
 
-/// One pick from a set: each option checks while `*cur` equals its value, and picking it writes
-/// the value into `cur`. The keys follow WAI-ARIA's radio group
+/// One pick from a set: each option checks while `*selected` equals its value, and picking it
+/// writes the value into `selected`. The keys follow WAI-ARIA's radio group
 /// (<https://www.w3.org/WAI/ARIA/apg/patterns/radio/>): the group is one Tab stop, which lands
 /// on the checked option, or the first while none is; an arrow moves focus to the next option
 /// (Right, Down) or the previous (Left, Up) and checks it, wrapping at the ends; Space checks the
@@ -58,22 +59,18 @@ pub enum RadioLook {
 #[must_use = "a widget records nothing until `show`"]
 pub struct RadioGroup<'a, T> {
     widget: Widget,
-    cur: &'a mut T,
-    look: RadioLook,
-    pip_style: Option<&'a ToggleTheme>,
-    segment_style: Option<&'a SegmentedTheme>,
+    selected: &'a mut T,
+    look: RadioLook<'a>,
 }
 
 impl<'a, T> RadioGroup<'a, T> {
-    /// A group writing the picked option's value into `cur`.
+    /// A group writing the picked option's value into `selected`.
     #[track_caller]
-    pub fn new(cur: &'a mut T) -> Self {
+    pub fn new(selected: &'a mut T) -> Self {
         Self {
             widget: Widget::vstack().input_scope(KeyFilter::CARET),
-            cur,
-            look: RadioLook::Pip,
-            pip_style: None,
-            segment_style: None,
+            selected,
+            look: RadioLook::Pip(None),
         }
     }
 
@@ -83,23 +80,9 @@ impl<'a, T> RadioGroup<'a, T> {
         self
     }
 
-    /// How the options draw. Default [`RadioLook::Pip`].
-    pub const fn look(mut self, look: RadioLook) -> Self {
+    /// How the options draw, and the slot each reads. Default `RadioLook::Pip(None)`.
+    pub const fn look(mut self, look: RadioLook<'a>) -> Self {
         self.look = look;
-        self
-    }
-
-    /// Per-instance override of [`Theme::radio`](crate::Theme::radio), for the
-    /// [`RadioLook::Pip`] look.
-    pub fn style(mut self, s: impl Into<Option<&'a ToggleTheme>>) -> Self {
-        self.pip_style = s.into();
-        self
-    }
-
-    /// Per-instance override of [`Theme::segmented`](crate::Theme::segmented), for the
-    /// [`RadioLook::Segment`] look.
-    pub fn segmented_style(mut self, s: impl Into<Option<&'a SegmentedTheme>>) -> Self {
-        self.segment_style = s.into();
         self
     }
 }
@@ -117,12 +100,9 @@ impl<T: PartialEq> RadioGroup<'_, T> {
         // An `Rc` bump, so the slots outlive the `&mut Ui` the record takes.
         let theme = Rc::clone(ui.theme());
         let (look, chrome) = match self.look {
-            RadioLook::Pip => (
-                OptionLook::Pip(self.pip_style.unwrap_or(&theme.radio)),
-                None,
-            ),
-            RadioLook::Segment => {
-                let slot = self.segment_style.unwrap_or(&theme.segmented);
+            RadioLook::Pip(slot) => (OptionLook::Pip(slot.unwrap_or(&theme.radio)), None),
+            RadioLook::Segment(slot) => {
+                let slot = slot.unwrap_or(&theme.segmented);
                 self.widget
                     .configure()
                     .default_gap(0.0)
@@ -130,7 +110,7 @@ impl<T: PartialEq> RadioGroup<'_, T> {
                 (OptionLook::Segment(slot), Some(&slot.track))
             }
         };
-        let cur = self.cur;
+        let selected = self.selected;
         let changed = ui.with_state::<GroupMemory, _>(id, |ui, memory| {
             self.widget.record(ui, chrome, |ui| {
                 let target = if response.disabled || !ui.is_focus_within(id) {
@@ -144,7 +124,7 @@ impl<T: PartialEq> RadioGroup<'_, T> {
                 };
                 memory.disabled.clear();
                 let mut options = RadioOptions {
-                    cur,
+                    selected,
                     group: id,
                     look,
                     target,
@@ -237,7 +217,7 @@ enum OptionLook<'s> {
 /// The options of a [`RadioGroup`], as its body records them through [`Self::option`].
 #[derive(Debug)]
 pub struct RadioOptions<'g, T> {
-    cur: &'g mut T,
+    selected: &'g mut T,
     group: WidgetId,
     look: OptionLook<'g>,
     /// The option an arrow checks this frame; while set, a click checks nothing, so one option
@@ -326,7 +306,7 @@ impl<'o, T: PartialEq> RadioOption<'o, '_, T> {
         let idx = u32::try_from(options.disabled.len()).expect("a group holds under 2^32 options");
         options.disabled.push(disabled);
         let pick = Pick {
-            cur: &mut *options.cur,
+            selected: &mut *options.selected,
             value,
             arrow: options.target.map(|target| target == idx && !disabled),
         };
@@ -370,7 +350,7 @@ impl<T> Configure for RadioOption<'_, '_, T> {
 /// picked and no click counts, so one option shows checked; else a click or Space picks.
 #[derive(Debug)]
 struct Pick<'c, T> {
-    cur: &'c mut T,
+    selected: &'c mut T,
     value: T,
     /// Whether this option is the arrow's target, while an arrow moves the pick.
     arrow: Option<bool>,
@@ -380,7 +360,7 @@ impl<T: PartialEq> Pick<'_, T> {
     /// Checked before this frame's activation: the arrow's target, or the option holding the
     /// value.
     fn shows_checked(&self) -> bool {
-        self.arrow.unwrap_or_else(|| *self.cur == self.value)
+        self.arrow.unwrap_or_else(|| *self.selected == self.value)
     }
 }
 
@@ -389,9 +369,9 @@ impl<T: PartialEq> ToggleFace for Pick<'_, T> {
     fn settle(self, activated: bool) -> Settled {
         let checked = self.shows_checked();
         let picked = self.arrow.unwrap_or(activated);
-        let changed = picked && *self.cur != self.value;
+        let changed = picked && *self.selected != self.value;
         if changed {
-            *self.cur = self.value;
+            *self.selected = self.value;
         }
         Settled {
             checked: checked || changed,

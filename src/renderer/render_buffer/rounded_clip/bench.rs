@@ -27,13 +27,14 @@ use crate::host::harness::Harness;
 use crate::host::harness::harness_builder::Depth;
 use crate::image_registry::image_handle::ImageHandle;
 use crate::primitives::geometry::corners::Corners;
+use crate::primitives::geometry::fit::Fit;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::layout::clip_mode::ClipMode;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::image::{Image, ImageFit};
+use crate::primitives::paint::image::Image;
 use crate::primitives::paint::stroke::Stroke;
 use crate::shape::Shape;
 use crate::shape::image_paint::ImagePaint;
@@ -271,7 +272,7 @@ impl ClipScene {
             let thumb = Rect::new(row.max().x - row_h, row.min.y, row_h, row_h);
             ui.add_shape(
                 Shape::rect().at(thumb),
-                ImagePaint::new(self.thumb.clone()).fit(ImageFit::Fill),
+                ImagePaint::new(self.thumb.clone()).fit(Fit::Fill),
             );
             let points = [
                 Vec2::new(0.0, row_h * 0.8),
