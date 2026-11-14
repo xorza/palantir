@@ -192,7 +192,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
                     color: &mut s.color,
                     last: s.last,
                 };
-                DockView::new(dock_id, &s.dock, &mut s.operations)
+                DockView::emitting(dock_id, &s.dock, &mut s.operations)
                     .min_pane(140.0)
                     .show(ui, &mut panes);
                 s.apply_operations();

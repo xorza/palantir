@@ -14,7 +14,7 @@ use std::time::Duration;
 use crate::animation::motion_role::MotionRole;
 use crate::effect::contract::{self, ContractSpec, ParamsLayout};
 use crate::effect::effect_registry::{EffectRegistry, MaterialFit, ReducedName};
-use crate::effect::effect_source::{EffectSource, ReducedPaint};
+use crate::effect::effect_source::{EffectSource, ReducedEffect};
 use crate::effect::effect_store::EffectModule;
 use crate::effect::error::{EffectError, EntryMismatch, ParamMismatch};
 use crate::effect::press_params::PressParams;
@@ -428,13 +428,13 @@ fn parameters_past_the_limit_are_refused() {
         "{refused:?}"
     );
 
-    let source = EffectSource::<Huge>::new("x").power_saver(ReducedPaint::Nothing);
+    let source = EffectSource::<Huge>::new("x").power_saver(ReducedEffect::Nothing);
     assert!(format!("{source:?}").contains("Nothing"));
     assert_eq!(
-        ReducedPaint::Effect(huge),
-        ReducedPaint::<Huge>::Effect(huge)
+        ReducedEffect::Other(huge),
+        ReducedEffect::<Huge>::Other(huge)
     );
-    assert_ne!(ReducedPaint::<Huge>::Same, ReducedPaint::Nothing);
+    assert_ne!(ReducedEffect::<Huge>::Same, ReducedEffect::Nothing);
 }
 
 /// A backdrop effect's reach is its source's, over each paint's own parameters, so two paints of
@@ -470,16 +470,19 @@ fn a_load_replaces_and_a_refused_reload_keeps_the_last() {
     registry.load(RING, &ring(valid.clone())).unwrap();
     assert_eq!(registry.power_saver_of(RING), Some(ReducedName::Same));
     registry.load(THIN_RING, &ring(valid.clone())).unwrap();
-    let thin = ReducedName::Effect(registry.id_of_name(THIN_RING));
+    let thin = ReducedName::Other(registry.id_of_name(THIN_RING));
     registry
         .load(
             RING,
-            &ring(valid).power_saver(ReducedPaint::Effect(THIN_RING)),
+            &ring(valid).power_saver(ReducedEffect::Other(THIN_RING)),
         )
         .unwrap();
     assert_eq!(registry.power_saver_of(RING), Some(thin));
 
-    let refused = registry.load(RING, &ring("fn effect(").power_saver(ReducedPaint::Nothing));
+    let refused = registry.load(
+        RING,
+        &ring("fn effect(").power_saver(ReducedEffect::Nothing),
+    );
     assert!(matches!(refused, Err(EffectError::Parse { .. })));
     assert!(registry.contains(RING));
     assert_eq!(
@@ -501,7 +504,7 @@ fn the_stock_ripples_hold_their_reserved_names() {
     );
     assert_eq!(
         registry.power_saver_of(EffectName::SPARKLE),
-        Some(ReducedName::Effect(registry.id_of_name(EffectName::RIPPLE)))
+        Some(ReducedName::Other(registry.id_of_name(EffectName::RIPPLE)))
     );
     let reserved = EffectName::<Ring>::named("palantir.ring").unwrap();
     let refused = registry.load(reserved, &ring(ring_wgsl(RING_PARAMS, RING_ENTRY)));
@@ -720,7 +723,7 @@ fn a_name_used_with_other_types_panics() {
     assert_panics_with("effect `thin ring` was loaded as", || {
         registry.load(
             RING,
-            &ring(ring_wgsl(RING_PARAMS, RING_ENTRY)).power_saver(ReducedPaint::Effect(THIN_RING)),
+            &ring(ring_wgsl(RING_PARAMS, RING_ENTRY)).power_saver(ReducedEffect::Other(THIN_RING)),
         )
     });
 }
@@ -1493,13 +1496,13 @@ fn reduced_power_paints_each_alternative() {
     h.ui()
         .load_effect(
             BLEND,
-            EffectSource::new(BLEND_WGSL).power_saver(ReducedPaint::Effect(lite)),
+            EffectSource::new(BLEND_WGSL).power_saver(ReducedEffect::Other(lite)),
         )
         .unwrap();
     h.ui()
         .load_effect(
             gone,
-            EffectSource::new(BLEND_WGSL).power_saver(ReducedPaint::Nothing),
+            EffectSource::new(BLEND_WGSL).power_saver(ReducedEffect::Nothing),
         )
         .unwrap();
     let record = |ui: &mut Ui| {
@@ -1533,7 +1536,7 @@ fn an_effect_that_cannot_paint_panics() {
         || {
             h.ui().load_effect(
                 BLEND,
-                EffectSource::new(BLEND_WGSL).power_saver(ReducedPaint::Effect(missing)),
+                EffectSource::new(BLEND_WGSL).power_saver(ReducedEffect::Other(missing)),
             )
         },
     );
@@ -1545,7 +1548,7 @@ fn an_effect_that_cannot_paint_panics() {
     assert_panics_with("effect `missing` was loaded as", || {
         h.ui().load_effect(
             BLEND,
-            EffectSource::new(BLEND_WGSL).power_saver(ReducedPaint::Effect(missing)),
+            EffectSource::new(BLEND_WGSL).power_saver(ReducedEffect::Other(missing)),
         )
     });
 
@@ -1814,7 +1817,7 @@ fn an_effect_paint_binds_as_many_images_as_its_effect_declares() {
                 PAIR,
                 EffectSource::new(PAIR_WGSL)
                     .image_slots(2)
-                    .power_saver(ReducedPaint::Effect(single)),
+                    .power_saver(ReducedEffect::Other(single)),
             )
         },
     );
@@ -1827,7 +1830,7 @@ fn an_effect_paint_binds_as_many_images_as_its_effect_declares() {
             PAIR,
             EffectSource::new(PAIR_WGSL)
                 .image_slots(2)
-                .power_saver(ReducedPaint::Effect(twin)),
+                .power_saver(ReducedEffect::Other(twin)),
         )
         .unwrap();
     assert_panics_with(
@@ -2210,8 +2213,8 @@ fn each_reduction_paints_its_alternative_in_order() {
         .load_effect(
             base,
             EffectSource::new(BLEND_WGSL)
-                .reduced_motion(ReducedPaint::Effect(still))
-                .power_saver(ReducedPaint::Effect(saver)),
+                .reduced_motion(ReducedEffect::Other(still))
+                .power_saver(ReducedEffect::Other(saver)),
         )
         .unwrap();
     let painted = |h: &mut Harness| {
@@ -2238,7 +2241,7 @@ fn each_reduction_paints_its_alternative_in_order() {
         || {
             h.ui().load_effect(
                 base,
-                EffectSource::new(BLEND_WGSL).reduced_motion(ReducedPaint::Effect(gone)),
+                EffectSource::new(BLEND_WGSL).reduced_motion(ReducedEffect::Other(gone)),
             )
         },
     );
@@ -2252,8 +2255,8 @@ fn an_effect_that_names_itself_paints_itself() {
     let mut h = Harness::mono(UVec2::new(16, 16));
     let source = || {
         EffectSource::new(BLEND_WGSL)
-            .reduced_motion(ReducedPaint::Effect(base))
-            .power_saver(ReducedPaint::Nothing)
+            .reduced_motion(ReducedEffect::Other(base))
+            .power_saver(ReducedEffect::Nothing)
     };
     h.ui().load_effect(base, source()).unwrap();
     h.set_system_power_reduced(true);

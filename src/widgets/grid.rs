@@ -66,20 +66,6 @@ impl<Rows, Cols> Grid<Rows, Cols> {
         self
     }
 
-    /// Paint `chrome` unless the caller set one; for wrappers that theme a widget after the caller's setters. An explicit [`Self::chrome`] wins either order.
-    ///
-    /// # Panics
-    ///
-    /// Panics unless `chrome` holds the kinds [`Chrome`] lists.
-    #[track_caller]
-    pub const fn default_chrome(mut self, chrome: Chrome) -> Self {
-        chrome.validate();
-        if self.chrome.is_none() {
-            self.chrome = Some(chrome);
-        }
-        self
-    }
-
     /// Record the grid and its `body`; children name their slot with [`Configure::grid_cell`].
     pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> InnerResponse<R>
     where

@@ -4,7 +4,6 @@ use crate::gpu::pipeline::quad_pipeline::QuadPipeline;
 use crate::gpu::test_gpu::headless_test_gpu;
 use crate::host::harness::Harness;
 use crate::host::harness::harness_builder::Depth;
-use crate::icons::icon_set::IconSet;
 use crate::icons::icon_table::IconTable;
 use crate::icons::internals::ONE_COLOR;
 use crate::image_registry::image_handle::ImageHandle;
@@ -26,7 +25,6 @@ use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};
-use std::rc::Rc;
 
 /// The surface every case paints on, black where nothing draws.
 const SURFACE: UVec2 = UVec2::new(48, 32);
@@ -152,9 +150,9 @@ fn every_family_takes_the_clips_coverage() {
         .ui()
         .load_image(&Image::from_srgba8(UVec2::splat(2), vec![255; 16]).unwrap())
         .unwrap();
-    let icons: IconSet = h.ui().load_icons(Rc::new(
-        IconTable::from_svgs([("rect", ONE_COLOR)]).unwrap(),
-    ));
+    let icons = h
+        .ui()
+        .load_icons(IconTable::from_svgs([("rect", ONE_COLOR)]).unwrap());
     let icon = icons.by_name("rect").unwrap();
     let mut mesh = Mesh::with_capacity(4, 6);
     let corner = |x: f32, y: f32| Vec2::new(x, y);

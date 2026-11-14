@@ -136,7 +136,7 @@ fn page(ui: &mut Ui, k: Kit, s: &mut Page) {
                 });
                 support::row(ui, |ui| {
                     if Button::new().label("Copy the first").show(ui).clicked() {
-                        ui.clipboard().set_text(&s.a).ok();
+                        ui.clipboard().set_text(&s.a);
                     }
                     if Button::new()
                         .label("Paste into the second")

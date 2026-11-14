@@ -108,15 +108,14 @@ impl EditAction {
             Self::Redo => editor.step_history(HistoryStep::Redo),
             Self::SelectAll => editor.select_all(),
             Self::Cut => {
-                if let Some(selected) = editor.selected_text()
-                    && clipboard.set_text(selected).is_ok()
-                {
+                if let Some(selected) = editor.selected_text() {
+                    clipboard.set_text(selected);
                     editor.cut_selection();
                 }
             }
             Self::Copy => {
                 if let Some(selected) = editor.selected_text() {
-                    clipboard.set_text(selected).ok();
+                    clipboard.set_text(selected);
                 }
             }
             Self::Paste => {

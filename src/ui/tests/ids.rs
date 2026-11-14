@@ -413,6 +413,6 @@ fn two_widgets_resolved_before_recording_get_distinct_ids() {
         "positional, like any auto-id collision"
     );
     for id in ids {
-        assert!(h.arranged(id).is_some(), "{id:?} recorded");
+        assert!(h.layout_rect(id).is_some(), "{id:?} recorded");
     }
 }

@@ -80,7 +80,7 @@ fn clip_rounded_emits_push_clip_rounded_when_chrome_has_radius() {
     assert_eq!(cmds.kinds(), ["Fill", "PushClip", "PopClip"]);
     let payload = cmds.calls[1].as_push_clip().unwrap();
 
-    let panel_rect = h.arranged(WidgetId::from_hash("rounded"));
+    let panel_rect = h.layout_rect(WidgetId::from_hash("rounded"));
     // Border=2 folds into padding, so the mask insets by 2 and its radius drops by 2 to stay concentric with the stroke's inner edge.
     assert_eq!(
         payload.rect,
@@ -121,7 +121,7 @@ fn clip_rounded_fits_overflowing_radii_before_the_uneven_inset() {
         .iter()
         .find_map(|call| call.as_push_clip())
         .expect("a rounded clip");
-    let rect = h.arranged(WidgetId::from_hash("pill"));
+    let rect = h.layout_rect(WidgetId::from_hash("pill"));
     assert_eq!(
         payload.rect,
         rect.unwrap().deflated_by(Spacing::xy(10.0, 2.0))

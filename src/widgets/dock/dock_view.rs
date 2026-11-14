@@ -35,11 +35,29 @@ use crate::widgets::tabs::tab_key::TabKey;
 use crate::widgets::tabs::tab_strip::{TabOverflow, TabStrip};
 use crate::widgets::text::Text;
 use crate::window::cursor_icon::CursorIcon;
+use std::marker::PhantomData;
 use std::rc::Rc;
 
 /// The docked pane tree: splits onto [`Splitter`]s, leaves as a [`TabStrip`] over a group-keyed content area, and the drag gesture that moves a tab.
 ///
-/// **Two calls, not one.** The walk cannot see this frame's layout, so a tab click learned mid-walk would draw the pane it replaced. [`Self::scan`] runs ahead of it, the application applies what it emits, then this walk runs.
+/// **Two passes, not one.** The walk cannot see this frame's layout, so a tab click learned
+/// mid-walk would draw the pane it replaced: a scan runs ahead of it and its operations apply
+/// first. Who applies is in the type, `M`: [`DockView::new`] over `&mut DockState` applies them
+/// itself, as egui_dock's `DockArea::new(&mut state)` does
+/// (<https://docs.rs/egui_dock/latest/egui_dock/struct.DockArea.html>);
+/// [`DockView::emitting`] hands them to the caller, for one that routes each through its own undo,
+/// with [`DockView::scan`] before it.
+///
+/// ```no_run
+/// # use palantir::{DockState, DockTabs, DockView, Ui, WidgetId};
+/// # #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+/// # enum Tab { Main }
+/// # fn demo<D: DockTabs<Tab = Tab>>(ui: &mut Ui, dock: &mut DockState<Tab>, tabs: &mut D) {
+/// DockView::new(WidgetId::from_hash("app.dock"), dock)
+///     .min_pane(220.0)
+///     .show(ui, tabs);
+/// # }
+/// ```
 ///
 /// ```no_run
 /// # use palantir::{DockOperation, DockState, DockTabs, DockView, Ui, WidgetId};
@@ -52,22 +70,22 @@ use std::rc::Rc;
 /// for operation in operations.drain(..) {
 ///     dock.apply(operation);
 /// }
-/// DockView::new(id, dock, &mut operations).min_pane(220.0).show(ui, tabs);
+/// DockView::emitting(id, dock, &mut operations).show(ui, tabs);
 /// for operation in operations.drain(..) {
 ///     dock.apply(operation);
 /// }
 /// # }
 /// ```
-///
-/// [`Self::run`] does all of that in one call, for an application with no operation queue.
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
-pub struct DockView<'a, T> {
-    /// The id [`Self::scan`] reads, which `show` holds the recorded id to.
+pub struct DockView<'a, T, M = Applying<'a, T>> {
+    /// The id the scan reads, which `show` holds the recorded id to.
     dock: WidgetId,
     widget: Widget,
-    state: &'a DockState<T>,
-    operations: &'a mut Vec<DockOperation<T>>,
+    /// The tree and who applies what the view decides.
+    mode: M,
+    /// The tab type, which `mode` holds; named here so the default mode can name it.
+    tab: PhantomData<fn(T)>,
     min_pane: f32,
     overflow: TabOverflow,
     allowed_splits: AllowedSplits,
@@ -77,24 +95,234 @@ pub struct DockView<'a, T> {
     menu_style: Option<&'a MenuTheme>,
 }
 
+/// A [`DockView`] that applies its operations to the tree itself, as [`DockView::new`] builds
+/// one.
+#[derive(Debug)]
+pub struct Applying<'a, T>(&'a mut DockState<T>);
+
+/// A [`DockView`] that hands its operations to the caller, as [`DockView::emitting`] builds one.
+#[derive(Debug)]
+pub struct Emitting<'a, T> {
+    state: &'a DockState<T>,
+    operations: &'a mut Vec<DockOperation<T>>,
+}
+
 /// The split wedges' reach: the inner half of a pane's content is the join zone.
 const DEFAULT_EDGE_FRACTION: f32 = 0.25;
 
-impl<'a, T: DockTab> DockView<'a, T> {
-    /// A view over `state` under the id `dock`, emitting into `operations`. The widget never
-    /// mutates the tree; every decision arrives as an operation. `dock` is the id
-    /// [`Self::scan`] reads and every part's id derives from; [`Self::show`] refuses another, so
-    /// the two calls cannot part.
-    pub fn new(
+impl<'a, T: DockTab> DockView<'a, T, Applying<'a, T>> {
+    /// A view over `state` under the id `dock` that applies every operation it decides to
+    /// `state`: it scans, applies, records and applies again in its `show`, over a buffer it
+    /// keeps between frames. `dock` is the id every part's id derives from.
+    pub fn new(dock: WidgetId, state: &'a mut DockState<T>) -> Self {
+        Self::with_mode(dock, Applying(state))
+    }
+
+    /// Record the pane tree and the drag feedback over it, applying the operations a scan of
+    /// last frame and this frame's walk decide.
+    ///
+    /// # Panics
+    ///
+    /// Panics when a `Configure` id setter (`id`, `id_salt`, `auto_id`) moved the view off the
+    /// id `new` took, which the scan reads.
+    #[track_caller]
+    pub fn show<D: DockTabs<Tab = T>>(self, ui: &mut Ui, tabs: &mut D) -> Response {
+        let DockView {
+            dock,
+            widget,
+            mode: Applying(state),
+            tab,
+            min_pane,
+            overflow,
+            allowed_splits,
+            edge_fraction,
+            style,
+            tabs_style,
+            menu_style,
+        } = self;
+        ui.with_state::<DockOpBuf<T>, _>(dock, |ui, buf| {
+            let operations = &mut buf.operations;
+            operations.clear();
+            DockView::<T, Emitting<'_, T>>::scan(ui, dock, state, operations);
+            for operation in operations.drain(..) {
+                state.apply(operation);
+            }
+            let response = DockView::<T, Emitting<'_, T>> {
+                dock,
+                widget,
+                mode: Emitting {
+                    state: &*state,
+                    operations: &mut *operations,
+                },
+                tab,
+                min_pane,
+                overflow,
+                allowed_splits,
+                edge_fraction,
+                style,
+                tabs_style,
+                menu_style,
+            }
+            .show(ui, tabs);
+            for operation in operations.drain(..) {
+                state.apply(operation);
+            }
+            response
+        })
+    }
+}
+
+impl<'a, T: DockTab> DockView<'a, T, Emitting<'a, T>> {
+    /// A view over `state` under the id `dock`, emitting into `operations`, for a caller that
+    /// routes each through its own undo. The widget never mutates the tree; every decision
+    /// arrives as an operation. `dock` is the id [`Self::scan`] reads and every part's id derives
+    /// from; [`Self::show`] refuses another, so the two calls cannot part.
+    pub fn emitting(
         dock: WidgetId,
         state: &'a DockState<T>,
         operations: &'a mut Vec<DockOperation<T>>,
     ) -> Self {
+        Self::with_mode(dock, Emitting { state, operations })
+    }
+
+    /// Record the pane tree and the drag feedback over it.
+    ///
+    /// # Panics
+    ///
+    /// Panics when a `Configure` id setter (`id`, `id_salt`, `auto_id`) moved the view off the
+    /// id `emitting` took: [`Self::scan`] reads that id, so every click, close and drag would be
+    /// lost.
+    #[track_caller]
+    pub fn show<D: DockTabs<Tab = T>>(self, ui: &mut Ui, tabs: &mut D) -> Response {
+        let app_theme = Rc::clone(ui.theme());
+        let theme = self.style.unwrap_or(&app_theme.dock);
+        let Self {
+            dock,
+            mut widget,
+            mode: Emitting { state, operations },
+            tab: _,
+            min_pane,
+            overflow,
+            allowed_splits,
+            edge_fraction,
+            style: _,
+            tabs_style,
+            menu_style,
+        } = self;
+        widget
+            .configure()
+            .default_size((Sizing::FILL, Sizing::FILL));
+        let response = widget.response(ui);
+        let id = response.id;
+        assert!(
+            id == dock,
+            "a dock view records under the id it was built with, which the scan reads",
+        );
+        let carried = carried::<T>(ui, id);
+        // Classified before the walk, so the strip it lands in records its caret, and kept for
+        // the scan that sees the release: the drop lands where the frame showed it.
+        let drop = carried.and_then(|tab| {
+            let rules = SplitRules {
+                allowed: allowed_splits,
+                edge_fraction,
+            };
+            drop_target(ui, id, state, rules)
+                .filter(|target| state.accepts_move(tab, target.drop()))
+        });
+        if let Some(tab) = carried {
+            ui.set_state(id, TabDrag { tab, target: drop });
+        }
+        let mut cx = DockCtx {
+            dock: id,
+            state,
+            operations,
+            tabs,
+            min_pane,
+            overflow,
+            theme,
+            tabs_style,
+            menu_style,
+            drop,
+        };
+        widget.record(ui, None, |ui| {
+            cx.node(ui, DockState::<T>::ROOT, DockPath::ROOT);
+            cx.tab_menu(ui);
+            if let Some(tab) = carried {
+                ui.request_cursor(CursorIcon::Grabbing);
+                cx.drag_feedback(ui, tab);
+            }
+        });
+        response
+    }
+
+    /// Navigation-phase scan: focus follows a press into a pane, then chip responses (close beats activation, then drag arming), then the drag lifecycle.
+    ///
+    /// **Run before [`Self::show`], and apply what it emits.**
+    pub fn scan(
+        ui: &mut Ui,
+        dock: WidgetId,
+        state: &DockState<T>,
+        operations: &mut Vec<DockOperation<T>>,
+    ) {
+        if let Some(group) = state
+            .groups()
+            .find(|g| g.id != state.focused() && ui.is_focus_within(g.id.pane_id(dock)))
+        {
+            operations.push(DockOperation::FocusPane { group: group.id });
+        }
+        let mut dragged = carried::<T>(ui, dock);
+        for group in state.groups() {
+            let hits = TabStrip::scan(
+                ui,
+                group.id.strip_id(dock),
+                group.tabs.iter().map(|&tab| TabKey::of(tab)),
+            );
+            let tab_at = |slot: Option<usize>| slot.map(|slot| group.tabs[slot]);
+            if let Some(tab) = tab_at(hits.closed) {
+                operations.push(DockOperation::CloseTab { tab });
+            }
+            if let Some(tab) = tab_at(hits.clicked) {
+                operations.push(DockOperation::ActivateTab { tab });
+            }
+            if dragged.is_none()
+                && let Some(tab) = tab_at(hits.drag_started)
+            {
+                dragged = Some(tab);
+                ui.set_state(dock, TabDrag { tab, target: None });
+            }
+        }
+        let Some(tab) = dragged else {
+            return;
+        };
+        let Some(address) = state.find_tab(tab) else {
+            end_drag::<T>(ui, dock);
+            return;
+        };
+        if ui.shortcut_pressed(Key::Escape) {
+            end_drag::<T>(ui, dock);
+            return;
+        }
+        let chip = TabStrip::chip_id(address.group.strip_id(dock), TabKey::of(tab));
+        if ui.response_for(chip).left.drag.stopped() {
+            let shown = ui.state::<TabDrag<T>>(dock).and_then(|d| d.target);
+            if let Some(target) = shown {
+                operations.push(DockOperation::MoveTab {
+                    tab,
+                    to: target.drop(),
+                });
+            }
+            end_drag::<T>(ui, dock);
+        }
+    }
+}
+
+impl<'a, T, M> DockView<'a, T, M> {
+    fn with_mode(dock: WidgetId, mode: M) -> Self {
         Self {
             dock,
             widget: Widget::zstack().id(dock),
-            state,
-            operations,
+            mode,
+            tab: PhantomData,
             min_pane: 0.0,
             overflow: TabOverflow::default(),
             allowed_splits: AllowedSplits::ALL,
@@ -104,7 +332,6 @@ impl<'a, T: DockTab> DockView<'a, T> {
             menu_style: None,
         }
     }
-
     /// Floor either pane's extent on the split axis at `px`, a *length*, while a divider is dragged. Default `0.0`.
     ///
     /// # Panics
@@ -163,202 +390,48 @@ impl<'a, T: DockTab> DockView<'a, T> {
         self.menu_style = s.into();
         self
     }
-
-    /// Record the pane tree and the drag feedback over it.
-    ///
-    /// # Panics
-    ///
-    /// Panics when a `Configure` id setter (`id`, `id_salt`, `auto_id`) moved the view off the
-    /// id `new` took: [`Self::scan`] reads that id, so every click, close and drag would be lost.
-    #[track_caller]
-    pub fn show<D: DockTabs<Tab = T>>(self, ui: &mut Ui, tabs: &mut D) -> Response {
-        let app_theme = Rc::clone(ui.theme());
-        let theme = self.style.unwrap_or(&app_theme.dock);
-        let Self {
-            dock,
-            mut widget,
-            state,
-            operations,
-            min_pane,
-            overflow,
-            allowed_splits,
-            edge_fraction,
-            style: _,
-            tabs_style,
-            menu_style,
-        } = self;
-        widget
-            .configure()
-            .default_size((Sizing::FILL, Sizing::FILL));
-        let response = widget.response(ui);
-        let id = response.id;
-        assert!(
-            id == dock,
-            "a dock view records under the id `new` took, which `scan` reads",
-        );
-        let carried = DockView::drag(ui, id);
-        // Classified before the walk, so the strip it lands in records its caret, and kept for
-        // the scan that sees the release: the drop lands where the frame showed it.
-        let drop = carried.and_then(|tab| {
-            let rules = SplitRules {
-                allowed: allowed_splits,
-                edge_fraction,
-            };
-            DockView::drop_target(ui, id, state, rules)
-                .filter(|target| state.accepts_move(tab, target.drop()))
-        });
-        if let Some(tab) = carried {
-            ui.set_state(id, TabDrag { tab, target: drop });
-        }
-        let mut cx = DockCtx {
-            dock: id,
-            state,
-            operations,
-            tabs,
-            min_pane,
-            overflow,
-            theme,
-            tabs_style,
-            menu_style,
-            drop,
-        };
-        widget.record(ui, None, |ui| {
-            cx.node(ui, DockState::<T>::ROOT, DockPath::ROOT);
-            cx.tab_menu(ui);
-            if let Some(tab) = carried {
-                ui.request_cursor(CursorIcon::Grabbing);
-                cx.drag_feedback(ui, tab);
-            }
-        });
-        response
-    }
 }
 
-impl<T: DockTab> DockView<'_, T> {
-    /// Scan, apply, record, apply: the whole frame in one call, for an application with no
-    /// operation queue, under the id `dock`.
-    pub fn run<D: DockTabs<Tab = T>>(
-        ui: &mut Ui,
-        dock: WidgetId,
-        state: &mut DockState<T>,
-        tabs: &mut D,
-    ) {
-        ui.with_state::<DockOpBuf<T>, _>(dock, |ui, buf| {
-            let operations = &mut buf.operations;
-            operations.clear();
-            DockView::scan(ui, dock, state, operations);
-            for operation in operations.drain(..) {
-                state.apply(operation);
-            }
-            DockView::new(dock, &*state, operations).show(ui, tabs);
-            for operation in operations.drain(..) {
-                state.apply(operation);
-            }
-        });
-    }
+/// The tab a drag carries, if one is under way.
+fn carried<T: DockTab>(ui: &Ui, dock: WidgetId) -> Option<T> {
+    ui.state::<TabDrag<T>>(dock).map(|drag| drag.tab)
 }
 
-impl<T: DockTab> DockView<'_, T> {
-    /// Navigation-phase scan: focus follows a press into a pane, then chip responses (close beats activation, then drag arming), then the drag lifecycle.
-    ///
-    /// **Run before [`Self::show`], and apply what it emits.**
-    pub fn scan(
-        ui: &mut Ui,
-        dock: WidgetId,
-        state: &DockState<T>,
-        operations: &mut Vec<DockOperation<T>>,
-    ) {
-        if let Some(group) = state
-            .groups()
-            .find(|g| g.id != state.focused() && ui.is_focus_within(g.id.pane_id(dock)))
-        {
-            operations.push(DockOperation::FocusPane { group: group.id });
-        }
-        let mut dragged = Self::drag(ui, dock);
-        for group in state.groups() {
-            let hits = TabStrip::scan(
-                ui,
-                group.id.strip_id(dock),
-                group.tabs.iter().map(|&tab| TabKey::of(tab)),
-            );
-            let tab_at = |slot: Option<usize>| slot.map(|slot| group.tabs[slot]);
-            if let Some(tab) = tab_at(hits.closed) {
-                operations.push(DockOperation::CloseTab { tab });
-            }
-            if let Some(tab) = tab_at(hits.clicked) {
-                operations.push(DockOperation::ActivateTab { tab });
-            }
-            if dragged.is_none()
-                && let Some(tab) = tab_at(hits.drag_started)
-            {
-                dragged = Some(tab);
-                ui.set_state(dock, TabDrag { tab, target: None });
-            }
-        }
-        let Some(tab) = dragged else {
-            return;
-        };
-        let Some(address) = state.find_tab(tab) else {
-            Self::end_drag(ui, dock);
-            return;
-        };
-        if ui.shortcut_pressed(Key::Escape) {
-            Self::end_drag(ui, dock);
-            return;
-        }
-        let chip = TabStrip::chip_id(address.group.strip_id(dock), TabKey::of(tab));
-        if ui.response_for(chip).left.drag.stopped() {
-            let shown = ui.state::<TabDrag<T>>(dock).and_then(|d| d.target);
-            if let Some(target) = shown {
-                operations.push(DockOperation::MoveTab {
-                    tab,
-                    to: target.drop(),
-                });
-            }
-            Self::end_drag(ui, dock);
-        }
-    }
+/// End the drag and forget its drop.
+fn end_drag<T: DockTab>(ui: &mut Ui, dock: WidgetId) {
+    ui.remove_state::<TabDrag<T>>(dock);
+}
 
-    fn drag(ui: &Ui, dock: WidgetId) -> Option<T> {
-        ui.state::<TabDrag<T>>(dock).map(|drag| drag.tab)
-    }
-
-    /// End the drag and forget its drop.
-    fn end_drag(ui: &mut Ui, dock: WidgetId) {
-        ui.remove_state::<TabDrag<T>>(dock);
-    }
-
-    /// The drop the pointer indicates: the pane containing it, classified into a zone. Not a hover test, since an inert pane hovers nothing. `None` off the panes; a release there cancels, as it does over a drop [`DockState::accepts_move`] refuses.
-    fn drop_target(
-        ui: &mut Ui,
-        dock: WidgetId,
-        state: &DockState<T>,
-        rules: SplitRules,
-    ) -> Option<DropTarget> {
-        let SplitRules {
-            allowed,
-            edge_fraction,
-        } = rules;
-        let p = ui.pointer_pos()?;
-        let (group, pane) = state.groups().find_map(|g| {
-            let rect = ui.response_for(g.id.pane_id(dock)).rect?;
-            rect.contains(p).then_some((g, rect))
-        })?;
-        let strip_id = group.id.strip_id(dock);
-        let strip = ui.response_for(strip_id).rect?;
-        let keys = group.tabs.iter().map(|&tab| TabKey::of(tab));
-        let geometry = PaneGeometry {
-            group: group.id,
-            pane,
-            strip,
-            strip_slot: TabStrip::drop_slot(ui, strip_id, keys, p.x),
-            tabs: group.tabs.len(),
-            can_split: state.can_split(group.id),
-            allowed,
-            edge_fraction,
-        };
-        Some(geometry.classify(p))
-    }
+/// The drop the pointer indicates: the pane containing it, classified into a zone. Not a hover test, since an inert pane hovers nothing. `None` off the panes; a release there cancels, as it does over a drop [`DockState::accepts_move`] refuses.
+fn drop_target<T: DockTab>(
+    ui: &mut Ui,
+    dock: WidgetId,
+    state: &DockState<T>,
+    rules: SplitRules,
+) -> Option<DropTarget> {
+    let SplitRules {
+        allowed,
+        edge_fraction,
+    } = rules;
+    let p = ui.pointer_pos()?;
+    let (group, pane) = state.groups().find_map(|g| {
+        let rect = ui.response_for(g.id.pane_id(dock)).rect?;
+        rect.contains(p).then_some((g, rect))
+    })?;
+    let strip_id = group.id.strip_id(dock);
+    let strip = ui.response_for(strip_id).rect?;
+    let keys = group.tabs.iter().map(|&tab| TabKey::of(tab));
+    let geometry = PaneGeometry {
+        group: group.id,
+        pane,
+        strip,
+        strip_slot: TabStrip::drop_slot(ui, strip_id, keys, p.x),
+        tabs: group.tabs.len(),
+        can_split: state.can_split(group.id),
+        allowed,
+        edge_fraction,
+    };
+    Some(geometry.classify(p))
 }
 
 /// The arranged size of a group's content area, `None` before its first layout.
@@ -367,14 +440,15 @@ fn content_size(ui: &Ui, dock: WidgetId, group: TabGroupId) -> Option<Size> {
     (size.w > 0.0 && size.h > 0.0).then_some(size)
 }
 
-impl<T> Configure for DockView<'_, T> {
+impl<T, M> Configure for DockView<'_, T, M> {
     #[inline]
     fn configure(&mut self) -> Configurator<'_> {
         self.widget.configure()
     }
 }
 
-/// Scratch [`DockView::run`] keeps between frames, so it allocates once rather than per frame.
+/// Scratch an applying [`DockView`] keeps between frames, so it allocates once rather than per
+/// frame.
 #[derive(Debug)]
 struct DockOpBuf<T> {
     operations: Vec<DockOperation<T>>,
@@ -522,7 +596,7 @@ impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
                     group: group.id,
                 };
                 ui.set_state(self.dock, target);
-                Menu::open(ui, chip, p);
+                Menu::open_at(ui, chip, p);
             }
         }
     }

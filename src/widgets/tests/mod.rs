@@ -1,4 +1,4 @@
-//! Rules the bundled widgets keep alike, as no trait holds them in step: chrome defaults here,
+//! Rules the bundled widgets keep alike, as no trait holds them in step: chrome checks here,
 //! `style` setters, and what a hostile theme file renders as.
 
 mod deferred_commit;
@@ -8,14 +8,9 @@ mod theme_file_values;
 use crate::host::harness::Harness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::primitives::input::interaction::response::Response;
-use crate::primitives::input::interaction::response_state::ResponseState;
-use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::math::lerp::Lerp;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
-use crate::scene::layer::Layer;
-use crate::shape::paint::lowered_brush::LoweredBrush;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
@@ -23,224 +18,17 @@ use crate::widgets::grid::Grid;
 use crate::widgets::menu::Menu;
 use crate::widgets::modal::Modal;
 use crate::widgets::panel::Panel;
-use crate::widgets::popup::Popup;
-use crate::widgets::popup::popup_trigger::PopupTrigger;
 use crate::widgets::scroll::Scroll;
-use crate::widgets::tooltip::Tooltip;
 use glam::{UVec2, Vec2};
-use std::time::Duration;
 
 const SURFACE: UVec2 = UVec2::new(400, 300);
 const ID: &str = "chrome-default";
-
-#[derive(Clone, Copy, Debug)]
-enum SetterOrder {
-    DefaultOnly,
-    ExplicitOnly,
-    ExplicitThenDefault,
-    DefaultThenExplicit,
-}
-
-const DEFAULT_FILL: RgbaF32 = RgbaF32::new(0.9, 0.1, 0.1, 1.0);
-const EXPLICIT_FILL: RgbaF32 = RgbaF32::new(0.1, 0.1, 0.9, 1.0);
-
-impl SetterOrder {
-    fn apply<W>(self, w: W, chrome: fn(W, Chrome) -> W, default: fn(W, Chrome) -> W) -> W {
-        let d = Chrome::new(DEFAULT_FILL);
-        let e = Chrome::new(EXPLICIT_FILL);
-        match self {
-            Self::DefaultOnly => default(w, d),
-            Self::ExplicitOnly => chrome(w, e),
-            Self::ExplicitThenDefault => default(chrome(w, e), d),
-            Self::DefaultThenExplicit => chrome(default(w, d), e),
-        }
-    }
-
-    const fn want(self) -> RgbaF32 {
-        match self {
-            Self::DefaultOnly => DEFAULT_FILL,
-            _ => EXPLICIT_FILL,
-        }
-    }
-}
-
-fn hovered_trigger() -> Response {
-    Response {
-        id: WidgetId::from_hash("chrome-trigger"),
-        state: ResponseState {
-            rect: Some(Rect::new(20.0, 20.0, 40.0, 20.0)),
-            pointer_over: true,
-            ..ResponseState::default()
-        },
-    }
-}
-
-#[derive(Debug)]
-struct Kind {
-    name: &'static str,
-    record: fn(&mut Ui, SetterOrder),
-    chrome_node: fn() -> WidgetId,
-    layer: Layer,
-}
 
 fn own_id() -> WidgetId {
     WidgetId::from_hash(ID)
 }
 
-/// Every widget with `chrome(chrome)` has `default_chrome(chrome)`; the default fills in only
-/// where the caller set no chrome, in either call order.
-#[test]
-fn default_chrome_yields_to_an_explicit_one_on_every_chrome_widget() {
-    let kinds = [
-        Kind {
-            name: "Block",
-            record: |ui, c| {
-                c.apply(
-                    Block::new().id(own_id()),
-                    Block::chrome,
-                    Block::default_chrome,
-                )
-                .show(ui);
-            },
-            chrome_node: own_id,
-            layer: Layer::Main,
-        },
-        Kind {
-            name: "Panel",
-            record: |ui, c| {
-                c.apply(
-                    Panel::vstack().id(own_id()),
-                    Panel::chrome,
-                    Panel::default_chrome,
-                )
-                .show(ui, |_| {});
-            },
-            chrome_node: own_id,
-            layer: Layer::Main,
-        },
-        Kind {
-            name: "Grid",
-            record: |ui, c| {
-                c.apply(Grid::new().id(own_id()), Grid::chrome, Grid::default_chrome)
-                    .show(ui, |_| {});
-            },
-            chrome_node: own_id,
-            layer: Layer::Main,
-        },
-        Kind {
-            name: "Scroll",
-            record: |ui, c| {
-                c.apply(
-                    Scroll::vertical().id(own_id()),
-                    Scroll::chrome,
-                    Scroll::default_chrome,
-                )
-                .show(ui, |_| {});
-            },
-            chrome_node: || own_id().with("viewport"),
-            layer: Layer::Main,
-        },
-        Kind {
-            name: "Popup",
-            record: |ui, c| {
-                c.apply(
-                    Popup::new()
-                        .anchor(Anchor::at_point(Vec2::new(20.0, 20.0)))
-                        .id(own_id()),
-                    Popup::chrome,
-                    Popup::default_chrome,
-                )
-                .show(ui, |_| {});
-            },
-            chrome_node: own_id,
-            layer: Layer::Popup,
-        },
-        Kind {
-            name: "PopupTrigger",
-            record: |ui, c| {
-                let trigger = hovered_trigger();
-                PopupTrigger::open(ui, trigger.id);
-                c.apply(
-                    PopupTrigger::on(&trigger),
-                    PopupTrigger::chrome,
-                    PopupTrigger::default_chrome,
-                )
-                .show(ui, |_| {});
-            },
-            chrome_node: || hovered_trigger().id.with("popup"),
-            layer: Layer::Popup,
-        },
-        Kind {
-            name: "Modal",
-            record: |ui, c| {
-                c.apply(
-                    Modal::new().id(own_id()),
-                    Modal::chrome,
-                    Modal::default_chrome,
-                )
-                .show(ui, |_| {});
-            },
-            chrome_node: || own_id().with("panel"),
-            layer: Layer::Modal,
-        },
-        Kind {
-            name: "Tooltip",
-            record: |ui, c| {
-                let trigger = hovered_trigger();
-                c.apply(
-                    Tooltip::on(&trigger, "tip").delay(Duration::ZERO),
-                    Tooltip::chrome,
-                    Tooltip::default_chrome,
-                )
-                .show(ui);
-            },
-            chrome_node: || hovered_trigger().id.with("bubble"),
-            layer: Layer::Tooltip,
-        },
-        Kind {
-            name: "Menu",
-            record: |ui, c| {
-                c.apply(Menu::for_id(own_id()), Menu::chrome, Menu::default_chrome)
-                    .show(ui, |_| {});
-            },
-            chrome_node: || Menu::menu_id(own_id()),
-            layer: Layer::Menu,
-        },
-    ];
-    let cases = [
-        SetterOrder::DefaultOnly,
-        SetterOrder::ExplicitOnly,
-        SetterOrder::ExplicitThenDefault,
-        SetterOrder::DefaultThenExplicit,
-    ];
-    for kind in &kinds {
-        for case in cases {
-            let mut h = Harness::mono(SURFACE);
-            Menu::open(h.ui_mut(), own_id(), Vec2::new(20.0, 20.0));
-            // Two frames: the tooltip turns visible the frame after the pointer settles.
-            h.frame(|ui| (kind.record)(ui, case));
-            h.frame(|ui| (kind.record)(ui, case));
-            let node = h
-                .node_of((kind.chrome_node)())
-                .unwrap_or_else(|| panic!("{}: chrome node recorded", kind.name));
-            assert_eq!(node.plane.layer, kind.layer, "{}", kind.name);
-            let fill = h
-                .ui()
-                .tree(kind.layer)
-                .chrome(node.node)
-                .unwrap_or_else(|| panic!("{} {case:?}: paints chrome", kind.name))
-                .fill;
-            let want = case.want().to_f16();
-            assert!(
-                matches!(fill, LoweredBrush::Solid(got) if got == want),
-                "{} {case:?}: {fill:?}, want {want:?}",
-                kind.name,
-            );
-        }
-    }
-}
-
-/// Chrome values are checked where they enter a widget through either setter: NaN fill, negative border
+/// Chrome values are checked where they enter a widget: NaN fill, negative border
 /// width, a NaN or negative corner and NaN shadow blur each panic with their kind's rule. The
 /// corner constructors refuse both, so the corners come from blends, which can make them.
 #[test]
@@ -293,7 +81,7 @@ fn chrome_setters_check_the_chrome() {
     ];
     for (rule, chrome) in bad {
         panic_probe::assert_panics_with(rule, || Panel::vstack().chrome(chrome.clone()));
-        panic_probe::assert_panics_with(rule, || Block::new().default_chrome(chrome.clone()));
+        panic_probe::assert_panics_with(rule, || Block::new().chrome(chrome.clone()));
     }
 }
 
@@ -422,7 +210,7 @@ fn widget_setters_check_their_kinds() {
             let state = DockState::new(0_u32);
             let mut operations = Vec::new();
             drop(
-                DockView::new(WidgetId::from_hash("kinds.dock"), &state, &mut operations)
+                DockView::emitting(WidgetId::from_hash("kinds.dock"), &state, &mut operations)
                     .min_pane(f32::NAN),
             );
         },
@@ -438,7 +226,7 @@ fn widget_setters_check_their_kinds() {
         let state = DockState::new(0_u32);
         let mut operations = Vec::new();
         drop(
-            DockView::new(WidgetId::from_hash("kinds.dock"), &state, &mut operations)
+            DockView::emitting(WidgetId::from_hash("kinds.dock"), &state, &mut operations)
                 .edge_fraction(fraction),
         );
     };
@@ -466,7 +254,7 @@ fn widget_setters_check_their_kinds() {
         },
         || {
             let mut h = Harness::mono(SURFACE);
-            Menu::open(
+            Menu::open_at(
                 h.ui_mut(),
                 WidgetId::from_hash("m"),
                 Vec2::new(f32::NAN, 0.0),

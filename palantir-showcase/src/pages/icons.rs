@@ -15,7 +15,6 @@ use palantir::{
     Align, ColorButton, ColorPicker, Configure, CursorIcon, IconHandle, IconSet, IconTable, Panel,
     RgbaF32, Sense, Sizing, Text, Ui, WidgetId,
 };
-use std::rc::Rc;
 
 /// A diskette: several flat fills over a vertical gradient, inside a clip
 /// path. The "real toolbar icon" case.
@@ -87,7 +86,7 @@ impl Icons {
     fn load(ui: &mut Ui) -> Self {
         ui.with_state::<Option<Self>, _>(WidgetId::from_hash("showcase::icons::set"), |ui, held| {
             held.get_or_insert_with(|| {
-                let set = ui.load_icons(Rc::new(
+                let set = ui.load_icons(
                     IconTable::from_svgs([
                         ("folder", FOLDER_SVG),
                         ("new-file", NEW_FILE_SVG),
@@ -95,7 +94,7 @@ impl Icons {
                         ("wide", WIDE_SVG),
                     ])
                     .expect("the bundled icons are readable SVGs with distinct names"),
-                ));
+                );
                 let handle = |name| set.by_name(name).expect("bundled icon");
                 Self {
                     folder: handle("folder"),

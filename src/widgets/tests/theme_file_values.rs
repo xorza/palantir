@@ -269,7 +269,7 @@ fn render(theme: Theme, shaper: &TextShaper) -> Harness {
         .build();
     h.ui_mut().set_theme(ColorScheme::Dark, theme).unwrap();
     h.frame(probe_modal);
-    Menu::open(h.ui_mut(), menu_id(), Vec2::new(20.0, 20.0));
+    Menu::open_at(h.ui_mut(), menu_id(), Vec2::new(20.0, 20.0));
     let mut scene = Scene {
         color: RgbaF32::srgb(0.2, 0.4, 0.6),
         ..Scene::default()

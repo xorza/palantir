@@ -8,8 +8,6 @@ use palantir::{
     WidgetId,
 };
 
-use std::rc::Rc;
-
 use crate::fixtures::icon;
 use crate::golden_name::GoldenName;
 use crate::visual_rig::VisualRig;
@@ -297,9 +295,8 @@ fn triangle_images_match_golden() {
 /// its own colors.
 #[test]
 fn a_turned_label_and_icon_match_golden() {
-    let atlas = icon::atlas();
     GoldenName::TurnedTextAndIcon.assert_scene(UVec2::new(220, 120), |ui| {
-        let icons = ui.load_icons(Rc::clone(&atlas));
+        let icons = ui.load_icons(icon::atlas());
         Panel::hstack().auto_id().padding(10.0).show(ui, |ui| {
             owner(ui, "label", |ui| {
                 let label = ui.intern("Turned");

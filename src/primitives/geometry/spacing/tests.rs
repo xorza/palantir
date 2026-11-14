@@ -16,7 +16,10 @@ fn an_edge_past_f16_is_refused_where_it_is_built() {
         for lane in 0..4 {
             let mut lanes = [1.0, 2.0, 3.0, 4.0];
             lanes[lane] = bad;
-            panic_probe::assert_panics_with(Spacing::LANE_RULE, || Spacing::from_array(lanes));
+            let [left, top, right, bottom] = lanes;
+            panic_probe::assert_panics_with(Spacing::LANE_RULE, || {
+                Spacing::new(left, top, right, bottom)
+            });
         }
         panic_probe::assert_panics_with(Spacing::LANE_RULE, || Spacing::all(bad));
         panic_probe::assert_panics_with(Spacing::LANE_RULE, || Spacing::xy(1.0, bad));
@@ -65,13 +68,11 @@ fn a_derived_spacing_saturates_at_the_f16_range() {
     });
 }
 
+/// `to_array` reads the edges back in `new`'s order, left, top, right, bottom.
 #[test]
-fn to_array_and_from_array_round_trip() {
+fn to_array_reads_the_edges_in_new_order() {
     let original = Spacing::new(1.0, 2.0, 3.0, 4.0);
-    let arr = original.to_array();
-    assert_eq!(arr, [1.0, 2.0, 3.0, 4.0]);
-    let rebuilt = Spacing::from_array(arr);
-    assert_eq!(rebuilt, original);
+    assert_eq!(original.to_array(), [1.0, 2.0, 3.0, 4.0]);
     assert_eq!(original.sums(), Size::new(4.0, 6.0));
 }
 

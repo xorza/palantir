@@ -9,7 +9,7 @@ use palantir::widget::EffectPaint;
 use palantir::widget::{GlyphFont, PaintAnimation, PaintRepeat, Shape};
 use palantir::{
     BackdropEffect, BackdropReach, Button, ButtonTheme, Configure, Corners, EffectError,
-    EffectName, EffectParams, EffectSource, Panel, PressEffect, PressParams, Rect, ReducedPaint,
+    EffectName, EffectParams, EffectSource, Panel, PressEffect, PressParams, Rect, ReducedEffect,
     RgbaF32, Sizing, Ui,
 };
 use std::time::Duration;
@@ -76,7 +76,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
             api!(EffectPaint::new as fn(EffectName<Sky>, Sky) -> EffectPaint<Sky>),
             api!(
                 EffectSource::power_saver
-                    as fn(EffectSource<Sky>, ReducedPaint<Sky>) -> EffectSource<Sky>
+                    as fn(EffectSource<Sky>, ReducedEffect<Sky>) -> EffectSource<Sky>
             ),
         ])
         .show(ui, k, |ui| {
@@ -207,7 +207,7 @@ fn load(ui: &Ui) {
         ui.load_effect(DUSK, EffectSource::new(include_str!("dusk.wgsl"))),
         ui.load_effect(
             AURORA,
-            EffectSource::new(include_str!("aurora.wgsl")).power_saver(ReducedPaint::Effect(DUSK)),
+            EffectSource::new(include_str!("aurora.wgsl")).power_saver(ReducedEffect::Other(DUSK)),
         ),
         ui.load_effect(RING, EffectSource::new(include_str!("ring.wgsl"))),
         // The waves bend each read up to their amplitude past the rect, so the capture reaches

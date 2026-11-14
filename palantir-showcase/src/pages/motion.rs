@@ -23,7 +23,6 @@ use palantir::{
     Text, TranslateScale, Ui, VAlign, WidgetId,
 };
 use std::array;
-use std::rc::Rc;
 use std::time::Duration;
 
 #[derive(Debug)]
@@ -134,10 +133,10 @@ impl TurnSources {
     fn load(ui: &mut Ui) -> Self {
         ui.with_state::<Option<Self>, _>(turn_sources_id(), |ui, held| {
             held.get_or_insert_with(|| {
-                let set = ui.load_icons(Rc::new(
+                let set = ui.load_icons(
                     IconTable::from_svgs([("badge", TURN_ICON_SVG)])
                         .expect("the bundled icon is a readable SVG"),
-                ));
+                );
                 Self {
                     icon: set.by_name("badge").expect("bundled icon"),
                     image: MadeImage::new(ui, turn_image),

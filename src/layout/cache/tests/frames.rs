@@ -672,7 +672,7 @@ fn measure_cache_hit_restores_the_floor_its_parent_reads() {
     for tick in 0..2 {
         h.frame(|ui| build(ui, tick));
         assert_eq!(
-            h.arranged(WidgetId::from_hash("mid")).unwrap().size.h,
+            h.layout_rect(WidgetId::from_hash("mid")).unwrap().size.h,
             51.0,
             "tick {tick}"
         );

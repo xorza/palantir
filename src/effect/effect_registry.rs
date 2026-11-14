@@ -6,7 +6,7 @@ use std::rc::Rc;
 
 use rustc_hash::FxHashMap;
 
-use crate::effect::effect_source::{EffectBuild, EffectSource, ReducedPaint};
+use crate::effect::effect_source::{EffectSource, ReducedEffect};
 use crate::effect::effect_store::{EffectModule, EffectStore};
 use crate::effect::error::EffectError;
 use crate::effect::stock::{self, StockEffect};
@@ -153,12 +153,12 @@ pub(crate) struct ResolvedEffect {
     pub(crate) image_slots: u8,
 }
 
-/// [`ReducedPaint`] resolved at the load: the alternative is loaded by then, with the types and
+/// [`ReducedEffect`] resolved at the load: the alternative is loaded by then, with the types and
 /// images it was checked against, so it is held by the id its name holds.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ReducedName {
     Same,
-    Effect(EffectId),
+    Other(EffectId),
     Nothing,
 }
 
@@ -252,7 +252,7 @@ impl EffectRegistry {
             // An effect that names itself is checked below, by the source that replaces it.
             for (namer, loaded) in effects.ids.iter().filter_map(|(namer, other)| {
                 let loaded = &effects.loaded[other.idx()];
-                (*other != id && loaded.alternatives.contains(&ReducedName::Effect(id)))
+                (*other != id && loaded.alternatives.contains(&ReducedName::Other(id)))
                     .then_some((namer, loaded))
             }) {
                 assert!(
@@ -267,7 +267,7 @@ impl EffectRegistry {
         }
         for (by, paint) in ReducedBy::ALL.into_iter().zip(source.alternatives()) {
             // An effect that names itself paints the source loading now, which holds itself.
-            let ReducedPaint::Effect(other) = paint else {
+            let ReducedEffect::Other(other) = paint else {
                 continue;
             };
             if other.erased() == name.erased() {
@@ -308,19 +308,19 @@ impl EffectRegistry {
                 types: EffectTypes::of::<U, K>(),
                 image_slots: source.image_slots,
                 alternatives: source.alternatives().map(|paint| match paint {
-                    ReducedPaint::Same => ReducedName::Same,
-                    ReducedPaint::Effect(other) => ReducedName::Effect(
+                    ReducedEffect::Same => ReducedName::Same,
+                    ReducedEffect::Other(other) => ReducedName::Other(
                         *ids.get(&other.erased())
                             .expect("`hold_types` found the alternative loaded, or it is this one"),
                     ),
-                    ReducedPaint::Nothing => ReducedName::Nothing,
+                    ReducedEffect::Nothing => ReducedName::Nothing,
                 }),
                 material_lanes: source_material_lanes(source),
                 reach: ErasedReach::of(source),
             });
         if let Some(store) = &self.store {
             store.register(id, module);
-            if source.build == EffectBuild::Now {
+            if source.prebuild {
                 store.want(id);
             }
         }
@@ -357,7 +357,7 @@ impl EffectRegistry {
         store.want(id);
         let effects = self.effects.borrow();
         for alternative in effects.loaded[id.idx()].alternatives {
-            if let ReducedName::Effect(other) = alternative {
+            if let ReducedName::Other(other) = alternative {
                 store.want(other);
             }
         }
@@ -526,7 +526,7 @@ impl EffectRegistry {
         match alternative {
             ReducedName::Same => Some(id),
             ReducedName::Nothing => None,
-            ReducedName::Effect(other) => Some(other),
+            ReducedName::Other(other) => Some(other),
         }
     }
 

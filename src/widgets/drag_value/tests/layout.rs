@@ -40,12 +40,12 @@ fn editing_a_long_value_holds_the_field_width() {
 
     let mut h = Harness::mono(surface);
     h.frame(|ui| render(ui, &mut v));
-    let display_w = h.arranged(id).unwrap().size.w;
+    let display_w = h.layout_rect(id).unwrap().size.w;
 
     h.ui_mut().set_focus(id);
     h.key(Key::Enter);
     h.frame(|ui| render(ui, &mut v));
-    let edit_w = h.arranged(id).unwrap().size.w;
+    let edit_w = h.layout_rect(id).unwrap().size.w;
 
     // "1.985": five 8 px chars + 2 × 1.5 caret reserve + 2 × 12 padding + 2 × 1 border, above
     // the 40 px floor.
@@ -186,13 +186,13 @@ fn entering_edit_mode_keeps_the_chips_box() {
 
     let mut h = Harness::mono(UVec2::new(400, 120));
     h.frame(|ui| render(ui, &mut fps));
-    let chip = h.arranged(id).unwrap().size;
+    let chip = h.layout_rect(id).unwrap().size;
 
     h.ui_mut().set_focus(id);
 
     h.key(Key::Enter);
     h.frame(|ui| render(ui, &mut fps));
-    let editor = h.arranged(id).unwrap().size;
+    let editor = h.layout_rect(id).unwrap().size;
 
     assert_eq!(
         (chip.w, chip.h),
@@ -232,7 +232,7 @@ fn every_text_form_labels_the_same_suffix() {
                 });
             });
         }
-        (label, h.arranged(id).unwrap().size.w)
+        (label, h.layout_rect(id).unwrap().size.w)
     });
     let [none, borrowed, rest @ ..] = widths;
     assert!(borrowed.1 > none.1, "premise: the suffix widens the chip");

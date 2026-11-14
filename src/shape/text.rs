@@ -7,9 +7,6 @@ use crate::primitives::text::interned_str::InternedStr;
 use crate::shape::PaintedBy;
 use crate::shape::draw::Draw;
 use crate::shape::sealed;
-use crate::text::font_family::FontFamily;
-use crate::text::font_slant::FontSlant;
-use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::wrap::TextWrap;
 use glam::Vec2;
@@ -63,24 +60,6 @@ impl TextShape {
     /// [`Self::at_origin`] takes placement over.
     pub const fn align(mut self, a: Align) -> Self {
         self.align = a;
-        self
-    }
-
-    /// Font family, over the one the run's font names.
-    pub const fn family(mut self, family: FontFamily) -> Self {
-        self.font.family = family;
-        self
-    }
-
-    /// Which weight to shape at, on the CSS 1–1000 scale, over the one the run's font names.
-    pub const fn weight(mut self, weight: FontWeight) -> Self {
-        self.font.weight = weight;
-        self
-    }
-
-    /// Font slant, over the one the run's font names.
-    pub const fn slant(mut self, slant: FontSlant) -> Self {
-        self.font.slant = slant;
         self
     }
 }

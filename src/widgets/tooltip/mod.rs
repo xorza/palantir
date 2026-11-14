@@ -237,22 +237,6 @@ impl Tooltip<'_> {
         self.chrome = Some(chrome);
         self
     }
-
-    /// Paint `chrome` unless the caller set one, for a wrapper theming a widget
-    /// after the caller's setters.
-    ///
-    /// # Panics
-    ///
-    /// Panics unless `chrome` holds the kinds [`Chrome`]
-    /// lists.
-    #[track_caller]
-    pub const fn default_chrome(mut self, chrome: Chrome) -> Self {
-        chrome.validate();
-        if self.chrome.is_none() {
-            self.chrome = Some(chrome);
-        }
-        self
-    }
 }
 
 /// The ids of a tooltip's parts.

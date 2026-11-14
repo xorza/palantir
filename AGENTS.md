@@ -75,6 +75,10 @@ A subsystem's decisions sit in an `AGENTS.md` beside it; read it before changing
 
 - **Builder**, consumed by `show`, `build` or `Ui::add_shape`: setters are bare, take and return
   `Self`.
+- **Typestate builder**: a builder whose last type parameter names a mode that changes what
+  `show` returns or which constructors and methods exist, its common mode the default, as
+  `Menu<'a, O = TriggerOwned>`: the setters sit in one `impl` over every mode. Refused: a mode
+  checked at run time, whose wrong branch is an `unreachable!`.
 - **Value**, stored, passed or compared: a chaining setter is `with_*`, and one without `self`
   constructs, as `Vec::with_capacity`; a shorthand with no argument keeps its adjective
   (`TextStyle::bold`).

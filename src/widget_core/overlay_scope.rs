@@ -57,13 +57,12 @@ pub struct OverlaySpec {
 
 /// One overlay's turn on a layer, from stamping its root until it closes.
 /// [`Popup`](crate::Popup), [`Modal`](crate::Modal) and [`Tooltip`](crate::Tooltip)
-/// share this lifecycle; two steps have ordering constraints (see [`Self::record`],
-/// [`Self::finish`]). A claim silences the layers strictly *below* its own, never
-/// its own body, so a `TextEdit` in a popup keeps the keyboard.
+/// share this lifecycle; [`Self::record`] has the ordering constraints. A claim silences the
+/// layers strictly *below* its own, never its own body, so a `TextEdit` in a popup keeps the
+/// keyboard.
 ///
-/// A custom overlay follows the same order: [`Self::claim`] with the root before
-/// recording, [`Self::record`] the body, then [`Self::finish`] with its response,
-/// which withdraws on the frame it closes.
+/// A custom overlay follows the same order: [`Self::claim`] with the root before recording,
+/// then [`Self::record`] the body, which withdraws the scope on the frame it closes.
 #[derive(Debug)]
 pub struct OverlayScope {
     owner: WidgetId,
@@ -139,7 +138,13 @@ impl OverlayScope {
     /// runs in reverse, so the body still wins); it senses all four pointer
     /// interactions so pan, scroll and pinch cannot leak to the host, and only
     /// `Sense::CLICK` dismisses.
-    pub fn record<R>(&self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> OverlayResponse<R> {
+    ///
+    /// An overlay that closed gives its scope back here, so no close path keeps owning input.
+    /// **The current pass is unaffected**: scope paths resolve against a cascade a frame old, so
+    /// merely ceasing to record would keep owning input one more frame and swallow the click
+    /// where it was. Takes `self`, so the claim is spent. Refused: a `finish` call after it, which
+    /// a caller that forgets keeps the scope a frame.
+    pub fn record<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> OverlayResponse<R> {
         let OverlaySpec {
             layer,
             anchor,
@@ -172,10 +177,14 @@ impl OverlayScope {
         let requested = ui.overlays().leave();
         let dismissed =
             self.cancelled || (dismisses && (escape_pressed || self.barrier_clicked(ui)));
+        let close = OverlayClose::of(requested, dismissed);
+        if close.is_some() && barrier.click_outside().is_some() {
+            ui.withdraw_input_scope(self.owner);
+        }
         OverlayResponse {
             id: self.owner,
             opened: self.opened,
-            close: OverlayClose::of(requested, dismissed),
+            close,
             inner,
         }
     }
@@ -190,17 +199,6 @@ impl OverlayScope {
             Barrier::Surface(id, _) => id,
         };
         ui.response_for(id).any_clicked()
-    }
-
-    /// End the turn with `response`: an overlay that closed gives its scope back, so no close
-    /// path keeps owning input. **The current pass is unaffected**: scope paths resolve against
-    /// a cascade a frame old, so merely ceasing to record would keep owning input one more frame
-    /// and swallow the click where it was. Takes `self`, so the claim is spent.
-    pub fn finish<R>(self, ui: &mut Ui, response: OverlayResponse<R>) -> OverlayResponse<R> {
-        if response.closed() && self.spec.barrier.click_outside().is_some() {
-            ui.withdraw_input_scope(self.owner);
-        }
-        response
     }
 }
 

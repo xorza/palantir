@@ -3,6 +3,7 @@
 use crate::host::harness::tests::support::{self, INSIDE, OUTSIDE, SURFACE};
 use crate::host::harness::*;
 use crate::internals::panic_probe;
+use crate::primitives::input::keyboard::key::Key;
 use crate::primitives::layout::sizing::Sizing;
 use crate::scene::layer::Layer;
 use crate::widget_core::configure::Configure;
@@ -123,23 +124,27 @@ fn modifiers_are_sticky_until_set_back() {
 #[test]
 fn typed_text_arrives_as_one_press_per_char() {
     // `type_text` emits the `KeyDown { Key::Char }` a real window produces, which is the only path
-    // a field inserts from.
+    // a field inserts from; a newline is Enter, and a control character no key types refuses
+    // the text (`driver::play::typed_key` holds the whole map).
     let mut harness = Harness::mono(SURFACE);
     // Rule 11: keyboard events are dropped at ingress when nothing holds focus and no subscriber
     // matches, so focus comes first.
     harness.ui_mut().set_focus(support::target());
 
-    harness.type_text("hi");
+    harness.type_text("hi\n");
 
     let keys: Vec<_> = harness
         .ui()
         .input()
         .keyboard_events_at(Layer::Main.into())
         .iter()
-        .map(|press| format!("{:?}", press.key))
+        .map(|press| press.key)
         .collect();
 
-    assert_eq!(keys, vec!["Char('h')".to_string(), "Char('i')".to_string()]);
+    assert_eq!(keys, [Key::Char('h'), Key::Char('i'), Key::Enter]);
+    panic_probe::assert_panics_with("is a control character no key types", || {
+        Harness::mono(SURFACE).type_text("\u{1b}");
+    });
 }
 
 #[test]

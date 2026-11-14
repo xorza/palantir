@@ -108,7 +108,7 @@ struct Scene {
     tile: RgbaF32,
     image: Image,
     handle: Option<ImageHandle>,
-    icons: Rc<IconTable>,
+    /// The icon set, loaded at the first frame and held.
     held: Option<IconSet>,
     view: Rc<RefCell<ClearView>>,
     mesh: Mesh,
@@ -131,9 +131,6 @@ impl Scene {
             tile: RgbaF32::WHITE,
             image,
             handle: None,
-            icons: Rc::new(
-                IconTable::from_svgs([("mask", ONE_COLOR), ("color", TWO_COLORS)]).unwrap(),
-            ),
             held: None,
             view: Rc::default(),
             mesh,
@@ -153,7 +150,11 @@ impl App for Scene {
         if self.handle.is_none() {
             self.handle = Some(ui.load_image(&self.image).unwrap());
         }
-        let icons = self.held.insert(ui.load_icons(Rc::clone(&self.icons)));
+        let icons = self.held.get_or_insert_with(|| {
+            ui.load_icons(
+                IconTable::from_svgs([("mask", ONE_COLOR), ("color", TWO_COLORS)]).unwrap(),
+            )
+        });
         let mask = icons.by_name("mask").unwrap();
         let color = icons.by_name("color").unwrap();
         let image = self.handle.clone().unwrap();

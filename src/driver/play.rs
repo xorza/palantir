@@ -159,8 +159,12 @@ pub(crate) fn play<X: Debug>(
             });
         }
         Action::Type(text) => {
-            for c in text.chars() {
-                let key = Key::Char(c);
+            // Every character is checked before the first types, so a refused text types none.
+            let untypable = text.chars().find(|&c| typed_key(c).is_none());
+            if let Some(found) = untypable {
+                return Err(PlayError::Untypable { found });
+            }
+            for key in text.chars().filter_map(typed_key) {
                 stage.input(Shortcut::key(key).key_down());
                 stage.input(InputEvent::KeyUp { key });
             }
@@ -231,4 +235,14 @@ fn press_and_release<X>(
         pressed?;
         stage.frame()
     })
+}
+
+/// The key that types `c`: a newline is Enter and a tab is Tab, as a keyboard types them; any
+/// other control character types no key.
+pub(crate) const fn typed_key(c: char) -> Option<Key> {
+    match c {
+        '\n' => Some(Key::Enter),
+        '\t' => Some(Key::Tab),
+        _ => Key::from_char(c),
+    }
 }

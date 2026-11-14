@@ -165,7 +165,6 @@ Block
         pub fn new() -> Self
         pub fn show(self, ui: &mut Ui) -> Response
         pub const fn chrome(self, chrome: Chrome) -> Self
-        pub const fn default_chrome(self, chrome: Chrome) -> Self
 
 Border
     struct Border: Animatable, Clone, Copy, Debug, Default, Deserialize<'de>, Lerp, PartialEq, Serialize
@@ -177,11 +176,7 @@ Border
         impl From<Border> for Paint
 
 BoundNum
-    enum BoundNum<'a>: Debug, From<&'a mut f32>, From<&'a mut f64>, From<&'a mut i32>, From<&'a mut i64>
-        I32(&'a mut i32)
-        I64(&'a mut i64)
-        F32(&'a mut f32)
-        F64(&'a mut f64)
+    struct BoundNum<'a>: Debug, From<&'a mut f32>, From<&'a mut f64>, From<&'a mut i32>, From<&'a mut i64>
 
 Brush
     enum Brush: Animatable, Clone, Debug, Default, Deserialize<'de>, From<Gradient>, From<RgbaF32>, From<SrgbaU8>, Lerp, PartialEq, Serialize
@@ -267,9 +262,9 @@ ClipMode
 Clipboard
     struct Clipboard: Clone, Debug
         pub fn text(&self) -> Result<Option<String>, ClipboardUnavailable>
-        pub fn set_text(&self, text: &str) -> Result<(), ClipboardUnavailable>
+        pub fn set_text(&self, text: &str)
         pub fn image(&self) -> Result<Option<Image>, ClipboardUnavailable>
-        pub fn set_image(&self, image: &Image) -> Result<(), ClipboardUnavailable>
+        pub fn set_image(&self, image: &Image)
 
 ClipboardUnavailable
     struct ClipboardUnavailable: Clone, Copy, Debug, Display, Eq, Error, PartialEq
@@ -326,7 +321,6 @@ ColorPicker
         pub const fn swatches(self, row: SwatchRow<'a>) -> Self
         pub const fn texel_size(self, n: u32) -> Self
         pub fn style(self, s: impl Into<Option<&'a ColorPickerTheme>>) -> Self
-        pub const fn color(&self) -> RgbaF32
         pub fn show(self, ui: &mut Ui) -> ValueResponse
 
 ColorPickerTheme
@@ -449,10 +443,6 @@ ConicGeometry
     struct ConicGeometry: Clone, Copy, Debug, Deserialize<'de>, PartialEq, Serialize
         pub center: Vec2
         pub start_angle: f32
-
-ControlCharError
-    struct ControlCharError: Clone, Copy, Debug, Display, Eq, Error, PartialEq
-        pub found: char
 
 Corners
     struct Corners: Animatable, Clone, Copy, Debug, Default, Deserialize<'de>, DockTab (blanket), Eq, Hash, Lerp, PartialEq, Pod, Serialize, Zeroable
@@ -627,9 +617,15 @@ DockTheme
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
 
 DockView
-    struct DockView<'a, T>: Configure, ThemeDefaults (blanket)
-        impl<'a, T: DockTab> DockView<'a, T>
-            pub fn new(dock: WidgetId, state: &'a DockState<T>, operations: &'a mut Vec<DockOperation<T>>) -> Self
+    struct DockView<'a, T, M = Applying<'a, T>>: ThemeDefaults (blanket)
+        impl<'a, T: DockTab> DockView<'a, T, Applying<'a, T>>
+            pub fn new(dock: WidgetId, state: &'a mut DockState<T>) -> Self
+            pub fn show<D: DockTabs<Tab = T>>(self, ui: &mut Ui, tabs: &mut D) -> Response
+        impl<'a, T: DockTab> DockView<'a, T, Emitting<'a, T>>
+            pub fn emitting(dock: WidgetId, state: &'a DockState<T>, operations: &'a mut Vec<DockOperation<T>>) -> Self
+            pub fn show<D: DockTabs<Tab = T>>(self, ui: &mut Ui, tabs: &mut D) -> Response
+            pub fn scan(ui: &mut Ui, dock: WidgetId, state: &DockState<T>, operations: &mut Vec<DockOperation<T>>)
+        impl<'a, T, M> DockView<'a, T, M>
             pub const fn min_pane(self, px: f32) -> Self
             pub const fn overflow(self, overflow: TabOverflow) -> Self
             pub const fn allowed_splits(self, allowed: AllowedSplits) -> Self
@@ -637,11 +633,8 @@ DockView
             pub fn style(self, s: impl Into<Option<&'a DockTheme>>) -> Self
             pub fn tabs_style(self, s: impl Into<Option<&'a TabsTheme>>) -> Self
             pub fn menu_style(self, s: impl Into<Option<&'a MenuTheme>>) -> Self
-            pub fn show<D: DockTabs<Tab = T>>(self, ui: &mut Ui, tabs: &mut D) -> Response
-        impl<T: DockTab> DockView<'_, T>
-            pub fn run<D: DockTabs<Tab = T>>(ui: &mut Ui, dock: WidgetId, state: &mut DockState<T>, tabs: &mut D)
-            pub fn scan(ui: &mut Ui, dock: WidgetId, state: &DockState<T>, operations: &mut Vec<DockOperation<T>>)
-        impl<'a, T: Debug> Debug for DockView<'a, T>
+        impl<'a, T: Debug, M: Debug> Debug for DockView<'a, T, M>
+        impl<T, M> Configure for DockView<'_, T, M>
 
 Drag
     enum Drag: Clone, Copy, Debug, Default, PartialEq
@@ -724,11 +717,6 @@ EditableLabelResponse
         pub committed_text: Option<String>
         pub ended: Option<EditEnd>
 
-EffectBuild
-    enum EffectBuild: Clone, Copy, Debug, Default, Eq, PartialEq
-        OnUse
-        Now
-
 EffectError
     enum EffectError: Debug, Display, Error
         Parse { source: Box<ParseError>, text: String }
@@ -782,10 +770,10 @@ EffectSource
             pub const MAX_PARAMS_SIZE: usize
             pub fn new(wgsl: impl Into<Cow<'static, str>>) -> Self
             pub const fn reach(self, reach: fn(&U) -> BackdropReach) -> Self
-            pub const fn build(self, build: EffectBuild) -> Self
+            pub const fn prebuild(self, prebuild: bool) -> Self
             pub const fn image_slots(self, slots: u8) -> Self
-            pub const fn reduced_motion(self, paint: ReducedPaint<U, K>) -> Self
-            pub const fn power_saver(self, paint: ReducedPaint<U, K>) -> Self
+            pub const fn reduced_motion(self, paint: ReducedEffect<U, K>) -> Self
+            pub const fn power_saver(self, paint: ReducedEffect<U, K>) -> Self
         impl<U: EffectParams, K: EffectKind> Debug for EffectSource<U, K>
 
 Engagement
@@ -1033,7 +1021,6 @@ Grid
             pub fn rows<NewRows: AsRef<[Track]>>(self, rows: NewRows) -> Grid<NewRows, Cols>
             pub fn cols<NewCols: AsRef<[Track]>>(self, cols: NewCols) -> Grid<Rows, NewCols>
             pub const fn chrome(self, chrome: Chrome) -> Self
-            pub const fn default_chrome(self, chrome: Chrome) -> Self
             pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> InnerResponse<R> where Rows: AsRef<[Track]>, Cols: AsRef<[Track]>
         impl<Rows, Cols> Configure for Grid<Rows, Cols>
         impl<Rows: Debug, Cols: Debug> Debug for Grid<Rows, Cols>
@@ -1098,7 +1085,7 @@ Harness
         pub const fn session<'h, A>(&'h mut self, app: &'h mut A) -> HarnessSession<'h, A>
         pub fn widgets(&self, filter: Option<&str>) -> Vec<InspectedWidget>
         pub fn rect(&self, id: WidgetId) -> Option<Rect>
-        pub fn arranged(&self, id: WidgetId) -> Option<Rect>
+        pub fn layout_rect(&self, id: WidgetId) -> Option<Rect>
         pub fn point_in(&self, id: WidgetId, local: Vec2) -> Vec2
         pub fn hit_at(&self, pos: Vec2) -> Option<WidgetId>
         pub fn state<S: 'static>(&self, id: WidgetId) -> Option<&S>
@@ -1283,7 +1270,7 @@ Justify
         SpaceAround
 
 Key
-    enum Key: Clone, Copy, Debug, DockTab (blanket), Eq, Hash, PartialEq, TryFrom<char>
+    enum Key: Clone, Copy, Debug, DockTab (blanket), Eq, Hash, PartialEq
         ArrowLeft
         ArrowRight
         ArrowUp
@@ -1311,6 +1298,7 @@ Key
         F12
         Char(char)
         Other
+        pub const fn from_char(c: char) -> Option<Self>
         impl From<Key> for Shortcut
 
 KeyClass
@@ -1500,20 +1488,26 @@ MaterialPaint
         impl PaintedBy<MaterialPaint> for TriangleShape
 
 Menu
-    struct Menu<'a>: Configure, Debug, ThemeDefaults (blanket)
-        pub fn for_id(for_id: WidgetId) -> Self
-        pub fn context(trigger: &Response) -> Self
-        pub fn below(trigger: &Response) -> Self
-        pub fn at(point: Vec2) -> Self
-        pub fn style(self, s: impl Into<Option<&'a MenuTheme>>) -> Self
-        pub const fn landing(self, landing: MenuLanding) -> Self
-        pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> Option<OverlayResponse<R>>
-        pub fn open(ui: &mut Ui, for_id: WidgetId, point: Vec2)
-        pub fn menu_id(trigger: WidgetId) -> WidgetId
-        pub fn close(ui: &mut Ui, for_id: WidgetId)
-        pub fn is_open(ui: &Ui, for_id: WidgetId) -> bool
-        pub const fn chrome(self, chrome: Chrome) -> Self
-        pub const fn default_chrome(self, chrome: Chrome) -> Self
+    struct Menu<'a, O = TriggerOwned>: ThemeDefaults (blanket)
+        impl Menu<'_, TriggerOwned>
+            pub fn for_id(for_id: WidgetId) -> Self
+            pub fn context(trigger: &Response) -> Self
+            pub fn below(trigger: &Response) -> Self
+            pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> Option<OverlayResponse<R>>
+            pub fn open(ui: &mut Ui, for_id: WidgetId)
+            pub fn open_at(ui: &mut Ui, for_id: WidgetId, point: Vec2)
+            pub fn menu_id(trigger: WidgetId) -> WidgetId
+            pub fn close(ui: &mut Ui, for_id: WidgetId)
+            pub fn is_open(ui: &Ui, for_id: WidgetId) -> bool
+        impl Menu<'_, CallerOwned>
+            pub fn at(point: Vec2) -> Self
+            pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> OverlayResponse<R>
+        impl<'a, O> Menu<'a, O>
+            pub fn style(self, s: impl Into<Option<&'a MenuTheme>>) -> Self
+            pub const fn landing(self, landing: MenuLanding) -> Self
+            pub const fn chrome(self, chrome: Chrome) -> Self
+        impl<'a, O: Debug> Debug for Menu<'a, O>
+        impl<O> Configure for Menu<'_, O>
 
 MenuBar
     struct MenuBar<'a>: Configure, Debug, ThemeDefaults (blanket)
@@ -1597,9 +1591,7 @@ Modal
         pub fn scrim(self, scrim: impl Into<Chrome>) -> Self
         pub const fn click_outside(self, click_outside: ClickOutside) -> Self
         pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> OverlayResponse<R>
-        pub fn close(ui: &mut Ui, id: WidgetId)
         pub const fn chrome(self, chrome: Chrome) -> Self
-        pub const fn default_chrome(self, chrome: Chrome) -> Self
 
 ModalTheme
     struct ModalTheme: Clone, Debug, Deserialize<'de>, Lerp, PartialEq, Serialize
@@ -1744,7 +1736,6 @@ Panel
         pub fn zstack() -> Self
         pub fn canvas() -> Self
         pub const fn chrome(self, chrome: Chrome) -> Self
-        pub const fn default_chrome(self, chrome: Chrome) -> Self
 
 ParamMismatch
     enum ParamMismatch: Clone, Debug, Display, Eq, PartialEq
@@ -1804,6 +1795,7 @@ PlayError
     enum PlayError: Clone, Debug, Display, Error, From<LocateError>, PartialEq
         Locate(LocateError)
         Unsettled { frames: u32 }
+        Untypable { found: char }
         ShortDrag { travel: f32 }
         EmptyRegion
         NoPixels
@@ -1868,10 +1860,8 @@ Popup
         pub const fn layer(self, layer: Layer) -> Self
         pub fn click_outside(self, click_outside: impl Into<Option<ClickOutside>>) -> Self
         pub const fn anchor(self, anchor: Anchor) -> Self
-        pub fn close(ui: &mut Ui, id: WidgetId)
         pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> OverlayResponse<R>
         pub const fn chrome(self, chrome: Chrome) -> Self
-        pub const fn default_chrome(self, chrome: Chrome) -> Self
 
 PopupTheme
     struct PopupTheme: Clone, Debug, Deserialize<'de>, Lerp, PartialEq, Serialize
@@ -1885,7 +1875,6 @@ PopupTrigger
         pub fn on(trigger: &Response) -> Self
         pub fn style(self, s: impl Into<Option<&'a PopupTheme>>) -> Self
         pub const fn chrome(self, chrome: Chrome) -> Self
-        pub const fn default_chrome(self, chrome: Chrome) -> Self
         pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> Option<OverlayResponse<R>>
         pub fn popup_id(trigger: WidgetId) -> WidgetId
         pub fn open(ui: &mut Ui, for_id: WidgetId)
@@ -2010,16 +1999,16 @@ Rect
         pub const fn clamp_to(self, bounds: Self) -> Self
         pub const fn union(self, other: Self) -> Self
 
-ReducedPaint
-    enum ReducedPaint<U: EffectParams, K: EffectKind = ColorEffect>
+ReducedEffect
+    enum ReducedEffect<U: EffectParams, K: EffectKind = ColorEffect>
         Same
-        Effect(EffectName<U, K>)
+        Other(EffectName<U, K>)
         Nothing
-        impl<U: EffectParams, K: EffectKind> Clone for ReducedPaint<U, K>
-        impl<U: EffectParams, K: EffectKind> Copy for ReducedPaint<U, K>
-        impl<U: EffectParams, K: EffectKind> Debug for ReducedPaint<U, K>
-        impl<U: EffectParams, K: EffectKind> Eq for ReducedPaint<U, K>
-        impl<U: EffectParams, K: EffectKind> PartialEq for ReducedPaint<U, K>
+        impl<U: EffectParams, K: EffectKind> Clone for ReducedEffect<U, K>
+        impl<U: EffectParams, K: EffectKind> Copy for ReducedEffect<U, K>
+        impl<U: EffectParams, K: EffectKind> Debug for ReducedEffect<U, K>
+        impl<U: EffectParams, K: EffectKind> Eq for ReducedEffect<U, K>
+        impl<U: EffectParams, K: EffectKind> PartialEq for ReducedEffect<U, K>
 
 Reduction
     enum Reduction: Clone, Copy, Debug, Default, Deserialize<'de>, DockTab (blanket), Eq, Hash, PartialEq, Serialize
@@ -2120,7 +2109,6 @@ Scroll
         pub fn zoom_config(self, config: ZoomConfig) -> Self
         pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> InnerResponse<R>
         pub const fn chrome(self, chrome: Chrome) -> Self
-        pub const fn default_chrome(self, chrome: Chrome) -> Self
         pub fn offset(ui: &Ui, id: WidgetId) -> Vec2
         pub fn set_offset(ui: &mut Ui, id: WidgetId, offset: Vec2)
         pub fn zoom(ui: &Ui, id: WidgetId) -> f32
@@ -2273,7 +2261,6 @@ Sizing
         pub const fn fill_weight(self) -> Option<f32>
         pub const fn is_hug(self) -> bool
         impl From<Sizing> for SizeSpec
-        impl From<Sizing> for Track
         impl<T: Number> From<T> for Sizing
 
 Slider
@@ -2321,7 +2308,6 @@ Spacing
         pub fn all(v: f32) -> Self
         pub fn xy(x: f32, y: f32) -> Self
         pub fn new(left: f32, top: f32, right: f32, bottom: f32) -> Self
-        pub fn from_array(v: [f32; 4]) -> Self
         pub fn sums(self) -> Size
         impl<L: Number, T: Number, R: Number, B: Number> From<(L, T, R, B)> for Spacing
         impl<T: Number> From<T> for Spacing
@@ -2829,7 +2815,6 @@ Tooltip
         pub const fn when_disabled(self, when_disabled: bool) -> Self
         pub fn show(self, ui: &mut Ui) -> TooltipResponse
         pub const fn chrome(self, chrome: Chrome) -> Self
-        pub const fn default_chrome(self, chrome: Chrome) -> Self
         pub fn bubble_id(trigger: WidgetId) -> WidgetId
 
 TooltipResponse
@@ -2849,7 +2834,7 @@ TooltipTheme
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
 
 Track
-    struct Track: Clone, Copy, Debug, From<Sizing>, Hash, PartialEq
+    struct Track: Clone, Copy, Debug, Hash, PartialEq
         pub const fn new(sizing: Sizing) -> Self
         pub const HUG: Self
         pub const FILL: Self
@@ -2895,7 +2880,6 @@ Ui
         pub const fn is_power_reduced(&self) -> bool
         pub const fn is_frame_rate_reduced(&self) -> bool
         pub fn system_power_reduced(&self) -> bool
-        pub const fn watch_keyboard(&mut self, flags: KeyboardWake)
         pub fn pointer_events(&mut self, wake: PointerWake) -> &[PointerEvent]
         pub fn keyboard_events(&mut self, wake: KeyboardWake) -> &[KeyPress]
         pub fn key_pressed(&mut self, key: Key) -> bool
@@ -2922,7 +2906,7 @@ Ui
         pub fn gpu_pass_stats(&self) -> &GpuPassStats
         pub fn is_window_open(&self, token: WindowToken) -> bool
         pub fn add_shape<S: PaintedBy<P>, P>(&mut self, shape: S, paint: P) -> Option<AddedShape<'_>>
-        pub fn load_icons(&self, table: impl Into<Rc<IconTable>>) -> IconSet
+        pub fn load_icons(&self, table: IconTable) -> IconSet
         pub fn load_image(&self, image: &Image) -> Result<ImageHandle, ImageTooLarge>
         pub fn load_font(&self, source: impl Into<FontSource>) -> Result<FontFamily, FontLoadError>
         pub fn load_effect<U: EffectParams, K: EffectKind>(&self, name: EffectName<U, K>, source: EffectSource<U, K>) -> Result<(), EffectError>
@@ -2997,7 +2981,6 @@ UserScale
         pub const MAX: f32
         pub const fn new(factor: f32) -> Option<Self>
         pub const fn get(self) -> f32
-        pub const fn applied_to(self, system_scale: SystemScale) -> f32
         pub fn stepped_up(self) -> Self
         pub fn stepped_down(self) -> Self
         pub const fn percent(self) -> u32
@@ -3127,16 +3110,12 @@ ZoomConfig
         pub const fn pivot(self) -> ZoomPivot
 
 ZoomFactor
-    struct ZoomFactor: Clone, Copy, Debug, Default, PartialEq, PartialOrd, TryFrom<f32>
+    struct ZoomFactor: Clone, Copy, Debug, Default, PartialEq, PartialOrd
         pub const ONE: Self
         pub const fn new(factor: f32) -> Option<Self>
         pub fn from_wheel(step: f32, notches: f32) -> Self
         pub fn combine(self, rhs: Self) -> Self
         pub const fn get(self) -> f32
-
-ZoomFactorError
-    struct ZoomFactorError: Clone, Copy, Debug, Display, Error, PartialEq
-        pub found: f32
 
 ZoomModifier
     enum ZoomModifier: Clone, Copy, Debug, Eq, PartialEq
@@ -3236,6 +3215,10 @@ widget::AnimationSlot
     struct AnimationSlot: Clone, Copy, Debug, DockTab (blanket), Eq, From<&'static str>, Hash, PartialEq
         pub const fn new(name: &'static str) -> Self
 
+widget::Applying
+    struct Applying<'a, T>
+        impl<'a, T: Debug> Debug for Applying<'a, T>
+
 widget::ArcShape
     struct ArcShape: Clone, Copy, Debug, PaintedBy<Stroke>
         pub const fn at(self, rect: Rect) -> Self
@@ -3270,6 +3253,9 @@ widget::Barrier
         None
         Root(ClickOutside)
         Surface(WidgetId, ClickOutside)
+
+widget::CallerOwned
+    struct CallerOwned: Clone, Copy, Debug
 
 widget::Caret
     struct Caret: Clone, Copy, Debug, PartialEq
@@ -3369,6 +3355,10 @@ widget::EffectPaint
         impl<U: EffectParams, K: EffectKind> PaintedBy<EffectPaint<U, K>> for RectShape
         impl<U: EffectParams, K: EffectKind> PaintedBy<EffectPaint<U, K>> for TriangleShape
 
+widget::Emitting
+    struct Emitting<'a, T>
+        impl<'a, T: Debug> Debug for Emitting<'a, T>
+
 widget::GlyphFont
     struct GlyphFont: Clone, Copy, Debug, PartialEq
         pub font_size: f32
@@ -3377,6 +3367,10 @@ widget::GlyphFont
         pub weight: FontWeight
         pub slant: FontSlant
         pub const fn new(font_size: f32) -> Self
+        pub const fn with_line_height(self, line_height: f32) -> Self
+        pub const fn with_family(self, family: FontFamily) -> Self
+        pub const fn with_weight(self, weight: FontWeight) -> Self
+        pub const fn with_slant(self, slant: FontSlant) -> Self
 
 widget::GlyphLine
     struct GlyphLine<'a>: Clone, Copy, Debug
@@ -3442,8 +3436,7 @@ widget::MotionRole
 widget::OverlayScope
     struct OverlayScope: Debug
         pub fn claim(ui: &mut Ui, spec: OverlaySpec, root: &mut Widget) -> Self
-        pub fn record<R>(&self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> OverlayResponse<R>
-        pub fn finish<R>(self, ui: &mut Ui, response: OverlayResponse<R>) -> OverlayResponse<R>
+        pub fn record<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> OverlayResponse<R>
 
 widget::OverlaySpec
     struct OverlaySpec: Clone, Copy, Debug
@@ -3581,9 +3574,6 @@ widget::TextShape
         pub const fn at_origin(self, origin: Vec2) -> Self
         pub const fn wrap(self, wrap: TextWrap) -> Self
         pub const fn align(self, a: Align) -> Self
-        pub const fn family(self, family: FontFamily) -> Self
-        pub const fn weight(self, weight: FontWeight) -> Self
-        pub const fn slant(self, slant: FontSlant) -> Self
 
 widget::ThemeDefaults
     trait ThemeDefaults: Configure
@@ -3615,6 +3605,9 @@ widget::TriangleShape
         pub const fn radius(self, radius: f32) -> Self
         impl<P: Into<Paint>> PaintedBy<P> for TriangleShape
         impl<U: EffectParams, K: EffectKind> PaintedBy<EffectPaint<U, K>> for TriangleShape
+
+widget::TriggerOwned
+    struct TriggerOwned: Clone, Copy, Debug
 
 widget::Widget
     struct Widget: Configure, Debug, ThemeDefaults (blanket)

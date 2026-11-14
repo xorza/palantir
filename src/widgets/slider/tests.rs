@@ -53,9 +53,9 @@ fn explicit_size_overrides_fill_default() {
             }
             slider.show(ui);
         });
-        let knob = h.arranged(id.with("knob"));
+        let knob = h.layout_rect(id.with("knob"));
         assert_eq!(
-            knob.unwrap().min.y - h.arranged(id).unwrap().min.y,
+            knob.unwrap().min.y - h.layout_rect(id).unwrap().min.y,
             y,
             "{align:?}"
         );

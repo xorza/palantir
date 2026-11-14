@@ -116,6 +116,12 @@ pub enum PlayError {
         /// is real time, the frames the window recorded within it.
         frames: u32,
     },
+    /// A [`Type`](crate::Action::Type) step's text holds `found`, a control character other than
+    /// a newline or a tab, which types no key.
+    Untypable {
+        /// The character no key types.
+        found: char,
+    },
     /// A drag that moves `travel` logical pixels, under the threshold a drag starts at, so the
     /// window would read it as a click.
     ShortDrag {
@@ -169,6 +175,11 @@ impl Display for PlayError {
                 f,
                 "the window still asks for frames after {frames} frames; an animation runs on, \
                  or the app asks a repaint each frame"
+            ),
+            Self::Untypable { found } => write!(
+                f,
+                "{found:?} is a control character no key types; type a newline or a tab, or name \
+                 the key in a key step"
             ),
             Self::ShortDrag { travel } => write!(
                 f,

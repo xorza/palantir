@@ -554,7 +554,7 @@ fn a_keyboard_move_pans_the_band_to_the_chip() {
             .unwrap()
             .deflated_by(padding);
         let chip = TabStrip::chip_id(strip_id(), TabKey::of(30_u64));
-        let full = h.transform(chip).apply_rect(h.arranged(chip).unwrap());
+        let full = h.transform(chip).apply_rect(h.layout_rect(chip).unwrap());
         full.min.x >= clip.min.x - EPS && full.max().x <= clip.max().x + EPS
     };
     assert!(!in_clip(&mut h), "premise: the last chip is out of sight");
@@ -735,7 +735,7 @@ fn a_drop_slot_and_its_caret_read_uncut_chip_extents() {
     };
     let extent = |h: &Harness, key: u64| {
         let chip = TabStrip::chip_id(strip_id(), TabKey::of(key));
-        h.transform(chip).apply_rect(h.arranged(chip).unwrap())
+        h.transform(chip).apply_rect(h.layout_rect(chip).unwrap())
     };
     let clip = |h: &Harness| {
         h.rect(strip_id().with("band"))
@@ -1251,8 +1251,8 @@ fn a_partly_clipped_chip_raises_the_overflow_chevron() {
     // Wide enough for all three: no chip is cut, and no chevron.
     let mut h = Harness::mono(SURFACE);
     h.prime(2, build(SURFACE.x as f32));
-    let whole = h.arranged(last);
-    let strip_left = h.arranged(strip_id()).unwrap().min.x;
+    let whole = h.layout_rect(last);
+    let strip_left = h.layout_rect(strip_id()).unwrap().min.x;
     assert!(
         h.rect(chevron).is_none(),
         "premise: nothing is hidden, so nothing offers a menu",
@@ -1357,7 +1357,7 @@ fn the_overflow_menu_opens_on_the_selected_chip_in_its_menu_style() {
         h.prime(2, &mut build);
         h.key(Key::Tab);
         h.frame(&mut build);
-        Menu::open_below(h.ui_mut(), chevron);
+        Menu::open(h.ui_mut(), chevron);
         h.frame(&mut build);
         h.frame(&mut build);
         let height = h
@@ -1398,7 +1398,7 @@ fn a_tabbed_view_restyles_its_overflow_menu() {
         };
         let mut h = Harness::mono(SURFACE);
         h.prime(2, &mut build);
-        Menu::open_below(h.ui_mut(), chevron);
+        Menu::open(h.ui_mut(), chevron);
         h.frame(&mut build);
         h.rect(Menu::menu_id(chevron))
             .expect("the menu is open")

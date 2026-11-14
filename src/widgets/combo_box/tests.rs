@@ -587,7 +587,7 @@ fn the_list_and_a_context_menu_on_the_combo_do_not_collide() {
     let mut h = Harness::mono(SURFACE);
     h.frame(|ui| record(ui, &mut selected));
     ComboBoxList::open(h.ui_mut(), id);
-    Menu::open(h.ui_mut(), id, Vec2::new(200.0, 200.0));
+    Menu::open_at(h.ui_mut(), id, Vec2::new(200.0, 200.0));
     h.frame(|ui| record(ui, &mut selected));
     h.frame(|ui| record(ui, &mut selected));
     assert!(ComboBoxList::is_open(h.ui(), id));

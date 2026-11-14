@@ -205,8 +205,6 @@ Kept, as no single owner can exist:
   texture per result; `backdrops/mod.rs:6-16,627-629` and `src/gpu/AGENTS.md:164-172` do the
   opposite.
 - **`ui/ui_preferences.rs:12-13`** refuses a getter per setting on `Ui`; `Ui` has nine.
-- **`widget_core/configure.rs:389-394`** gates `default_*` behind `ThemeDefaults`;
-  `default_chrome` is inherent on nine builders.
 
 ### Judged and left
 
@@ -384,77 +382,6 @@ Files: as listed per item. No exported signature changes.
   longer than the view that starts inside it, where its doc, `scroll/mod.rs:710-719` and CSSOM's
   `nearest` all show the start. Not local: fixed by the shared `reveal_pan` of batch 11, which
   carries this item's test of the three oversized cases.
-
-### Batch 3: second routes removed (API)
-
-Files: per item.
-
-- [ ] `host/winit/mod.rs:162-189,265-273`: `WinitHostBuilder::title` stores a second title with a
-  precedence rule. Target: it writes `config.window.title`; the field goes; the last call wins.
-- [ ] `primitives/input/zoom_factor/mod.rs:33-49`, `zoom_factor/error.rs`: delete
-  `impl TryFrom<f32>` and `ZoomFactorError`; `new -> Option` is the one-rule form of "Input
-  validation", and `SystemScale::new` and `UserScale::new` have no `TryFrom` twin.
-- [ ] `primitives/input/keyboard/key/mod.rs:67-83`, `driver/play.rs:163`: `ControlCharError`
-  promises `Key::Char` holds no control character while the variant is public and the driver
-  builds `Key::Char('\n')`. Target: `Key::from_char(c) -> Option<Key>` at both in-tree sites, the
-  driver mapping `\n` and `\t` to `Enter` and `Tab`; delete `ControlCharError`.
-- [ ] `shape/text.rs:70-82`: delete `TextShape::{family, weight, slant}`; add
-  `GlyphFont::{with_family, with_weight, with_slant, with_line_height}`.
-- [ ] `widgets/dock/dock_view.rs:86-103,165,223-245,363-375`: `DockView::run` is an associated fn
-  that takes no setting, so the short route is a dead end. Target (decided): who applies, in the
-  type, `DockView<'a, T, M = Applying>`. `DockView::new(dock, &mut state)` applies the operations
-  itself (scan, apply, show, apply, over a buffer in its state row), as egui_dock's
-  `DockArea::new(&mut state)`; `DockView::emitting(dock, &state, &mut operations)` is today's
-  `new`, for a caller that routes operations through its own undo, with `scan` beside it. One
-  `show(self, ui, tabs)` on each; the setters in one `impl<'a, T, M>`; `run` goes and `DockOpBuf`
-  becomes the applying form's private row. The consumer's and the showcase's `new` calls become
-  `emitting`; the 24 tests on `run` become `new(..).show(..)`.
-- [ ] `widgets/menu/mod.rs:70-79,130-137,168-209,243`: `Menu` holds two owners of "open", so
-  `show` returns an `Option` that is always `Some` for `at`, and `settle` has an `unreachable!`.
-  Target (decided): the owner in the type, `Menu<'a, O = TriggerOwned>`. `Menu::at` returns
-  `Menu<'a, CallerOwned>`, whose `show` returns `OverlayResponse<R>`; `context`, `below` and
-  `for_id` return `Menu<'a, TriggerOwned>`, whose `show` keeps `Option<OverlayResponse<R>>` and
-  which alone has `show_as` and `settle`. The setters sit in one `impl<'a, O>`; `TriggerOwned
-  { frame, at_pointer }` and `CallerOwned(Vec2)` replace the private `Opener` enum and are sealed
-  on the surface. `Menu::open(ui, trigger)` opens below as its siblings do, `Menu::open_at(ui,
-  trigger, point)` is the point form; `internals::open_below` goes. Add the "typestate" kind to
-  `AGENTS.md` "Kinds of type" if no other builder has one.
-- [ ] `widgets/popup/mod.rs:105-110`, `widgets/modal/mod.rs:136-141`: `Popup::close` and
-  `Modal::close` are `Ui::withdraw_input_scope` and close nothing. Target (decided): delete both;
-  `ui.withdraw_input_scope(id)` is the one spelling, named in the `Popup` and `Modal` docs;
-  `close` stays for the widgets that own an open flag, where it closes.
-- [ ] `widget_core/overlay_scope.rs:136-198`: `record` then `finish` with nothing between; a
-  forgotten `finish` keeps the input scope a frame. Target: `record(self, ui, body) ->
-  OverlayResponse<R>` withdraws on close; `finish` goes.
-- [ ] `ui/mod.rs:468`: delete `Ui::watch_keyboard`; `keyboard_events(wake)` declares the watch.
-- [ ] `ui/mod.rs:901`, `icons/icon_registry/mod.rs:82-96`: `load_icons(table: IconTable) ->
-  IconSet`; delete the pointer scan and `Slot.token`.
-- [ ] `primitives/geometry/spacing/mod.rs:70-79`: delete `Spacing::from_array`.
-  `primitives/layout/track/mod.rs:106-111`: delete `From<Sizing> for Track` (no signature takes
-  `impl Into<Track>`).
-- [ ] `display/user_scale/mod.rs:75`: `UserScale::applied_to` → `pub(crate)`;
-  `Display::scale_factor()` is the read.
-- [ ] `widgets/color_picker/mod.rs:131-134`: `ColorPicker::color(&self)` → `pub(crate)`.
-- [ ] `block/mod.rs:54`, `panel/mod.rs:109`, `grid.rs:75` and `Menu`, `Modal`, `Popup`,
-  `PopupTrigger`, `Scroll`, `Tooltip`: `default_chrome` → `pub(crate)`.
-- [ ] `widgets/bound_num/mod.rs:13-24`: public variants beside `From`. Target:
-  `pub struct BoundNum<'a>(Repr<'a>)`.
-- [ ] `clipboard/mod.rs:240,292-320,362,375,453,467`: `set_text`/`set_image` return an error no
-  shipping build produces. Target: `ClipboardState { primary: Option<Primary>, memory, authority,
-  mirror_cur }`, `write(content: Content<'_>)`, both setters return `()` and log a refused system
-  clipboard once, as egui's `copy_text` reports nothing (decided); `Cut` drops its `is_ok()`
-  guard; delete `rejecting()` and `widgets/text_edit/tests/context_menu.rs:172-183`. `text()` and
-  `image()` keep their `Result`. Refused: arboard's form, an `Err` when the system clipboard did
-  not take a write the in-process buffer did, which every caller would have to interpret.
-- [ ] `host/harness/mod.rs:621-636`, `primitives/input/interaction/response_state.rs:21-25`: one
-  rect is `arranged` on the harness and `layout_rect` on `Response`. One name; record in
-  `src/host/AGENTS.md` that the harness mirrors `Ui` reads as test sugar.
-- [ ] `host/harness/mod.rs:140-141,681-688,947-957`, `host/offscreen/mod.rs:314-319`:
-  `window_commands()` is last frame's on one host and every command since build on the other,
-  unbounded. Target: last frame's on both; a history under its own name with a stated bound.
-- [ ] `effect/effect_source.rs:111`: the setter `build(EffectBuild)` uses the builders' terminal
-  verb. Target: `prebuild(prebuild: bool)`, dropping `EffectBuild`. `ReducedPaint` →
-  `ReducedEffect { Same, Other(EffectName), Nothing }`.
 
 ### Batch 4: names against the rules (API)
 

@@ -503,7 +503,7 @@ impl Deck {
                     for operation in operations.drain(..) {
                         dock.apply(operation);
                     }
-                    DockView::new(dock_id, dock, operations)
+                    DockView::emitting(dock_id, dock, operations)
                         .min_pane(160.0)
                         .show(ui, &mut Panes);
                     for operation in operations.drain(..) {

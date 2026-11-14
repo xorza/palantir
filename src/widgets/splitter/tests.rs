@@ -71,7 +71,7 @@ fn divider_drag_maps_pointer_to_ratio_without_relayout() {
     );
     held.a()
         .assert_signals(false, false, "the binding did not move this frame");
-    let rect = h.arranged(split_id().with("first"));
+    let rect = h.layout_rect(split_id().with("first"));
     assert_eq!(
         rect.unwrap().size.w,
         350.0,
@@ -160,7 +160,7 @@ fn divider_drag_is_scale_invariant() {
 
         h.press(split_id().with("divider"), PointerButton::Left);
         // Drag targets along the splitter's x, read before the drag.
-        let layout = h.arranged(split_id());
+        let layout = h.layout_rect(split_id());
         let transform = h.transform(split_id());
         let target = |x: f32| transform.apply_point(layout.unwrap().min + Vec2::new(x, 50.0));
         h.hover(target(300.5));
@@ -174,7 +174,7 @@ fn divider_drag_is_scale_invariant() {
         h.hover(target(380.0));
         frame(&mut h, &mut ratio);
         assert_eq!(
-            h.arranged(split_id().with("first")).unwrap().size.w,
+            h.layout_rect(split_id().with("first")).unwrap().size.w,
             350.0,
             "50 px second-pane minimum at {scale}×",
         );
@@ -281,7 +281,7 @@ fn divider_and_pane_stop_together_when_content_is_rigid() {
             180.0,
             "{rigid_half:?} pane stops at its rigid content floor"
         );
-        let rigid_rect = h.arranged(split_id().with("rigid"));
+        let rigid_rect = h.layout_rect(split_id().with("rigid"));
         assert_eq!(
             if row {
                 rigid_rect.unwrap().size.w
@@ -291,7 +291,7 @@ fn divider_and_pane_stop_together_when_content_is_rigid() {
             180.0,
             "rigid content remains laid out"
         );
-        let first_rect = h.arranged(split_id().with("first"));
+        let first_rect = h.layout_rect(split_id().with("first"));
         let divider_rect = h
             .rect(split_id().with("divider"))
             .expect("divider arranged");
@@ -412,7 +412,7 @@ fn divider_requests_the_resize_cursor() {
         frame(&mut h, &mut ratio);
         frame(&mut h, &mut ratio);
 
-        let first_rect = h.arranged(split_id().with("first"));
+        let first_rect = h.layout_rect(split_id().with("first"));
         let divider_rect = h
             .rect(split_id().with("divider"))
             .expect("divider arranged");
@@ -459,7 +459,10 @@ fn a_splitter_disabled_mid_drag_lets_go() {
     assert!(!fill(&h), "a disabled divider paints no drag fill");
     assert_eq!(h.ui().window_requests().levels.cursor, CursorIcon::Default);
     assert_eq!(ratio, 0.75, "the pointer no longer steers");
-    assert_eq!(h.arranged(split_id().with("first")).unwrap().size.w, 300.0);
+    assert_eq!(
+        h.layout_rect(split_id().with("first")).unwrap().size.w,
+        300.0
+    );
     assert_eq!(
         disabled.count_where(|e| e.changed || e.committed),
         0,

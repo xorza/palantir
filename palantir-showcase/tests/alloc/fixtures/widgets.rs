@@ -155,7 +155,7 @@ fn open_context_menu_shortcuts_alloc_free() {
     Audit::new().run(move |ui| {
         let trigger = Button::new().id(trigger_id).label("Actions").show(ui);
         if needs_open {
-            Menu::open(ui, trigger_id, Vec2::new(40.0, 40.0));
+            Menu::open_at(ui, trigger_id, Vec2::new(40.0, 40.0));
             needs_open = false;
         }
         Menu::context(&trigger).show(ui, |ui| {

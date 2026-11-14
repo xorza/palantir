@@ -895,7 +895,7 @@ fn a_split_dock_tiles_its_panes_and_strips() {
     let mut h = Harness::mono(SURFACE);
     let mut tabs = Labels;
     h.prime(3, |ui| {
-        DockView::run(ui, dock(), &mut d, &mut tabs);
+        DockView::new(dock(), &mut d).show(ui, &mut tabs);
     });
 
     let left_pane = h
@@ -919,7 +919,7 @@ fn a_split_dock_tiles_its_panes_and_strips() {
                 ..pane
             }
         );
-        let content = h.arranged(group.content_id(dock())).unwrap();
+        let content = h.layout_rect(group.content_id(dock())).unwrap();
         assert_eq!(
             content,
             Rect::new(
@@ -954,8 +954,10 @@ fn an_over_dragged_divider_keeps_its_width_through_the_release() {
     let mut h = Harness::mono(SURFACE);
     let mut tabs = Labels;
     let mut run = |h: &mut Harness, d: &mut DockState<Tab>| {
-        h.frame(|ui| DockView::run(ui, dock(), d, &mut tabs));
-        h.arranged(primary.pane_id(dock())).unwrap().size.w
+        h.frame(|ui| {
+            DockView::new(dock(), d).show(ui, &mut tabs);
+        });
+        h.layout_rect(primary.pane_id(dock())).unwrap().size.w
     };
     for _ in 0..3 {
         run(&mut h, &mut d);
@@ -989,7 +991,9 @@ fn a_carried_tab_marks_a_strip_slot_or_washes_a_region() {
     let mut d = seeded();
     let mut tabs = Labels;
     let mut h = Harness::mono(SURFACE);
-    h.prime(3, |ui| DockView::run(ui, dock(), &mut d, &mut tabs));
+    h.prime(3, |ui| {
+        DockView::new(dock(), &mut d).show(ui, &mut tabs);
+    });
     let strip = d.primary().id.strip_id(dock());
     let caret = strip.with("caret");
     let wash = dock().with("preview");
@@ -998,15 +1002,21 @@ fn a_carried_tab_marks_a_strip_slot_or_washes_a_region() {
         TabStrip::chip_id(strip, TabKey::of(Tab::Main)),
         PointerButton::Left,
     );
-    h.frame(|ui| DockView::run(ui, dock(), &mut d, &mut tabs));
+    h.frame(|ui| {
+        DockView::new(dock(), &mut d).show(ui, &mut tabs);
+    });
     let last = h.center_of(TabStrip::chip_id(strip, TabKey::of(viewer(1))));
     h.drag_to(last + Vec2::new(4.0, 0.0));
-    h.prime(2, |ui| DockView::run(ui, dock(), &mut d, &mut tabs));
+    h.prime(2, |ui| {
+        DockView::new(dock(), &mut d).show(ui, &mut tabs);
+    });
     assert!(h.rect(caret).is_some(), "over the strip, its caret");
     assert!(h.rect(wash).is_none(), "and no wash");
 
     h.drag_to(Vec2::new(300.0, 200.0));
-    h.prime(2, |ui| DockView::run(ui, dock(), &mut d, &mut tabs));
+    h.prime(2, |ui| {
+        DockView::new(dock(), &mut d).show(ui, &mut tabs);
+    });
     assert!(h.rect(caret).is_none(), "over the content, no caret");
     assert!(h.rect(wash).is_some(), "but a wash");
 }
@@ -1022,7 +1032,9 @@ fn a_lone_tab_over_its_own_pane_washes_nothing() {
     let before = d.clone();
     let mut tabs = Labels;
     let mut h = Harness::mono(SURFACE);
-    h.prime(3, |ui| DockView::run(ui, dock(), &mut d, &mut tabs));
+    h.prime(3, |ui| {
+        DockView::new(dock(), &mut d).show(ui, &mut tabs);
+    });
     let strip = lone.strip_id(dock());
     let wash = dock().with("preview");
 
@@ -1030,17 +1042,23 @@ fn a_lone_tab_over_its_own_pane_washes_nothing() {
         TabStrip::chip_id(strip, TabKey::of(viewer(1))),
         PointerButton::Left,
     );
-    h.frame(|ui| DockView::run(ui, dock(), &mut d, &mut tabs));
+    h.frame(|ui| {
+        DockView::new(dock(), &mut d).show(ui, &mut tabs);
+    });
     let pane = h
         .rect(lone.pane_id(dock()))
         .expect("the lone pane is arranged");
     for at in [pane.center(), pane.min + Vec2::new(4.0, pane.size.h - 4.0)] {
         h.drag_to(at);
-        h.prime(2, |ui| DockView::run(ui, dock(), &mut d, &mut tabs));
+        h.prime(2, |ui| {
+            DockView::new(dock(), &mut d).show(ui, &mut tabs);
+        });
         assert!(h.rect(wash).is_none(), "no wash at {at:?}");
     }
     h.release(PointerButton::Left);
-    h.prime(2, |ui| DockView::run(ui, dock(), &mut d, &mut tabs));
+    h.prime(2, |ui| {
+        DockView::new(dock(), &mut d).show(ui, &mut tabs);
+    });
     assert_eq!(d, before, "the release moves nothing");
 }
 
@@ -1051,13 +1069,15 @@ fn a_chip_click_switches_the_pane_on_the_same_frame() {
     let mut d = seeded();
     let mut h = Harness::mono(SURFACE);
     let mut tabs = Labels;
-    h.prime(3, |ui| DockView::run(ui, dock(), &mut d, &mut tabs));
+    h.prime(3, |ui| {
+        DockView::new(dock(), &mut d).show(ui, &mut tabs);
+    });
     assert_eq!(d.primary().active_tab(), Tab::Main);
 
     let chip = TabStrip::chip_id(d.primary().id.strip_id(dock()), TabKey::of(Tab::Prefs));
     h.click(chip);
     let content = h.frame_value(|ui| {
-        DockView::run(ui, dock(), &mut d, &mut tabs);
+        DockView::new(dock(), &mut d).show(ui, &mut tabs);
         ui.response_for(d.primary().id.content_id(dock())).rect
     });
     assert_eq!(
@@ -1075,12 +1095,16 @@ fn a_close_click_removes_the_tab_and_does_not_activate_it() {
     let mut h = Harness::mono(SURFACE);
     h.ui_mut().theme_mut().tabs.close_shown = CloseShown::Always;
     let mut tabs = Labels;
-    h.prime(3, |ui| DockView::run(ui, dock(), &mut d, &mut tabs));
+    h.prime(3, |ui| {
+        DockView::new(dock(), &mut d).show(ui, &mut tabs);
+    });
 
     let strip = d.primary().id.strip_id(dock());
     let close = TabStrip::close_id(strip, TabKey::of(Tab::Prefs));
     h.click(close);
-    h.frame(|ui| DockView::run(ui, dock(), &mut d, &mut tabs));
+    h.frame(|ui| {
+        DockView::new(dock(), &mut d).show(ui, &mut tabs);
+    });
 
     assert_eq!(
         d.all_tabs().collect::<Vec<_>>(),
@@ -1095,24 +1119,24 @@ fn a_close_click_removes_the_tab_and_does_not_activate_it() {
     d.validate().unwrap();
 }
 
-/// A view moved off the id `new` took would record where `scan` never reads, so `show` refuses
-/// it; the same id set again is no move.
+/// A view moved off the id it was built with would record where the scan never reads, so `show`
+/// refuses it; the same id set again is no move.
 #[test]
 fn a_view_moved_off_its_id_is_refused() {
-    const RULE: &str = "a dock view records under the id `new` took";
+    const RULE: &str = "a dock view records under the id it was built with";
     let d = seeded();
     let mut tabs = Labels;
 
     Harness::mono(SURFACE).frame(|ui| {
         let mut operations = Vec::new();
-        DockView::new(dock(), &d, &mut operations)
+        DockView::emitting(dock(), &d, &mut operations)
             .id(dock())
             .show(ui, &mut tabs);
     });
     panic_probe::assert_panics_with(RULE, || {
         Harness::mono(SURFACE).frame(|ui| {
             let mut operations = Vec::new();
-            DockView::new(dock(), &d, &mut operations)
+            DockView::emitting(dock(), &d, &mut operations)
                 .id(WidgetId::from_hash("elsewhere"))
                 .show(ui, &mut tabs);
         });
@@ -1120,7 +1144,7 @@ fn a_view_moved_off_its_id_is_refused() {
     panic_probe::assert_panics_with(RULE, || {
         Harness::mono(SURFACE).frame(|ui| {
             let mut operations = Vec::new();
-            DockView::new(dock(), &d, &mut operations)
+            DockView::emitting(dock(), &d, &mut operations)
                 .id_salt("elsewhere")
                 .show(ui, &mut tabs);
         });
@@ -1140,7 +1164,7 @@ fn a_pick_from_the_overflow_menu_activates_its_tab() {
             for operation in operations.drain(..) {
                 d.apply(operation);
             }
-            DockView::new(dock(), &*d, &mut operations)
+            DockView::emitting(dock(), &*d, &mut operations)
                 .id(dock())
                 .overflow(TabOverflow::Menu)
                 .show(ui, tabs);
@@ -1227,7 +1251,9 @@ fn a_right_click_opens_the_tab_menu_only_where_one_is_declared() {
     let mut d = seeded();
     let mut tabs = MenuOn(Tab::Prefs);
     let mut h = Harness::mono(SURFACE);
-    h.prime(3, |ui| DockView::run(ui, dock(), &mut d, &mut tabs));
+    h.prime(3, |ui| {
+        DockView::new(dock(), &mut d).show(ui, &mut tabs);
+    });
     let strip = d.primary().id.strip_id(dock());
     let chip = |tab| TabStrip::chip_id(strip, TabKey::of(tab));
 
@@ -1236,7 +1262,9 @@ fn a_right_click_opens_the_tab_menu_only_where_one_is_declared() {
         .expect("the Main chip arranged")
         .center();
     h.right_click(at);
-    h.frame(|ui| DockView::run(ui, dock(), &mut d, &mut tabs));
+    h.frame(|ui| {
+        DockView::new(dock(), &mut d).show(ui, &mut tabs);
+    });
     assert!(!Menu::is_open(h.ui(), chip(Tab::Main)));
     assert!(h.rect(MenuOn::item_id()).is_none(), "Main has no menu");
 
@@ -1245,7 +1273,9 @@ fn a_right_click_opens_the_tab_menu_only_where_one_is_declared() {
         .expect("the Prefs chip arranged")
         .center();
     h.right_click(at);
-    h.frame(|ui| DockView::run(ui, dock(), &mut d, &mut tabs));
+    h.frame(|ui| {
+        DockView::new(dock(), &mut d).show(ui, &mut tabs);
+    });
     assert!(Menu::is_open(h.ui(), chip(Tab::Prefs)));
     assert!(
         h.rect(MenuOn::item_id()).is_some(),
@@ -1253,8 +1283,12 @@ fn a_right_click_opens_the_tab_menu_only_where_one_is_declared() {
     );
 
     h.click(MenuOn::item_id());
-    h.frame(|ui| DockView::run(ui, dock(), &mut d, &mut tabs));
-    h.frame(|ui| DockView::run(ui, dock(), &mut d, &mut tabs));
+    h.frame(|ui| {
+        DockView::new(dock(), &mut d).show(ui, &mut tabs);
+    });
+    h.frame(|ui| {
+        DockView::new(dock(), &mut d).show(ui, &mut tabs);
+    });
     assert_eq!(
         d.all_tabs().collect::<Vec<_>>(),
         [Tab::Main, viewer(1)],
@@ -1272,10 +1306,14 @@ fn a_right_click_opens_the_tab_menu_only_where_one_is_declared() {
         .expect("the viewer chip arranged")
         .center();
     h.right_click(at);
-    h.frame(|ui| DockView::run(ui, dock(), &mut d, &mut tabs));
+    h.frame(|ui| {
+        DockView::new(dock(), &mut d).show(ui, &mut tabs);
+    });
     assert!(Menu::is_open(h.ui(), chip(viewer(1))));
     d.retain_tabs(|tab| tab != viewer(1));
-    h.frame(|ui| DockView::run(ui, dock(), &mut d, &mut tabs));
+    h.frame(|ui| {
+        DockView::new(dock(), &mut d).show(ui, &mut tabs);
+    });
     assert!(!Menu::is_open(h.ui(), chip(viewer(1))));
     assert!(
         h.rect(MenuOn::item_id()).is_none(),
@@ -1325,10 +1363,12 @@ fn escape_ends_a_chip_drag_at_the_root_and_inside_an_overlay() {
                 ui.layer(Layer::Popup).show(|ui| {
                     let mut root = Panel::zstack().id_salt("claim").size(Sizing::FILL);
                     root.configure().input_scope(KeyFilter::ALL).blocks_below();
-                    root.show(ui, |ui| DockView::run(ui, dock(), d, &mut tabs));
+                    root.show(ui, |ui| {
+                        DockView::new(dock(), d).show(ui, &mut tabs);
+                    });
                 });
             } else {
-                DockView::run(ui, dock(), d, &mut tabs);
+                DockView::new(dock(), d).show(ui, &mut tabs);
             }
         });
     }
@@ -1365,7 +1405,9 @@ fn a_carried_tab_leaves_with_the_dock() {
     let mut tabs = Labels;
     let mut h = Harness::mono(UVec2::new(400, 200));
     let record = |h: &mut Harness, d: &mut DockState<Tab>, tabs: &mut Labels| {
-        h.frame(|ui| DockView::run(ui, dock(), d, tabs));
+        h.frame(|ui| {
+            DockView::new(dock(), d).show(ui, tabs);
+        });
     };
     for _ in 0..2 {
         record(&mut h, &mut d, &mut tabs);
@@ -1389,7 +1431,7 @@ fn a_carried_tab_leaves_with_the_dock() {
 fn a_new_dock_view_has_no_authored_size() {
     let d = DockState::new(Tab::Main);
     let mut operations = Vec::new();
-    let mut view = DockView::new(dock(), &d, &mut operations);
+    let mut view = DockView::emitting(dock(), &d, &mut operations);
     assert_eq!(view.configure().widget.authored().size(), None);
 }
 
@@ -1410,7 +1452,7 @@ fn the_dock_restyles_its_strips_and_tab_menus() {
         let chip = TabStrip::chip_id(strip, TabKey::of(Tab::Prefs));
         let mut h = Harness::mono(SURFACE);
         let mut scene = |ui: &mut Ui| {
-            DockView::new(dock(), &d, &mut ops)
+            DockView::emitting(dock(), &d, &mut ops)
                 .id(dock())
                 .tabs_style(styled.then_some(&strips))
                 .menu_style(styled.then_some(&menu))

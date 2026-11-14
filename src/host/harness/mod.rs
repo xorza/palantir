@@ -75,7 +75,6 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::input_event::InputEvent;
 use crate::primitives::input::interaction::input_delta::InputDelta;
 use crate::primitives::input::interaction::response::Response;
-use crate::primitives::input::keyboard::key::Key;
 use crate::primitives::input::keyboard::modifiers::Modifiers;
 use crate::primitives::input::pointer::PointerButton;
 use crate::primitives::input::sense::Sense;
@@ -131,8 +130,40 @@ pub struct Harness {
     /// the double-click interval from.
     last_press: Option<Duration>,
     pace: SettlePace,
-    /// Every change the frames made to a window, oldest first ([`log_window_command`]).
-    window_commands: Vec<WindowCommand>,
+    /// The changes the last frame made to a window, in the order filed
+    /// ([`WindowLog::file`]).
+    windows: WindowLog,
+}
+
+/// What a harness keeps of the windows its frames open and close: the last frame's commands, and
+/// the windows they hold open, which an open of one already open leaves out, as a host ignores
+/// it. Bounded by the windows an app opens, each held once.
+#[derive(Debug, Default)]
+struct WindowLog {
+    commands: Vec<WindowCommand>,
+    open: Vec<WindowToken>,
+}
+
+impl WindowLog {
+    /// Keep `commands`, a frame's, in place of the last frame's. Every close is kept: the
+    /// harness's own window can close and come back with no open, as an app launched again in it
+    /// does, and close again.
+    fn file(&mut self, commands: impl IntoIterator<Item = WindowCommand>) {
+        self.commands.clear();
+        for command in commands {
+            let token = command.token();
+            let held = self.open.iter().position(|&open| open == token);
+            match (&command, held) {
+                (WindowCommand::Open { .. }, Some(_)) => continue,
+                (WindowCommand::Open { .. }, None) => self.open.push(token),
+                (WindowCommand::Close(_), Some(idx)) => {
+                    self.open.swap_remove(idx);
+                }
+                (WindowCommand::Close(_), None) => {}
+            }
+            self.commands.push(command);
+        }
+    }
 }
 
 /// How far a harness's frames run, with the window's size: kept by the texture of a window that
@@ -217,7 +248,7 @@ impl Harness {
             held: [None; PointerButton::COUNT],
             last_press: None,
             pace,
-            window_commands: Vec::new(),
+            windows: WindowLog::default(),
         };
         harness.sync_display();
         harness.mark_warm();
@@ -584,10 +615,18 @@ impl Harness {
         }
     }
 
-    /// Type `text` as key taps, one a character, each typing it.
+    /// Type `text` as key taps, one a character, each typing it; a newline taps Enter and a tab
+    /// Tab.
+    ///
+    /// # Panics
+    ///
+    /// When `text` holds another control character, which no key types.
+    #[track_caller]
     pub fn type_text(&mut self, text: &str) -> InputDelta {
         text.chars().fold(InputDelta::default(), |delta, c| {
-            either(delta, self.key(Key::Char(c)))
+            let key = play::typed_key(c)
+                .unwrap_or_else(|| panic!("{c:?} is a control character no key types"));
+            either(delta, self.key(key))
         })
     }
 
@@ -613,7 +652,7 @@ impl Harness {
     }
 
     /// `id`'s visible rect in the last frame: after transforms and clips, what the pointer hits.
-    /// [`Self::arranged`] is the rect a layout test means; the two differ only under a
+    /// [`Self::layout_rect`] is the rect a layout test means; the two differ only under a
     /// transform or a clip.
     pub fn rect(&self, id: WidgetId) -> Option<Rect> {
         self.ui().response_for(id).rect
@@ -621,7 +660,7 @@ impl Harness {
 
     /// `id`'s arranged rect in the last frame: before transforms, not clipped; `None` when `id`
     /// did not arrange in it.
-    pub fn arranged(&self, id: WidgetId) -> Option<Rect> {
+    pub fn layout_rect(&self, id: WidgetId) -> Option<Rect> {
         self.ui().response_for(id).layout_rect
     }
 
@@ -668,13 +707,13 @@ impl Harness {
         self.ui().state::<S>(id)
     }
 
-    /// Every window the frames opened or closed, oldest first: a harness has one window, and
-    /// records the rest. An open of a window the log holds open is not recorded, as a host ignores
-    /// it: an app that opens a window each frame, as one does here, where only the harness's own
-    /// window is open, records one open. Every close is recorded: the harness's own window can
-    /// close and come back with no open, as an app launched again in it does, and close again.
+    /// The windows the last frame opened or closed, in the order called, as
+    /// [`OffscreenHost::window_commands`](crate::OffscreenHost::window_commands) reads them: a
+    /// harness has one window, and records the rest. An open of a window an earlier frame opened
+    /// and none closed is left out, as a host ignores it: an app that opens a window each frame
+    /// shows one open, on the first.
     pub fn window_commands(&self) -> &[WindowCommand] {
-        &self.window_commands
+        &self.windows.commands
     }
 
     /// The text on the window's clipboard, `None` when it holds none.
@@ -691,10 +730,7 @@ impl Harness {
 
     /// Put `text` on the window's clipboard, for a paste to come.
     pub fn set_clipboard_text(&mut self, text: &str) -> &mut Self {
-        self.ui()
-            .clipboard()
-            .set_text(text)
-            .expect("the harness clipboard is in memory");
+        self.ui().clipboard().set_text(text);
         self
     }
 
@@ -835,9 +871,7 @@ impl Harness {
                 now,
             ),
         };
-        for command in self.window.drain_commands() {
-            log_window_command(&mut self.window_commands, command);
-        }
+        self.windows.file(self.window.drain_commands());
         self.earliest_repaint_at = report.earliest_repaint_at;
         report
     }
@@ -929,20 +963,6 @@ impl Harness {
             "a {dt:?} step is past the {MAX_ANIMATION_DT} s an animation integrates, and would end \
              it short; run more, shorter frames",
         );
-    }
-}
-
-/// Append `command` to `log` unless it opens a window the log holds open: the last command for
-/// it is an open already.
-fn log_window_command(log: &mut Vec<WindowCommand>, command: WindowCommand) {
-    let token = command.token();
-    let held_open = matches!(command, WindowCommand::Open { .. })
-        && matches!(
-            log.iter().rev().find(|logged| logged.token() == token),
-            Some(WindowCommand::Open { .. })
-        );
-    if !held_open {
-        log.push(command);
     }
 }
 

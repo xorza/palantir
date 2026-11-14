@@ -60,9 +60,9 @@ fn theme_spacing_reaches_every_toggle_row_and_explicit_wins() {
             assert_eq!(layout.padding, padding, "{label}: padding");
             assert_eq!(layout.margin, margin, "{label}: margin");
 
-            let row = h.arranged(id);
-            let boxed = h.arranged(id.with("box"));
-            let text = h.arranged(id.with("label"));
+            let row = h.layout_rect(id);
+            let boxed = h.layout_rect(id.with("box"));
+            let text = h.layout_rect(id.with("label"));
             assert_eq!(
                 text.unwrap().min.x - boxed.unwrap().max().x,
                 gap,

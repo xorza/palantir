@@ -36,8 +36,10 @@ use std::rc::Rc;
 /// below it. Focus is unchanged. `click_outside(None)` takes neither.
 ///
 /// A popup the caller shows is open while it records. Stop recording it only on the frame its
-/// response reads [`closed`](OverlayResponse::closed), or after [`Self::close`]: a popup that
-/// merely stops recording keeps the keys and the pointer of the layers below one more frame.
+/// response reads [`closed`](OverlayResponse::closed), or after
+/// [`Ui::withdraw_input_scope`](crate::Ui::withdraw_input_scope) of its id, as a caller does when
+/// it stops showing it for a reason of its own: a popup that merely stops recording keeps the keys
+/// and the pointer of the layers below one more frame.
 ///
 /// Implements [`Configure`].
 #[derive(Debug)]
@@ -112,13 +114,6 @@ impl<'a> Popup<'a> {
         self
     }
 
-    /// Close the popup `id` from outside, as a caller does when it stops showing it for a reason
-    /// of its own: the input the popup took from the layers below goes back at once. No-op for a
-    /// popup that holds none (`click_outside(None)`), or one its response already closed.
-    pub fn close(ui: &mut Ui, id: WidgetId) {
-        ui.withdraw_input_scope(id);
-    }
-
     /// Record the overlay and its `body`; a [`Ui::close_overlay`] in it closes the popup.
     pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> OverlayResponse<R> {
         let Self {
@@ -161,8 +156,7 @@ impl<'a> Popup<'a> {
                 material: slot.material.as_ref(),
             },
         };
-        let response = scope.record(ui, |ui| widget.record_box(ui, panel, body));
-        scope.finish(ui, response)
+        scope.record(ui, |ui| widget.record_box(ui, panel, body))
     }
 }
 
@@ -243,25 +237,6 @@ impl Popup<'_> {
             chrome,
             material: None,
         });
-        self
-    }
-
-    /// Paint `chrome` unless the caller set one; an explicit
-    /// [`Self::chrome`] wins in either order. For wrappers that theme a held
-    /// widget after the caller's setters ran.
-    ///
-    /// # Panics
-    ///
-    /// Panics unless `chrome` holds the kinds [`Chrome`] lists.
-    #[track_caller]
-    pub const fn default_chrome(mut self, chrome: Chrome) -> Self {
-        chrome.validate();
-        if self.panel.is_none() {
-            self.panel = Some(OwnPanel {
-                chrome,
-                material: None,
-            });
-        }
         self
     }
 }

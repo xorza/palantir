@@ -33,9 +33,7 @@ use crate::shape::record::ShapeRecord;
 use crate::shape::record_store::RecordStore;
 use crate::shape::record_store::Resolve;
 use crate::shape::sealed::DrawWith;
-use crate::text::font_family::FontFamily;
 use crate::text::font_slant::FontSlant;
-use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::wrap::TextWrap;
 use glam::Vec2;
@@ -679,40 +677,6 @@ fn a_curve_of_no_length_paints_its_cap_alone() {
         "a butt cap has no extent"
     );
     assert!(lower((dot, wide)).is_none(), "nor on a cubic");
-}
-
-/// Each font axis setter overrides its own field of the run's font and leaves the size, the
-/// leading and the other axes as the font named them.
-#[test]
-fn text_font_axes_override_their_own_field() {
-    let mut store = RecordStore::default();
-    let font = GlyphFont {
-        line_height: 20.0,
-        ..GlyphFont::new(14.0)
-    };
-    let shape = |text| Shape::text(text, font);
-    let text = store.text.intern("axes");
-    assert_eq!(
-        shape(text).family(FontFamily::MONO).font,
-        GlyphFont {
-            family: FontFamily::MONO,
-            ..font
-        }
-    );
-    assert_eq!(
-        shape(text).weight(FontWeight::BOLD).font,
-        GlyphFont {
-            weight: FontWeight::BOLD,
-            ..font
-        }
-    );
-    assert_eq!(
-        shape(text).slant(FontSlant::Italic).font,
-        GlyphFont {
-            slant: FontSlant::Italic,
-            ..font
-        }
-    );
 }
 
 /// A rect shape's paint bbox takes in its drop shadow's halo, as a node's chrome's does, and stays

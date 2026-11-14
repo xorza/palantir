@@ -1,5 +1,5 @@
 use crate::effect::effect_registry::{EffectRegistry, ResolvedMaterial};
-use crate::effect::effect_source::{EffectSource, ReducedPaint};
+use crate::effect::effect_source::{EffectSource, ReducedEffect};
 use crate::internals::panic_probe::assert_panics_with;
 use crate::internals::srgb_reference;
 use crate::primitives::effect::effect_kind::BackdropEffect;
@@ -252,13 +252,13 @@ fn an_effects_source_declares_its_materials_reach() {
     effects
         .load(
             saving,
-            &EffectSource::new(wgsl).power_saver(ReducedPaint::Effect(reaching)),
+            &EffectSource::new(wgsl).power_saver(ReducedEffect::Other(reaching)),
         )
         .unwrap();
     effects
         .load(
             vanishing,
-            &EffectSource::new(wgsl).power_saver(ReducedPaint::Nothing),
+            &EffectSource::new(wgsl).power_saver(ReducedEffect::Nothing),
         )
         .unwrap();
     let resolve = |effect, power| {

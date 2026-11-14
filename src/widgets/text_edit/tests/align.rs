@@ -484,7 +484,7 @@ fn a_field_placed_by_its_own_text_centers_that_text_where_it_was_asked() {
     };
     h.prime(2, &mut record);
 
-    let field = h.arranged(ed_id());
+    let field = h.layout_rect(ed_id());
     assert_eq!(
         field.unwrap().min,
         corner,

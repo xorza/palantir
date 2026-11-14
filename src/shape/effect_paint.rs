@@ -37,7 +37,7 @@ use crate::shape::triangle::TriangleShape;
 /// [`AddedShape::animate`](crate::widget::AddedShape::animate), [`PaintAnimation::clock`] when only
 /// the time moves; a turn turns it about its owner's center, as a quad turns. While motion or
 /// power use is reduced it paints the alternative its source names for it
-/// ([`ReducedPaint`](crate::ReducedPaint)); while transparency is reduced, a backdrop effect paints
+/// ([`ReducedEffect`](crate::ReducedEffect)); while transparency is reduced, a backdrop effect paints
 /// its [fallback](Self::fallback) over its shape in its place, the theme's by default, as a
 /// [`Material`](crate::Material) does.
 ///

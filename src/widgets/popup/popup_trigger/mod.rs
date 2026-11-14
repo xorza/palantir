@@ -71,18 +71,6 @@ impl<'a> PopupTrigger<'a> {
         self
     }
 
-    /// Paint `chrome` behind the popup unless the caller set one. See
-    /// [`Popup::default_chrome`].
-    ///
-    /// # Panics
-    ///
-    /// Panics unless `chrome` holds the kinds [`Chrome`] lists.
-    #[track_caller]
-    pub const fn default_chrome(mut self, chrome: Chrome) -> Self {
-        self.popup = self.popup.default_chrome(chrome);
-        self
-    }
-
     /// Toggle the open flag on a trigger click, close it on a disabled trigger, and
     /// record the popup below the trigger while open.
     ///

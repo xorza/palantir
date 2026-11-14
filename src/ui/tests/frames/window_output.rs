@@ -42,7 +42,7 @@ fn window_requests_reach_the_host_after_the_frame() {
     );
 
     h.frame(|_| {});
-    assert_eq!(seen(&h), filed, "a quiet frame files nothing");
+    assert!(seen(&h).is_empty(), "a quiet frame files nothing");
 
     // `is_window_open` polls the host-refreshed live set, not the pending queues.
     assert!(
@@ -136,10 +136,7 @@ fn the_ui_reads_the_hosts_facts_and_the_shared_clipboard() {
     assert_eq!(h.ui().window_geometry().inner_size, Size::new(320.5, 180.5),);
     h.ui_mut().host.window_frame.facts.close_requested = false;
 
-    h.ui()
-        .clipboard()
-        .set_text("through the ui")
-        .expect("the harness holds a clipboard");
+    h.ui().clipboard().set_text("through the ui");
     assert_eq!(
         h.ui().clipboard().text().unwrap().as_deref(),
         Some("through the ui"),

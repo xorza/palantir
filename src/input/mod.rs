@@ -327,8 +327,8 @@ impl Input {
         self.subs.pointer_mask.insert(flags);
     }
 
-    /// Declare interest in off-focus keyboard categories. See
-    /// [`Ui::watch_keyboard`](crate::Ui::watch_keyboard).
+    /// Declare interest in off-focus keyboard categories, as
+    /// [`Ui::keyboard_events`](crate::Ui::keyboard_events) does.
     #[inline]
     pub(crate) const fn watch_keyboard(&mut self, flags: KeyboardWake) {
         self.subs.keyboard_mask.insert(flags);

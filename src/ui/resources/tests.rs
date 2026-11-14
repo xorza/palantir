@@ -96,7 +96,7 @@ fn clipboard_is_shared_within_one_host_and_isolated_between_hosts() {
     let second_window = first;
     let second = UiResources::isolated_mono();
 
-    first_window.clipboard().set_text("shared").unwrap();
+    first_window.clipboard().set_text("shared");
 
     assert_eq!(
         second_window.clipboard().text().unwrap().as_deref(),

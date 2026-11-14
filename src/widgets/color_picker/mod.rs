@@ -129,7 +129,7 @@ impl<'a> ColorPicker<'a> {
     }
 
     /// The bound color before `show`, for a [`ColorButton`](crate::ColorButton) chip.
-    pub const fn color(&self) -> RgbaF32 {
+    pub(crate) const fn color(&self) -> RgbaF32 {
         *self.color
     }
 

@@ -76,7 +76,7 @@ fn a_dropdown_opens_and_picks_inside_every_overlay() {
         let mut h = Harness::mono(UVec2::new(400, 300));
         h.frame(|ui| {
             if matches!(opener, Opener::Menu) {
-                Menu::open(ui, menu_trigger(), Vec2::new(20.0, 20.0));
+                Menu::open_at(ui, menu_trigger(), Vec2::new(20.0, 20.0));
             }
             record(ui, opener, &mut selected);
         });

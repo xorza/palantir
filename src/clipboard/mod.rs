@@ -25,70 +25,74 @@ impl fmt::Display for ClipboardUnavailable {
 
 impl error::Error for ClipboardUnavailable {}
 
-/// Where a clipboard reads and writes: the OS clipboard, or the in-process buffer.
+/// The clipboard outside the process a [`Clipboard`] writes through first: the OS clipboard, or
+/// in this crate's tests one they script.
 #[derive(Debug)]
-enum Backend {
+enum Primary {
     #[cfg(feature = "system-clipboard")]
     System(SystemBackend),
-    Memory(MemoryBackend),
     /// A backend a test scripts: it holds text and refuses as told.
     #[cfg(test)]
     Scripted(internals::Scripted),
 }
 
 #[cfg_attr(
-    not(any(feature = "system-clipboard", test)),
+    not(feature = "system-clipboard"),
     expect(
-        clippy::unnecessary_wraps,
-        reason = "only a system backend fails, and this build has none"
+        clippy::needless_pass_by_ref_mut,
+        reason = "only the system clipboard's calls take `&mut`"
     )
 )]
-impl Backend {
+#[cfg_attr(
+    not(any(feature = "system-clipboard", test)),
+    expect(
+        unused_variables,
+        clippy::missing_const_for_fn,
+        reason = "with no system clipboard and no test backend, no primary exists, so each \
+                  match is empty"
+    )
+)]
+impl Primary {
     fn text(&mut self) -> Result<String, ClipboardUnavailable> {
-        match self {
+        match *self {
             #[cfg(feature = "system-clipboard")]
-            Self::System(system) => system.text(),
-            Self::Memory(memory) => Ok(memory.text.clone()),
+            Self::System(ref mut system) => system.text(),
             #[cfg(test)]
-            Self::Scripted(scripted) => scripted.text(),
-        }
-    }
-
-    fn set_text(&mut self, text: &str) -> Result<(), ClipboardUnavailable> {
-        match self {
-            #[cfg(feature = "system-clipboard")]
-            Self::System(system) => system.set_text(text),
-            Self::Memory(memory) => {
-                memory.set_text(text);
-                Ok(())
-            }
-            #[cfg(test)]
-            Self::Scripted(scripted) => scripted.set_text(text),
+            Self::Scripted(ref scripted) => scripted.text(),
         }
     }
 
     fn image(&mut self) -> Result<Option<Image>, ClipboardUnavailable> {
-        match self {
+        match *self {
             #[cfg(feature = "system-clipboard")]
-            Self::System(system) => system.image(),
-            Self::Memory(memory) => Ok(memory.image.clone()),
+            Self::System(ref mut system) => system.image(),
             #[cfg(test)]
-            Self::Scripted(scripted) => scripted.image(),
+            Self::Scripted(ref scripted) => scripted.image(),
         }
     }
 
-    fn set_image(&mut self, image: &Image, keep: Keep) -> Result<(), ClipboardUnavailable> {
-        match self {
+    fn write(&mut self, content: Content<'_>) -> Result<(), ClipboardUnavailable> {
+        match *self {
             #[cfg(feature = "system-clipboard")]
-            Self::System(system) => system.set_image(image),
-            Self::Memory(memory) => {
-                memory.set_image(image, keep);
-                Ok(())
-            }
+            Self::System(ref mut system) => match content {
+                Content::Text(text) => system.set_text(text),
+                Content::Image(image) => system.set_image(image),
+            },
             #[cfg(test)]
-            Self::Scripted(scripted) => scripted.set_image(image),
+            Self::Scripted(ref scripted) => match content {
+                Content::Text(text) => scripted.set_text(text),
+                Content::Image(image) => scripted.set_image(image),
+            },
         }
     }
+}
+
+/// What a write puts on the clipboard: text or an image, as a system clipboard holds one or the
+/// other.
+#[derive(Clone, Copy, Debug)]
+enum Content<'a> {
+    Text(&'a str),
+    Image(&'a Image),
 }
 
 #[cfg(feature = "system-clipboard")]
@@ -162,20 +166,22 @@ struct MemoryBackend {
 }
 
 impl MemoryBackend {
-    fn set_text(&mut self, text: &str) {
+    /// `content` written: text replaces the image, and an image the text, a text read answering
+    /// empty after it; of an image, the buffer keeps what `keep` says.
+    fn write(&mut self, content: Content<'_>, keep: Keep) {
         self.text.clear();
-        self.text.push_str(text);
-        self.image = None;
-    }
-
-    /// An image copied: a text read answers empty after it, and an image read answers what
-    /// `keep` says.
-    fn set_image(&mut self, image: &Image, keep: Keep) {
-        self.text.clear();
-        self.image = match keep {
-            Keep::Copy => Some(image.clone()),
-            Keep::Nothing => None,
-        };
+        match content {
+            Content::Text(text) => {
+                self.text.push_str(text);
+                self.image = None;
+            }
+            Content::Image(image) => {
+                self.image = match keep {
+                    Keep::Copy => Some(image.clone()),
+                    Keep::Nothing => None,
+                };
+            }
+        }
     }
 }
 
@@ -234,89 +240,92 @@ impl Authority {
     }
 }
 
+/// A clipboard's backends and which one holds the clipboard: the primary, when there is one, and
+/// the in-process buffer beside it, which every write reaches, so a copy is never lost.
 #[derive(Debug)]
 struct ClipboardState {
-    primary: Option<Backend>,
-    fallback: Backend,
+    primary: Option<Primary>,
+    memory: MemoryBackend,
     authority: Authority,
-    fallback_cur: bool,
+    /// Whether the buffer holds what the primary last answered or was last written, so a read
+    /// the primary refuses can answer from it.
+    mirror_cur: bool,
+    /// Whether a refused write was logged; the first is, so a refusing system clipboard shows in
+    /// the log without one line a copy.
+    refusal_logged: bool,
 }
 
 impl ClipboardState {
-    const fn new(primary: Option<Backend>, fallback: Backend) -> Self {
+    const fn new(primary: Option<Primary>) -> Self {
         Self {
             primary,
-            fallback,
+            memory: MemoryBackend {
+                text: String::new(),
+                image: None,
+            },
             authority: Authority::Primary,
-            fallback_cur: false,
+            mirror_cur: false,
+            refusal_logged: false,
         }
     }
 
     fn text(&mut self) -> Result<String, ClipboardUnavailable> {
         let Some(primary) = self.primary.as_mut() else {
-            return self.fallback.text();
+            return Ok(self.memory.text.clone());
         };
         let read = primary.text();
         if self.authority.fallback_holds(read.as_deref().ok()) {
-            return self.fallback.text();
+            return Ok(self.memory.text.clone());
         }
-
         match read {
             Ok(text) => {
-                self.fallback_cur = self.fallback.set_text(&text).is_ok();
+                self.memory.write(Content::Text(&text), Keep::Copy);
+                self.mirror_cur = true;
                 Ok(text)
             }
-            Err(error) if self.fallback_cur => self.fallback.text().or(Err(error)),
+            Err(_) if self.mirror_cur => Ok(self.memory.text.clone()),
             Err(error) => Err(error),
         }
     }
 
     /// The clipboard's image, from the backend that holds the clipboard. A read the primary
-    /// refuses fails: the fallback keeps no copy of what the primary holds.
+    /// refuses fails: the buffer keeps no copy of what the primary holds.
     fn image(&mut self) -> Result<Option<Image>, ClipboardUnavailable> {
         let Some(primary) = self.primary.as_mut() else {
-            return self.fallback.image();
+            return Ok(self.memory.image.clone());
         };
         if matches!(self.authority, Authority::Fallback { .. }) {
             let text = primary.text();
             if self.authority.fallback_holds(text.as_deref().ok()) {
-                return self.fallback.image();
+                return Ok(self.memory.image.clone());
             }
         }
         primary.image()
     }
 
-    /// One write through both backends: the primary first, then the fallback always, so a
-    /// refused primary leaves the copy readable in process. `write_one` gets what the fallback
-    /// keeps of an image: a copy unless the primary took it.
-    fn write(
-        &mut self,
-        mut write_one: impl FnMut(&mut Backend, Keep) -> Result<(), ClipboardUnavailable>,
-    ) -> Result<(), ClipboardUnavailable> {
+    /// One write through both backends: the primary first, then the buffer always, so a refused
+    /// primary leaves the copy readable in process. The buffer keeps an image only when no
+    /// primary took it. A refused primary is the system's and no caller's to handle, so the
+    /// first refusal is logged and none returned.
+    fn write(&mut self, content: Content<'_>) {
         let Some(primary) = self.primary.as_mut() else {
-            return write_one(&mut self.fallback, Keep::Copy);
+            self.memory.write(content, Keep::Copy);
+            return;
         };
-        let primary_took = write_one(primary, Keep::Copy).is_ok();
-        let keep = if primary_took {
-            Keep::Nothing
-        } else {
-            Keep::Copy
-        };
-        let fallback_written = write_one(&mut self.fallback, keep).is_ok();
-
-        if primary_took {
+        if primary.write(content).is_ok() {
+            self.memory.write(content, Keep::Nothing);
             self.authority = Authority::Primary;
-            self.fallback_cur = fallback_written;
-            Ok(())
-        } else if fallback_written {
+        } else {
+            self.memory.write(content, Keep::Copy);
             self.authority = Authority::Fallback {
                 primary_then: primary.text().ok(),
             };
-            self.fallback_cur = true;
-            Ok(())
-        } else {
-            Err(ClipboardUnavailable)
+            if !self.refusal_logged {
+                self.refusal_logged = true;
+                tracing::warn!("the system clipboard refused a copy; it stays in this process");
+            }
         }
+        self.mirror_cur = true;
     }
 }
 
@@ -330,23 +339,23 @@ pub struct Clipboard {
 }
 
 impl Clipboard {
-    fn new(primary: Option<Backend>, fallback: Backend) -> Self {
+    fn new(primary: Option<Primary>) -> Self {
         Self {
-            state: Rc::new(RefCell::new(ClipboardState::new(primary, fallback))),
+            state: Rc::new(RefCell::new(ClipboardState::new(primary))),
         }
     }
 
     /// In-process only, for a host with no system backend to reach for.
     pub(crate) fn memory() -> Self {
-        Self::new(None, Backend::Memory(MemoryBackend::default()))
+        Self::new(None)
     }
 
     #[cfg(feature = "system-clipboard")]
     pub(crate) fn system_or_memory() -> Self {
         let primary = arboard::Clipboard::new()
             .ok()
-            .map(|clipboard| Backend::System(SystemBackend(clipboard)));
-        Self::new(primary, Backend::Memory(MemoryBackend::default()))
+            .map(|clipboard| Primary::System(SystemBackend(clipboard)));
+        Self::new(primary)
     }
 
     /// The clipboard's text, `None` when it holds none, as [`Self::image`] answers an empty
@@ -358,11 +367,12 @@ impl Clipboard {
             .map(|text| (!text.is_empty()).then_some(text))
     }
 
-    /// Replace the clipboard's text. An action that deletes what it copied (cut) must check the result first.
-    pub fn set_text(&self, text: &str) -> Result<(), ClipboardUnavailable> {
-        self.state
-            .borrow_mut()
-            .write(|backend, _| backend.set_text(text))
+    /// Replace the clipboard's text. It always lands: a system clipboard that refuses it leaves
+    /// it in this process, where a read answers it until another application copies, as egui's
+    /// `copy_text` reports nothing. Refused: arboard's `Err` for a write the system refused that
+    /// the process kept, which each caller would have to interpret.
+    pub fn set_text(&self, text: &str) {
+        self.state.borrow_mut().write(Content::Text(text));
     }
 
     /// The clipboard's image, `None` when it holds none, as after a copy of text.
@@ -371,17 +381,15 @@ impl Clipboard {
     }
 
     /// Replace the clipboard's contents with `image`, which other applications paste as a
-    /// picture. A text read answers empty after it.
-    pub fn set_image(&self, image: &Image) -> Result<(), ClipboardUnavailable> {
-        self.state
-            .borrow_mut()
-            .write(|backend, keep| backend.set_image(image, keep))
+    /// picture; a text read answers empty after it. It always lands, as [`Self::set_text`] does.
+    pub fn set_image(&self, image: &Image) {
+        self.state.borrow_mut().write(Content::Image(image));
     }
 }
 
 #[cfg(test)]
 pub(crate) mod internals {
-    use crate::clipboard::{Backend, Clipboard, ClipboardUnavailable, MemoryBackend};
+    use crate::clipboard::{Clipboard, ClipboardUnavailable, Primary};
     use crate::primitives::paint::image::Image;
     use std::cell::RefCell;
     use std::rc::Rc;
@@ -446,34 +454,13 @@ pub(crate) mod internals {
     impl Clipboard {
         /// Whether the in-process buffer keeps a copy of an image.
         pub(crate) fn buffer_has_image(&self) -> bool {
-            match &self.state.borrow().fallback {
-                Backend::Memory(memory) => memory.image.is_some(),
-                Backend::Scripted(scripted) => scripted.0.borrow().image.is_some(),
-                #[cfg(feature = "system-clipboard")]
-                Backend::System(_) => unreachable!("the fallback is in process"),
-            }
+            self.state.borrow().memory.image.is_some()
         }
 
         /// `primary` over the in-process buffer, as a system clipboard sits.
         pub(crate) fn over_scripted(primary: Scripted) -> Self {
-            Self::new(
-                Some(Backend::Scripted(primary)),
-                Backend::Memory(MemoryBackend::default()),
-            )
+            Self::new(Some(Primary::Scripted(primary)))
         }
-    }
-
-    /// A clipboard whose only backend refuses every read and write.
-    pub(crate) fn rejecting() -> Clipboard {
-        let state = ScriptedState {
-            reject_writes: true,
-            reject_reads: true,
-            ..ScriptedState::default()
-        };
-        Clipboard::new(
-            None,
-            Backend::Scripted(Scripted(Rc::new(RefCell::new(state)))),
-        )
     }
 }
 

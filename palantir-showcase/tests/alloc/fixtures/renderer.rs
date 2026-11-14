@@ -133,8 +133,7 @@ fn mesh_static_alloc_free() {
 /// backend, which this frontend never runs (`gates::on_gpu`'s scale ramp
 /// reaches them).
 ///
-/// The set is a [`ParkedIcons`]: `IconRegistry::register` finds the live `IconSet` and clones
-/// it, and a second slot would show here first.
+/// The set is a [`ParkedIcons`], loaded at the first frame and held, so a settled frame loads none.
 #[test]
 fn many_icons_compose_alloc_free() {
     let mut icons = ParkedIcons::new();

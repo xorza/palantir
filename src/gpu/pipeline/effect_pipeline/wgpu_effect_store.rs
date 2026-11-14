@@ -325,7 +325,7 @@ mod tests {
     use glam::{UVec2, Vec2};
 
     use crate::animation::animation_spec::AnimationSpec;
-    use crate::effect::effect_source::{EffectBuild, EffectSource};
+    use crate::effect::effect_source::EffectSource;
     use crate::gpu::pipeline::clip_variant::Clipping;
     use crate::gpu::surface::owned_target::OwnedTarget;
     use crate::gpu::test_gpu::headless_test_gpu;
@@ -392,7 +392,7 @@ mod tests {
         host.ui()
             .load_effect(
                 RED,
-                EffectSource::new(solid("1.0, 0.0, 0.0")).build(EffectBuild::Now),
+                EffectSource::new(solid("1.0, 0.0, 0.0")).prebuild(true),
             )
             .unwrap();
         host.frame(target.as_target(), &mut |ui: &mut Ui| {
@@ -457,7 +457,7 @@ mod tests {
         host.ui()
             .load_effect(
                 RED,
-                EffectSource::new(solid("1.0, 0.0, 0.0")).build(EffectBuild::Now),
+                EffectSource::new(solid("1.0, 0.0, 0.0")).prebuild(true),
             )
             .unwrap();
         let built = |host: &OffscreenHost, clipping| {

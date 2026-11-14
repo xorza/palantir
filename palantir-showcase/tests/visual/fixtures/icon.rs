@@ -16,7 +16,6 @@ use palantir::{
     Text, TextStyle, Ui,
 };
 use std::ops;
-use std::rc::Rc;
 
 use crate::fixtures;
 use crate::visual_rig::VisualRig;
@@ -33,8 +32,8 @@ const LEFT: [u8; 4] = [0xe6, 0x3c, 0x3c, 255];
 const RIGHT: [u8; 4] = [0x3c, 0x78, 0xe6, 255];
 
 /// The fixture set: `halves` and `solid`.
-pub(crate) fn atlas() -> Rc<IconTable> {
-    Rc::new(IconTable::from_svgs([("halves", HALVES_SVG), ("solid", SOLID_SVG)]).unwrap())
+pub(crate) fn atlas() -> IconTable {
+    IconTable::from_svgs([("halves", HALVES_SVG), ("solid", SOLID_SVG)]).unwrap()
 }
 
 /// Assert every interior pixel of a 20x20 solid cell at `at` is `tint`: the whole
@@ -78,13 +77,12 @@ fn assert_solid_cell(img: &RgbaImage, at: Vec2, tint: [f32; 3]) {
 
 /// One frame on black at `scale`, with `scene` on a full-surface canvas and the [`atlas`] loaded.
 fn render(size: UVec2, scale: SystemScale, mut scene: impl FnMut(&mut Ui, &IconSet)) -> RgbaImage {
-    let atlas = atlas();
     VisualRig::new()
         .size(size)
         .scale(scale)
         .clear(RgbaF32::BLACK)
         .frame(|ui| {
-            let icons = ui.load_icons(Rc::clone(&atlas));
+            let icons = ui.load_icons(atlas());
             fixtures::canvas(ui, |ui| scene(ui, &icons));
         })
         .image

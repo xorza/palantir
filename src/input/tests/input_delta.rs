@@ -141,7 +141,7 @@ fn modifiers_wake_only_for_a_watcher() {
 
     h.frame(|ui| {
         build_hover_target(ui);
-        ui.watch_keyboard(KeyboardWake::MODIFIER);
+        ui.keyboard_events(KeyboardWake::MODIFIER);
     });
     assert!(
         h.on_input(InputEvent::ModifiersChanged(Modifiers::NONE))

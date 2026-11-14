@@ -93,7 +93,7 @@ fn a_closed_body_is_not_recorded_and_an_open_one_is() {
 
     // The section fills the width by default, and a wrapper's `default_size` replaces that.
     assert_eq!(
-        h.arranged(root()).unwrap().size.w,
+        h.layout_rect(root()).unwrap().size.w,
         320.0,
         "FILL across the surface"
     );
@@ -104,7 +104,7 @@ fn a_closed_body_is_not_recorded_and_an_open_one_is() {
             .show(ui, |_| {});
     });
     assert_eq!(
-        h.arranged(root()).unwrap().size.w,
+        h.layout_rect(root()).unwrap().size.w,
         100.0,
         "a default size wins over FILL"
     );
@@ -203,7 +203,7 @@ fn keep_body_records_a_collapsed_body_and_holds_its_state() {
     };
     h.prime(2, |ui| record(ui, &mut text, false));
 
-    let body_rect = h.arranged(body());
+    let body_rect = h.layout_rect(body());
     assert_eq!(
         body_rect.unwrap().size.h,
         0.0,
@@ -459,7 +459,7 @@ fn a_settling_reveal_stores_the_whole_height() {
     });
     // One mono line, 19.2 snapped to 19.203125 and its block rounded up to 20, under 4 + 4
     // padding.
-    let whole = h.arranged(body()).unwrap().size.h;
+    let whole = h.layout_rect(body()).unwrap().size.h;
     assert_eq!(whole, 20.0 + 8.0);
     toggle(&mut h, &mut record);
     while h.frame_value(&mut record) > 0.0 {
@@ -473,7 +473,7 @@ fn a_settling_reveal_stores_the_whole_height() {
         openness = h.frame_value(&mut record);
         if openness < 1.0 {
             assert_eq!(
-                h.arranged(body()).unwrap().size.h,
+                h.layout_rect(body()).unwrap().size.h,
                 whole,
                 "the body lays out whole under the clip at {openness}",
             );

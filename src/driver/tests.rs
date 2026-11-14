@@ -621,3 +621,21 @@ fn a_failed_frame_releases_what_the_step_holds() {
         assert_eq!(stage.seen, want, "{label}");
     }
 }
+
+/// A typed character's key: a printing one is its `Char`, a newline Enter and a tab Tab, as a
+/// keyboard types them; any other control character, escape and NUL among them, types no key.
+#[test]
+fn a_typed_character_is_the_key_a_keyboard_types_it_with() {
+    for (c, key) in [
+        ('a', Some(Key::Char('a'))),
+        (' ', Some(Key::Char(' '))),
+        ('ζ', Some(Key::Char('ζ'))),
+        ('\n', Some(Key::Enter)),
+        ('\t', Some(Key::Tab)),
+        ('\u{1b}', None),
+        ('\r', None),
+        ('\0', None),
+    ] {
+        assert_eq!(play::typed_key(c), key, "{c:?}");
+    }
+}

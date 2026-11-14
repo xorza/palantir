@@ -4,7 +4,7 @@
 
 use std::sync::LazyLock;
 
-use crate::effect::effect_source::{EffectSource, ReducedPaint};
+use crate::effect::effect_source::{EffectSource, ReducedEffect};
 use crate::effect::effect_store::EffectModule;
 use crate::effect::press_params::PressParams;
 use crate::primitives::effect::effect_kind::{BackdropEffect, ColorEffect, EffectKind};
@@ -106,7 +106,7 @@ impl StockEffects {
                         include_str!("press.wgsl"),
                         include_str!("sparkle.wgsl")
                     ))
-                    .power_saver(ReducedPaint::Effect(EffectName::RIPPLE)),
+                    .power_saver(ReducedEffect::Other(EffectName::RIPPLE)),
                 ),
             ],
             frosted: StockEffect::check(

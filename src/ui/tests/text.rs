@@ -690,7 +690,7 @@ fn a_load_reaches_the_cascade_and_the_screen() {
     h.prime(2, record);
     let fallback = h.rect(id).expect("the label arranged");
     assert_eq!(
-        h.arranged(id),
+        h.layout_rect(id),
         Some(fallback),
         "premise: a warm frame's two rects describe one arrangement",
     );
@@ -708,7 +708,7 @@ fn a_load_reaches_the_cascade_and_the_screen() {
         resolved.size.w,
     );
     assert_eq!(
-        h.arranged(id),
+        h.layout_rect(id),
         Some(resolved),
         "the cascade skipped a load that moved an arranged rect, so the \
          response geometry and the layout disagree",
@@ -788,7 +788,7 @@ fn a_transparent_label_measures_as_an_opaque_one() {
         h.frame(|ui| {
             Text::new("fade").id(id).color(color).show(ui);
         });
-        h.arranged(id).unwrap().size
+        h.layout_rect(id).unwrap().size
     };
     let opaque = measure(RgbaF32::WHITE);
     assert!(opaque.w > 0.0 && opaque.h > 0.0, "{opaque:?}");

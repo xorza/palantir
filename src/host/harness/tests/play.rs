@@ -110,43 +110,58 @@ fn a_composing_window_evicts_its_idle_rows() {
     assert_eq!(rows.capacity(), SOFT_ROWS);
 }
 
-/// A frame that opens and closes windows records each command, in order, and runs on.
+/// Each frame shows the windows it opened and closed, in order, and the next frame its own: an
+/// open of a window an earlier frame left open shows nothing, and every close shows, as the
+/// harness's own window closes, and closes again once an app launched again in it quits.
 #[test]
-fn a_frame_that_opens_a_window_records_the_command() {
+fn each_frame_shows_the_window_commands_it_filed() {
     let mut h = Harness::mono(UVec2::new(64, 32));
-    let mut opened = false;
+    let inspector = || WindowConfig::new("Inspector");
     h.frame(|ui: &mut Ui| {
-        if !opened {
-            ui.open_window(WindowToken(3), WindowConfig::new("Inspector"));
-            opened = true;
-        }
+        ui.open_window(WindowToken(3), inspector());
+        ui.close_window(WindowToken(5));
     });
-    h.frame(|ui: &mut Ui| ui.close_window(WindowToken(3)));
-    let commands = h.window_commands();
-    assert_eq!(commands.len(), 2, "{commands:?}");
     assert!(
-        matches!(&commands[0], WindowCommand::Open { token: WindowToken(3), config } if config.title == "Inspector")
+        matches!(
+            h.window_commands(),
+            [
+                WindowCommand::Open { token: WindowToken(3), config },
+                WindowCommand::Close(WindowToken(5)),
+            ] if config.title == "Inspector"
+        ),
+        "{:?}",
+        h.window_commands()
     );
-    assert!(matches!(commands[1], WindowCommand::Close(WindowToken(3))));
-    // An app that opens the window each frame, as no window but the harness's opens here, records
-    // one open. Each close records, as the harness's own window closes, and closes again once an
-    // app launched again in it quits, with no open between.
-    for _ in 0..3 {
-        h.frame(|ui: &mut Ui| ui.open_window(WindowToken(3), WindowConfig::new("Inspector")));
-    }
-    h.frame(|ui: &mut Ui| ui.close_window(WindowToken(0)));
-    h.frame(|ui: &mut Ui| ui.close_window(WindowToken(0)));
-    let commands = h.window_commands();
-    assert_eq!(commands.len(), 5, "{commands:?}");
+    h.frame(|ui: &mut Ui| ui.open_window(WindowToken(3), inspector()));
+    assert!(h.window_commands().is_empty(), "already open: nothing new");
+    h.frame(|_: &mut Ui| {});
+    assert!(
+        h.window_commands().is_empty(),
+        "a quiet frame files nothing"
+    );
+    h.frame(|ui: &mut Ui| ui.close_window(WindowToken(3)));
     assert!(matches!(
-        commands[2],
-        WindowCommand::Open {
-            token: WindowToken(3),
-            ..
-        }
+        h.window_commands(),
+        [WindowCommand::Close(WindowToken(3))]
     ));
-    assert!(matches!(commands[3], WindowCommand::Close(WindowToken(0))));
-    assert!(matches!(commands[4], WindowCommand::Close(WindowToken(0))));
+    h.frame(|ui: &mut Ui| ui.open_window(WindowToken(3), inspector()));
+    assert!(
+        matches!(
+            h.window_commands(),
+            [WindowCommand::Open {
+                token: WindowToken(3),
+                ..
+            }]
+        ),
+        "closed, so it opens again"
+    );
+    for _ in 0..2 {
+        h.frame(|ui: &mut Ui| ui.close_window(WindowToken(0)));
+        assert!(matches!(
+            h.window_commands(),
+            [WindowCommand::Close(WindowToken(0))]
+        ));
+    }
 }
 
 /// The app a person plays: buttons 80 × 24 on a canvas, "One" at (10, 10) and two "Twin" at
@@ -291,15 +306,24 @@ fn play_acts_as_a_person() {
         .unwrap();
     assert_eq!(app.double, 1, "one double click");
 
+    // A newline types Enter, which commits; another control character refuses the whole step,
+    // typing none of it.
+    assert_eq!(
+        h.session(&mut app)
+            .play(&[Action::click(edit()), Action::Type("x\u{1b}".to_owned()),]),
+        Err(StepError {
+            step: 1,
+            error: PlayError::Untypable { found: '\u{1b}' },
+        })
+    );
     h.session(&mut app)
         .play(&[
-            Action::click(edit()),
-            Action::Type("hello".to_owned()),
+            Action::<Infallible>::Type("hello".to_owned()),
             Action::InsertText(", world".to_owned()),
-            Action::Key(Shortcut::key(Key::Enter)),
+            Action::Type("!\n".to_owned()),
         ])
         .unwrap();
-    assert_eq!(app.committed.as_deref(), Some("hello, world"));
+    assert_eq!(app.committed.as_deref(), Some("hello, world!"));
 }
 
 /// A `KeyDown` step leaves its key held across steps and lets its modifiers go; a `KeyUp` step

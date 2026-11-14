@@ -27,7 +27,7 @@ pub enum DockDrop {
     },
 }
 
-/// One dock mutation, run by [`DockState::apply`](crate::DockState::apply) and transported by the application's queue or [`DockView::run`](crate::DockView::run). **Every operation tolerates a stale address**: it is built from the previous frame's response, so a vanished tab, group or split leaves the tree untouched. Tabs are named by identity, never strip position.
+/// One dock mutation, run by [`DockState::apply`](crate::DockState::apply) and transported by the application's queue or an applying [`DockView`](crate::DockView). **Every operation tolerates a stale address**: it is built from the previous frame's response, so a vanished tab, group or split leaves the tree untouched. Tabs are named by identity, never strip position.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub enum DockOperation<T> {

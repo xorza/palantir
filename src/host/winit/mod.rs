@@ -159,9 +159,6 @@ impl<T: 'static> fmt::Debug for WinitHost<T> {
 pub struct WinitHostBuilder<T> {
     first_token: WindowToken,
     config: WinitHostConfig,
-    /// The title [`Self::title`] set, laid over [`Self::window`]'s at build, so the order of the
-    /// two calls does not matter.
-    title: Option<String>,
     marker: PhantomData<fn() -> T>,
 }
 
@@ -181,10 +178,10 @@ where
         self
     }
 
-    /// Set the bootstrap window's title; shorthand for the field of [`Self::window`] nearly every
-    /// app sets, which wins over that config's title whichever is called first.
+    /// Set the bootstrap window's title, the field of [`Self::window`]'s config nearly every app
+    /// sets; as each setter, the later call of the two wins.
     pub fn title(mut self, title: impl Into<String>) -> Self {
-        self.title = Some(title.into());
+        self.config.window.title = title.into();
         self
     }
 
@@ -248,7 +245,7 @@ where
             .map_err(|source| WinitHostError::CreateEventLoop { source })?;
         let proxy = event_loop.create_proxy();
         let token = self.first_token;
-        let config = self.sealed_config();
+        let config = self.config;
         Ok(WinitHost {
             phase: HostPhase::Bootstrap(Bootstrap {
                 token,
@@ -261,16 +258,6 @@ where
             frame_log: Arc::default(),
         })
     }
-
-    /// The config the bootstrap window opens with: [`Self::window`]'s, under [`Self::title`]'s
-    /// title when one is set.
-    fn sealed_config(self) -> WinitHostConfig {
-        let mut config = self.config;
-        if let Some(title) = self.title {
-            config.window.title = title;
-        }
-        config
-    }
 }
 
 impl<T> WinitHost<T>
@@ -282,7 +269,6 @@ where
         WinitHostBuilder {
             first_token,
             config: WinitHostConfig::default(),
-            title: None,
             marker: PhantomData,
         }
     }

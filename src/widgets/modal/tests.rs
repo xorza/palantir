@@ -255,7 +255,7 @@ fn a_dismissed_modal_stops_owning_input_on_the_very_next_frame() {
 
     let scene = |ui: &mut Ui, open: &mut bool| {
         ui.pointer_events(PointerWake::BUTTONS);
-        ui.watch_keyboard(KeyboardWake::KEY);
+        ui.keyboard_events(KeyboardWake::KEY);
         if *open {
             *open = Modal::new()
                 .id(WidgetId::from_hash("closing-modal"))
@@ -338,7 +338,7 @@ fn an_authored_max_below_the_themed_min_width_wins() {
             .max_size((240.0, 400.0))
             .show(ui, |_| {});
     });
-    let panel = h.arranged(root_id.with("panel"));
+    let panel = h.layout_rect(root_id.with("panel"));
     assert_eq!(panel.unwrap().size.w, 240.0);
 }
 
@@ -402,10 +402,7 @@ fn closing_from_outside_gives_the_input_back_at_once() {
                     if ending {
                         open = false;
                         if close {
-                            match overlay {
-                                Overlay::Modal => Modal::close(ui, id),
-                                Overlay::Popup => Popup::close(ui, id),
-                            }
+                            ui.withdraw_input_scope(id);
                         }
                     }
                 }

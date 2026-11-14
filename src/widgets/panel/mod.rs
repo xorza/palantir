@@ -98,21 +98,6 @@ impl Panel {
         self.chrome = Some(chrome);
         self
     }
-
-    /// Paints `chrome` unless the caller set one, for a wrapper theming a
-    /// widget after the caller's setters; an explicit [`Self::chrome`] wins in either order.
-    ///
-    /// # Panics
-    ///
-    /// Panics unless `chrome` holds the kinds [`Chrome`] lists.
-    #[track_caller]
-    pub const fn default_chrome(mut self, chrome: Chrome) -> Self {
-        chrome.validate();
-        if self.chrome.is_none() {
-            self.chrome = Some(chrome);
-        }
-        self
-    }
 }
 
 impl Configure for Panel {

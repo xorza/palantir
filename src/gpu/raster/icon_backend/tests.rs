@@ -18,7 +18,6 @@ mod gpu {
     use crate::renderer::render_buffer::clip_chain::ClipChain;
     use crate::renderer::render_buffer::icon_draw_row::IconDrawRow;
     use glam::{IVec2, UVec2, Vec2};
-    use std::rc::Rc;
 
     /// A backend over `icons`; see the text suite's peer.
     fn icon_backend(gpu: &Gpu, icons: &IconRegistry) -> IconBackend {
@@ -39,7 +38,7 @@ mod gpu {
     }
 
     fn load(icons: &IconRegistry) -> IconSet {
-        icons.register(Rc::new(IconTable::from_svgs([("solid", SOLID)]).unwrap()))
+        icons.register(IconTable::from_svgs([("solid", SOLID)]).unwrap())
     }
 
     /// Draw `set`'s only icon at 16², putting a parse in the rasterizer and a raster in the atlas.

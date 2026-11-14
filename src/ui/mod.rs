@@ -457,17 +457,10 @@ impl Ui {
             .advance(self.frame_runtime.dt, resolved, motion);
     }
 
-    // `peek_*` reads without declaring a wake. `watch_keyboard` and plain reads declare
+    // `peek_*` reads without declaring a wake. Plain reads and the event streams declare
     // "wake me when this changes"; forgetting that freezes pointer-derived paint,
     // while forgetting a peek only costs frames. Watches are cleared pre-record:
     // re-call each active frame.
-
-    /// Declare interest in off-focus keyboard categories. One key or chord needs no watch: its
-    /// query keeps it watched.
-    #[inline]
-    pub const fn watch_keyboard(&mut self, flags: KeyboardWake) {
-        self.input.watch_keyboard(flags);
-    }
 
     /// Keep `shortcut` watched without reading it, for a menu item that shows a chord its parent
     /// reads outside the record. Duplicate watchers collapse.
@@ -894,12 +887,12 @@ impl Ui {
         Some(AddedShape::new(self, slot, reads_time))
     }
 
-    /// Load an icon set and get back an owning [`IconSet`]. Hold it: dropping the
-    /// last clone unloads the data and rasters at the next submit. Idempotent while a
-    /// set is held. No `Result`: a malformed icon is reported when drawn.
+    /// Load an icon set and get back an owning [`IconSet`]. Load once and hold it, as an image's
+    /// handle: each load is a set of its own, and dropping the last clone unloads the data and
+    /// rasters at the next submit. No `Result`: a malformed icon is reported when drawn.
     #[inline]
-    pub fn load_icons(&self, table: impl Into<Rc<IconTable>>) -> IconSet {
-        self.resources.icons().register(table.into())
+    pub fn load_icons(&self, table: IconTable) -> IconSet {
+        self.resources.icons().register(table)
     }
 
     /// Load an image and get back an owning [`ImageHandle`]; dropping the last clone
@@ -941,8 +934,8 @@ impl Ui {
     /// again replaces it, so a reload is this call with the new source. The WGSL is parsed with
     /// palantir's prelude and validated, `fn effect` is checked against the contract
     /// ([`EffectSource`]), and its parameter struct against `U`, member for member. On a host
-    /// with a device, its pipelines build when its source's [`EffectBuild`](crate::EffectBuild)
-    /// says, and a wanted effect reloaded builds again before its next frame. Names that start
+    /// with a device, its pipelines build when its source says
+    /// ([`EffectSource::prebuild`]), and a wanted effect reloaded builds again before its next frame. Names that start
     /// with `palantir.` are palantir's stock effects ([`EffectName::RIPPLE`]). App-global.
     /// Refused: a handle that unloads an effect when it drops, a second route to one effect beside
     /// its name.
@@ -954,7 +947,7 @@ impl Ui {
     /// # Panics
     ///
     /// When `name` was loaded before with another parameter type or kind; when an alternative
-    /// `source` names ([`ReducedPaint::Effect`](crate::ReducedPaint::Effect)) is not loaded yet,
+    /// `source` names ([`ReducedEffect::Other`](crate::ReducedEffect::Other)) is not loaded yet,
     /// or with other types or image slots; when a reload of `name` changes the image slots of an
     /// effect that paints it in its place.
     #[inline]

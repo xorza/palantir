@@ -84,9 +84,9 @@ impl DockFixture {
         WidgetId::from_hash("dock_fixture.dock")
     }
 
-    /// Record one frame through [`DockView::run`], the one-call surface.
+    /// Record one frame through an applying [`DockView`], the one-call surface.
     pub fn record(&mut self, ui: &mut Ui) {
-        DockView::run(ui, Self::id(), &mut self.dock, &mut self.panes);
+        DockView::new(Self::id(), &mut self.dock).show(ui, &mut self.panes);
     }
 
     /// Record one frame through the two-call surface: scan responses into the reused operation buffer, apply, then show.
@@ -96,7 +96,7 @@ impl DockFixture {
         for operation in self.operations.drain(..) {
             self.dock.apply(operation);
         }
-        DockView::new(Self::id(), &self.dock, &mut self.operations)
+        DockView::emitting(Self::id(), &self.dock, &mut self.operations)
             .min_pane(120.0)
             .show(ui, &mut self.panes);
         for operation in self.operations.drain(..) {

@@ -237,6 +237,8 @@ pub mod widget {
     pub use crate::widget_core::configure::ThemeDefaults;
     pub use crate::widget_core::overlay_scope::{Barrier, OverlayScope, OverlaySpec};
     pub use crate::widget_core::widget::{Authored, Widget};
+    pub use crate::widgets::dock::dock_view::{Applying, Emitting};
+    pub use crate::widgets::menu::{CallerOwned, TriggerOwned};
     pub use palantir_derive::{Animatable, Lerp};
 }
 
@@ -256,7 +258,7 @@ pub use driver::action::Action;
 pub use driver::agent_window::AgentWindow;
 pub use driver::error::{LocateError, PlayError, StepError};
 pub use driver::locator::{Found, Locate, Locator};
-pub use effect::effect_source::{EffectBuild, EffectSource, ReducedPaint};
+pub use effect::effect_source::{EffectSource, ReducedEffect};
 pub use effect::error::{EffectError, EntryMismatch, ParamMismatch};
 pub use effect::press_params::PressParams;
 pub use gpu::device::device_requirements::DeviceRequirements;
@@ -313,7 +315,6 @@ pub use primitives::input::interaction::response_state::ResponseState;
 pub use primitives::input::interaction::scroll_delta::ScrollDelta;
 pub use primitives::input::key_class::{KeyClass, KeyFilter};
 pub use primitives::input::keyboard::key::Key;
-pub use primitives::input::keyboard::key::error::ControlCharError;
 pub use primitives::input::keyboard::key_press::KeyPress;
 pub use primitives::input::keyboard::key_text::KeyText;
 pub use primitives::input::keyboard::modifiers::Modifiers;
@@ -324,7 +325,6 @@ pub use primitives::input::shortcut::error::ParseShortcutError;
 pub use primitives::input::shortcut::{Shortcut, ShortcutMods};
 pub use primitives::input::watch::{KeyboardWake, PointerWake};
 pub use primitives::input::zoom_factor::ZoomFactor;
-pub use primitives::input::zoom_factor::error::ZoomFactorError;
 pub use primitives::layout::align::{Align, HAlign, VAlign};
 pub use primitives::layout::anchor::{Anchor, AnchorAlign};
 pub use primitives::layout::axis::Axis;

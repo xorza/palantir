@@ -103,13 +103,6 @@ impl Track {
     }
 }
 
-/// [`Track::new`]: a track of `s` with no bounds.
-impl From<Sizing> for Track {
-    fn from(s: Sizing) -> Self {
-        Self::new(s)
-    }
-}
-
 impl FloatHash for Track {
     #[inline]
     fn hash_eq<H: hash::Hasher>(&self, h: &mut H) {

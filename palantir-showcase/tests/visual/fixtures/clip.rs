@@ -1,8 +1,6 @@
 //! Every draw kind at a rect clip's edge: flush inside it, which no scissor need cut, and across
 //! it, which the clip cuts.
 
-use std::rc::Rc;
-
 use palantir::glam::{UVec2, Vec2};
 use palantir::widget::{
     CubicBezier, IconPaint, ImagePaint, Mesh, PaintAnimation, PaintedBy, RectShape, Shape,
@@ -46,7 +44,6 @@ fn every_draw_kind_at_a_clip_edge_matches_golden() {
     )
     .unwrap();
     let handle = rig.host.ui().load_image(&image).unwrap();
-    let atlas = icon::atlas();
     let mut mesh = Mesh::new();
     let a = mesh.vertex(Vec2::new(-20.0, 110.0), RgbaF32::srgb(1.0, 0.3, 0.3));
     let b = mesh.vertex(Vec2::new(30.0, 125.0), RgbaF32::srgb(0.3, 1.0, 0.4));
@@ -55,7 +52,7 @@ fn every_draw_kind_at_a_clip_edge_matches_golden() {
     let img = rig
         .size(UVec2::new(240, 180))
         .frame(|ui| {
-            let icons = ui.load_icons(Rc::clone(&atlas));
+            let icons = ui.load_icons(icon::atlas());
             let solid =
                 IconPaint::new(icons.by_name("solid").expect("fixture icon")).fit(Fit::Fill);
             let picture = ImagePaint::new(handle.clone()).fit(Fit::Fill);
