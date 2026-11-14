@@ -13,7 +13,7 @@ use crate::effect::MAX_IMAGE_SLOTS;
 use crate::effect::contract::{
     BACKDROPS_GROUP, HALO_OVERRIDE, IMAGES_GROUP, TRIANGLE_OVERRIDE, WORDS_GROUP,
 };
-use crate::effect::effect_store::EffectModule;
+use crate::effect::effect_module::EffectModule;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::pipeline::clip_variant::{ClipVariant, Clipping};
 use crate::gpu::pipeline::effect_pipeline::backdrop_groups::BackdropGroups;
@@ -28,6 +28,7 @@ use crate::gpu::resource::pipeline_recipe::{self, Pipeline, PipelineRecipe, vert
 use crate::gpu::resource::texture_binding::{self, TextureBinding};
 use crate::gpu::resource::wgpu_image_store::WgpuImageStore;
 use crate::primitives::effect::effect_kind::KindId;
+use crate::primitives::identity::effect_id::EffectId;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::renderer::render_buffer::effect_draw_row::{EffectInstance, EffectKey};
 use crate::renderer::render_buffer::shape_form::ShapeForm;
@@ -179,18 +180,30 @@ const INSTANCE_LAYOUT: wgpu::VertexBufferLayout<'static> = pipeline_recipe::vert
     &INSTANCE_ATTRS,
 );
 
-/// What one of an effect's pipelines is built for: the effect and form `key` names, from `module`,
-/// against `format`, the halves of its [`ClipVariant`] `halves` names.
+/// What one of an effect's pipelines is built for: the effect and form `key` names, from `module`
+/// through `shader`, its compiled text, against `format`, the halves of its [`ClipVariant`]
+/// `halves` names.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct EffectTarget<'a> {
     pub(crate) module: &'a EffectModule,
+    pub(crate) shader: &'a wgpu::ShaderModule,
     pub(crate) key: EffectKey,
     pub(crate) format: wgpu::TextureFormat,
     pub(crate) halves: &'a [Clipping],
 }
 
 impl EffectDevice {
-    /// Build the halves of `variant` that `target` names and it lacks, from one shader module,
+    /// `module`'s text compiled, which every form, format and half of effect `effect` builds from:
+    /// one parse and validation an effect, as the forms differ only in override constants.
+    pub(crate) fn shader(gpu: &Gpu, effect: EffectId, module: &EffectModule) -> wgpu::ShaderModule {
+        gpu.device
+            .create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some(&format!("palantir.effect.{}", effect.0)),
+                source: wgpu::ShaderSource::Wgsl(module.text.as_str().into()),
+            })
+    }
+
+    /// Build the halves of `variant` that `target` names and it lacks, from its shader module,
     /// over the layout of its kind and image slots: its one stage pinned to its form, which for a
     /// backdrop effect also draws a material's box and dithers that result before an 8-bit sRGB
     /// target stores it.
@@ -201,6 +214,7 @@ impl EffectDevice {
     pub(crate) fn ensure(&self, gpu: &Gpu, variant: &mut ClipVariant, target: EffectTarget<'_>) {
         let EffectTarget {
             module,
+            shader,
             key:
                 EffectKey {
                     effect,
@@ -240,12 +254,6 @@ impl EffectDevice {
             KindId::Backdrop => &backdrop,
         };
         let label = format!("palantir.effect.{}.{form:?}.{cover:?}", effect.0);
-        let shader = gpu
-            .device
-            .create_shader_module(wgpu::ShaderModuleDescriptor {
-                label: Some(&label),
-                source: wgpu::ShaderSource::Wgsl(module.text.as_str().into()),
-            });
         let recipe = PipelineRecipe {
             vertex_entry: "palantir_vs",
             fragment_entry: "palantir_fs",
@@ -253,7 +261,7 @@ impl EffectDevice {
             topology: wgpu::PrimitiveTopology::TriangleList,
             blend: Some(BLEND),
             constants,
-            ..PipelineRecipe::color(&label, &shader, self.pipeline(module), format)
+            ..PipelineRecipe::color(&label, shader, self.pipeline(module), format)
         };
         for &clipping in halves {
             variant.ensure(gpu, clipping, &recipe);
@@ -277,14 +285,14 @@ pub(crate) struct EffectPipeline {
 }
 
 /// One batch of effect draws: the frame's per-draw key and instance columns, this batch's slice of
-/// them, each effect's module at its id, the groups the draws bind their images through, and the
+/// them, each effect's kind at its id, the groups the draws bind their images through, and the
 /// groups a backdrop effect reads its backdrop's result through, `None` before the first frame
 /// with a backdrop.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct EffectBatch<'f, 'a> {
     pub(crate) keys: &'f [EffectKey],
     pub(crate) instances: &'f [EffectInstance],
-    pub(crate) modules: &'f [EffectModule],
+    pub(crate) kinds: &'f [KindId],
     pub(crate) items: Span,
     pub(crate) groups: &'f EffectImageGroups,
     pub(crate) backdrops: Option<BackdropGroups<'f>>,
@@ -339,13 +347,12 @@ impl EffectPipeline {
             ctx.frame,
         );
         if self.group.is_none() || self.words.capacity() != self.bound {
-            let read = stores.effects.read();
             self.group = Some(
                 ctx.gpu
                     .device
                     .create_bind_group(&wgpu::BindGroupDescriptor {
                         label: Some("palantir.effect.bg"),
-                        layout: &read.attached.device.group,
+                        layout: &stores.effects.device().group,
                         entries: &[wgpu::BindGroupEntry {
                             binding: 0,
                             resource: self.words.buffer.as_entire_binding(),
@@ -366,7 +373,7 @@ impl EffectPipeline {
         EffectBatch {
             keys,
             instances,
-            modules,
+            kinds,
             items,
             groups,
             backdrops,
@@ -382,7 +389,7 @@ impl EffectPipeline {
         // alone, so a draw splits where that texture changes.
         let key = |i: u32| {
             let key = keys[i as usize];
-            let read = (modules[key.effect.idx()].kind == KindId::Backdrop)
+            let read = (kinds[key.effect.idx()] == KindId::Backdrop)
                 .then(|| backdrops?.read_of(instances[i as usize].backdrop_idx))
                 .flatten();
             (key, self.images[i as usize], read)
@@ -397,7 +404,7 @@ impl EffectPipeline {
                 };
                 Some(images_group)
             };
-            let kind = modules[key.effect.idx()].kind;
+            let kind = kinds[key.effect.idx()];
             rec.pipeline(pipelines(key));
             rec.group(WORDS_GROUP, group);
             if let Some(images_group) = images_group {
@@ -460,8 +467,10 @@ mod tests {
                 spec(kind),
             )
             .unwrap();
+            let shader = EffectDevice::shader(&gpu, EffectId(0), &module);
             let covered = |form, cover, halves| EffectTarget {
                 module: &module,
+                shader: &shader,
                 key: EffectKey {
                     effect: EffectId(0),
                     form,

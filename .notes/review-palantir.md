@@ -383,36 +383,6 @@ Files: as listed per item. No exported signature changes.
   `nearest` all show the start. Not local: fixed by the shared `reveal_pan` of batch 11, which
   carries this item's test of the three oversized cases.
 
-### Batch 8: an effect's kind, from paint to pipeline
-
-Files: `src/shape/{effect_paint.rs, paint/closed_paint.rs, record_store/mod.rs}`,
-`src/renderer/frontend/{payload/draw_closed_payload, composer/compose_session.rs,
-encoder/plane_ctx.rs}`, `src/effect/{effect_store.rs, effect_registry.rs}`,
-`src/gpu/pipeline/effect_pipeline`, `src/host/{host_core.rs, host_device.rs}`. After batch 2.
-
-- [ ] `shape/effect_paint.rs:50,58,256-261`, `paint/closed_paint.rs:50-55`,
-  `record_store/mod.rs:455`, `renderer/…/closed_effect.rs:24-40,69-91`,
-  `compose_session.rs:428-463`: `capture`, `outside` and `stage` are three independent `Option`s;
-  `stage: Some` with `backdrop: None` would compose against backdrop row 0. Target: the
-  `EffectRead` enum of the proposal, built where the paint is erased and matched once in the
-  composer; on `EffectPaint` the two fields fold into the per-kind associated type.
-- [ ] `closed_effect.rs:56-64,80-109`: `MaterialStage` repeats `ClosedFill` field for field →
-  `MaterialStage { paint: ClosedFill, max_luminance, min_luminance }`.
-- [ ] `effect/effect_store.rs:22-31`, `effect_registry.rs:33,174-191,285-331`,
-  `wgpu_effect_store.rs:225-273`: a one-implementor trait behind `Rc<dyn>`, a `RefCell` over the
-  store, and every module's WGSL cloned into it. Target: the registry owns
-  `LoadedEffect.module` and bounded `changed` / `wanted` lists; `prepare` takes
-  `&EffectRegistry` and extracts, as Bevy's render world does from the main world's assets.
-  Trace device recovery and `ensure_format` first, as both rebuild from stored modules: with the
-  modules in the registry a new device rebuilds from the registry's full list, not from a change
-  list, so `prepare` needs a "rebuild all" entry beside the drain. Test a load, a device loss
-  and a recovery in that order.
-- [ ] `gpu/pipeline/effect_pipeline/mod.rs:243-248`: `create_shader_module` runs for every form,
-  format and clip half of one effect's text. Measure the naga parse against pipeline creation;
-  if it shows, cache the module per effect id and clear it on reload.
-- [ ] `effect/effect_registry.rs:247-249`: the doc says a late alternative is held to "types and
-  images" where it paints; `painted` checks types alone.
-
 ### Batch 9: input
 
 Files: `src/input`, `src/cascade/mod.rs`, `src/ui/mod.rs:1152-1167`,

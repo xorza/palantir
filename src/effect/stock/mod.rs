@@ -4,8 +4,8 @@
 
 use std::sync::LazyLock;
 
+use crate::effect::effect_module::EffectModule;
 use crate::effect::effect_source::{EffectSource, ReducedEffect};
-use crate::effect::effect_store::EffectModule;
 use crate::effect::press_params::PressParams;
 use crate::primitives::effect::effect_kind::{BackdropEffect, ColorEffect, EffectKind};
 use crate::primitives::effect::effect_name::EffectName;

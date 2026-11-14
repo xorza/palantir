@@ -21,7 +21,9 @@ use crate::renderer::frontend::composer::tests::support::{
 use crate::renderer::frontend::paint_sink::{PaintPayload, PaintSink};
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_closed_payload::DrawClosedPayload;
-use crate::renderer::frontend::payload::draw_closed_payload::closed_effect::ClosedEffect;
+use crate::renderer::frontend::payload::draw_closed_payload::closed_effect::{
+    ClosedEffect, EffectRead,
+};
 use crate::renderer::frontend::payload::draw_closed_payload::closed_image::{
     ClosedImage, GpuViewDraw,
 };
@@ -608,9 +610,9 @@ fn a_halo_lands_as_a_rim_culled_by_its_reach() {
             effect: EffectId(3),
             params: Span::new(0, 0),
             images: Span::new(0, 0),
-            backdrop: None,
-            stage: None,
-            outside: Some(outside),
+            read: EffectRead::Color {
+                outside: Some(outside),
+            },
             opacity: 1.0,
             time: 0.0,
         },
@@ -667,9 +669,7 @@ fn an_effect_lands_as_one_physical_row() {
                         effect: EffectId(3),
                         params: Span::new(12, 8),
                         images: Span::new(4, 2),
-                        backdrop: None,
-                        stage: None,
-                        outside: None,
+                        read: EffectRead::Color { outside: None },
                         opacity: 1.0,
                         time: 1.25,
                     },

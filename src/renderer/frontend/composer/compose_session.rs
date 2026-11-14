@@ -24,7 +24,7 @@ use crate::renderer::frontend::composer::template_shape::TemplateShape;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::draw_closed_payload::DrawClosedPayload;
 use crate::renderer::frontend::payload::draw_closed_payload::closed_effect::{
-    ClosedEffect, EffectCaptureDraw,
+    ClosedEffect, EffectCaptureDraw, EffectRead,
 };
 use crate::renderer::frontend::payload::draw_closed_payload::closed_fill::ClosedFill;
 use crate::renderer::frontend::payload::draw_closed_payload::closed_image::ClosedImage;
@@ -411,8 +411,13 @@ impl PaintSink for ComposeSession<'_> {
         let lowering = self.lowering();
         let scale = lowering.transform.physical_scale();
         let unturned = TemplateShape::of(p.geometry, p.spin, &lowering);
+        let (outside, capture, stage) = match p.paint.read {
+            EffectRead::Color { outside } => (outside, None, None),
+            EffectRead::Backdrop { capture } => (None, Some(capture), None),
+            EffectRead::Material { capture, stage } => (None, Some(capture), Some(stage)),
+        };
         // A halo reaches past its shape, so it is culled, ordered and clipped by what it covers.
-        let halo = p.paint.outside.map(|outside| outside * scale);
+        let halo = outside.map(|outside| outside * scale);
         let covered = halo.map(|reach| unturned.halo(reach, p.spin, &lowering));
         let shape = unturned.turned(p.spin, &lowering);
         let border_width = p.paint.border().width * scale;
@@ -425,17 +430,17 @@ impl PaintSink for ComposeSession<'_> {
             return;
         };
         let visible = seen.visible;
-        let look = p.paint.stage.map(|stage| MaterialLook {
+        let look = stage.map(|stage| MaterialLook {
             max_luminance: stage.max_luminance,
             min_luminance: stage.min_luminance,
-            fill: stage.fill,
-            fill_axis: stage.fill_axis,
-            border_color: stage.border.color,
+            fill: stage.paint.fill,
+            fill_axis: stage.paint.fill_axis,
+            border_color: stage.paint.border.color,
             border_width,
         });
         // A backdrop is listed before it is ordered, so its own paint is not among what it shares a
         // break past.
-        let backdrop_idx = match p.paint.backdrop {
+        let backdrop_idx = match capture {
             Some(EffectCaptureDraw { ticket, reach }) => {
                 // The rect, or its turn's cover, grown by its reach, inside the capture by half a
                 // pixel, so a read at the window's edge blends no texel past it.
@@ -456,7 +461,7 @@ impl PaintSink for ComposeSession<'_> {
             None => 0,
         };
         let form = ShapeForm::of(&p.geometry);
-        let flags = if p.paint.stage.is_some() {
+        let flags = if stage.is_some() {
             EffectInstance::MATERIAL
         } else {
             0

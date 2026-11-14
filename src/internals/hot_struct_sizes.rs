@@ -186,7 +186,7 @@ const PINS: &[Pin] = &[
     pin::<ImagePaint>("shape::ImagePaint", 48, 8),
     pin::<IconPaint>("shape::IconPaint", 36, 4),
     // What `add_shape` hands the record store, matched once a shape.
-    pin::<Draw<'static>>("shape::Draw", 192, 8),
+    pin::<Draw<'static>>("shape::Draw", 184, 8),
     pin::<LoweredPaint>("shape::LoweredPaint", 88, 8),
     // A look, its plan and what it wears, each built or copied per themed widget a frame.
     pin::<WidgetLook>("theme::WidgetLook", 236, 4),

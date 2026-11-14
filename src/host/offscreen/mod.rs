@@ -470,7 +470,7 @@ pub(crate) mod internals {
 
         /// The store the host's effects build in.
         #[cfg(test)]
-        pub(crate) fn effect_store(&self) -> &WgpuEffectStore {
+        pub(crate) const fn effect_store(&self) -> &WgpuEffectStore {
             self.device.backend().effect_store()
         }
 

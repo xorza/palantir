@@ -25,7 +25,9 @@ use crate::renderer::frontend::composer::tests::curve_builder::CurveBuilder;
 use crate::renderer::frontend::composer::tests::quad_builder::QuadBuilder;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::draw_closed_payload::DrawClosedPayload;
-use crate::renderer::frontend::payload::draw_closed_payload::closed_effect::ClosedEffect;
+use crate::renderer::frontend::payload::draw_closed_payload::closed_effect::{
+    ClosedEffect, EffectRead,
+};
 use crate::renderer::frontend::payload::draw_closed_payload::closed_image::{
     ClosedImage, GpuViewDraw,
 };
@@ -401,9 +403,7 @@ pub(super) fn effect(b: &mut PaintCapture, r: Rect) {
                 effect: EffectId(0),
                 params: Span::new(0, 2),
                 images: Span::new(0, 0),
-                backdrop: None,
-                stage: None,
-                outside: None,
+                read: EffectRead::Color { outside: None },
                 opacity: 1.0,
                 time: 0.0,
             },

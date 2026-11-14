@@ -4,14 +4,13 @@
 use crate::common::span::Span;
 use crate::primitives::identity::effect_id::EffectId;
 use crate::primitives::math::domain::is_invisible;
-use crate::primitives::packed::fill_axis::FillAxis;
 use crate::renderer::backdrop_captures::BackdropTicket;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
+use crate::renderer::frontend::payload::draw_closed_payload::closed_fill::ClosedFill;
 use crate::renderer::frontend::payload::draw_closed_payload::{
     ClosedPaintPayload, DrawClosedPayload,
 };
-use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::shape::geometry::closed_geometry::PlacedClosed;
 use crate::shape::paint::capture_params::CaptureReach;
 use crate::shape::paint::lowered_border::LoweredBorder;
@@ -26,17 +25,27 @@ pub(crate) struct ClosedEffect {
     pub(crate) params: Span,
     /// Its images, indexed into the record store's image column.
     pub(crate) images: Span,
-    /// A backdrop effect's backdrop; `None` for a color effect.
-    pub(crate) backdrop: Option<EffectCaptureDraw>,
-    /// A material's stage around what the effect shows; `None` for an app's paint.
-    pub(crate) stage: Option<MaterialStage>,
-    /// A color effect's halo, logical px past the shape, outside it alone; `None` paints over
-    /// the shape.
-    pub(crate) outside: Option<f32>,
+    /// What it reads besides its own inputs, by its kind.
+    pub(crate) read: EffectRead,
     /// A paint animation's fade, which scales the coverage, a material's stage alike.
     pub(crate) opacity: f32,
     /// Seconds into the paint animation's pass, which the effect reads; 0 when unanimated.
     pub(crate) time: f32,
+}
+
+/// What an effect's draw reads besides its own inputs, one case a kind, so a stage never draws
+/// without the backdrop it composes against.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum EffectRead {
+    /// A color effect, over its shape, or a halo `outside` it alone, logical px past it.
+    Color { outside: Option<f32> },
+    /// An app's backdrop effect, over what is painted under it.
+    Backdrop { capture: EffectCaptureDraw },
+    /// A material: a backdrop effect under the stage palantir lays around what it shows.
+    Material {
+        capture: EffectCaptureDraw,
+        stage: MaterialStage,
+    },
 }
 
 /// What a backdrop effect's draw reads: what is painted under it, by the ticket the backdrop
@@ -48,17 +57,12 @@ pub(crate) struct EffectCaptureDraw {
 }
 
 /// What palantir lays around a material's effect: the luminance bounds it holds what the effect
-/// shows to, then the box's fill, a color or a gradient, and its border over the whole shape. A
-/// material box's fill and border live here, not in a `ClosedFill`, as the material draws them in
-/// its own draw (`src/shape/AGENTS.md`, "A box's fill reaches under its border, a material under
+/// shows to, then the box's fill and border over the whole shape, which the material draws in its
+/// own draw (`src/shape/AGENTS.md`, "A box's fill reaches under its border, a material under
 /// both, in one draw"); the two routes share one composite.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct MaterialStage {
-    pub(crate) fill: GpuFill,
-    /// The fill's gradient geometry in the box's 0..1 frame; zero for a solid.
-    pub(crate) fill_axis: FillAxis,
-    /// Normalized by [`LoweredBorder::normalized`], so `NONE` means no border exactly.
-    pub(crate) border: LoweredBorder,
+    pub(crate) paint: ClosedFill,
     pub(crate) max_luminance: f32,
     pub(crate) min_luminance: f32,
 }
@@ -76,23 +80,25 @@ impl ClosedEffect {
             effect: material.effect(),
             params: material.params,
             images: Span::default(),
-            backdrop: Some(read),
-            stage: Some(MaterialStage {
-                fill: fill.gpu_fill(),
-                fill_axis: fill.fill_axis(),
-                border: border.normalized(),
-                max_luminance: material.max_luminance(),
-                min_luminance: material.min_luminance(),
-            }),
-            outside: None,
+            read: EffectRead::Material {
+                capture: read,
+                stage: MaterialStage {
+                    paint: ClosedFill::new(fill, border),
+                    max_luminance: material.max_luminance(),
+                    min_luminance: material.min_luminance(),
+                },
+            },
             opacity: 1.0,
             time: 0.0,
         }
     }
 
     /// The border a material's stage lays over its shape; none for an app's paint.
-    pub(crate) fn border(&self) -> LoweredBorder {
-        self.stage.map_or(LoweredBorder::NONE, |stage| stage.border)
+    pub(crate) const fn border(&self) -> LoweredBorder {
+        match self.read {
+            EffectRead::Material { stage, .. } => stage.paint.border,
+            EffectRead::Color { .. } | EffectRead::Backdrop { .. } => LoweredBorder::NONE,
+        }
     }
 }
 
@@ -100,13 +106,19 @@ impl ClosedPaintPayload for ClosedEffect {
     /// This effect faded by `by`: its opacity, and a material's fill and border with it.
     #[inline]
     fn faded(self, by: f32) -> Self {
+        let read = match self.read {
+            EffectRead::Material { capture, stage } => EffectRead::Material {
+                capture,
+                stage: MaterialStage {
+                    paint: stage.paint.faded(by),
+                    ..stage
+                },
+            },
+            read @ (EffectRead::Color { .. } | EffectRead::Backdrop { .. }) => read,
+        };
         Self {
             opacity: self.opacity * by,
-            stage: self.stage.map(|stage| MaterialStage {
-                fill: stage.fill.faded(by),
-                border: stage.border.faded(by),
-                ..stage
-            }),
+            read,
             ..self
         }
     }

@@ -7,7 +7,6 @@
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_wait::GpuWait;
 use crate::gpu::frame::gpu_timings::FrameTiming;
-use crate::gpu::pipeline::effect_pipeline::wgpu_effect_store::WgpuEffectStore;
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::resource::wgpu_image_store::WgpuImageStore;
 use crate::gpu::surface::render_target::RenderTarget;
@@ -26,14 +25,12 @@ pub(super) struct HostDevice {
     backend: WgpuBackend,
 }
 
-/// What the backend is built from on each device the host attaches; the old backend holds both
-/// for the next.
+/// What the backend is built from on each device the host attaches; the old backend hands it to
+/// the next.
 #[derive(Debug)]
 pub(super) struct BackendSpec {
     /// Built with no device, so the registry every recorder clones holds it from the start.
     pub(super) image_store: Rc<WgpuImageStore>,
-    /// Built with no device, so the registry every recorder clones loads through it from the start.
-    pub(super) effect_store: Rc<WgpuEffectStore>,
     pub(super) timing: FrameTiming,
 }
 
@@ -56,7 +53,6 @@ impl HostDevice {
     ) {
         let spec = BackendSpec {
             image_store: Rc::clone(self.backend.image_store()),
-            effect_store: Rc::clone(self.backend.effect_store()),
             timing: self.backend.frame_timing(),
         };
         self.backend = spec.open(gpu, cpu);
@@ -105,7 +101,8 @@ impl HostDevice {
         spec: FrameSpec,
         app: &mut T,
     ) -> CpuFrame<'c> {
-        self.backend.prepare_format(spec.target.format);
+        self.backend
+            .prepare_format(spec.target.format, cpu.resources.effects());
         frames.deliver_screenshot(&self.backend);
         frames.forget_evicted_backdrops(&mut self.backend);
         let report = frames.record(spec, app);
@@ -171,14 +168,12 @@ impl BackendSpec {
         }
         let texture_binding = TextureBinding::new(&gpu);
         self.image_store.attach(&gpu, texture_binding.clone());
-        self.effect_store.attach(&gpu, &texture_binding);
         cpu.attach_device(TextureLimit::from_device(gpu.max_texture_dimension()));
         WgpuBackend::new(
             gpu,
             BackendResources {
                 text: cpu.resources.text(),
                 image_store: &self.image_store,
-                effect_store: &self.effect_store,
                 icons: cpu.resources.icons(),
                 texture_binding,
             },

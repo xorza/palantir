@@ -10,6 +10,11 @@
 pub(crate) struct EffectId(pub(crate) u32);
 
 impl EffectId {
+    /// The id at `idx` in the registry's order.
+    pub(crate) fn from_idx(idx: usize) -> Self {
+        Self(u32::try_from(idx).expect("fewer than 2³² effects"))
+    }
+
     pub(crate) const fn idx(self) -> usize {
         self.0 as usize
     }

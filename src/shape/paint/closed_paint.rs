@@ -47,17 +47,34 @@ pub(crate) enum ClosedPaint {
     /// `RecordStore`'s parameter words; `content_hash` covers the effect, those words, its images,
     /// its backdrop and its halo.
     Effect {
-        /// What a backdrop effect captures under it; `None` for a color effect.
-        backdrop: Option<CaptureParams>,
-        /// A color effect's halo, logical px past the shape, outside it alone; `None` paints over
-        /// the shape.
-        outside: Option<f32>,
+        read: RecordedRead,
         effect: EffectId,
         params: Span,
         /// Into `RecordStore::effect_images`.
         images: Span,
         content_hash: ContentHash,
     },
+}
+
+/// What an app's effect reads besides its inputs, by its kind, as its record holds it.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum RecordedRead {
+    /// A color effect, over the shape, or a halo `outside` it alone, logical px past it.
+    Color { outside: Option<f32> },
+    /// A backdrop effect, over what it captures under it.
+    Backdrop { capture: CaptureParams },
+}
+
+impl RecordedRead {
+    /// How far past its shape the paint reaches, logical px: a halo's reach, else 0.
+    pub(crate) const fn halo_reach(self) -> f32 {
+        match self {
+            Self::Color {
+                outside: Some(reach),
+            } => reach,
+            Self::Color { outside: None } | Self::Backdrop { .. } => 0.0,
+        }
+    }
 }
 
 impl ClosedPaint {
@@ -70,7 +87,7 @@ impl ClosedPaint {
                 ..
             }) => Some(material.capture),
             Self::Effect {
-                backdrop: Some(capture),
+                read: RecordedRead::Backdrop { capture },
                 ..
             } => Some(*capture),
             _ => None,
@@ -91,9 +108,10 @@ impl NanCheck for ClosedPaint {
                 tint, placement, ..
             } => tint.has_nan() || placement.has_nan(),
             Self::Icon { tint, .. } => tint.has_nan(),
-            Self::Effect {
-                backdrop, outside, ..
-            } => backdrop.has_nan() || outside.is_some_and(f32::is_nan),
+            Self::Effect { read, .. } => match read {
+                RecordedRead::Color { outside } => outside.is_some_and(f32::is_nan),
+                RecordedRead::Backdrop { capture } => capture.has_nan(),
+            },
         }
     }
 }

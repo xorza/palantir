@@ -604,6 +604,7 @@ impl WindowFrames {
             Submission {
                 stats: &mut self.ui.host.gpu_pass_stats,
                 store: &self.ui.forest.record_store,
+                effects: self.ui.resources.effects(),
                 buffer,
                 gpu_views: &self.ui.memory.gpu_views,
                 clear: submission::frame_clear(plan.clear, buffer),

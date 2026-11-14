@@ -13,9 +13,9 @@ use std::time::Duration;
 
 use crate::animation::motion_role::MotionRole;
 use crate::effect::contract::{self, ContractSpec, ParamsLayout};
+use crate::effect::effect_module::EffectModule;
 use crate::effect::effect_registry::{EffectRegistry, MaterialFit, ReducedName};
 use crate::effect::effect_source::{EffectSource, ReducedEffect};
-use crate::effect::effect_store::EffectModule;
 use crate::effect::error::{EffectError, EntryMismatch, ParamMismatch};
 use crate::effect::press_params::PressParams;
 use crate::effect::stock;
@@ -48,7 +48,9 @@ use crate::primitives::paint::material::lens::Lens;
 use crate::primitives::paint::material::material_effect::MaterialEffect;
 use crate::primitives::preference::Preference;
 use crate::primitives::reduction::Reduction;
-use crate::renderer::frontend::payload::draw_closed_payload::closed_effect::EffectCaptureDraw;
+use crate::renderer::frontend::payload::draw_closed_payload::closed_effect::{
+    EffectCaptureDraw, EffectRead,
+};
 use crate::shape::Shape;
 use crate::shape::paint::capture_params::CaptureReach;
 use crate::shape::paint_animation::{PaintAnimation, PaintRepeat};
@@ -2039,7 +2041,12 @@ fn a_backdrop_effect_paints_its_fallback_while_transparency_is_reduced() {
         .calls
         .iter()
         .filter_map(|call| match call {
-            PaintCall::Effect(p) => Some(p.paint.backdrop),
+            PaintCall::Effect(p) => Some(match p.paint.read {
+                EffectRead::Backdrop { capture } | EffectRead::Material { capture, .. } => {
+                    Some(capture)
+                }
+                EffectRead::Color { .. } => None,
+            }),
             _ => None,
         })
         .collect();

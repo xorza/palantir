@@ -17,9 +17,9 @@
 //!   has, which no effect has an equal of.
 
 pub(crate) mod contract;
+pub(crate) mod effect_module;
 pub(crate) mod effect_registry;
 pub(crate) mod effect_source;
-pub(crate) mod effect_store;
 pub(crate) mod error;
 pub(crate) mod press_params;
 pub(crate) mod stock;

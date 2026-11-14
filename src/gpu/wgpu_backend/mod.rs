@@ -52,7 +52,7 @@
 
 use crate::common::tracy;
 use crate::diagnostics::gpu_pass_stats::{BatchKind, PassCounts};
-use crate::effect::effect_store::EffectModule;
+use crate::effect::effect_registry::EffectRegistry;
 use crate::gpu::atlas::atlas_textures::AtlasTextures;
 use crate::gpu::atlas::page_list::MAX_PAGES;
 use crate::gpu::atlas::row_texture::RowTexture;
@@ -103,6 +103,7 @@ use crate::gpu::texel::TargetFormat;
 use crate::gpu::wgpu_backend::backend_resources::BackendResources;
 use crate::gpu::wgpu_backend::display_frames::DisplayFrames;
 use crate::gpu::wgpu_backend::render_stream::{RenderStream, StreamPasses};
+use crate::primitives::effect::effect_kind::KindId;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::identity::backdrop_key::BackdropKey;
 use crate::primitives::paint::color::RgbaF32;
@@ -153,8 +154,8 @@ pub(crate) struct WgpuBackend {
     /// The registered images; host recorders create, rewrite and free them through the
     /// `ImageRegistry` the host built over this `Rc`.
     image_store: Rc<WgpuImageStore>,
-    /// The loaded effects' pipelines; the host's `EffectRegistry` loads through this `Rc`.
-    effect_store: Rc<WgpuEffectStore>,
+    /// The loaded effects' pipelines on this device, built from the host's `EffectRegistry`.
+    effect_store: WgpuEffectStore,
     gpu_view_targets: GpuViewTargets,
     blit: BlitPipeline,
     icon: IconBackend,
@@ -187,10 +188,9 @@ struct TimingSupport {
 #[derive(Clone, Copy, Debug)]
 struct FrameDraw<'a> {
     fmt: &'a FormatPipelines,
-    /// The format's effect pipelines and every effect's module, from the effect store's borrow
-    /// held across the frame's passes.
+    /// The format's effect pipelines and every effect's kind, at its id.
     effects: &'a [ClipVariant],
-    effect_modules: &'a [EffectModule],
+    effect_kinds: &'a [KindId],
     /// The blit into the target's format, which presents the backbuffer.
     blit: &'a wgpu::RenderPipeline,
     buffer: &'a RenderBuffer,
@@ -360,8 +360,8 @@ impl WgpuBackend {
     /// a window first notes a target of the format ([`Self::prepare_format`]).
     pub(crate) fn new(gpu: Gpu, resources: BackendResources<'_>, timing: FrameTiming) -> Self {
         let image_store = Rc::clone(resources.image_store);
-        let effect_store = Rc::clone(resources.effect_store);
         let texture_binding = resources.texture_binding;
+        let effect_store = WgpuEffectStore::new(&gpu, &texture_binding);
         let atlas = AtlasPool::new(PoolConfig::of_device(
             gpu.max_texture_dimension().get(),
             gpu.pass_traffic(),
@@ -435,11 +435,6 @@ impl WgpuBackend {
         &self.image_store
     }
 
-    /// The loaded effects, which the next device's backend builds again.
-    pub(crate) const fn effect_store(&self) -> &Rc<WgpuEffectStore> {
-        &self.effect_store
-    }
-
     /// Whether this backend times frames, which the next device's does too.
     pub(crate) const fn frame_timing(&self) -> FrameTiming {
         if self.timing.is_some() {
@@ -461,13 +456,14 @@ impl WgpuBackend {
     /// it: before the frame that paints it, so its first submit compiles nothing. Only
     /// `wgpu::RenderPipeline`s carry the color-target format, so a new format costs a few
     /// pipeline compiles and no image re-upload or glyph re-rasterization.
-    pub(crate) fn prepare_format(&mut self, format: TargetFormat) {
+    pub(crate) fn prepare_format(&mut self, format: TargetFormat, effects: &EffectRegistry) {
         if !self.pipelines.contains_key(&format) {
             let built = FormatPipelines::new(&self.gpu, format.get(), &self.programs);
             self.pipelines.insert(format, built);
         }
         self.blit.ensure(&self.gpu, format.get());
-        self.effect_store.ensure_format(&self.gpu, format.get());
+        self.effect_store
+            .ensure_format(&self.gpu, effects, format.get());
     }
 
     /// Render one frame of `stream` into `target`. Skip frames never reach this method.
@@ -597,17 +593,16 @@ impl WgpuBackend {
             slots: AtlasSlots::of(&self.atlas),
         };
         self.ensure_pipelines(format, buffer, variant);
-        let effects = self.effect_store.read();
         let main_pass = self.run_steps(
             FrameSteps {
                 draw: FrameDraw {
                     fmt: &self.pipelines[&format],
-                    effects: &effects
-                        .attached
+                    effects: &self
+                        .effect_store
                         .for_format(format.get())
                         .expect("a window notes its target's format before it records")
                         .effects,
-                    effect_modules: &effects.modules,
+                    effect_kinds: self.effect_store.kinds(),
                     blit: self.blit.get(format.get()),
                     buffer,
                     variant,
@@ -634,7 +629,6 @@ impl WgpuBackend {
         }
         self.staging.finish_and_recall_on_submit(&encoder);
         self.gpu.queue.submit(iter::once(encoder.finish()));
-        drop(effects);
         // Every frame, timing on or off, as it costs two `Instant::now()` calls.
         let stats = submission.stats;
         stats.record_main_pass_cpu(main_pass.cpu);
@@ -834,6 +828,7 @@ impl WgpuBackend {
         } = upload;
         let Submission {
             store,
+            effects,
             buffer,
             gpu_views,
             clear,
@@ -898,7 +893,7 @@ impl WgpuBackend {
         );
         self.programs.curve.upload(&mut ctx, &buffer.curves);
         self.effect_store
-            .prepare(ctx.gpu, buffer.effects.key(), clipping);
+            .prepare(ctx.gpu, effects, buffer.effects.key(), clipping);
         self.programs.effect.upload(
             &mut ctx,
             EffectStores {
@@ -1221,7 +1216,7 @@ impl WgpuBackend {
                         EffectBatch {
                             keys: buffer.effects.key(),
                             instances: buffer.effects.instance(),
-                            modules: draw.effect_modules,
+                            kinds: draw.effect_kinds,
                             items,
                             groups: &effect_groups,
                             backdrops: self.backdrops.groups(),
@@ -1458,6 +1453,7 @@ pub(crate) mod internals {
     #[cfg(test)]
     use crate::gpu::device::pass_traffic::PassTraffic;
     #[cfg(test)]
+    use crate::gpu::pipeline::effect_pipeline::wgpu_effect_store::WgpuEffectStore;
     use crate::gpu::pipeline::format_pipelines::FormatPipelines;
     #[cfg(test)]
     use crate::gpu::raster::raster_atlas::counters::AtlasCounts;
@@ -1535,7 +1531,8 @@ pub(crate) mod internals {
             let formats: Vec<TargetFormat> = self.pipelines.keys().copied().collect();
             self.pipelines.clear();
             for format in formats {
-                self.prepare_format(format);
+                let built = FormatPipelines::new(&self.gpu, format.get(), &self.programs);
+                self.pipelines.insert(format, built);
             }
         }
 
@@ -1552,6 +1549,12 @@ pub(crate) mod internals {
             (0..MAX_PAGES)
                 .filter(|&idx| list.page(idx).is_some())
                 .count()
+        }
+
+        /// The effects' pipelines on this device.
+        #[cfg(test)]
+        pub(crate) const fn effect_store(&self) -> &WgpuEffectStore {
+            &self.effect_store
         }
 
         /// The pipelines built for `format`.

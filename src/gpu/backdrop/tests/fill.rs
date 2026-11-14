@@ -10,6 +10,7 @@ use crate::primitives::paint::brush::gradient::Gradient;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
 use crate::primitives::paint::paint::Paint;
+use crate::renderer::frontend::payload::draw_closed_payload::closed_effect::EffectRead;
 use crate::shape::rect::RectShape;
 use crate::shape::{PaintedBy, Shape};
 use crate::ui::Ui;
@@ -57,7 +58,7 @@ fn a_gradient_fill_draws_in_the_material_draw() {
         panic!("one draw, the material's");
     };
     assert!(
-        p.paint.stage.is_some(),
+        matches!(p.paint.read, EffectRead::Material { .. }),
         "the draw wears the material's stage"
     );
 }
@@ -88,7 +89,7 @@ fn a_border_lies_over_the_material() {
         panic!("one draw, the material's");
     };
     assert!(
-        p.paint.stage.is_some(),
+        matches!(p.paint.read, EffectRead::Material { .. }),
         "the draw wears the material's stage"
     );
 }

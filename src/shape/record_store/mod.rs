@@ -19,6 +19,7 @@ use crate::common::hash::Hasher;
 use crate::common::span::Span;
 use crate::effect::effect_registry::EffectRegistry;
 use crate::image_registry::image_handle::ImageHandle;
+use crate::primitives::effect::effect_kind::{BackdropRead, ColorRead, ErasedRead};
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::mesh::{Mesh, MeshVertex};
 use crate::primitives::identity::texture_id::TextureId;
@@ -46,7 +47,7 @@ use crate::shape::image_paint::ImagePaint;
 use crate::shape::lower;
 use crate::shape::mesh::MeshShape;
 use crate::shape::paint::capture_params::{CaptureParams, CaptureReach};
-use crate::shape::paint::closed_paint::ClosedPaint;
+use crate::shape::paint::closed_paint::{ClosedPaint, RecordedRead};
 use crate::shape::paint::curve_ramp::CurveRamp;
 use crate::shape::paint::image_source::ImageSource;
 use crate::shape::paint::lowered_material::{MaterialRead, WornMaterial};
@@ -423,10 +424,8 @@ impl RecordStore {
         let ErasedEffectPaint {
             name,
             params,
-            backdrop_blur,
-            fallback,
+            read,
             images,
-            outside,
         } = paint;
         // Resolved and checked in every mode and before the empty test, so a logic error panics
         // whatever is reduced and wherever it lies.
@@ -440,7 +439,7 @@ impl RecordStore {
                 resolved.image_slots,
             );
         }
-        if let Some(fallback) = fallback
+        if let ErasedRead::Backdrop(BackdropRead { fallback, .. }) = read
             && resolve.reductions.transparency.is_reduced()
         {
             if geometry.is_paint_empty() || fallback.is_noop(resolve.material_fallback) {
@@ -459,10 +458,15 @@ impl RecordStore {
         let effect = resolved.id;
         // How far a backdrop effect reads is its source's, from these parameters, as a
         // material's is.
-        let backdrop = fallback.map(|_| CaptureParams {
-            sigma: backdrop_blur,
-            reach: CaptureReach::of(resolve.effects.reach_of(effect, params)),
-        });
+        let read = match read {
+            ErasedRead::Color(ColorRead { outside }) => RecordedRead::Color { outside },
+            ErasedRead::Backdrop(BackdropRead { blur, .. }) => RecordedRead::Backdrop {
+                capture: CaptureParams {
+                    sigma: *blur,
+                    reach: CaptureReach::of(resolve.effects.reach_of(effect, params)),
+                },
+            },
+        };
         let mut h = Hasher::new();
         h.write_u32(effect.0);
         h.pod_slice(params);
@@ -471,15 +475,15 @@ impl RecordStore {
             h.write_u64(image.id().0);
             h.write_u32(image.generation());
         }
-        if let Some(backdrop) = backdrop {
-            backdrop.hash(&mut h);
-        }
-        if let Some(reach) = outside {
-            h.write_u32(reach.to_bits());
+        match read {
+            RecordedRead::Color { outside: None } => {}
+            RecordedRead::Color {
+                outside: Some(reach),
+            } => h.write_u32(reach.to_bits()),
+            RecordedRead::Backdrop { capture } => capture.hash(&mut h),
         }
         Some(ClosedPaint::Effect {
-            backdrop,
-            outside,
+            read,
             effect,
             params: self.stage_effect_params(params),
             images: self.stage_effect_images(images.iter().flatten()),

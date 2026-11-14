@@ -2,6 +2,7 @@
 
 use crate::damage::Damage;
 use crate::diagnostics::gpu_pass_stats::GpuPassStats;
+use crate::effect::effect_registry::EffectRegistry;
 use crate::gpu::gpu_paint::gpu_views::GpuViews;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
@@ -17,6 +18,8 @@ pub(crate) struct Submission<'a> {
     /// Where the owner's GPU timings publish.
     pub(crate) stats: &'a mut GpuPassStats,
     pub(crate) store: &'a RecordStore,
+    /// The host's effects, whose changes the frame's pipelines take before any pass.
+    pub(crate) effects: &'a EffectRegistry,
     pub(crate) buffer: &'a RenderBuffer,
     /// The window's `GpuView`s, whose callbacks paint the buffer's view targets.
     pub(crate) gpu_views: &'a GpuViews,

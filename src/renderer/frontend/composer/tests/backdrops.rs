@@ -20,7 +20,7 @@ use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_closed_payload::DrawClosedPayload;
 use crate::renderer::frontend::payload::draw_closed_payload::closed_effect::{
-    ClosedEffect, EffectCaptureDraw,
+    ClosedEffect, EffectCaptureDraw, EffectRead,
 };
 use crate::renderer::frontend::payload::draw_closed_payload::closed_fill::ClosedFill;
 use crate::renderer::render_buffer::RenderBuffer;
@@ -472,9 +472,7 @@ fn a_material_and_a_backdrop_effect_share_one_path() {
                         effect: EffectId(0),
                         params: Span::default(),
                         images: Span::default(),
-                        backdrop: Some(read(1)),
-                        stage: None,
-                        outside: None,
+                        read: EffectRead::Backdrop { capture: read(1) },
                         opacity: 1.0,
                         time: 0.0,
                     },

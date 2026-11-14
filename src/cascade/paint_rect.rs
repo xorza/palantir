@@ -336,7 +336,7 @@ impl PaintRectCtx<'_> {
                     // physical antialiasing reach its stages draw, as a triangle's is.
                     ShapeRecord::Closed {
                         geometry: ClosedGeometry::Box(geometry),
-                        paint: ClosedPaint::Effect { outside, .. },
+                        paint: ClosedPaint::Effect { read, .. },
                     } => clip_screen(
                         shape
                             .to_screen(
@@ -344,7 +344,7 @@ impl PaintRectCtx<'_> {
                                     geometry
                                         .place(layout_rect.size)
                                         .rect
-                                        .inflated(outside.unwrap_or(0.0)),
+                                        .inflated(read.halo_reach()),
                                     idx,
                                 ),
                                 None,

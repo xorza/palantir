@@ -282,8 +282,7 @@ fn hash_closed_paint(paint: &ClosedPaint, h: &mut Hasher) {
         // `RecordStore`; the span is frame-local.
         ClosedPaint::Effect {
             content_hash,
-            backdrop: _,
-            outside: _,
+            read: _,
             effect: _,
             params: _,
             images: _,

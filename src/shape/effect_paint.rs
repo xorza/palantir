@@ -5,7 +5,9 @@ use std::fmt;
 
 use crate::effect::MAX_IMAGE_SLOTS;
 use crate::image_registry::image_handle::ImageHandle;
-use crate::primitives::effect::effect_kind::{BackdropEffect, ColorEffect, EffectKind};
+use crate::primitives::effect::effect_kind::{
+    BackdropEffect, ColorEffect, ColorRead, EffectKind, ErasedRead,
+};
 use crate::primitives::effect::effect_name::{CheckedEffectName, EffectName};
 use crate::primitives::effect::effect_params::EffectParams;
 use crate::primitives::math::domain;
@@ -46,17 +48,11 @@ use crate::shape::triangle::TriangleShape;
 pub struct EffectPaint<U: EffectParams, K: EffectKind = ColorEffect> {
     name: EffectName<U, K>,
     params: U,
-    /// The σ a backdrop effect blurs what it reads by, logical px; 0 for a color effect, which
-    /// reads none.
-    backdrop_blur: f32,
-    /// What a backdrop effect paints in its place while transparency is reduced; `()` for a color
-    /// effect, which reads nothing under it.
-    fallback: K::Fallback,
+    /// What it reads besides its inputs, by its kind: a color effect's halo, a backdrop effect's
+    /// blur and fallback.
+    read: K::Read,
     /// The images bound, in slot order, each slot past the last `None`.
     images: [Option<ImageHandle>; MAX_IMAGE_SLOTS as usize],
-    /// A color effect's halo: how far past its shape it paints, logical px, outside the shape
-    /// alone; `None` paints over the shape.
-    outside: Option<f32>,
 }
 
 impl<U: EffectParams, K: EffectKind> EffectPaint<U, K> {
@@ -65,10 +61,8 @@ impl<U: EffectParams, K: EffectKind> EffectPaint<U, K> {
         Self {
             name,
             params,
-            backdrop_blur: 0.0,
-            fallback: K::FALLBACK,
+            read: K::READ,
             images: [const { None }; MAX_IMAGE_SLOTS as usize],
-            outside: None,
         }
     }
 
@@ -106,7 +100,7 @@ impl<U: EffectParams> EffectPaint<U, ColorEffect> {
     /// Panics unless `reach` is a [length](crate::widget::domain::is_length).
     #[track_caller]
     pub const fn outside(mut self, reach: f32) -> Self {
-        self.outside = Some(domain::length(reach));
+        self.read.outside = Some(domain::length(reach));
         self
     }
 }
@@ -120,7 +114,7 @@ impl<U: EffectParams> EffectPaint<U, BackdropEffect> {
     /// Panics unless `sigma` is a [length](crate::widget::domain::is_length).
     #[track_caller]
     pub const fn backdrop_blur(mut self, sigma: f32) -> Self {
-        self.backdrop_blur = domain::length(sigma);
+        self.read.blur = domain::length(sigma);
         self
     }
 
@@ -128,7 +122,7 @@ impl<U: EffectParams> EffectPaint<U, BackdropEffect> {
     /// place of the theme's, as [`Material::with_fallback`](crate::Material::with_fallback) does;
     /// [`Brush::TRANSPARENT`] paints nothing then.
     pub fn fallback(mut self, fallback: impl Into<Brush>) -> Self {
-        self.fallback = BackdropFallback::Brush(fallback.into());
+        self.read.fallback = BackdropFallback::Brush(fallback.into());
         self
     }
 }
@@ -137,10 +131,8 @@ impl<U: EffectParams, K: EffectKind> fmt::Debug for EffectPaint<U, K> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("EffectPaint")
             .field("name", &self.name)
-            .field("backdrop_blur", &self.backdrop_blur)
-            .field("fallback", &self.fallback)
+            .field("read", &self.read)
             .field("images", &self.images)
-            .field("outside", &self.outside)
             .finish_non_exhaustive()
     }
 }
@@ -201,7 +193,13 @@ impl<U: EffectParams, K: EffectKind> sealed::DrawWith<EffectPaint<U, K>> for Tri
     /// none of.
     #[track_caller]
     fn check(&self, paint: &EffectPaint<U, K>) {
-        assert!(paint.outside.is_none(), "a triangle's effect has no halo");
+        assert!(
+            !matches!(
+                K::erase(&paint.read),
+                ErasedRead::Color(ColorRead { outside: Some(_) })
+            ),
+            "a triangle's effect has no halo"
+        );
     }
 
     fn draw<'a>(&'a self, paint: &'a EffectPaint<U, K>) -> Draw<'a> {
@@ -218,18 +216,14 @@ impl<U: EffectParams, K: EffectKind> EffectPaint<U, K> {
         let Self {
             name,
             params,
-            backdrop_blur,
-            fallback,
+            read,
             images,
-            outside,
         } = self;
         ErasedEffectPaint {
             name: name.checked(),
             params: bytemuck::bytes_of(params),
-            backdrop_blur: *backdrop_blur,
-            fallback: K::fallback(fallback),
+            read: K::erase(read),
             images,
-            outside: *outside,
         }
     }
 }
@@ -240,11 +234,6 @@ impl<U: EffectParams, K: EffectKind> EffectPaint<U, K> {
 pub(crate) struct ErasedEffectPaint<'a> {
     pub(crate) name: CheckedEffectName,
     pub(crate) params: &'a [u8],
-    /// A backdrop effect's σ, logical px; 0 for a color effect.
-    pub(crate) backdrop_blur: f32,
-    /// A backdrop effect's fallback; `None` for a color effect, which reads nothing under it.
-    pub(crate) fallback: Option<&'a BackdropFallback>,
+    pub(crate) read: ErasedRead<'a>,
     pub(crate) images: &'a [Option<ImageHandle>; MAX_IMAGE_SLOTS as usize],
-    /// A halo's reach, logical px; `None` paints over the shape.
-    pub(crate) outside: Option<f32>,
 }

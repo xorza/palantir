@@ -1,13 +1,13 @@
 //! [`EffectRegistry`]: the effects a host loaded, by name, shared by every window.
 
-use std::cell::{Cell, RefCell};
+use std::cell::{Cell, Ref, RefCell};
 use std::fmt;
-use std::rc::Rc;
 
+use fixedbitset::FixedBitSet;
 use rustc_hash::FxHashMap;
 
+use crate::effect::effect_module::EffectModule;
 use crate::effect::effect_source::{EffectSource, ReducedEffect};
-use crate::effect::effect_store::{EffectModule, EffectStore};
 use crate::effect::error::EffectError;
 use crate::effect::stock::{self, StockEffect};
 use crate::primitives::effect::effect_kind::KindId;
@@ -22,15 +22,14 @@ use crate::primitives::reduction::Reductions;
 
 /// Every effect loaded under a name, for the app's life, as a font is: loading the same name again
 /// replaces it, and a refused load leaves the one before. A name keeps the parameter type and
-/// kind it first loaded with; using it with others is a logic error that panics with both. Each
-/// load goes to the [`EffectStore`] the host built the registry over, which compiles it; a
-/// deviceless recorder's registry has none. It holds palantir's stock effects
+/// kind it first loaded with; using it with others is a logic error that panics with both. It
+/// holds each effect's module, which a backend's store reads to compile, with what changed since
+/// it last read ([`Self::drain_changes`]), as Bevy's render world extracts the main world's assets
+/// each frame. It holds palantir's stock effects
 /// (`crate::effect::stock`) from its start, checked as an app's load is, once a process, under names
 /// no app load takes.
 #[derive(Debug)]
 pub(crate) struct EffectRegistry {
-    /// Fixed at construction: the host builds the store before any recorder exists.
-    store: Option<Rc<dyn EffectStore>>,
     effects: RefCell<Effects>,
     /// Moved by every load: a reload changes an effect's pixels and no shape's hash, as a font
     /// load does, so a frame that paints under a moved epoch repaints whole.
@@ -42,12 +41,56 @@ pub(crate) struct EffectRegistry {
 struct Effects {
     ids: FxHashMap<ErasedEffectName, EffectId>,
     loaded: Vec<LoadedEffect>,
+    /// The effects a load or a theme wanted built before a frame draws them, at each id: what a
+    /// new device builds again.
+    wanted: FixedBitSet,
+    /// What changed since a store last read: each id once, so each list holds at most the
+    /// effects loaded.
+    changed: EffectChanges,
 }
 
-/// What a loaded effect keeps on the CPU: its types and what its source asked for. Its module
-/// lives in the store, which compiles it.
+/// The effects loaded and wanted since a store last read, each id once.
+#[derive(Debug, Default)]
+struct EffectChanges {
+    loaded: Vec<EffectId>,
+    wanted: Vec<EffectId>,
+}
+
+/// One change a store reads ([`EffectRegistry::drain_changes`]).
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum EffectChange<'a> {
+    /// `id` holds `module`, new or in place of the one before.
+    Loaded {
+        id: EffectId,
+        module: &'a EffectModule,
+    },
+    /// `id`'s box wants building before the next frame draws, for every format and device.
+    Wanted(EffectId),
+}
+
+/// Whether a store reads what changed since its last read, or everything, as a store on a new
+/// device does.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ChangesSince {
+    LastRead,
+    Start,
+}
+
+/// The loaded effects' modules, borrowed from the registry.
+#[derive(Debug)]
+pub(crate) struct LoadedModules<'a>(Ref<'a, Effects>);
+
+impl LoadedModules<'_> {
+    /// The module `id` holds.
+    pub(crate) fn get(&self, id: EffectId) -> &EffectModule {
+        &self.0.loaded[id.idx()].module
+    }
+}
+
+/// What a loaded effect keeps: its module, its types and what its source asked for.
 #[derive(Debug)]
 struct LoadedEffect {
+    module: EffectModule,
     types: EffectTypes,
     image_slots: u8,
     /// What paints in its place for each preference, in [`ReducedBy`]'s order.
@@ -162,22 +205,10 @@ pub(crate) enum ReducedName {
     Nothing,
 }
 
-/// A deviceless recorder's registry: the stock effects, compiled nowhere.
+/// The stock effects alone.
 impl Default for EffectRegistry {
     fn default() -> Self {
-        Self::with_store(None)
-    }
-}
-
-impl EffectRegistry {
-    /// A registry whose effects compile in `store`, the one the host's backend draws with.
-    pub(crate) fn new<S: EffectStore + 'static>(store: Rc<S>) -> Self {
-        Self::with_store(Some(store))
-    }
-
-    fn with_store(store: Option<Rc<dyn EffectStore>>) -> Self {
         let registry = Self {
-            store,
             effects: RefCell::default(),
             epoch: Cell::default(),
         };
@@ -189,7 +220,9 @@ impl EffectRegistry {
         registry.insert_stock(&stock.glass);
         registry
     }
+}
 
+impl EffectRegistry {
     /// Load `source` under `name`, replacing the effect loaded under it before.
     ///
     /// # Panics
@@ -216,7 +249,7 @@ impl EffectRegistry {
     ) -> Result<(), EffectError> {
         self.hold_types(name, source);
         let module = source.check()?;
-        self.record(name, source, &module);
+        self.record(name, source, module);
         Ok(())
     }
 
@@ -228,7 +261,7 @@ impl EffectRegistry {
             module,
         } = effect;
         self.hold_types(*name, source);
-        self.record(*name, source, module);
+        self.record(*name, source, module.clone());
     }
 
     /// Panic unless `name` takes the types it was loaded with, each alternative `source` names is
@@ -293,38 +326,86 @@ impl EffectRegistry {
         }
     }
 
-    /// Hold `source`, which `module` checked, under `name`, at the id the name holds, and hand
-    /// the module to the store.
+    /// Hold `source` and `module`, which checked it, under `name`, at the id the name holds,
+    /// noted for the store's next read.
     fn record<U: EffectParams, K: EffectKind>(
         &self,
         name: EffectName<U, K>,
         source: &EffectSource<U, K>,
-        module: &EffectModule,
+        module: EffectModule,
     ) {
-        let id = self
-            .effects
-            .borrow_mut()
-            .insert(name.erased(), |ids| LoadedEffect {
-                types: EffectTypes::of::<U, K>(),
-                image_slots: source.image_slots,
-                alternatives: source.alternatives().map(|paint| match paint {
-                    ReducedEffect::Same => ReducedName::Same,
-                    ReducedEffect::Other(other) => ReducedName::Other(
-                        *ids.get(&other.erased())
-                            .expect("`hold_types` found the alternative loaded, or it is this one"),
-                    ),
-                    ReducedEffect::Nothing => ReducedName::Nothing,
-                }),
-                material_lanes: source_material_lanes(source),
-                reach: ErasedReach::of(source),
-            });
-        if let Some(store) = &self.store {
-            store.register(id, module);
-            if source.prebuild {
-                store.want(id);
-            }
+        let mut effects = self.effects.borrow_mut();
+        let id = effects.insert(name.erased(), |ids| LoadedEffect {
+            module,
+            types: EffectTypes::of::<U, K>(),
+            image_slots: source.image_slots,
+            alternatives: source.alternatives().map(|paint| match paint {
+                ReducedEffect::Same => ReducedName::Same,
+                ReducedEffect::Other(other) => ReducedName::Other(
+                    *ids.get(&other.erased())
+                        .expect("`hold_types` found the alternative loaded, or it is this one"),
+                ),
+                ReducedEffect::Nothing => ReducedName::Nothing,
+            }),
+            material_lanes: source_material_lanes(source),
+            reach: ErasedReach::of(source),
+        });
+        let count = effects.loaded.len();
+        effects.wanted.grow(count);
+        note(&mut effects.changed.loaded, id);
+        drop(effects);
+        if source.prebuild {
+            self.want_id(id);
         }
         self.epoch.set(self.epoch.get().wrapping_add(1));
+    }
+
+    /// Hand `read` each change since `since`: each effect loaded, then each wanted. From
+    /// [`ChangesSince::Start`] that is every effect and every want, as a store on a new device
+    /// builds them all again. Either way the noted changes clear.
+    pub(crate) fn drain_changes(
+        &self,
+        since: ChangesSince,
+        mut read: impl FnMut(EffectChange<'_>),
+    ) {
+        let mut effects = self.effects.borrow_mut();
+        let Effects {
+            loaded,
+            wanted,
+            changed,
+            ..
+        } = &mut *effects;
+        match since {
+            ChangesSince::Start => {
+                for (idx, effect) in loaded.iter().enumerate() {
+                    read(EffectChange::Loaded {
+                        id: EffectId::from_idx(idx),
+                        module: &effect.module,
+                    });
+                }
+                for idx in wanted.ones() {
+                    read(EffectChange::Wanted(EffectId::from_idx(idx)));
+                }
+            }
+            ChangesSince::LastRead => {
+                for &id in &changed.loaded {
+                    read(EffectChange::Loaded {
+                        id,
+                        module: &loaded[id.idx()].module,
+                    });
+                }
+                for &id in &changed.wanted {
+                    read(EffectChange::Wanted(id));
+                }
+            }
+        }
+        changed.loaded.clear();
+        changed.wanted.clear();
+    }
+
+    /// Every loaded effect's module, for a store that compiles them.
+    pub(crate) fn modules(&self) -> LoadedModules<'_> {
+        LoadedModules(self.effects.borrow())
     }
 
     /// The types the effect under `name` loaded with; `None` when nothing is loaded under it. A
@@ -351,14 +432,17 @@ impl EffectRegistry {
 
     /// Want `id` built, with each alternative its source names.
     fn want_id(&self, id: EffectId) {
-        let Some(store) = &self.store else {
-            return;
-        };
-        store.want(id);
-        let effects = self.effects.borrow();
-        for alternative in effects.loaded[id.idx()].alternatives {
-            if let ReducedName::Other(other) = alternative {
-                store.want(other);
+        let mut effects = self.effects.borrow_mut();
+        let alternatives = effects.loaded[id.idx()].alternatives;
+        let others = alternatives
+            .into_iter()
+            .filter_map(|alternative| match alternative {
+                ReducedName::Other(other) => Some(other),
+                ReducedName::Same | ReducedName::Nothing => None,
+            });
+        for id in std::iter::once(id).chain(others) {
+            if !effects.wanted.put(id.idx()) {
+                note(&mut effects.changed.wanted, id);
             }
         }
     }
@@ -555,7 +639,7 @@ impl Effects {
         name: ErasedEffectName,
         effect: impl FnOnce(&FxHashMap<ErasedEffectName, EffectId>) -> LoadedEffect,
     ) -> EffectId {
-        let next = EffectId(u32::try_from(self.loaded.len()).expect("fewer than 2³² effects"));
+        let next = EffectId::from_idx(self.loaded.len());
         let id = *self.ids.entry(name).or_insert(next);
         let effect = effect(&self.ids);
         if id == next {
@@ -564,6 +648,13 @@ impl Effects {
             self.loaded[id.idx()] = effect;
         }
         id
+    }
+}
+
+/// Note `id` in `list`, once.
+fn note(list: &mut Vec<EffectId>, id: EffectId) {
+    if !list.contains(&id) {
+        list.push(id);
     }
 }
 

@@ -16,6 +16,7 @@ use crate::shape::geometry::arc_geometry::ArcGeometry;
 use crate::shape::geometry::bezier_geometry::BezierGeometry;
 use crate::shape::geometry::box_geometry::{BoxGeometry, BoxOutline};
 use crate::shape::geometry::triangle_geometry::TriangleGeometry;
+use crate::shape::paint::closed_paint::RecordedRead;
 use crate::shape::paint::curve_ramp::CurveRamp;
 use crate::shape::paint::lowered_border::LoweredBorder;
 use crate::shape::paint::lowered_shadow::LoweredShadow;
@@ -64,8 +65,7 @@ fn quad_shapes_hash_apart() {
             outline: sharp,
         }),
         paint: ClosedPaint::Effect {
-            backdrop: None,
-            outside: None,
+            read: RecordedRead::Color { outside: None },
             effect: EffectId(0),
             params: Span::default(),
             images: Span::default(),

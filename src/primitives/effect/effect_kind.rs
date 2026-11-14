@@ -22,6 +22,15 @@ pub struct BackdropEffect;
 impl EffectKind for ColorEffect {}
 impl EffectKind for BackdropEffect {}
 
+pub(crate) use sealed::{BackdropRead, ColorRead};
+
+/// A paint's read with its kind erased, as a shape's draw holds it.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum ErasedRead<'a> {
+    Color(ColorRead),
+    Backdrop(&'a BackdropRead),
+}
+
 /// Which kind an effect is, at run time: what its contract declares and its pipeline binds.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum KindId {
@@ -38,21 +47,40 @@ mod sealed {
     )]
     pub trait Kind: 'static {
         const ID: KindId;
-        /// What a paint of the kind paints in its place while transparency is reduced: nothing
-        /// for a color effect, which reads nothing under it; a fallback for a backdrop effect.
-        type Fallback: Clone + fmt::Debug;
+        /// What a paint of the kind reads besides its inputs: a color effect's halo, a backdrop
+        /// effect's blur and fallback.
+        type Read: Clone + fmt::Debug;
 
-        /// What a paint of the kind starts with: the theme's surface for a backdrop effect.
-        const FALLBACK: Self::Fallback;
+        /// What a paint of the kind starts with: over its shape; read sharp, with the theme's
+        /// surface for a fallback.
+        const READ: Self::Read;
 
-        /// The fallback `fallback` names; `None` for a color effect.
-        fn fallback(fallback: &Self::Fallback) -> Option<&BackdropFallback>;
+        /// `read` with its kind erased.
+        fn erase(read: &Self::Read) -> ErasedRead<'_>;
     }
 
     use std::fmt;
 
-    use crate::primitives::effect::effect_kind::{BackdropEffect, ColorEffect, KindId};
+    use crate::primitives::effect::effect_kind::{BackdropEffect, ColorEffect, ErasedRead, KindId};
     use crate::primitives::paint::material::backdrop_fallback::BackdropFallback;
+
+    /// What a color effect's paint reads besides its inputs: a halo `outside` its shape alone,
+    /// logical px past it; `None` paints over the shape. Public in the seal, so nothing outside
+    /// the crate can name it.
+    #[derive(Clone, Copy, Debug)]
+    #[expect(unnameable_types, reason = "a kind's read, behind the seal")]
+    pub struct ColorRead {
+        pub(crate) outside: Option<f32>,
+    }
+
+    /// What a backdrop effect's paint reads: what is painted under it, blurred by σ `blur`
+    /// logical px, and what it paints in its place while transparency is reduced.
+    #[derive(Clone, Debug)]
+    #[expect(unnameable_types, reason = "a kind's read, behind the seal")]
+    pub struct BackdropRead {
+        pub(crate) blur: f32,
+        pub(crate) fallback: BackdropFallback,
+    }
 
     #[expect(
         private_interfaces,
@@ -60,12 +88,12 @@ mod sealed {
     )]
     impl Kind for ColorEffect {
         const ID: KindId = KindId::Color;
-        type Fallback = ();
+        type Read = ColorRead;
 
-        const FALLBACK: () = ();
+        const READ: ColorRead = ColorRead { outside: None };
 
-        fn fallback((): &()) -> Option<&BackdropFallback> {
-            None
+        fn erase(read: &ColorRead) -> ErasedRead<'_> {
+            ErasedRead::Color(*read)
         }
     }
     #[expect(
@@ -74,12 +102,15 @@ mod sealed {
     )]
     impl Kind for BackdropEffect {
         const ID: KindId = KindId::Backdrop;
-        type Fallback = BackdropFallback;
+        type Read = BackdropRead;
 
-        const FALLBACK: BackdropFallback = BackdropFallback::ThemeSurface;
+        const READ: BackdropRead = BackdropRead {
+            blur: 0.0,
+            fallback: BackdropFallback::ThemeSurface,
+        };
 
-        fn fallback(fallback: &BackdropFallback) -> Option<&BackdropFallback> {
-            Some(fallback)
+        fn erase(read: &BackdropRead) -> ErasedRead<'_> {
+            ErasedRead::Backdrop(read)
         }
     }
 }

@@ -4,7 +4,7 @@ use std::borrow::Cow;
 use std::fmt;
 
 use crate::effect::contract::{self, ContractSpec, ParamsLayout};
-use crate::effect::effect_store::EffectModule;
+use crate::effect::effect_module::EffectModule;
 use crate::effect::error::EffectError;
 use crate::effect::{MAX_IMAGE_SLOTS, MAX_PARAMS_SIZE};
 use crate::primitives::effect::effect_kind::{ColorEffect, EffectKind};

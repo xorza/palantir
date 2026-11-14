@@ -8,7 +8,7 @@ use naga::front::wgsl;
 use naga::valid::{Capabilities, ValidationFlags, Validator};
 use naga::{Module, ScalarKind, StructMember, TypeInner, VectorSize};
 
-use crate::effect::effect_store::EffectModule;
+use crate::effect::effect_module::EffectModule;
 use crate::effect::error::{EffectError, EntryMismatch, ParamMismatch, WgslError};
 use crate::effect::{MAX_IMAGE_SLOTS, MAX_PARAMS_SIZE};
 use crate::primitives::effect::effect_kind::KindId;

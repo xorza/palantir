@@ -21,7 +21,7 @@ use crate::renderer::frontend::paint_sink::{DrawAnimation, PaintSink};
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_closed_payload::DrawClosedPayload;
 use crate::renderer::frontend::payload::draw_closed_payload::closed_effect::{
-    ClosedEffect, EffectCaptureDraw,
+    ClosedEffect, EffectCaptureDraw, EffectRead,
 };
 use crate::renderer::frontend::payload::draw_closed_payload::closed_fill::ClosedFill;
 use crate::renderer::frontend::payload::draw_closed_payload::closed_image::{
@@ -47,7 +47,7 @@ use crate::shape::geometry::closed_geometry::PlacedClosed;
 use crate::shape::geometry::placed_stroke::PlacedStroke;
 use crate::shape::geometry::stroke_geometry::{PolylineGeometry, StrokeGeometry};
 use crate::shape::lower::LoweredPaint;
-use crate::shape::paint::closed_paint::ClosedPaint;
+use crate::shape::paint::closed_paint::{ClosedPaint, RecordedRead};
 use crate::shape::paint::curve_ramp::CurveRamp;
 use crate::shape::paint::image_source::ImageSource;
 use crate::shape::paint::lowered_border::LoweredBorder;
@@ -463,24 +463,25 @@ impl PlaneCtx<'_, '_> {
                     // An effect fades, turns and reads its time with its paint animation. A
                     // backdrop effect the cascade lists not lies outside every clip.
                     ClosedPaint::Effect {
-                        backdrop,
-                        outside,
+                        read,
                         effect,
                         params,
                         images,
                         content_hash: _,
                     } => {
-                        let backdrop = match backdrop {
-                            Some(capture) => {
+                        let read = match *read {
+                            RecordedRead::Color { outside } => EffectRead::Color { outside },
+                            RecordedRead::Backdrop { capture } => {
                                 let Some(ticket) = self.backdrop_ticket(site) else {
                                     return;
                                 };
-                                Some(EffectCaptureDraw {
-                                    ticket,
-                                    reach: capture.reach,
-                                })
+                                EffectRead::Backdrop {
+                                    capture: EffectCaptureDraw {
+                                        ticket,
+                                        reach: capture.reach,
+                                    },
+                                }
                             }
-                            None => None,
                         };
                         out.draw(
                             DrawClosedPayload::new(
@@ -489,9 +490,7 @@ impl PlaneCtx<'_, '_> {
                                     effect: *effect,
                                     params: *params,
                                     images: *images,
-                                    backdrop,
-                                    stage: None,
-                                    outside: *outside,
+                                    read,
                                     opacity: 1.0,
                                     time: paint_mod.time,
                                 },
