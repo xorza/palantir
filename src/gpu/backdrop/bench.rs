@@ -22,7 +22,7 @@ use crate::display::system_scale::SystemScale;
 use crate::gpu::bench_gpu::{BenchGpu, Timing};
 use crate::gpu::surface::owned_target::OwnedTarget;
 use crate::host::harness::Harness;
-use crate::host::harness::harness_builder::Depth;
+use crate::host::harness::harness_builder::HarnessDepth;
 use crate::host::offscreen::OffscreenHost;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::layout::sizing::Sizing;
@@ -376,7 +376,7 @@ pub(crate) fn integration<S: Scene>(c: &mut Criterion, backends: &Backends) {
                     Backend::Cpu => {
                         let mut h = Harness::builder(FRAME_SURFACE)
                             .system_scale(FRAME_DPR)
-                            .depth(Depth::Compose)
+                            .depth(HarnessDepth::Compose)
                             .build();
                         let start = Instant::now();
                         let mut state = MaterialFrame::<S>::default();

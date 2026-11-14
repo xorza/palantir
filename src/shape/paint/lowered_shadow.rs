@@ -6,6 +6,7 @@ use crate::primitives::math::nan::NanCheck;
 use crate::primitives::packed::half_simd::F16x4;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::shadow::Shadow;
+use crate::primitives::paint::shadow::ShadowKind;
 use glam::Vec2;
 use std::hash;
 
@@ -98,7 +99,7 @@ impl LoweredShadow {
                 shadow.blur,
                 shadow.spread,
             ]),
-            inset_flag: u16::from(shadow.inset),
+            inset_flag: u16::from(shadow.kind == ShadowKind::Inset),
         }
     }
 }

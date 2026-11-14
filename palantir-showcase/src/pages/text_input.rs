@@ -231,7 +231,9 @@ fn page(ui: &mut Ui, k: Kit, s: &mut Page) {
         });
 
     Section::new("Alignment")
-        .apis(&[api!(TextEdit::text_align)])
+        .apis(&[api!(
+            TextEdit::text_align as fn(TextEdit<'static>, Align) -> TextEdit<'static>
+        )])
         .show(ui, k, |ui| {
             support::note(
                 ui,
@@ -249,7 +251,7 @@ fn page(ui: &mut Ui, k: Kit, s: &mut Page) {
                     {
                         TextEdit::new(buf)
                             .id_salt(i)
-                            .text_align(Align::new(h, VAlign::Center))
+                            .text_align((h, VAlign::Center))
                             .size((Sizing::fill(1.0), Sizing::fixed(56.0)))
                             .show(ui);
                     }
@@ -333,7 +335,7 @@ fn live(ui: &mut Ui, k: Kit, l: &mut LiveField) {
                 TextEdit::new(&mut l.text)
                     .max_chars(max)
                     .multiline(l.multiline)
-                    .text_align(Align::new(align, VAlign::Top))
+                    .text_align((align, VAlign::Top))
                     .select_all_on_focus(l.select_all)
                     .size((Sizing::FILL, height))
                     .max_size((420.0, f32::INFINITY))

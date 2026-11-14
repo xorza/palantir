@@ -15,7 +15,7 @@ use crate::widgets::text::Text;
 #[derive(Clone, Copy, Debug)]
 pub struct TabChip {
     /// The chip's index in the strip's items.
-    pub slot: usize,
+    pub idx: usize,
     /// The tab's [`TabItem::key`](crate::TabItem::key).
     pub key: TabKey,
     /// The tab's [`TabItem::label`](crate::TabItem::label).

@@ -3,7 +3,7 @@
 use crate::internals::layout_rig::{GridTracks, LayoutRig};
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
-use crate::primitives::layout::align::{Align, HAlign, VAlign};
+use crate::primitives::layout::align::{HAlign, VAlign};
 use crate::primitives::layout::grid_cell::GridCell;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::layout::track::Track;
@@ -26,7 +26,7 @@ fn grid_cell_alignment_override_pins_child_to_corner() {
                 Widget::leaf()
                     .grid_cell((0, 0))
                     .size((20.0, 20.0))
-                    .align(Align::new(HAlign::Right, VAlign::Bottom)),
+                    .align((HAlign::Right, VAlign::Bottom)),
             );
         });
     });

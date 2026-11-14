@@ -14,13 +14,13 @@ fn a_fade_to_transparent_keeps_its_color_midway() {
     let mut mesh = Mesh::new();
     let (white, clear) = (RgbaF32::WHITE, RgbaF32::TRANSPARENT);
     let v = [
-        mesh.vertex(Vec2::new(0.0, 10.0), white),
-        mesh.vertex(Vec2::new(200.0, 10.0), clear),
-        mesh.vertex(Vec2::new(0.0, 30.0), white),
-        mesh.vertex(Vec2::new(200.0, 30.0), clear),
+        mesh.add_vertex(Vec2::new(0.0, 10.0), white),
+        mesh.add_vertex(Vec2::new(200.0, 10.0), clear),
+        mesh.add_vertex(Vec2::new(0.0, 30.0), white),
+        mesh.add_vertex(Vec2::new(200.0, 30.0), clear),
     ];
-    mesh.triangle(v[0], v[1], v[2]);
-    mesh.triangle(v[1], v[3], v[2]);
+    mesh.add_triangle(v[0], v[1], v[2]);
+    mesh.add_triangle(v[1], v[3], v[2]);
     let line = [Vec2::new(0.0, 60.0), Vec2::new(200.0, 60.0)];
 
     let mut h = VisualRig::new();
@@ -31,7 +31,7 @@ fn a_fade_to_transparent_keeps_its_color_midway() {
             fixtures::canvas(ui, |ui| {
                 ui.add_shape(Shape::mesh(&mesh), RgbaF32::WHITE);
                 ui.add_shape(
-                    Shape::polyline(&line).per_point(&[white, clear]),
+                    Shape::polyline(&line).point_colors(&[white, clear]),
                     Stroke::new(white, 20.0),
                 );
                 ui.add_shape(

@@ -159,7 +159,7 @@ impl StagingTarget {
 /// The texels a target that must hold `size` takes: each edge rounded up to [`GROWTH_GRANULE`],
 /// held to the device's edge.
 fn rounded(gpu: &Gpu, size: UVec2) -> UVec2 {
-    let ceiling = gpu.max_texture_dim().get();
+    let ceiling = gpu.max_texture_dimension().get();
     debug_assert!(
         size.max_element() <= ceiling,
         "a staging of {size} passes the device's {ceiling} edge"

@@ -5,6 +5,7 @@ use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::interaction::response::Response;
 use crate::primitives::input::pointer::PointerButton;
 use crate::primitives::input::sense::Sense;
 use crate::primitives::layout::align::{Align, HAlign, VAlign};
@@ -500,5 +501,5 @@ fn show_folds_a_nodes_own_disabled_into_its_response() {
         "the node's own flag, on the pass the cascade lags"
     );
     assert!(!pass_a.clicked(), "a disabled node takes no click");
-    assert_eq!(passes.count_where(|response| response.clicked()), 0);
+    assert_eq!(passes.count_where(Response::clicked), 0);
 }

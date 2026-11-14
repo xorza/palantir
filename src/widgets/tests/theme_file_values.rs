@@ -10,7 +10,6 @@ use crate::internals::dock_fixture::DockFixture;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::interaction::response::Response;
-use crate::primitives::input::interaction::response_state::ResponseState;
 use crate::primitives::input::shortcut::Shortcut;
 use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::layout::sizing::Sizing;
@@ -220,12 +219,9 @@ fn probe(ui: &mut Ui, scene: &mut Scene) {
         MenuItem::new("Paste").show(ui);
     });
     let hovered = Response {
-        id: WidgetId::from_hash("probe-tip-trigger"),
-        state: ResponseState {
-            rect: Some(Rect::new(40.0, 40.0, 40.0, 24.0)),
-            pointer_over: true,
-            ..ResponseState::default()
-        },
+        rect: Some(Rect::new(40.0, 40.0, 40.0, 24.0)),
+        pointer_over: true,
+        ..Response::idle(WidgetId::from_hash("probe-tip-trigger"))
     };
     Tooltip::on(&hovered, "tip").delay(Duration::ZERO).show(ui);
     Popup::new()
@@ -267,7 +263,9 @@ fn render(theme: Theme, shaper: &TextShaper) -> Harness {
     let mut h = Harness::builder(UVec2::new(640, 480))
         .shaper(shaper.clone())
         .build();
-    h.ui_mut().set_theme(ColorScheme::Dark, theme).unwrap();
+    h.ui_mut()
+        .set_scheme_theme(ColorScheme::Dark, theme)
+        .unwrap();
     h.frame(probe_modal);
     Menu::open_at(h.ui_mut(), menu_id(), Vec2::new(20.0, 20.0));
     let mut scene = Scene {

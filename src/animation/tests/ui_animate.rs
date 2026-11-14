@@ -409,7 +409,7 @@ fn a_look_follows_a_theme_change_and_fades_a_state_change() {
             let theme = Rc::clone(ui.theme());
             let plan = theme
                 .button
-                .plan(&response.state, Selection::Unselected, theme.text);
+                .plan(&response, Selection::Unselected, theme.text);
             let want = plan.target.clone();
             let look = leaf.wear(ui, plan);
             leaf.record(ui, Some(&look.chrome), |_| {});
@@ -424,7 +424,9 @@ fn a_look_follows_a_theme_change_and_fades_a_state_change() {
         ColorScheme::Light => ColorScheme::Dark,
         ColorScheme::Dark => ColorScheme::Light,
     };
-    h.ui_mut().set_theme(shown, Theme::stock(other)).unwrap();
+    h.ui_mut()
+        .set_scheme_theme(shown, Theme::stock(other))
+        .unwrap();
     let (look, want) = wear(h.advance(Duration::from_millis(16)));
     assert_eq!(look, want, "a theme change is followed at once");
 

@@ -45,7 +45,7 @@ fn ui_layer_records_popup_into_separate_tree() {
                     .size(30.0)
                     .show(ui);
             });
-        ui.layer(Layer::Popup).fixed_at(popup_anchor).show(|ui| {
+        ui.layer(Layer::Popup).at(popup_anchor).show(|ui| {
             Panel::vstack()
                 .id(WidgetId::from_hash("popup-root"))
                 .show(ui, |ui| {
@@ -101,7 +101,7 @@ fn ui_layer_size_caps_overlay_available() {
                 .id(WidgetId::from_hash("main"))
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |_| {});
-            let mut scope = ui.layer(Layer::Popup).fixed_at(anchor);
+            let mut scope = ui.layer(Layer::Popup).at(anchor);
             if let Some(cap) = cap {
                 scope = scope.max_size(*cap);
             }
@@ -153,7 +153,7 @@ fn forest_independence_across_recording_orders() {
             });
     };
     let record_popup = |ui: &mut Ui| {
-        ui.layer(Layer::Popup).fixed_at(popup_anchor).show(|ui| {
+        ui.layer(Layer::Popup).at(popup_anchor).show(|ui| {
             Panel::vstack()
                 .id(WidgetId::from_hash("popup-root"))
                 .show(ui, |ui| {
@@ -195,7 +195,7 @@ fn mid_recording_popup_with_text_renders_through_encoder() {
                     .id(WidgetId::from_hash("trigger"))
                     .label("menu")
                     .show(ui);
-                ui.layer(Layer::Popup).fixed_at(popup_anchor).show(|ui| {
+                ui.layer(Layer::Popup).at(popup_anchor).show(|ui| {
                     Panel::vstack()
                         .id(WidgetId::from_hash("popup-body"))
                         .show(ui, |ui| {
@@ -275,7 +275,7 @@ fn mid_recording_popup_keeps_trees_independent() {
                     .size(20.0)
                     .show(ui);
                 ui.add_shape(marker(2), RgbaF32::srgb(1.0, 0.0, 0.0));
-                ui.layer(Layer::Popup).fixed_at(popup_anchor).show(|ui| {
+                ui.layer(Layer::Popup).at(popup_anchor).show(|ui| {
                     Panel::vstack()
                         .id(WidgetId::from_hash("popup-root"))
                         .show(ui, |ui| {

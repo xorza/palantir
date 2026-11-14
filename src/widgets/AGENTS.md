@@ -23,6 +23,10 @@ API design", hold here too.
   one type serves a read, an overlay's anchor and a composite's gathering. Refused: a lazy
   `Response` over `&Ui`, which needs an owned twin of each response and a lifetime on each;
   `Response::tooltip`, which needs `&mut Ui` and names a widget above `widget_core`.
+- **One `Response`, its reads inherent**: the id and the frame's state in one plain struct, built
+  idle through `Response::idle(id)`, with no `Default`, as a response names its widget. Refused:
+  an id beside a state the response derefs to, `Deref` being for smart pointers alone
+  ([C-DEREF](https://rust-lang.github.io/api-guidelines/predictability.html#only-smart-pointers-implement-deref-c-deref)).
 - **A wrapper finishes the widget it wraps through its public setters**. Widgets of the crate that
   cooperate do so through a `pub(crate)` protocol documented on the widget that offers it.
   Refused: publishing those hooks, a protocol no app needs that each refactor would break.

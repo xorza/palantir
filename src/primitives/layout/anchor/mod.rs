@@ -68,7 +68,7 @@ impl AnchorAlign {
 /// Where a side layer lands next to the thing it belongs to, for
 /// [`LayerScope::anchor`](crate::LayerScope::anchor). The body measures against the room the
 /// roomier side leaves, and the origin resolves after measure: the requested side if the body
-/// fits, else the opposite, else shifted inside the surface. [`LayerScope::fixed_at`](crate::LayerScope::fixed_at) never moves.
+/// fits, else the opposite, else shifted inside the surface. [`LayerScope::at`](crate::LayerScope::at) never moves.
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[must_use]
 pub struct Anchor {

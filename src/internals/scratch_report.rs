@@ -5,7 +5,7 @@
 use crate::bench::scene::{BENCH_DPR, BENCH_SURFACE};
 use crate::fmt;
 use crate::host::harness::Harness;
-use crate::host::harness::harness_builder::Depth;
+use crate::host::harness::harness_builder::HarnessDepth;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::layout::sizing::Sizing;
 use crate::ui::Ui;
@@ -74,7 +74,7 @@ impl Report {
     fn run(scale: usize) -> Self {
         let mut h = Harness::builder(BENCH_SURFACE)
             .system_scale(BENCH_DPR)
-            .depth(Depth::Compose)
+            .depth(HarnessDepth::Compose)
             .build();
         let mut state = Screen::default();
         let mut time = Duration::ZERO;

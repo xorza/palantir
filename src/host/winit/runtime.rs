@@ -266,7 +266,7 @@ impl<T: App + 'static> WinitRuntime<T> {
             renew_surface(
                 &self.surfaces,
                 win,
-                self.core.device.gpu().max_texture_dim(),
+                self.core.device.gpu().max_texture_dimension(),
             );
         }
         if single_window {
@@ -327,9 +327,9 @@ impl<T: App + 'static> WinitRuntime<T> {
             &mut self.core.cpu,
             self.windows.iter_mut().map(|win| &mut win.frames),
         );
-        let max_texture_dim = self.core.device.gpu().max_texture_dim();
+        let max_texture_dimension = self.core.device.gpu().max_texture_dimension();
         for win in self.windows.iter_mut().skip(1) {
-            renew_surface(&self.surfaces, win, max_texture_dim);
+            renew_surface(&self.surfaces, win, max_texture_dimension);
         }
         Ok(())
     }
@@ -402,7 +402,7 @@ impl<T: App + 'static> WinitRuntime<T> {
             .make_surface(
                 &window,
                 SurfaceManager::clamp_extent(
-                    self.core.device.gpu().max_texture_dim(),
+                    self.core.device.gpu().max_texture_dimension(),
                     native::physical_size(&window),
                 ),
             )
@@ -448,8 +448,8 @@ impl<T: App + 'static> WinitRuntime<T> {
 
 /// Make `win` a new surface. On a failure the window keeps a lost one, and its next frame tries
 /// again after a pause.
-fn renew_surface(surfaces: &SurfaceManager, win: &mut Window, max_texture_dim: NonZeroU32) {
-    if let Err(error) = surfaces.renew(&win.window, &mut win.surface, max_texture_dim) {
+fn renew_surface(surfaces: &SurfaceManager, win: &mut Window, max_texture_dimension: NonZeroU32) {
+    if let Err(error) = surfaces.renew(&win.window, &mut win.surface, max_texture_dimension) {
         tracing::error!(token = ?win.frames.token(), %error, "window surface not made again");
     }
 }

@@ -83,7 +83,7 @@ impl Capture {
     /// End the in-flight press and record how.
     ///
     /// The only way a press leaves a capture. Every end writes a [`Release`],
-    /// which both downstream collations read (a widget's `ButtonPhase` /
+    /// which both downstream collations read (a widget's `PointerButtonPhase` /
     /// [`Drag`](crate::Drag) and `pointer_actions`'s
     /// [`PointerEdge`](crate::PointerEdge)); without one, a widget committing
     /// on `drag.stopped()` never commits.
@@ -130,7 +130,7 @@ pub(super) struct Press {
     /// Position in the multi-press run (1 = single, 2 = double, ...), stamped
     /// at press time so the release does not depend on later run state.
     pub(super) count: u8,
-    /// One-frame edge: the press landed this frame (`ButtonPhase::Down`).
+    /// One-frame edge: the press landed this frame (`PointerButtonPhase::Down`).
     /// Lowered by `drain_per_frame_queues`.
     pub(super) fresh: bool,
     /// Drag latch, sticky for the press; also suppresses click on release.
@@ -164,7 +164,7 @@ pub(super) enum ReleaseKind {
     Click { count: u8 },
     /// A latched drag ended: the commit edge.
     DragStopped,
-    /// Released off the widget with no drag latched (`ButtonPhase::Up`).
+    /// Released off the widget with no drag latched (`PointerButtonPhase::Up`).
     Miss,
 }
 

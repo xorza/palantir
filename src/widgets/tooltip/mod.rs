@@ -125,9 +125,9 @@ impl<'a> Tooltip<'a> {
 
         // The observation, not the reaction: a disabled trigger is never hovered,
         // which `when_disabled` is for.
-        let pointer_over = self.trigger.state.pointer_over;
-        let trigger_disabled = self.trigger.state.disabled;
-        let trigger_rect = self.trigger.state.rect;
+        let pointer_over = self.trigger.pointer_over;
+        let trigger_disabled = self.trigger.disabled;
+        let trigger_rect = self.trigger.rect;
         let active_trigger =
             pointer_over && !self.label.is_empty() && (!trigger_disabled || self.when_disabled);
 

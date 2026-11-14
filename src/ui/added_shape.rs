@@ -25,7 +25,7 @@ impl<'u> AddedShape<'u> {
     }
 
     /// Animate the shape at paint time. The recorded shape is identical every frame, so the widget
-    /// never records it again. With motion reduced ([`Ui::is_motion_reduced`]), a decorative
+    /// never records it again. With motion reduced ([`Ui::reductions`]), a decorative
     /// animation lands at once, as
     /// [`MotionRole::Decorative`](crate::widget::MotionRole::Decorative) says. An [`EffectPaint`](crate::widget::EffectPaint) reads the animation's time. A shape
     /// that paints nothing takes no animation.
@@ -45,7 +45,7 @@ impl<'u> AddedShape<'u> {
             "a paint animation that drives no channel moves only an effect's time, and this \
              shape's paint reads none"
         );
-        let animation = if ui.is_motion_reduced() {
+        let animation = if ui.reductions().motion.is_reduced() {
             animation.reduced()
         } else {
             Some(animation)

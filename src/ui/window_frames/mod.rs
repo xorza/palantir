@@ -501,7 +501,7 @@ impl WindowFrames {
         self.layout.end_frame(removed);
         self.ui
             .memory
-            .sweep(removed, self.ui.frame_runtime.render_frame_id);
+            .sweep(removed, self.ui.frame_runtime.render_frame_idx);
 
         self.ui.input.end_frame();
     }

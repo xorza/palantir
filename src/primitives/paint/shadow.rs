@@ -34,9 +34,24 @@ pub struct Shadow {
     #[serde(deserialize_with = "crate::primitives::math::domain::file::offset")]
     #[animate(settle_eps = PX_SETTLE_EPS)]
     pub spread: f32,
-    /// Paints inside the chrome boundary rather than outside it.
+    /// Whether it falls outside the boundary or inside it.
     #[animate(snap)]
-    pub inset: bool,
+    pub kind: ShadowKind,
+}
+
+/// Where a [`Shadow`] falls, as CSS's `box-shadow` has its `inset` keyword: two kinds, an enum
+/// rather than the `bool` beside [`Shadow::inset`], which named the field and the constructor
+/// alike.
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
+)]
+#[serde(deny_unknown_fields)]
+pub enum ShadowKind {
+    /// Outside the boundary, the box lifting off the surface.
+    #[default]
+    Drop,
+    /// Inside the boundary, the box sunk into it.
+    Inset,
 }
 
 impl Shadow {
@@ -72,7 +87,7 @@ impl Shadow {
         offset: Vec2::ZERO,
         blur: 0.0,
         spread: 0.0,
-        inset: false,
+        kind: ShadowKind::Drop,
     };
 
     /// A drop shadow of `color`, blurred by `blur` (σ) and shifted by `offset`, with no spread.
@@ -82,7 +97,7 @@ impl Shadow {
             offset,
             blur,
             spread: 0.0,
-            inset: false,
+            kind: ShadowKind::Drop,
         }
     }
 
@@ -90,7 +105,7 @@ impl Shadow {
     /// by `offset`, with no spread, as CSS's `box-shadow: inset …`.
     pub const fn inset(color: RgbaF32, offset: Vec2, blur: f32) -> Self {
         Self {
-            inset: true,
+            kind: ShadowKind::Inset,
             ..Self::drop(color, offset, blur)
         }
     }

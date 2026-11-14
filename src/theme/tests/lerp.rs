@@ -14,6 +14,7 @@ use crate::primitives::math::lerp::Lerp;
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::shadow::ShadowKind;
 use crate::text::font_family::FontFamily;
 use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
@@ -130,8 +131,11 @@ fn values_with_no_blend_switch_halfway() {
     b.text.family = FontFamily::MONO;
     b.text.weight = FontWeight::BOLD;
     b.text.slant = FontSlant::Italic;
-    b.button.unselected.normal.chrome.paint.shadow.inset =
-        !a.button.unselected.normal.chrome.paint.shadow.inset;
+    b.button.unselected.normal.chrome.paint.shadow.kind =
+        match a.button.unselected.normal.chrome.paint.shadow.kind {
+            ShadowKind::Drop => ShadowKind::Inset,
+            ShadowKind::Inset => ShadowKind::Drop,
+        };
 
     for (t, want) in [(0.25, &a), (0.49, &a), (0.5, &b), (0.75, &b)] {
         let mix = Theme::lerp(&a.clone(), &b.clone(), t);
@@ -147,8 +151,8 @@ fn values_with_no_blend_switch_halfway() {
         assert_eq!(mix.text.weight, want.text.weight, "{t}");
         assert_eq!(mix.text.slant, want.text.slant, "{t}");
         assert_eq!(
-            mix.button.unselected.normal.chrome.paint.shadow.inset,
-            want.button.unselected.normal.chrome.paint.shadow.inset,
+            mix.button.unselected.normal.chrome.paint.shadow.kind,
+            want.button.unselected.normal.chrome.paint.shadow.kind,
             "{t}"
         );
     }

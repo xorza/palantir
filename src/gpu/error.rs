@@ -11,13 +11,13 @@ use crate::gpu::flag_names;
 pub enum UnmetRequirements {
     /// A required feature is absent.
     Features {
-        /// The features of [`DeviceRequirements::FEATURES`](crate::DeviceRequirements::FEATURES)
+        /// The features of [`DeviceRequirements::REQUIRED_FEATURES`](crate::DeviceRequirements::REQUIRED_FEATURES)
         /// the device lacks.
         missing: wgpu::Features,
     },
     /// A required capability of the backend is absent, as compute shaders are on OpenGL ES 3.0.
     Downlevel {
-        /// The flags of [`DeviceRequirements::DOWNLEVEL`](crate::DeviceRequirements::DOWNLEVEL)
+        /// The flags of [`DeviceRequirements::REQUIRED_DOWNLEVEL`](crate::DeviceRequirements::REQUIRED_DOWNLEVEL)
         /// the adapter lacks.
         missing: wgpu::DownlevelFlags,
     },

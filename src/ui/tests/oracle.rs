@@ -142,7 +142,7 @@ fn scene(ui: &mut Ui, k: Knobs, picture: &ImageHandle) {
     }
     if k.dialog {
         ui.layer(Layer::Modal)
-            .fixed_at(Vec2::new(40.0, 200.0))
+            .at(Vec2::new(40.0, 200.0))
             .show(|ui| {
                 Block::new()
                     .id(WidgetId::from_hash("dialog"))
@@ -150,7 +150,7 @@ fn scene(ui: &mut Ui, k: Knobs, picture: &ImageHandle) {
                     .chrome(fill(RgbaF32::srgb(0.4, 0.4, 0.4)))
                     .show(ui);
                 ui.layer(Layer::Popup)
-                    .fixed_at(Vec2::new(60.0, 220.0))
+                    .at(Vec2::new(60.0, 220.0))
                     .show(|ui| {
                         Block::new()
                             .id(WidgetId::from_hash("dialog-popup"))
@@ -171,7 +171,7 @@ fn overlay(ui: &mut Ui, name: &'static str, shift: f32, body: impl FnOnce(&mut U
         RgbaF32::srgb(0.0, 0.5, 1.0)
     };
     ui.layer(Layer::Popup)
-        .fixed_at(Vec2::new(300.0 + shift, 40.0))
+        .at(Vec2::new(300.0 + shift, 40.0))
         .show(|ui| {
             Block::new()
                 .id(WidgetId::from_hash(name))

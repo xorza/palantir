@@ -316,14 +316,13 @@ impl MenuBarMenus<'_> {
                 landing = MenuLanding::Last;
             }
             if (down || up) && !response.clicked() {
-                response.state.activate();
+                response.activate();
             }
         }
-        let plan = self.style.title.plan(
-            &response.state,
-            Selection::from(here.is_some()),
-            self.theme.text,
-        );
+        let plan =
+            self.style
+                .title
+                .plan(&response, Selection::from(here.is_some()), self.theme.text);
         let look = widget.wear(ui, plan);
         widget.record(ui, Some(&look.chrome), |ui| {
             ui.add_shape(Shape::text(label, look.text.font()), look.text.color);

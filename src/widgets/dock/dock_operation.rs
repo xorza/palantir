@@ -11,7 +11,7 @@ use crate::widgets::dock::tab_group::TabGroupId;
 #[serde(deny_unknown_fields)]
 pub enum DockDrop {
     /// Join `group`'s strip at `idx` (clamped to its length).
-    Into {
+    Join {
         /// Target group.
         group: TabGroupId,
         /// Slot within that strip, clamped to its length.
@@ -61,7 +61,7 @@ pub enum DockOperation<T> {
         ratio: f32,
     },
     /// Move focus onto `group`, because a press landed inside its pane.
-    FocusPane {
+    FocusGroup {
         /// The group.
         group: TabGroupId,
     },

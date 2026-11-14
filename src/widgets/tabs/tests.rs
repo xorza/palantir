@@ -66,7 +66,7 @@ fn strip_frame(h: &mut Harness, selected: usize) {
         let items = items(ui);
         TabStrip::new(&items)
             .id(strip_id())
-            .selected(selected)
+            .selected_idx(selected)
             .show(ui, |ui, chip| chip.show_label(ui));
     });
 }
@@ -79,7 +79,7 @@ fn chip_ids_follow_the_key_and_not_the_slot() {
         let items = items(ui);
         TabStrip::new(&items)
             .id(strip_id())
-            .selected(0)
+            .selected_idx(0)
             .show(ui, |ui, chip| chip.show_label(ui));
     });
     let alpha = TabStrip::chip_id(strip_id(), TabKey::of(10_u64));
@@ -91,7 +91,7 @@ fn chip_ids_follow_the_key_and_not_the_slot() {
         items.reverse();
         TabStrip::new(&items)
             .id(strip_id())
-            .selected(0)
+            .selected_idx(0)
             .show(ui, |ui, chip| chip.show_label(ui));
     });
     let after = h
@@ -131,9 +131,9 @@ fn the_content_records_inside_the_chip_before_its_close_button() {
         let items = items(ui);
         TabStrip::new(&items)
             .id(strip_id())
-            .selected(0)
+            .selected_idx(0)
             .show(ui, |ui, chip| {
-                handed.push((chip.slot, chip.key, chip.selected, chip.id));
+                handed.push((chip.idx, chip.key, chip.selected, chip.id));
                 chip.show_label(ui);
                 if chip.key == TabKey::of(10_u64) {
                     Block::new()
@@ -286,7 +286,7 @@ fn a_hidden_close_keeps_its_box_until_the_pointer_shows_it() {
             let items = items(ui);
             TabStrip::new(&items)
                 .id(strip_id())
-                .selected(0)
+                .selected_idx(0)
                 .show(ui, |ui, chip| {
                     chip.show_label(ui);
                     Block::new()
@@ -363,7 +363,7 @@ fn the_selection_cap_is_a_band_across_the_chip_top() {
         let items = items(ui);
         TabStrip::new(&items)
             .id(strip_id())
-            .selected(0)
+            .selected_idx(0)
             .focused(false)
             .show(ui, |ui, chip| chip.show_label(ui));
     });
@@ -383,7 +383,7 @@ fn a_pinned_chip_is_as_tall_as_a_closable_one() {
             items[0].closable = false;
             TabStrip::new(&items)
                 .id(strip_id())
-                .selected(0)
+                .selected_idx(0)
                 .show(ui, |ui, chip| chip.show_label(ui));
         });
     }
@@ -416,7 +416,7 @@ fn a_close_click_reports_a_close_and_not_a_click() {
         let items = items(ui);
         let r = TabStrip::new(&items)
             .id(strip_id())
-            .selected(0)
+            .selected_idx(0)
             .show(ui, |ui, chip| chip.show_label(ui));
         (r.activated, r.closed)
     });
@@ -435,7 +435,7 @@ fn a_chip_click_reports_its_slot() {
         let items = items(ui);
         let r = TabStrip::new(&items)
             .id(strip_id())
-            .selected(0)
+            .selected_idx(0)
             .show(ui, |ui, chip| chip.show_label(ui));
         (r.unscanned, r.activated, r.closed)
     });
@@ -462,7 +462,7 @@ fn arrows_home_and_end_travel_and_wrap() {
             let items = items(ui);
             let r = TabStrip::new(&items)
                 .id(strip_id())
-                .selected(selected)
+                .selected_idx(selected)
                 .show(ui, |ui, chip| chip.show_label(ui));
             assert_eq!(
                 r.activated, r.unscanned,
@@ -538,7 +538,7 @@ fn a_keyboard_move_pans_the_band_to_the_chip() {
             let items = items(ui);
             TabStrip::new(&items)
                 .id(strip_id())
-                .selected(selected)
+                .selected_idx(selected)
                 .size((Sizing::fixed(120.0), Sizing::HUG))
                 .show(ui, |ui, chip| chip.show_label(ui))
                 .unscanned
@@ -587,7 +587,7 @@ fn an_overflowing_strip_pans_sideways_and_chains_a_vertical_wheel() {
                 .show(ui, |ui| {
                     TabStrip::new(&items)
                         .id(strip_id())
-                        .selected(0)
+                        .selected_idx(0)
                         .size((Sizing::fixed(90.0), Sizing::HUG))
                         .show(ui, |ui, chip| chip.show_label(ui));
                     Block::new()
@@ -643,7 +643,7 @@ fn travel_needs_focus_inside_the_strip() {
         let items = items(ui);
         TabStrip::new(&items)
             .id(strip_id())
-            .selected(0)
+            .selected_idx(0)
             .show(ui, |ui, chip| chip.show_label(ui))
             .unscanned
     });
@@ -665,7 +665,7 @@ fn a_focused_strip_cycles_on_ctrl_tab_and_yields_bare_tab() {
                 let items = items(ui);
                 let keyed = TabStrip::new(&items)
                     .id(strip_id())
-                    .selected(0)
+                    .selected_idx(0)
                     .show(ui, |ui, chip| chip.show_label(ui))
                     .unscanned;
                 (at_root, keyed)
@@ -720,14 +720,14 @@ fn the_insertion_slot_counts_the_centers_passed() {
 #[test]
 fn a_drop_slot_and_its_caret_read_uncut_chip_extents() {
     let theme = Theme::stock(ColorScheme::Dark).tabs;
-    let (width, half_gap) = (theme.caret_width, theme.gap * 0.5);
+    let (width, half_gap) = (theme.drop_mark_width, theme.gap * 0.5);
     let caret = strip_id().with("caret");
     let build = |slot: usize| {
         move |ui: &mut Ui| {
             let items = items(ui);
             TabStrip::new(&items)
                 .id(strip_id())
-                .selected(0)
+                .selected_idx(0)
                 .dock_drag(Some(slot))
                 .size((Sizing::fixed(120.0), Sizing::HUG))
                 .show(ui, |ui, chip| chip.show_label(ui));
@@ -1239,7 +1239,7 @@ fn a_partly_clipped_chip_raises_the_overflow_chevron() {
             let items = items(ui);
             TabStrip::new(&items)
                 .id(strip_id())
-                .selected(0)
+                .selected_idx(0)
                 .overflow(TabOverflow::Menu)
                 .size((Sizing::fixed(width), Sizing::HUG))
                 .show(ui, |ui, chip| chip.show_label(ui));
@@ -1299,7 +1299,7 @@ fn a_partly_clipped_chip_raises_the_overflow_chevron() {
         let items = items(ui);
         let r = TabStrip::new(&items)
             .id(strip_id())
-            .selected(0)
+            .selected_idx(0)
             .overflow(TabOverflow::Menu)
             .size((Sizing::fixed(half_way), Sizing::HUG))
             .show(ui, |ui, chip| chip.show_label(ui));
@@ -1347,7 +1347,7 @@ fn the_overflow_menu_opens_on_the_selected_chip_in_its_menu_style() {
             let items = items(ui);
             TabStrip::new(&items)
                 .id(strip_id())
-                .selected(1)
+                .selected_idx(1)
                 .overflow(TabOverflow::Menu)
                 .menu_style(styled.then_some(&menu))
                 .size((Sizing::fixed(60.0), Sizing::HUG))
@@ -1406,4 +1406,39 @@ fn a_tabbed_view_restyles_its_overflow_menu() {
             .h
     };
     assert_eq!(height(true) - height(false), 2.0 * 9.0);
+}
+
+/// A chip wears the corners of the look it picks, as a theme file gives them: rounded on all four
+/// corners here, where the stock theme rounds the top two, on the selected and an unselected
+/// chip alike, the resting unselected look given a fill so it paints.
+#[test]
+fn a_chip_wears_its_looks_corners() {
+    use crate::primitives::geometry::corners::Corners;
+    use crate::primitives::paint::color::RgbaF32;
+
+    let mut h = Harness::mono(SURFACE);
+    let corners = Corners::all(5.0);
+    let tabs = &mut h.ui_mut().theme_mut().tabs;
+    for look in tabs
+        .selected
+        .each_mut()
+        .into_iter()
+        .chain(tabs.unselected.each_mut())
+    {
+        look.chrome.corners = corners;
+    }
+    tabs.unselected.normal.chrome.paint.fill = RgbaF32::WHITE.into();
+    strip_frame(&mut h, 0);
+    strip_frame(&mut h, 0);
+    for key in [10_u64, 20] {
+        let chip = TabStrip::chip_id(strip_id(), TabKey::of(key));
+        let node = h.node_for_widget_id(chip);
+        let worn = h
+            .ui()
+            .tree(Layer::Main)
+            .chrome(node)
+            .expect("the chip paints its chrome")
+            .corners;
+        assert_eq!(worn, corners, "chip {key}");
+    }
 }

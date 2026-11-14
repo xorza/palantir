@@ -16,7 +16,7 @@ use crate::primitives::effect::effect_params::EffectParams;
 /// blends. [`Self::new`] lays out the effect's own parameter type, which must be f32 lanes alone,
 /// so the name and its parameters agree by construction; a theme file names the effect and lists
 /// its lanes in order, as Flutter's `FragmentShader.setFloat` and Skia's runtime-effect uniforms
-/// take them, and [`Ui::set_theme`](crate::Ui::set_theme) holds their count to the loaded effect's.
+/// take them, and [`Ui::set_scheme_theme`](crate::Ui::set_scheme_theme) holds their count to the loaded effect's.
 ///
 /// Refused: the name and the parameters as two fields, which a caller could set apart; an
 /// allocation of the bytes, which every material built in a frame would pay; any parameter type,

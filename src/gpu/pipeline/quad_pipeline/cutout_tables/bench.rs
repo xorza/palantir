@@ -42,7 +42,7 @@ pub(crate) fn atomic(c: &mut Criterion, backends: &Backends) {
                     page_edge: edge,
                     soft_bytes: 1 << 30,
                 }),
-                ..PoolConfig::of_device(gpu.gpu.max_texture_dim().get(), PassTraffic::Drawn)
+                ..PoolConfig::of_device(gpu.gpu.max_texture_dimension().get(), PassTraffic::Drawn)
             });
             let shader = QuadPipeline::SHADER.module(&gpu.gpu);
             let mut tables = CutoutTables::new(&gpu.gpu, &shader);

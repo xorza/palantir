@@ -99,14 +99,14 @@ impl TriggerOwned {
 pub struct CallerOwned(Vec2);
 
 impl Menu<'_, TriggerOwned> {
-    /// A menu on the trigger `for_id` that only [`Self::open`] or [`Self::open_at`] opens. A
+    /// A menu on the trigger `trigger` that only [`Self::open`] or [`Self::open_at`] opens. A
     /// menu on a trigger has the id [`Self::menu_id`] of the trigger's unless its `Configure`
     /// names another, settled here because the popup's `#[track_caller]` id would resolve to this
     /// line for every menu.
-    pub fn for_id(for_id: WidgetId) -> Self {
+    pub fn for_id(trigger: WidgetId) -> Self {
         Self::on_trigger(
             TriggerFrame {
-                for_id,
+                for_id: trigger,
                 toggled: false,
                 opened: None,
                 disabled: false,
@@ -192,21 +192,21 @@ impl Menu<'_, TriggerOwned> {
         settled
     }
 
-    /// Open the menu keyed off `for_id` below its trigger, as a click on a menu button does.
+    /// Open the menu of the trigger `trigger` below it, as a click on a menu button does.
     /// Idempotent.
-    pub fn open(ui: &mut Ui, for_id: WidgetId) {
-        TriggerState::<Menu<'static>>::open(ui, for_id, Opening::Below);
+    pub fn open(ui: &mut Ui, trigger: WidgetId) {
+        TriggerState::<Menu<'static>>::open(ui, trigger, Opening::Below);
     }
 
-    /// Open the menu keyed off `for_id` at surface-space `point`, as a right-click does.
+    /// Open the menu of the trigger `trigger` at surface-space `point`, as a right-click does.
     /// Idempotent; repeated calls move an open menu.
     ///
     /// # Panics
     ///
     /// Panics unless both axes of `point` are [offsets](crate::widget::domain::offset).
     #[track_caller]
-    pub fn open_at(ui: &mut Ui, for_id: WidgetId, point: Vec2) {
-        TriggerState::<Menu<'static>>::open(ui, for_id, Opening::At(vec2::offset(point)));
+    pub fn open_at(ui: &mut Ui, trigger: WidgetId, point: Vec2) {
+        TriggerState::<Menu<'static>>::open(ui, trigger, Opening::At(vec2::offset(point)));
     }
 
     /// The menu of the trigger `trigger`, unless its `Configure` names another.
@@ -214,14 +214,14 @@ impl Menu<'_, TriggerOwned> {
         trigger.with("menu")
     }
 
-    /// Close the menu keyed off `for_id`, giving back the input it held at once. No-op if closed.
-    pub fn close(ui: &mut Ui, for_id: WidgetId) {
-        TriggerState::<Menu<'static>>::close(ui, for_id);
+    /// Close the menu of the trigger `trigger`, giving back the input it held at once. No-op if closed.
+    pub fn close(ui: &mut Ui, trigger: WidgetId) {
+        TriggerState::<Menu<'static>>::close(ui, trigger);
     }
 
-    /// Whether the menu keyed off `for_id` is open. Allocates no row.
-    pub fn is_open(ui: &Ui, for_id: WidgetId) -> bool {
-        TriggerState::<Menu<'static>>::is_open(ui, for_id)
+    /// Whether the menu of the trigger `trigger` is open. Allocates no row.
+    pub fn is_open(ui: &Ui, trigger: WidgetId) -> bool {
+        TriggerState::<Menu<'static>>::is_open(ui, trigger)
     }
 }
 

@@ -28,12 +28,12 @@ fn pick(ui: &mut Ui, power: Preference<Reduction>) {
 fn power_moves_only_between_frames_and_follows_the_system_through_system() {
     let mut h = Harness::mono(SURFACE);
     h.prime(2, |_| {});
-    assert!(!h.ui().is_power_reduced());
+    assert!(!h.ui().reductions().power.is_reduced());
 
     let mut seen = None;
     let report = h.frame(|ui| {
         pick(ui, Preference::Fixed(Reduction::Reduced));
-        seen = Some(ui.is_power_reduced());
+        seen = Some(ui.reductions().power.is_reduced());
     });
     assert_eq!(
         seen,
@@ -43,7 +43,7 @@ fn power_moves_only_between_frames_and_follows_the_system_through_system() {
     assert!(report.repaint_requested, "the move asks for a frame");
     let report = h.frame(|_| {});
     assert!(
-        h.ui().is_power_reduced(),
+        h.ui().reductions().power.is_reduced(),
         "the next frame runs under the pick"
     );
     assert_ne!(report.processing, FrameProcessing::PaintOnly);
@@ -51,15 +51,18 @@ fn power_moves_only_between_frames_and_follows_the_system_through_system() {
     h.frame(|ui| pick(ui, Preference::Fixed(Reduction::Unreduced)));
     h.set_system_power_reduced(true);
     h.frame(|_| {});
-    assert!(h.ui().system_power_reduced());
+    assert!(h.ui().system_reductions().power.is_reduced());
     assert!(
-        !h.ui().is_power_reduced(),
+        !h.ui().reductions().power.is_reduced(),
         "a pick of full over the saver mode"
     );
 
     h.frame(|ui| pick(ui, Preference::System));
     h.frame(|_| {});
-    assert!(h.ui().is_power_reduced(), "System follows the saver mode");
+    assert!(
+        h.ui().reductions().power.is_reduced(),
+        "System follows the saver mode"
+    );
 }
 
 fn reduced_at(millihertz: u32) -> Harness {
@@ -128,7 +131,7 @@ fn the_frame_rate_pick_decides_the_cap_apart_from_the_power() {
     let mut h = reduced_at(60_000);
     frame_rate(&mut h, Preference::Fixed(Reduction::Unreduced));
     assert_eq!(frame_times(&mut h, 3), [Duration::ZERO; 3]);
-    assert!(h.ui().is_power_reduced());
+    assert!(h.ui().reductions().power.is_reduced());
     assert!(!h.ui().is_frame_rate_reduced());
     assert_eq!(h.frame(|_| {}).earliest_repaint_at, None);
 
@@ -142,7 +145,7 @@ fn the_frame_rate_pick_decides_the_cap_apart_from_the_power() {
         frame_times(&mut h, 3),
         [Duration::ZERO, interval, interval * 2]
     );
-    assert!(!h.ui().is_power_reduced());
+    assert!(!h.ui().reductions().power.is_reduced());
     assert!(h.ui().is_frame_rate_reduced());
 }
 

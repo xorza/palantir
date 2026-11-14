@@ -234,12 +234,12 @@ fn max_capped_fill_uses_resolved_alignment() {
     for axis in [Axis::X, Axis::Y] {
         let cases = match axis {
             Axis::X => [
-                (Align::h(HAlign::Center), 60.0),
-                (Align::h(HAlign::Right), 120.0),
+                (Align::from(HAlign::Center), 60.0),
+                (Align::from(HAlign::Right), 120.0),
             ],
             Axis::Y => [
-                (Align::v(VAlign::Center), 60.0),
-                (Align::v(VAlign::Bottom), 120.0),
+                (Align::from(VAlign::Center), 60.0),
+                (Align::from(VAlign::Bottom), 120.0),
             ],
         };
         for driver in ALIGNED_DRIVERS {

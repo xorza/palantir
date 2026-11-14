@@ -8,7 +8,7 @@ use palantir::glam::{UVec2, Vec2};
 use palantir::widget::{PaintAnimation, PaintRepeat, Shape};
 use palantir::{
     Block, Chrome, Configure, Fit, Gradient, Image, ImageHandle, Layer, Panel, Rect, RgbaF32,
-    Shadow, Sizing, SrgbaU8, Text, Ui,
+    Shadow, ShadowKind, Sizing, SrgbaU8, Text, Ui,
 };
 
 use crate::goldens;
@@ -130,7 +130,7 @@ fn scene(ui: &mut Ui, k: Knobs, picture: &ImageHandle) {
             RgbaF32::srgb(0.0, 0.5, 1.0)
         };
         ui.layer(Layer::Popup)
-            .fixed_at(Vec2::new(220.0, 30.0))
+            .at(Vec2::new(220.0, 30.0))
             .show(|ui| {
                 Block::new()
                     .id_salt(name)
@@ -149,7 +149,7 @@ fn shadows(ui: &mut Ui, k: Knobs) {
         offset: Vec2::ZERO,
         blur,
         spread: 0.0,
-        inset: false,
+        kind: ShadowKind::Drop,
     };
     let cast = |ui: &mut Ui, id: usize, at: Rect, blur: f32, radius: f32| {
         Panel::canvas()
@@ -165,7 +165,7 @@ fn shadows(ui: &mut Ui, k: Knobs) {
                 );
             });
     };
-    ui.layer(Layer::Modal).fixed_at(Vec2::ZERO).show(|ui| {
+    ui.layer(Layer::Modal).at(Vec2::ZERO).show(|ui| {
         Panel::canvas()
             .id_salt("shadows")
             .size((Sizing::fixed(320.0), Sizing::fixed(240.0)))

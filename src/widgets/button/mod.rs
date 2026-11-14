@@ -73,8 +73,8 @@ impl<'a> Button<'a> {
     }
 
     /// Label position inside the button's rect (unlike [`Configure::align`], which places the button).
-    pub const fn text_align(mut self, a: Align) -> Self {
-        self.label_align = a;
+    pub fn text_align(mut self, a: impl Into<Align>) -> Self {
+        self.label_align = a.into();
         self
     }
 

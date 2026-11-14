@@ -3,7 +3,7 @@
 use crate::gpu::pipeline::quad_pipeline::QuadPipeline;
 use crate::gpu::test_gpu::headless_test_gpu;
 use crate::host::harness::Harness;
-use crate::host::harness::harness_builder::Depth;
+use crate::host::harness::harness_builder::HarnessDepth;
 use crate::icons::icon_table::IconTable;
 use crate::icons::internals::ONE_COLOR;
 use crate::image_registry::image_handle::ImageHandle;
@@ -99,7 +99,7 @@ fn harness() -> Harness {
     let gpu = headless_test_gpu();
     let mut h = Harness::builder(SURFACE)
         .mono()
-        .depth(Depth::gpu(gpu.handles()))
+        .depth(HarnessDepth::gpu(gpu.handles()))
         .build();
     h.set_pixel_snap(false);
     h.ui_mut().theme_mut().panel_chrome = None;
@@ -156,12 +156,12 @@ fn every_family_takes_the_clips_coverage() {
     let icon = icons.by_name("rect").unwrap();
     let mut mesh = Mesh::with_capacity(4, 6);
     let corner = |x: f32, y: f32| Vec2::new(x, y);
-    let a = mesh.vertex(corner(-20.0, -20.0), RgbaF32::WHITE);
-    let b = mesh.vertex(corner(60.0, -20.0), RgbaF32::WHITE);
-    let c = mesh.vertex(corner(60.0, 40.0), RgbaF32::WHITE);
-    let d = mesh.vertex(corner(-20.0, 40.0), RgbaF32::WHITE);
-    mesh.triangle(a, b, c);
-    mesh.triangle(a, c, d);
+    let a = mesh.add_vertex(corner(-20.0, -20.0), RgbaF32::WHITE);
+    let b = mesh.add_vertex(corner(60.0, -20.0), RgbaF32::WHITE);
+    let c = mesh.add_vertex(corner(60.0, 40.0), RgbaF32::WHITE);
+    let d = mesh.add_vertex(corner(-20.0, 40.0), RgbaF32::WHITE);
+    mesh.add_triangle(a, b, c);
+    mesh.add_triangle(a, c, d);
     let covers = Covers { white, mesh, icon };
     for family in Family::ALL {
         h.prime(2, |ui| {

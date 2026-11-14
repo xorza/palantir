@@ -301,8 +301,8 @@ impl<'a> TextEdit<'a> {
     /// Position of the text inside the inner rect. Defaults: `Align::LEFT`
     /// single-line, `Align::TOP_LEFT` multi-line. Distinct from [`Configure::align`],
     /// which positions the widget in its parent's slot.
-    pub const fn text_align(mut self, a: Align) -> Self {
-        self.field.text_align = Some(a);
+    pub fn text_align(mut self, a: impl Into<Align>) -> Self {
+        self.field.text_align = Some(a.into());
         self
     }
 
@@ -351,7 +351,7 @@ impl EditField<'_> {
             TextInput::Owned(text) => text,
             TextInput::Interned(text) => ui.text(*text),
         });
-        if !state.view.was_focused(ui.record_frame_id()) && draft != shown {
+        if !state.view.was_focused(ui.record_frame_idx()) && draft != shown {
             draft.clone_from(&shown);
         }
         let mut outcome = self.pass(ui, state, id, &mut draft);
@@ -381,7 +381,7 @@ impl EditField<'_> {
         if is_focused && response.disabled {
             ui.clear_focus();
             is_focused = false;
-            response.state.focused = false;
+            response.focused = false;
         }
         // A focused editor takes the classes it edits with, so an app-level Ctrl+Z undoes
         // this buffer. `ACCEL` stays out (see `KeyFilter::TEXT_FIELD`) so Ctrl+S still
@@ -406,7 +406,7 @@ impl EditField<'_> {
         // A face the shaper cannot be asked for shapes nothing (as `TextShape::is_noop`); caret and
         // selection derive from the face, so the layout below must not run.
         if !look.text.metrics_valid() {
-            let focus = state.view.roll_focus(is_focused, ui.record_frame_id());
+            let focus = state.view.roll_focus(is_focused, ui.record_frame_idx());
             let committed = state.roll_commit(CommitPass {
                 focus,
                 changed: false,
@@ -471,9 +471,9 @@ impl EditField<'_> {
         if ended == Some(EditEnd::Canceled) {
             ui.clear_focus();
             is_focused = false;
-            response.state.focused = false;
+            response.focused = false;
         }
-        let focus = state.view.roll_focus(is_focused, ui.record_frame_id());
+        let focus = state.view.roll_focus(is_focused, ui.record_frame_idx());
 
         // One editing session for the whole menu pass, so one session reconciles undo
         // history once. A disabled editor offers no menu; not recording it closes any open

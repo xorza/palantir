@@ -340,7 +340,9 @@ fn the_dropdown_takes_the_menu_theme_it_documents() {
                 menu: menu.clone(),
                 ..Theme::stock(ColorScheme::Dark)
             };
-            h.ui_mut().set_theme(ColorScheme::Dark, theme).unwrap();
+            h.ui_mut()
+                .set_scheme_theme(ColorScheme::Dark, theme)
+                .unwrap();
         }
         let mut selected = options[0];
         let mut build = |ui: &mut Ui| {

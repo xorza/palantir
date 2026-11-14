@@ -6,7 +6,7 @@ use crate::primitives::input::key_class::KeyFilter;
 use crate::primitives::input::keyboard::key::Key;
 use crate::primitives::input::sense::Sense;
 use crate::primitives::input::shortcut::{Shortcut, ShortcutMods};
-use crate::primitives::layout::align::{Align, VAlign};
+use crate::primitives::layout::align::VAlign;
 use crate::primitives::layout::justify::Justify;
 use crate::primitives::paint::line_style::{LineCap, LineJoin};
 use crate::primitives::paint::stroke::Stroke;
@@ -163,7 +163,7 @@ where
                 && !response.clicked()
                 && !TriggerState::<ComboBoxList>::is_open(ui, id)
             {
-                response.state.activate();
+                response.activate();
             }
         }
 
@@ -178,7 +178,7 @@ where
         self.widget
             .configure()
             .default_justify(Justify::SpaceBetween)
-            .default_child_align(Align::v(VAlign::Center))
+            .default_child_align(VAlign::Center)
             .default_gap(geometry.gap);
 
         let arrow_color = look.text.color;

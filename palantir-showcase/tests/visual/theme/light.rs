@@ -122,7 +122,7 @@ pub(super) fn theme() -> Theme {
                 },
             },
             indicator: RgbaF32::hex(0xffffff),
-            unchecked_indicator: RgbaF32::hex(0x3d4248),
+            indicator_unchecked: RgbaF32::hex(0x3d4248),
             box_size: 16.0,
             indicator_width: 2.0,
             check_points: [
@@ -189,7 +189,7 @@ pub(super) fn theme() -> Theme {
                 },
             },
             indicator: RgbaF32::hex(0xffffff),
-            unchecked_indicator: RgbaF32::hex(0x3d4248),
+            indicator_unchecked: RgbaF32::hex(0x3d4248),
             box_size: 16.0,
             indicator_width: 2.0,
             check_points: [
@@ -332,7 +332,7 @@ pub(super) fn theme() -> Theme {
                 },
             },
             indicator: RgbaF32::hex(0xffffff),
-            unchecked_indicator: RgbaF32::hex(0x3d4248),
+            indicator_unchecked: RgbaF32::hex(0x3d4248),
             box_size: 20.0,
             indicator_width: 2.0,
             check_points: [
@@ -807,7 +807,7 @@ pub(super) fn theme() -> Theme {
                 fill: RgbaF32::hex(0x9aa1aa),
                 knob: RgbaF32::hex(0x9aa1aa),
             },
-            knob_size: 18.0,
+            knob_diameter: 18.0,
             track_thickness: 4.0,
         },
         spinner: SpinnerTheme {
@@ -879,7 +879,6 @@ pub(super) fn theme() -> Theme {
             gap: 4.0,
             rule: RgbaF32::hexa(0x5f68732e),
             rule_thickness: 0.0,
-            radius: 6.0,
             chip_padding: Spacing::xy(12.0, 8.0),
             trailing_inset: 4.0,
             min_width: 64.0,
@@ -913,8 +912,8 @@ pub(super) fn theme() -> Theme {
             close_glyph_span: 8.0,
             close_glyph_width: 1.5,
             close_shown: CloseShown::SelectedOrHovered,
-            caret: RgbaF32::hex(0xa66509),
-            caret_width: 2.0,
+            drop_mark: RgbaF32::hex(0xa66509),
+            drop_mark_width: 2.0,
             label_gap: 8.0,
             defaults: SlotDefaults {
                 padding: Spacing::all(0.0),

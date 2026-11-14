@@ -160,7 +160,7 @@ fn per_point(ui: &mut Ui, k: Kit) {
     ];
     let cols = [k.swatch.red, k.swatch.orange, k.swatch.lime, k.swatch.teal];
     ui.add_shape(
-        Shape::polyline(&pts).per_point(&cols),
+        Shape::polyline(&pts).point_colors(&cols),
         Stroke::new(RgbaF32::WHITE, 4.0),
     );
 }
@@ -184,7 +184,7 @@ fn per_segment(ui: &mut Ui, k: Kit) {
         RgbaF32::hex(0xff8fc8),
     ];
     ui.add_shape(
-        Shape::polyline(&pts).per_segment(&cols),
+        Shape::polyline(&pts).segment_colors(&cols),
         Stroke::new(RgbaF32::WHITE, 4.0),
     );
 }

@@ -10,7 +10,7 @@
 ///
 /// [`PointerEdge`](crate::PointerEdge) reports the same edges frame-wide as a second walk, not a projection of this one: a batch that presses, releases and presses again yields two edges there but one phase here.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum ButtonPhase {
+pub enum PointerButtonPhase {
     /// Not down on this widget; no edge this frame.
     #[default]
     Idle,

@@ -367,7 +367,7 @@ fn hstack_child_align_per_axis_with_overrides() {
         ("both_inherit_parent_center", None, 40.0),
         (
             "second_overrides_to_bottom",
-            Some(Align::v(VAlign::Bottom)),
+            Some(Align::from(VAlign::Bottom)),
             80.0,
         ),
     ];
@@ -376,7 +376,7 @@ fn hstack_child_align_per_axis_with_overrides() {
         rig.run(Size::new(200.0, 100.0), |rec| {
             let row = Widget::hstack()
                 .size((Sizing::FILL, Sizing::fixed(100.0)))
-                .child_align(Align::v(VAlign::Center));
+                .child_align(VAlign::Center);
             rec.node("root", row, |rec| {
                 rec.leaf("a", Widget::leaf().size((40.0, 20.0)));
                 let mut b = Widget::leaf().size((40.0, 20.0));

@@ -6,10 +6,10 @@ use crate::input::tests::{BUTTON_SURFACE, build_button, fixed_button};
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::primitives::input::interaction::button_phase::ButtonPhase;
-use crate::primitives::input::interaction::button_state::ButtonState;
 use crate::primitives::input::interaction::drag::Drag;
-use crate::primitives::input::interaction::response_state::ResponseState;
+use crate::primitives::input::interaction::pointer_button_phase::PointerButtonPhase;
+use crate::primitives::input::interaction::pointer_button_state::PointerButtonState;
+use crate::primitives::input::interaction::response::Response;
 use crate::primitives::input::interaction::scroll_delta::ScrollDelta;
 use crate::primitives::input::pointer::PointerButton;
 use crate::primitives::input::scroll_targets::ScrollTargets;
@@ -78,18 +78,18 @@ fn disabled_reflects_cascaded_ancestor_flag() {
 /// not report `hovered` or `clicked`, which the hit index cannot produce. Geometry stays.
 #[test]
 fn folding_disabled_in_drops_the_interaction_half_at_every_fold() {
-    let busy = ResponseState {
+    let busy = Response {
         rect: Some(Rect::new(1.0, 2.0, 3.0, 4.0)),
         layout_rect: Some(Rect::new(5.0, 6.0, 7.0, 8.0)),
         pointer_local: Some(Vec2::new(9.0, 10.0)),
         pointer_over: true,
         focused: true,
-        left: ButtonState::new(ButtonPhase::Up { click: Some(1) }, Drag::None),
+        left: PointerButtonState::new(PointerButtonPhase::Up { click: Some(1) }, Drag::None),
         scroll: ScrollDelta {
             pixels: Vec2::new(11.0, 12.0),
             ..ScrollDelta::default()
         },
-        ..ResponseState::default()
+        ..Response::idle(WidgetId::from_hash("probe"))
     };
 
     let mut kept = busy;
@@ -103,9 +103,9 @@ fn folding_disabled_in_drops_the_interaction_half_at_every_fold() {
     assert!(off.disabled, "a later `false` cannot re-enable it");
     assert!(!off.hovered(), "the hover goes with it");
     assert!(!off.left.clicked(), "and the click");
-    assert_eq!(off.left, ButtonState::default());
-    assert_eq!(off.right, ButtonState::default());
-    assert_eq!(off.middle, ButtonState::default());
+    assert_eq!(off.left, PointerButtonState::default());
+    assert_eq!(off.right, PointerButtonState::default());
+    assert_eq!(off.middle, PointerButtonState::default());
     assert_eq!(off.scroll, ScrollDelta::default(), "and the wheel");
 
     assert_eq!(off.rect, busy.rect);
@@ -227,7 +227,7 @@ fn quiescent_frame_keeps_geometry_defaults_interaction() {
     assert_eq!(r.layout_rect, Some(placed));
 
     assert!(!r.hovered());
-    assert!(!r.pressed());
+    assert!(!r.is_pressed());
     assert!(!r.left.clicked());
     assert!(!r.right.clicked());
     assert!(!r.focused);
@@ -414,9 +414,9 @@ fn quiescent_and_full_paths_agree_on_geometry() {
 
     let at = s.arranged.cascade.locate(focusable_id());
     s.frame_quiescent = true;
-    let quiet = s.response_state(focusable_id(), at);
+    let quiet = s.response(focusable_id(), at);
     s.frame_quiescent = false;
-    let full = s.response_state(focusable_id(), at);
+    let full = s.response(focusable_id(), at);
 
     assert_eq!(quiet.rect, full.rect);
     assert_eq!(quiet.layout_rect, full.layout_rect);
@@ -430,4 +430,27 @@ fn quiescent_and_full_paths_agree_on_geometry() {
          is vacuous",
     );
     assert!(quiet.focused, "focus must survive the quiescent path");
+}
+
+/// A widget probed before it ever records is `Response::idle` of its id: no rect, identity
+/// transform, nothing over it, every button idle and no scroll; and two ids' idle responses
+/// differ by the id alone.
+#[test]
+fn an_unrecorded_widget_probes_as_its_idle_response() {
+    let h = Harness::mono(BUTTON_SURFACE);
+    let id = WidgetId::from_hash("never-recorded");
+    let probed = h.ui().response_for(id);
+    assert_eq!(probed, Response::idle(id));
+    assert_eq!(
+        Response {
+            id,
+            ..Response::idle(WidgetId::from_hash("other"))
+        },
+        probed
+    );
+    assert_eq!(probed.rect, None);
+    assert_eq!(probed.transform, TranslateScale::IDENTITY);
+    assert_eq!(probed.left, PointerButtonState::IDLE);
+    assert_eq!(probed.scroll, ScrollDelta::NONE);
+    assert!(!probed.hovered() && !probed.focused && !probed.disabled);
 }

@@ -83,10 +83,10 @@ fn scene(ui: &mut Ui, tile: RgbaF32, mesh: &Mesh) {
 fn a_canvas_paints_what_the_backbuffer_paints() {
     let gpu = headless_test_gpu();
     let mut mesh = Mesh::with_capacity(3, 3);
-    let a = mesh.vertex(Vec2::new(40.3, 50.7), RgbaF32::hex(0xff5e44));
-    let b = mesh.vertex(Vec2::new(55.6, 33.1), RgbaF32::hex(0xfacc15));
-    let c = mesh.vertex(Vec2::new(68.9, 57.45), RgbaF32::hex(0x46c46c));
-    mesh.triangle(a, b, c);
+    let a = mesh.add_vertex(Vec2::new(40.3, 50.7), RgbaF32::hex(0xff5e44));
+    let b = mesh.add_vertex(Vec2::new(55.6, 33.1), RgbaF32::hex(0xfacc15));
+    let c = mesh.add_vertex(Vec2::new(68.9, 57.45), RgbaF32::hex(0x46c46c));
+    mesh.add_triangle(a, b, c);
     let host = |traffic, out| {
         let mut host = OffscreenHost::builder(gpu.handles())
             .shaper(TextShaper::test_mono())

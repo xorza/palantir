@@ -145,7 +145,7 @@ impl Mesh {
         self.idxs.push(idx);
     }
 
-    /// Push a vertex; returns its index for [`Self::triangle`].
+    /// Push a vertex; returns its index for [`Self::add_triangle`].
     ///
     /// # Panics
     ///
@@ -153,7 +153,7 @@ impl Mesh {
     /// if the new vertex index cannot be represented by `u32`.
     #[inline]
     #[track_caller]
-    pub fn vertex(&mut self, pos: Vec2, color: impl Into<RgbaF32>) -> u32 {
+    pub fn add_vertex(&mut self, pos: Vec2, color: impl Into<RgbaF32>) -> u32 {
         let idx = checked_vertex_idx(self.vertices.len());
         self.push_vertex(MeshVertex::new(vec2::offset(pos), color));
         idx
@@ -167,7 +167,7 @@ impl Mesh {
     /// a wrong value never draws quietly.
     #[inline]
     #[track_caller]
-    pub fn triangle(&mut self, a: u32, b: u32, c: u32) {
+    pub fn add_triangle(&mut self, a: u32, b: u32, c: u32) {
         assert!(
             (a.max(b).max(c) as usize) < self.vertices.len(),
             "mesh triangle indices [{a}, {b}, {c}] exceed vertex count {}",
@@ -224,7 +224,7 @@ impl Mesh {
     ///
     /// # Panics
     ///
-    /// As [`Self::vertex`].
+    /// As [`Self::add_vertex`].
     #[track_caller]
     pub fn filled_polygon(points: &[Vec2], color: impl Into<RgbaF32>) -> Self {
         if points.len() < 3 {
@@ -232,11 +232,11 @@ impl Mesh {
         }
         let color = color.into();
         let mut m = Self::with_capacity(points.len(), (points.len() - 2) * 3);
-        let i0 = m.vertex(points[0], color);
-        let mut prev = m.vertex(points[1], color);
+        let i0 = m.add_vertex(points[0], color);
+        let mut prev = m.add_vertex(points[1], color);
         for &p in &points[2..] {
-            let next = m.vertex(p, color);
-            m.triangle(i0, prev, next);
+            let next = m.add_vertex(p, color);
+            m.add_triangle(i0, prev, next);
             prev = next;
         }
         m

@@ -16,7 +16,7 @@ mod on_gpu;
 
 use palantir::FramePaint;
 use palantir::bench::scene::{BENCH_DPR, BENCH_SURFACE};
-use palantir::{App, Depth, Harness};
+use palantir::{App, Harness, HarnessDepth};
 use palantir_showcase::{MAIN_WINDOW, Shell};
 
 use crate::harness::Audit;
@@ -36,7 +36,7 @@ fn full_tree_cpu_frame_alloc_free() {
         let mut shell = Shell::open(page);
         let mut frontend = Harness::builder(BENCH_SURFACE)
             .system_scale(BENCH_DPR)
-            .depth(Depth::Compose)
+            .depth(HarnessDepth::Compose)
             .build();
         let mut recorded = 0;
         Audit::new()

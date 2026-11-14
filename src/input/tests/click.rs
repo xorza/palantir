@@ -520,8 +520,8 @@ fn press_started_counts_multi_press_runs() {
 /// press or between the press and the release.
 #[test]
 fn pointer_actions_report_the_edges_the_response_reports() {
-    use crate::primitives::input::interaction::button_phase::ButtonPhase;
     use crate::primitives::input::interaction::pointer_action::PointerAction;
+    use crate::primitives::input::interaction::pointer_button_phase::PointerButtonPhase;
     use crate::primitives::input::interaction::pointer_edge::PointerEdge;
 
     let id = WidgetId::from_hash("collated");
@@ -540,7 +540,10 @@ fn pointer_actions_report_the_edges_the_response_reports() {
     h.press(Vec2::new(50.0, 20.0), PointerButton::Left);
     let pressed = h.frame_passes(|ui| {
         let edges = ui.pointer_actions().collect::<Vec<_>>();
-        let down = matches!(ui.response_for(id).left.phase, ButtonPhase::Down { .. });
+        let down = matches!(
+            ui.response_for(id).left.phase,
+            PointerButtonPhase::Down { .. }
+        );
         build(ui);
         (edges, down)
     });
@@ -590,7 +593,7 @@ fn pointer_actions_report_the_edges_the_response_reports() {
         let edges = ui.pointer_actions().collect::<Vec<_>>();
         let state = ui.response_for(id).left;
         build(ui);
-        (edges, state.phase != ButtonPhase::Idle)
+        (edges, state.phase != PointerButtonPhase::Idle)
     };
     h.frame(disabled);
     h.press(Vec2::new(50.0, 20.0), PointerButton::Left);

@@ -14,6 +14,7 @@ use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::paint::Paint;
+use crate::primitives::paint::shadow::ShadowKind;
 use crate::primitives::paint::stroke::Stroke;
 use crate::renderer::frontend::encoder::gradient_resolver::GradientResolver;
 use crate::renderer::frontend::encoder::tests::support::{
@@ -236,7 +237,7 @@ fn shadows_lower_to_their_source_and_geometry_lanes() {
                     offset: Vec2::new(2.0, 4.0),
                     blur: 8.0,
                     spread: -1.0,
-                    inset: false,
+                    kind: ShadowKind::Drop,
                 },
             );
             ui.add_shape(
@@ -248,7 +249,7 @@ fn shadows_lower_to_their_source_and_geometry_lanes() {
                     offset: Vec2::new(2.0, 4.0),
                     blur: 8.0,
                     spread: -2.0,
-                    inset: true,
+                    kind: ShadowKind::Inset,
                 },
             );
             Block::new()
@@ -291,7 +292,7 @@ fn chrome_shadow_paints_drop_under_and_inset_over_the_fill() {
 
     struct Case {
         label: &'static str,
-        inset: bool,
+        kind: ShadowKind,
         border: Border,
         corners: Corners,
         shadow_rect: Rect,
@@ -301,7 +302,7 @@ fn chrome_shadow_paints_drop_under_and_inset_over_the_fill() {
     let cases = [
         Case {
             label: "drop",
-            inset: false,
+            kind: ShadowKind::Drop,
             border: Border::new(red, 2.0),
             corners: Corners::all(8.0),
             shadow_rect: Rect::new(0.0, 0.0, 100.0, 60.0),
@@ -309,7 +310,7 @@ fn chrome_shadow_paints_drop_under_and_inset_over_the_fill() {
         },
         Case {
             label: "inset under a 2 px border",
-            inset: true,
+            kind: ShadowKind::Inset,
             border: Border::new(red, 2.0),
             // 8 − 2 = 6; 1 − 2 and 0 − 2 floor at 0; 3 − 2 = 1.
             corners: Corners::new(8.0, 1.0, 0.0, 3.0),
@@ -318,7 +319,7 @@ fn chrome_shadow_paints_drop_under_and_inset_over_the_fill() {
         },
         Case {
             label: "inset under radii that overlap",
-            inset: true,
+            kind: ShadowKind::Inset,
             border: Border::new(red, 2.0),
             // The left side's 100 + 100 fit its 60 px at f = 0.3 before the border comes off: 30 − 2 = 28, 20·0.3 − 2 = 4.
             corners: Corners::new(100.0, 20.0, 20.0, 100.0),
@@ -327,7 +328,7 @@ fn chrome_shadow_paints_drop_under_and_inset_over_the_fill() {
         },
         Case {
             label: "inset under a transparent 4 px border",
-            inset: true,
+            kind: ShadowKind::Inset,
             border: Border::new(RgbaF32::TRANSPARENT, 4.0),
             corners: Corners::all(8.0),
             shadow_rect: Rect::new(4.0, 4.0, 92.0, 52.0),
@@ -335,7 +336,7 @@ fn chrome_shadow_paints_drop_under_and_inset_over_the_fill() {
         },
         Case {
             label: "inset with no border",
-            inset: true,
+            kind: ShadowKind::Inset,
             border: Border::NONE,
             corners: Corners::all(8.0),
             shadow_rect: Rect::new(0.0, 0.0, 100.0, 60.0),
@@ -343,7 +344,7 @@ fn chrome_shadow_paints_drop_under_and_inset_over_the_fill() {
         },
     ];
     for case in &cases {
-        let shadow_of = if case.inset {
+        let shadow_of = if case.kind == ShadowKind::Inset {
             Shadow::inset
         } else {
             Shadow::drop
@@ -388,7 +389,7 @@ fn chrome_shadow_paints_drop_under_and_inset_over_the_fill() {
                 .collect();
             let label = format!("{entry}: {}", case.label);
             assert_eq!(quads.len(), 2, "{label}: one fill and one shadow");
-            let (fill, shadow) = if case.inset {
+            let (fill, shadow) = if case.kind == ShadowKind::Inset {
                 (as_rect(quads[0]), as_shadow(quads[1]))
             } else {
                 (as_rect(quads[1]), as_shadow(quads[0]))
@@ -397,7 +398,11 @@ fn chrome_shadow_paints_drop_under_and_inset_over_the_fill() {
             let shadow = shadow.unwrap_or_else(|| panic!("{label}: shadow out of order"));
             let node = quad_rect(fill);
             assert_eq!(node.size, Size::new(100.0, 60.0), "{label}");
-            assert_eq!(shadow.shadow.inset(), case.inset, "{label}");
+            assert_eq!(
+                shadow.shadow.inset(),
+                case.kind == ShadowKind::Inset,
+                "{label}"
+            );
             let PlacedBox { rect, corners } = shadow.source;
             let expected = Rect {
                 min: node.min + case.shadow_rect.min,

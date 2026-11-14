@@ -3,7 +3,7 @@
 use crate::primitives::input::interaction::response::Response;
 use crate::primitives::input::sense::Sense;
 use crate::primitives::input::shortcut::Shortcut;
-use crate::primitives::layout::align::{Align, HAlign};
+use crate::primitives::layout::align::HAlign;
 use crate::primitives::layout::justify::Justify;
 use crate::primitives::text::text_input::TextInput;
 use crate::theme::look::theme_slot::ThemeSlot;
@@ -84,7 +84,7 @@ impl<'a> MenuItem<'a> {
         let disabled = response.disabled;
         // A lit row, under the pointer or pressed, sits on a fill its resting hint ink may not
         // clear, so its hint takes the label's ink, as a tab's and a menu title's text lights.
-        let lit = response.hovered() || response.pressed();
+        let lit = response.hovered() || response.is_pressed();
 
         // The look plan comes off one borrow of the theme that ends before `wear` reborrows `ui`; a menu row picks and animates like a Button.
         let theme = ui.theme();
@@ -99,7 +99,7 @@ impl<'a> MenuItem<'a> {
         // Hug+Stretch+SpaceBetween: the row hugs content, arrange stretches it to the widest row, label and shortcut pin to opposite edges (Fill would leak INF).
         self.widget
             .configure()
-            .default_align(Align::h(HAlign::Stretch))
+            .default_align(HAlign::Stretch)
             .default_justify(Justify::SpaceBetween)
             .default_gap(gap);
 
@@ -140,11 +140,11 @@ impl<'a> MenuItem<'a> {
         self.widget.record(ui, Some(&look.chrome), body);
 
         if shortcut_fired {
-            response.state.activate();
+            response.activate();
         }
         // `response` folds in the synthesized shortcut click, which a probe of the id would not
         // hold.
-        if response.state.clicked() {
+        if response.clicked() {
             ui.close_overlay();
         }
         response

@@ -236,7 +236,7 @@ impl Widget {
     pub fn response(&mut self, ui: &mut Ui) -> Response {
         let id = self.resolve(ui);
         let mut response = ui.response_for(id);
-        response.state.merge_disabled(self.node.flags.is_disabled());
+        response.merge_disabled(self.node.flags.is_disabled());
         response
     }
 
@@ -261,7 +261,7 @@ impl Widget {
             let enter = activation == Activation::Button
                 && ui.class_pressed_as(response.id, KeyClass::Enter);
             if space || enter {
-                response.state.activate();
+                response.activate();
             }
         }
         response

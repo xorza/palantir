@@ -229,8 +229,8 @@ impl Fixture {
             pipelines: RasterVariants::NONE,
             pool: AtlasPool::new(PoolConfig {
                 lists: bench_configs(),
-                rows: RowTableConfig::of_device(g.gpu.max_texture_dim().get()),
-                device_edge: g.gpu.max_texture_dim().get(),
+                rows: RowTableConfig::of_device(g.gpu.max_texture_dimension().get()),
+                device_edge: g.gpu.max_texture_dimension().get(),
                 move_budget: MoveBudget::of(g.gpu.pass_traffic()),
             }),
             atlas,

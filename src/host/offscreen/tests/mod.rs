@@ -452,9 +452,9 @@ fn the_system_facts_seed_at_build_and_change_by_setter() {
         (SystemScale::new(2.0).unwrap(), Some(60_000))
     );
     assert_eq!(host.ui().system_color_scheme(), Some(ColorScheme::Light));
-    assert!(host.ui().is_motion_reduced());
-    assert!(host.ui().system_transparency_reduced());
-    assert!(host.ui().is_power_reduced());
+    assert!(host.ui().reductions().motion.is_reduced());
+    assert!(host.ui().system_reductions().transparency.is_reduced());
+    assert!(host.ui().reductions().power.is_reduced());
 
     host.set_system_scale(SystemScale::new(1.5).unwrap())
         .set_refresh_millihertz(None)
@@ -469,7 +469,7 @@ fn the_system_facts_seed_at_build_and_change_by_setter() {
         (SystemScale::new(1.5).unwrap(), None)
     );
     assert_eq!(host.ui().system_color_scheme(), None);
-    assert!(!host.ui().is_motion_reduced());
-    assert!(!host.ui().system_transparency_reduced());
-    assert!(!host.ui().is_power_reduced());
+    assert!(!host.ui().reductions().motion.is_reduced());
+    assert!(!host.ui().system_reductions().transparency.is_reduced());
+    assert!(!host.ui().reductions().power.is_reduced());
 }

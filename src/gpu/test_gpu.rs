@@ -239,17 +239,17 @@ impl OpenGpu {
 }
 
 /// A new device on `adapter`, whose `max_texture_dimension_2d` is the adapter's, or
-/// `max_texture_dim` where that is below it.
+/// `max_texture_dimension` where that is below it.
 ///
 /// # Panics
 ///
 /// Panics if the device does not open.
-fn device_on(adapter: &wgpu::Adapter, max_texture_dim: u32) -> Gpu {
+fn device_on(adapter: &wgpu::Adapter, max_texture_dimension: u32) -> Gpu {
     let request = test_request();
     let mut requirements = DeviceRequirements::negotiate(adapter, request.optional)
         .unwrap_or_else(|why| panic!("the test adapter runs Palantir: {}", Chain(&why)));
     let limit = &mut requirements.limits.max_texture_dimension_2d;
-    *limit = (*limit).min(max_texture_dim);
+    *limit = (*limit).min(max_texture_dimension);
     request
         .open_with(adapter.clone(), requirements)
         .unwrap_or_else(|why| panic!("open headless test gpu: {}", Chain(&why)))
@@ -262,7 +262,7 @@ const fn test_request() -> GpuRequest<'static> {
     GpuRequest {
         label: "palantir.test.device",
         power_preference: TEST_POWER,
-        optional: DeviceRequirements::GPU_TIMING_FEATURES,
+        optional: DeviceRequirements::GPU_STATS_FEATURES,
         compatible_surface: None,
     }
 }
@@ -283,14 +283,14 @@ pub fn isolated_headless_test_gpu() -> TestGpu {
 }
 
 /// [`isolated_headless_test_gpu`] with its `max_texture_dimension_2d` capped at
-/// `max_texture_dim`, as a device on a smaller GPU has.
+/// `max_texture_dimension`, as a device on a smaller GPU has.
 ///
 /// # Panics
 ///
 /// Panics if the process has no adapter or the device does not open.
 #[cfg(test)]
-pub(crate) fn isolated_headless_test_gpu_capped(max_texture_dim: u32) -> TestGpu {
-    on_open(|open| TestGpu::new(device_on(&open.adapter, max_texture_dim)))
+pub(crate) fn isolated_headless_test_gpu_capped(max_texture_dimension: u32) -> TestGpu {
+    on_open(|open| TestGpu::new(device_on(&open.adapter, max_texture_dimension)))
 }
 
 /// The adapter every test device opens on, `name (backend, driver)`; golden suites record it.

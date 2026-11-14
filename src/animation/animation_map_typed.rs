@@ -30,7 +30,7 @@ impl<T: Animatable> Default for AnimationMapTyped<T> {
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct AnimationClock {
     pub(crate) dt: f32,
-    pub(crate) render_frame_id: u64,
+    pub(crate) render_frame_idx: u64,
 }
 
 impl<T: Animatable> AnimationMapTyped<T> {
@@ -74,7 +74,7 @@ impl<T: Animatable> AnimationMapTyped<T> {
         let target = &mut request.target;
         let AnimationClock {
             dt,
-            render_frame_id,
+            render_frame_idx,
         } = clock;
         let row = match self.rows.entry((id, slot)) {
             Entry::Vacant(v) => {
@@ -82,14 +82,14 @@ impl<T: Animatable> AnimationMapTyped<T> {
                     target: target.clone(),
                     key,
                     motion: None,
-                    ticked_at: render_frame_id,
+                    ticked_at: render_frame_idx,
                 });
                 return true;
             }
             Entry::Occupied(o) => o.into_mut(),
         };
-        let already_advanced = row.ticked_at == render_frame_id;
-        row.ticked_at = render_frame_id;
+        let already_advanced = row.ticked_at == render_frame_idx;
+        row.ticked_at = render_frame_idx;
 
         // Steady-state fast path: a resting row with the same target is a no-op, the caller's
         // target the value. Retarget detection still runs so a new target starts a motion.
@@ -163,9 +163,10 @@ impl<T: Animatable> AnimationMapTyped<T> {
 }
 
 impl<T: Animatable> TypedStore<u64> for AnimationMapTyped<T> {
-    /// Keep the rows render frame `render_frame_id` ticked. A read of each row, no write.
-    fn sweep(&mut self, render_frame_id: &u64) {
-        self.rows.retain(|_, row| row.ticked_at == *render_frame_id);
+    /// Keep the rows render frame `render_frame_idx` ticked. A read of each row, no write.
+    fn sweep(&mut self, render_frame_idx: &u64) {
+        self.rows
+            .retain(|_, row| row.ticked_at == *render_frame_idx);
     }
     fn is_empty(&self) -> bool {
         self.rows.is_empty()
@@ -197,7 +198,7 @@ pub(crate) mod internals {
             spec: AnimationSpec,
             dt: f32,
         ) -> Animated<T> {
-            let render_frame_id = self
+            let render_frame_idx = self
                 .rows
                 .values()
                 .map(|row| row.ticked_at)
@@ -209,7 +210,7 @@ pub(crate) mod internals {
                 spec,
                 AnimationClock {
                     dt,
-                    render_frame_id,
+                    render_frame_idx,
                 },
             )
         }

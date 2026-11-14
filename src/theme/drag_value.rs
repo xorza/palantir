@@ -1,7 +1,7 @@
 //! What a drag value wears: one set of looks for the scrub chip and the text field it becomes
 //! while typed into, and the field's caret, selection and placeholder.
 
-use crate::primitives::input::interaction::response_state::ResponseState;
+use crate::primitives::input::interaction::response::Response;
 use crate::primitives::paint::color::RgbaF32;
 use crate::theme::button::ButtonTheme;
 use crate::theme::look::WidgetLook;
@@ -83,7 +83,7 @@ impl ThemeSlot for DragValueTheme {
     type Pick = ();
 
     /// The state's look: `active` = pressed, as a button's.
-    fn look(&self, response: &ResponseState, (): ()) -> &WidgetLook {
+    fn look(&self, response: &Response, (): ()) -> &WidgetLook {
         self.looks.pick(response, Engagement::Pressed)
     }
 

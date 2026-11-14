@@ -112,10 +112,10 @@ fn polyline_static_alloc_free() {
 fn mesh_static_alloc_free() {
     let mesh = {
         let mut m = Mesh::with_capacity(3, 3);
-        let a = m.vertex(Vec2::new(0.0, 0.0), RgbaF32::WHITE);
-        let b = m.vertex(Vec2::new(100.0, 0.0), RgbaF32::WHITE);
-        let c = m.vertex(Vec2::new(50.0, 100.0), RgbaF32::WHITE);
-        m.triangle(a, b, c);
+        let a = m.add_vertex(Vec2::new(0.0, 0.0), RgbaF32::WHITE);
+        let b = m.add_vertex(Vec2::new(100.0, 0.0), RgbaF32::WHITE);
+        let c = m.add_vertex(Vec2::new(50.0, 100.0), RgbaF32::WHITE);
+        m.add_triangle(a, b, c);
         m
     };
     frontend_audit(move |ui| {

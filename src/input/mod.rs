@@ -34,13 +34,13 @@ use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::ime_preedit::ImePreedit;
 use crate::primitives::input::input_event::InputEvent;
-use crate::primitives::input::interaction::button_phase::ButtonPhase;
-use crate::primitives::input::interaction::button_state::ButtonState;
 use crate::primitives::input::interaction::drag::Drag;
 use crate::primitives::input::interaction::input_delta::InputDelta;
 use crate::primitives::input::interaction::pointer_action::PointerAction;
+use crate::primitives::input::interaction::pointer_button_phase::PointerButtonPhase;
+use crate::primitives::input::interaction::pointer_button_state::PointerButtonState;
 use crate::primitives::input::interaction::pointer_edge::PointerEdge;
-use crate::primitives::input::interaction::response_state::ResponseState;
+use crate::primitives::input::interaction::response::Response;
 use crate::primitives::input::interaction::scroll_delta::ScrollDelta;
 use crate::primitives::input::key_class::KeyClass;
 use crate::primitives::input::keyboard::key::Key;
@@ -199,8 +199,8 @@ impl Input {
     }
 
     /// Move focus to the Tab stop at `end` under `ancestor` at the end of this frame. See
-    /// [`Ui::focus_within`](crate::Ui::focus_within).
-    pub(crate) const fn focus_within(&mut self, ancestor: WidgetId, end: TabEnd) {
+    /// [`Ui::set_focus_within`](crate::Ui::set_focus_within).
+    pub(crate) const fn set_focus_within(&mut self, ancestor: WidgetId, end: TabEnd) {
         self.focus.enter_within(FocusEntry {
             within: ancestor,
             end,
@@ -967,12 +967,8 @@ impl Input {
                 .all(|c| c.press.is_none() && c.release.is_none());
     }
 
-    /// `id`'s state, at `loc`, where the arranged frame holds it.
-    pub(crate) fn response_state(
-        &self,
-        id: WidgetId,
-        loc: Option<WidgetLocation>,
-    ) -> ResponseState {
+    /// `id`'s response, at `loc`, where the arranged frame holds it.
+    pub(crate) fn response(&self, id: WidgetId, loc: Option<WidgetLocation>) -> Response {
         // Geometry half, needed every frame. `entries` is AoS so the fields share a cache line.
         let entry = loc.map(|l| *self.arranged.cascade.entry(l));
         let rect = entry.map(|e| e.rect);
@@ -984,13 +980,13 @@ impl Input {
 
         // Built once so a new field cannot be filled on one path and defaulted on the other.
         // `focused` is read live since `set_focus` can run after `frame_quiescent`.
-        let mut state = ResponseState {
+        let mut state = Response {
             rect,
             layout_rect,
             transform,
             disabled,
             focused: self.focus.focused() == Some(id),
-            ..ResponseState::default()
+            ..Response::idle(id)
         };
 
         // On a quiescent frame every remaining field is default; skip the capture scan and
@@ -1008,16 +1004,16 @@ impl Input {
             let phase = match &cap.press {
                 Some(press) if press.target == id => {
                     if press.fresh {
-                        ButtonPhase::Down { count: press.count }
+                        PointerButtonPhase::Down { count: press.count }
                     } else {
-                        ButtonPhase::Held
+                        PointerButtonPhase::Held
                     }
                 }
                 _ => match &cap.release {
-                    Some(release) if release.target == id => ButtonPhase::Up {
+                    Some(release) if release.target == id => PointerButtonPhase::Up {
                         click: release.kind.click(),
                     },
-                    _ => ButtonPhase::Idle,
+                    _ => PointerButtonPhase::Idle,
                 },
             };
             // A threshold-crossed press overrides the stale stop edge. Read off the press,
@@ -1039,7 +1035,7 @@ impl Input {
                     _ => Drag::None,
                 },
             };
-            *state.button_mut(btn) = ButtonState::new(phase, drag);
+            *state.button_mut(btn) = PointerButtonState::new(phase, drag);
         }
 
         state.scroll = self.scroll_delta_for(id);

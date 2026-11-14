@@ -25,7 +25,7 @@ use crate::diagnostics::gpu_pass_stats::BatchKind;
 use crate::effect::effect_source::EffectSource;
 use crate::gpu::bench_gpu::{BenchGpu, Timing};
 use crate::host::harness::Harness;
-use crate::host::harness::harness_builder::Depth;
+use crate::host::harness::harness_builder::HarnessDepth;
 use crate::primitives::effect::effect_name::EffectName;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
@@ -254,7 +254,7 @@ impl WholeFrames {
             .system_scale(BENCH_DPR)
             .swapchain_present()
             .collect_gpu_stats(true)
-            .depth(Depth::gpu(gpu.handles()))
+            .depth(HarnessDepth::gpu(gpu.handles()))
             .build();
         window.ui_mut().theme_mut().panel_chrome = None;
         window

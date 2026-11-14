@@ -96,7 +96,7 @@ impl Gpu {
     /// device reads it here; the CPU side reads the copy a host attaches to its `SharedDevice`.
     ///
     /// A zero limit panics: no adapter reports one.
-    pub fn max_texture_dim(&self) -> NonZeroU32 {
+    pub fn max_texture_dimension(&self) -> NonZeroU32 {
         NonZeroU32::new(self.device.limits().max_texture_dimension_2d)
             .expect("device texture dimension limit is zero")
     }
@@ -153,7 +153,7 @@ impl Gpu {
     }
 
     /// Whether the device is lost: it draws nothing more, and a host attaches a new one.
-    pub(crate) fn is_lost(&self) -> bool {
+    pub fn is_lost(&self) -> bool {
         self.health.is_lost()
     }
 

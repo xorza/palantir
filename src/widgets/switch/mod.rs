@@ -110,7 +110,7 @@ impl ToggleFace for Knob<'_> {
         let knob_x = Lerp::lerp(&geometry.off_x, &geometry.on_x, on);
         // A spring slides the knob past an end, but a color past an end leaves the two inks.
         let knob_color = Lerp::lerp(
-            &slot.unchecked_indicator,
+            &slot.indicator_unchecked,
             &slot.indicator,
             on.clamp(0.0, 1.0),
         );

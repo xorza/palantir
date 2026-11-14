@@ -75,6 +75,7 @@ use crate::primitives::math::domain::vec2;
 use crate::primitives::paint::border::Border;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::image::Image;
+use crate::primitives::reduction::Reductions;
 use crate::primitives::text::interned_str::InternedStr;
 use crate::primitives::text::text_input::TextInput;
 use crate::renderer::frontend::FrameScene;
@@ -230,7 +231,7 @@ impl Ui {
     /// It applies at once, to the widgets recorded after the call, and asks for a frame that records
     /// the rest under it, under [`AnimationSpec::SNAP`], before the window's second frame, in the
     /// first frame after the window was hidden, or while transitions snap, with motion reduced
-    /// ([`Self::is_motion_reduced`]) or under reduced power ([`Self::is_power_reduced`]). A theme that differs in its transition alone counts as a
+    /// ([`Reductions::motion`]) or under reduced power ([`Reductions::power`]). A theme that differs in its transition alone counts as a
     /// change.
     ///
     /// A live edit, one theme a frame, blends too: under [`AnimationSpec::THEME`] at 60 Hz it
@@ -243,7 +244,7 @@ impl Ui {
     /// # use palantir::{ColorScheme, Preference, Theme, Ui, UiPreferences};
     /// # fn one_look(ui: &mut Ui) {
     /// // An app with one look sets it and pins its scheme.
-    /// ui.set_theme(ColorScheme::Dark, Theme::stock(ColorScheme::Dark))
+    /// ui.set_scheme_theme(ColorScheme::Dark, Theme::stock(ColorScheme::Dark))
     ///     .expect("a stock theme names no press effect");
     /// ui.set_preferences(UiPreferences {
     ///     scheme: Preference::Fixed(ColorScheme::Dark),
@@ -265,7 +266,7 @@ impl Ui {
     /// A [`ThemeEffectError`] when a press slot names an effect not loaded, or not one over
     /// [`PressParams`], or a slot's material one not loaded, or no material's, or one that takes
     /// another count of parameter lanes than the material holds; the theme held before stays.
-    pub fn set_theme(
+    pub fn set_scheme_theme(
         &mut self,
         scheme: ColorScheme,
         theme: impl Into<Rc<Theme>>,
@@ -309,7 +310,7 @@ impl Ui {
     /// a change before the first or during it lands on a window that showed nothing, and one
     /// right after it is the system's first answer (`SystemPreferences::read`'s timeout).
     const fn theme_motion(&self) -> Motion {
-        if !self.motion_snaps(MotionRole::Decorative) && self.frame_runtime.render_frame_id > 1 {
+        if !self.motion_snaps(MotionRole::Decorative) && self.frame_runtime.render_frame_idx > 1 {
             Motion::Animate
         } else {
             Motion::Snap
@@ -356,92 +357,30 @@ impl Ui {
         self.resources.settings().system_color_scheme()
     }
 
-    /// Whether this frame runs with motion reduced: [`UiPreferences::motion`] resolved against
-    /// [`Self::system_motion_reduced`] at the frame's start, so no frame mixes two, as transparency
-    /// and power. Then every [`Self::animate`] and theme
-    /// transition snaps to its target, as CSS `prefers-reduced-motion` asks of transitions, and a
-    /// [decorative](crate::widget::MotionRole::Decorative) paint animation holds still; an
-    /// [essential](crate::widget::MotionRole::Essential) one, as a spinner's turn or a caret's
-    /// blink, still runs, as WCAG 2.3.3 lets essential motion stay
-    /// (<https://www.w3.org/WAI/WCAG22/Understanding/animation-from-interactions>). Under
-    /// [reduced power](Self::is_power_reduced) with motion that follows the system, the
-    /// transitions snap too, and paint loops run on. App-global.
+    /// The reductions this frame runs under: each of [`UiPreferences`]' three resolved against
+    /// [`Self::system_reductions`] at the frame's start, so no frame mixes two; [`Reductions`]
+    /// says what each does. App-global.
     #[inline]
-    pub const fn is_motion_reduced(&self) -> bool {
-        self.frame_runtime.reductions.motion.is_reduced()
+    pub const fn reductions(&self) -> Reductions {
+        self.frame_runtime.reductions
     }
 
-    /// Whether the system asks for less motion, whatever the preference; `false` where nothing
-    /// reports it, as in a [`Harness`](crate::Harness) until its test sets it.
+    /// The reductions the system asks for, whatever the preferences; each `Unreduced` where
+    /// nothing reports it, as transparency on Linux, which has no such setting, and every one in
+    /// a [`Harness`](crate::Harness) until its test sets it.
     #[inline]
-    pub fn system_motion_reduced(&self) -> bool {
-        self.resources
-            .settings()
-            .system_reductions()
-            .motion
-            .is_reduced()
-    }
-
-    /// Whether this frame paints with transparency reduced: [`UiPreferences::transparency`]
-    /// resolved against
-    /// [`Self::system_transparency_reduced`] at the frame's start, so no frame mixes two. Then no
-    /// capture, blur or effect runs, as CSS `prefers-reduced-transparency` asks, and every
-    /// [`Material`](crate::Material)'s box draws as a plain box of its
-    /// [`fallback`](crate::Material::fallback) in place of its fill: by default
-    /// [`Theme::material_fallback`](crate::Theme::material_fallback), the theme's float surface,
-    /// translucent and readable. Under [reduced power](Self::is_power_reduced)
-    /// the system's answer reads as reduced, as Windows' Energy saver turns transparency effects
-    /// off, so only a pick by hand keeps transparency whole. App-global.
-    #[inline]
-    pub const fn is_transparency_reduced(&self) -> bool {
-        self.frame_runtime.reductions.transparency.is_reduced()
-    }
-
-    /// Whether the system asks for less transparency, whatever the preference; `false` where
-    /// nothing reports it, as on Linux, which has no such setting, and in a
-    /// [`Harness`](crate::Harness) until its test sets it.
-    #[inline]
-    pub fn system_transparency_reduced(&self) -> bool {
-        self.resources
-            .settings()
-            .system_reductions()
-            .transparency
-            .is_reduced()
-    }
-
-    /// Whether this frame runs with power use reduced: [`UiPreferences::power`] resolved against
-    /// [`Self::system_power_reduced`] at the frame's start, so no frame mixes two, and a move
-    /// records every window again. Then the [frame rate](Self::is_frame_rate_reduced) and
-    /// transparency reduce and every [`Self::animate`] and theme transition snaps where its
-    /// preference follows the system, paint loops run on, and an app
-    /// reads it to swap to cheaper paint, as Apple asks an app to reduce its activity in Low Power
-    /// Mode (<https://developer.apple.com/documentation/foundation/processinfo/islowpowermodeenabled>).
-    /// App-global.
-    #[inline]
-    pub const fn is_power_reduced(&self) -> bool {
-        self.frame_runtime.reductions.power.is_reduced()
+    pub fn system_reductions(&self) -> Reductions {
+        self.resources.settings().system_reductions()
     }
 
     /// Whether this frame runs with the frame rate reduced: [`UiPreferences::frame_rate`] resolved
-    /// against [`Self::is_power_reduced`] at the frame's start, so no frame mixes two. Then every
+    /// against [`Reductions::power`] at the frame's start, so no frame mixes two. Then every
     /// host starts a frame at most at 30 Hz, on whole refresh periods, input frames included
     /// ([`FrameReport::earliest_repaint_at`](crate::FrameReport::earliest_repaint_at)), and paint
     /// loops run at that rate. App-global.
     #[inline]
     pub const fn is_frame_rate_reduced(&self) -> bool {
         self.frame_runtime.frame_rate.is_reduced()
-    }
-
-    /// Whether the system's power-saver mode is on, whatever the preference: macOS Low Power Mode,
-    /// Windows' Energy saver or battery saver, Linux's power-saver profile. `false` where nothing
-    /// reports it, as in a [`Harness`](crate::Harness) until its test sets it.
-    #[inline]
-    pub fn system_power_reduced(&self) -> bool {
-        self.resources
-            .settings()
-            .system_reductions()
-            .power
-            .is_reduced()
     }
 
     /// At a frame's start, after its clock: move a theme transition one `dt` on, then adopt the
@@ -639,7 +578,7 @@ impl Ui {
     pub fn request_repaint(&mut self) {
         tracing::trace!(
             target: "palantir.repaint",
-            render_frame = self.frame_runtime.render_frame_id,
+            render_frame = self.frame_runtime.render_frame_idx,
             "request_repaint",
         );
         self.frame_runtime.request_repaint();
@@ -693,7 +632,7 @@ impl Ui {
         tracing::trace!(
             target: "palantir.repaint",
             ?after,
-            render_frame = self.frame_runtime.render_frame_id,
+            render_frame = self.frame_runtime.render_frame_idx,
             "request_repaint_after",
         );
         let deadline = self.frame_runtime.stamp().time.saturating_add(after);
@@ -819,8 +758,8 @@ impl Ui {
     /// [`frame_stats`]: crate::diagnostics::frame_stats
     fn frame_stats(&self) -> FrameStats {
         FrameStats {
-            record_frame_id: self.frame_runtime.record_frame_id,
-            render_frame_id: self.frame_runtime.render_frame_id,
+            record_frame_idx: self.frame_runtime.record_frame_idx,
+            render_frame_idx: self.frame_runtime.render_frame_idx,
             fps: self.frame_runtime.fps_ema,
             settle_frames: self.frame_runtime.settle_frames(),
             gpu: self.host.gpu_pass_stats.last_pass(),
@@ -1013,7 +952,7 @@ impl Ui {
     /// Record `view`: refresh its row in the window's `GpuViews` and append an image
     /// shape carrying the row's target and `epoch` to the active node.
     pub(crate) fn gpu_view(&mut self, view: RecordedView) {
-        let frame = self.frame_runtime.render_frame_id;
+        let frame = self.frame_runtime.render_frame_idx;
         let target = self.memory.gpu_views.record(view, frame);
         self.forest.add_gpu_view(target.id, target.epoch);
     }
@@ -1153,11 +1092,11 @@ impl Ui {
     /// `Widget::response`.
     pub fn response_for(&self, id: WidgetId) -> Response {
         let loc = self.last_frame_location(id);
-        let mut state = self.input.response_state(id, loc);
+        let mut response = self.input.response(id, loc);
         // Cascade lags a frame; fold in this frame's ancestor-disabled so a newly
         // disabled subtree paints disabled at once.
-        state.merge_disabled(self.forest.ancestor_disabled());
-        Response { id, state }
+        response.merge_disabled(self.forest.ancestor_disabled());
+        response
     }
 
     /// Where the most recent cascade run put `id`, which a widget reads as it resolves: the
@@ -1308,7 +1247,7 @@ impl Ui {
         };
         let clock = AnimationClock {
             dt: self.frame_runtime.dt,
-            render_frame_id: self.frame_runtime.render_frame_id,
+            render_frame_idx: self.frame_runtime.render_frame_idx,
         };
         let settled = self.memory.animation.animate(request, spec, clock);
         if !settled {
@@ -1333,7 +1272,7 @@ impl Ui {
 
     /// True when the pointer's hover target is `ancestor` or in its subtree.
     /// Occlusion-aware, empty while another widget holds a press of any button, as
-    /// [`ResponseState::hovered`](crate::ResponseState::hovered) reads, and changes only when a repaint
+    /// [`Response::hovered`](crate::Response::hovered) reads, and changes only when a repaint
     /// is already scheduled.
     #[inline]
     pub fn is_hover_within(&self, ancestor: WidgetId) -> bool {
@@ -1378,10 +1317,10 @@ impl Ui {
 
     /// This frame's monotonic index over frames authoring code ran on. Retained
     /// state stamps it to notice a gap (it was skipped); paint-only frames advance
-    /// nothing. See [`Self::render_frame_id`].
+    /// nothing. See [`Self::render_frame_idx`].
     #[inline]
-    pub const fn record_frame_id(&self) -> u64 {
-        self.frame_runtime.record_frame_id
+    pub const fn record_frame_idx(&self) -> u64 {
+        self.frame_runtime.record_frame_idx
     }
 
     /// The last frame's interactive widgets, in paint order, into `out`: what a tool that
@@ -1398,10 +1337,10 @@ impl Ui {
     }
 
     /// This frame's monotonic index among frames that reached the screen. Counts
-    /// paint-only frames, so use [`Self::record_frame_id`] to detect a skipped reader.
+    /// paint-only frames, so use [`Self::record_frame_idx`] to detect a skipped reader.
     #[inline]
-    pub const fn render_frame_id(&self) -> u64 {
-        self.frame_runtime.render_frame_id
+    pub const fn render_frame_idx(&self) -> u64 {
+        self.frame_runtime.render_frame_idx
     }
 
     /// Shape `run` and return its geometry (caret positions, click-to-offset,
@@ -1480,14 +1419,14 @@ impl Ui {
     /// previous holder when `ancestor` leaves the tree.
     #[inline]
     pub const fn focus_first_within(&mut self, ancestor: WidgetId) {
-        self.focus_within(ancestor, TabEnd::First);
+        self.set_focus_within(ancestor, TabEnd::First);
     }
 
     /// Move focus at the end of this frame to the Tab stop at `end` under `ancestor`: the first,
     /// as [`Self::focus_first_within`] does, or the last, as a list End opens lands on its last
     /// row.
-    pub const fn focus_within(&mut self, ancestor: WidgetId, end: TabEnd) {
-        self.input.focus_within(ancestor, end);
+    pub const fn set_focus_within(&mut self, ancestor: WidgetId, end: TabEnd) {
+        self.input.set_focus_within(ancestor, end);
     }
 
     /// Pointer position in logical pixels (surface space), or `None` off-surface.
@@ -1682,7 +1621,7 @@ pub(crate) mod internals {
         }
 
         /// The shown theme, for in-place edits. Gated: apps build a [`Theme`] and call
-        /// [`set_theme`](Ui::set_theme). Copy-on-write, so a handle from [`Ui::theme`]
+        /// [`set_scheme_theme`](Ui::set_scheme_theme). Copy-on-write, so a handle from [`Ui::theme`]
         /// keeps its values.
         pub fn theme_mut(&mut self) -> &mut Theme {
             self.window_theme.edit()

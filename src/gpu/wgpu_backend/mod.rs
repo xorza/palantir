@@ -363,7 +363,7 @@ impl WgpuBackend {
         let effect_store = Rc::clone(resources.effect_store);
         let texture_binding = resources.texture_binding;
         let atlas = AtlasPool::new(PoolConfig::of_device(
-            gpu.max_texture_dim().get(),
+            gpu.max_texture_dimension().get(),
             gpu.pass_traffic(),
         ));
         let gradient = RowTexture::new(&gpu, atlas.rows().capacity());

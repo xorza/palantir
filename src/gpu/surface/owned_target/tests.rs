@@ -76,7 +76,7 @@ fn a_texel_copy_keeps_its_staging_buffer() {
 fn a_bad_extent_panics_with_its_rule() {
     let gpu = headless_test_gpu();
     let handles = &*gpu;
-    let max = handles.max_texture_dim().get();
+    let max = handles.max_texture_dimension().get();
     let rule = format!("a target's size is 1..={max} physical pixels per side");
     let spec = |size| TargetSpec {
         label: "palantir.owned_target.extent",

@@ -19,7 +19,7 @@
 //!         for scheme in [ColorScheme::Light, ColorScheme::Dark] {
 //!             let mut theme = Theme::stock(scheme);
 //!             theme.button.defaults.transition = AnimationSpec::SPRING;
-//!             ui.set_theme(scheme, theme).expect("a stock theme names no press effect");
+//!             ui.set_scheme_theme(scheme, theme).expect("a stock theme names no press effect");
 //!         }
 //!         MyApp
 //!     })?
@@ -154,12 +154,21 @@ impl<T: 'static> fmt::Debug for WinitHost<T> {
 }
 
 /// Startup configuration for [`WinitHost`].
-#[derive(Debug)]
 #[must_use]
 pub struct WinitHostBuilder<T> {
     first_token: WindowToken,
     config: WinitHostConfig,
     marker: PhantomData<fn() -> T>,
+}
+
+/// Hand-written: a derive would ask `T: Debug`, and the builder holds no `T`.
+impl<T> fmt::Debug for WinitHostBuilder<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("WinitHostBuilder")
+            .field("first_token", &self.first_token)
+            .field("config", &self.config)
+            .finish()
+    }
 }
 
 impl<T> WinitHostBuilder<T>
@@ -433,7 +442,7 @@ where
         let Some(runtime) = self.running() else {
             return;
         };
-        let max_texture_dim = runtime.core.device.gpu().max_texture_dim();
+        let max_texture_dimension = runtime.core.device.gpu().max_texture_dimension();
         let Some(slot) = runtime.slot_of_id(id) else {
             return;
         };
@@ -474,7 +483,7 @@ where
                 }
                 win.note_resized(UVec2::new(new.width, new.height));
                 let size = SurfaceManager::clamp_extent(
-                    max_texture_dim,
+                    max_texture_dimension,
                     UVec2::new(new.width, new.height),
                 );
                 // Stash the new size only; `Window::frame` reconfigures the surface before the next acquire. Painting inline here lags on Wayland (it blocks on FIFO vsync), so defer to one `RedrawRequested` per loop tick.

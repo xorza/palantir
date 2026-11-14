@@ -268,7 +268,7 @@ impl<'a, T: DockTab> DockView<'a, T, Emitting<'a, T>> {
             .groups()
             .find(|g| g.id != state.focused() && ui.is_focus_within(g.id.pane_id(dock)))
         {
-            operations.push(DockOperation::FocusPane { group: group.id });
+            operations.push(DockOperation::FocusGroup { group: group.id });
         }
         let mut dragged = carried::<T>(ui, dock);
         for group in state.groups() {
@@ -510,7 +510,7 @@ impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
                 let split = *split;
                 let mut live = split.ratio();
                 // The split clamp floors the drag too, so a release keeps what the drag drew.
-                let hit = Splitter::along(&mut live, split.axis())
+                let hit = Splitter::along(split.axis(), &mut live)
                     .id(path.splitter_id(self.dock))
                     .min_pane(self.min_pane)
                     .min_ratio(RATIO_MIN)
@@ -566,14 +566,14 @@ impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
             }
             let hit = TabStrip::new(&buf.items)
                 .id(strip_id)
-                .selected(group.active)
+                .selected_idx(group.active)
                 .focused(focused)
                 .overflow(self.overflow)
                 .style(self.tabs_style)
                 .menu_style(self.menu_style)
                 .dock_drag(self.drop.and_then(|drop| drop.caret_in(group.id)))
                 .show(ui, |ui, chip| {
-                    self.tabs.chip(ui, group.tabs[chip.slot], chip);
+                    self.tabs.chip(ui, group.tabs[chip.idx], chip);
                 });
             hit.unscanned
         });
@@ -644,7 +644,7 @@ impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
         if let Some(DropTarget::Region { wash: r, .. }) = self.drop {
             let preview = self.theme.preview.clone();
             ui.layer(Layer::Tooltip)
-                .fixed_at(r.min)
+                .at(r.min)
                 .max_size(r.size)
                 .show(|ui| {
                     Panel::zstack()
@@ -662,7 +662,7 @@ impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
         let ghost_text = self.theme.ghost.text.apply(&ui.theme().text);
         let padding = self.theme.ghost_padding;
         ui.layer(Layer::Tooltip)
-            .fixed_at(p + self.theme.ghost_offset)
+            .at(p + self.theme.ghost_offset)
             .show(|ui| {
                 Panel::hstack()
                     .id(dock.with("ghost"))

@@ -110,7 +110,7 @@ fn widget_setters_check_their_kinds() {
 
     const NAN_RED: RgbaF32 = RgbaF32::new(f32::NAN, 0.0, 0.0, 1.0);
     let length_cases: [fn(f32); 3] = [
-        |v| drop(Spinner::new().width(v)),
+        |v| drop(Spinner::new().stroke_width(v)),
         |v| drop(Text::new("t").font_size(v)),
         |v| {
             let mut buf = String::new();
@@ -140,7 +140,7 @@ fn widget_setters_check_their_kinds() {
         |c| drop(Spinner::new().color(c)),
         |c| drop(Separator::horizontal().color(c)),
         |c| drop(Text::new("t").color(c)),
-        |c| drop(Modal::new().scrim(c)),
+        |c| drop(Modal::new().scrim(Chrome::new(c))),
         |c| {
             let mut buf = String::new();
             drop(TextEdit::new(&mut buf).color(c));
@@ -276,7 +276,7 @@ fn widget_setters_check_their_kinds() {
         let mut h = Harness::mono(SURFACE);
         h.ui_mut()
             .layer(Layer::Popup)
-            .fixed_at(Vec2::new(f32::NAN, 0.0))
+            .at(Vec2::new(f32::NAN, 0.0))
             .show(|_| {});
     });
     panic_probe::assert_panics_with(domain::EXTENT_RULE, || {
@@ -354,7 +354,7 @@ fn coercing_inputs_at_their_worst_paint_no_nan() {
                     .show(ui, |_, _| {});
                 let items = [TabItem::new(TabKey::of(1), ui.intern("one"))];
                 TabStrip::new(&items)
-                    .selected(5)
+                    .selected_idx(5)
                     .show(ui, |ui, chip| chip.show_label(ui));
                 Slider::new(&mut slid, 10.0..=0.0).show(ui);
                 DragValue::new(&mut dragged).range(5.0..=-5.0).show(ui);
@@ -473,7 +473,7 @@ fn a_scoped_widget_takes_its_keys_under_an_enclosing_scope() {
     assert!(on, "Checkbox");
 
     let mut open = false;
-    press(Expander::header_id(id), Key::Enter, |ui| {
+    press(id.with("header"), Key::Enter, |ui| {
         under_root(ui, |ui| {
             Expander::new("x").id(id).show(ui, |_| {});
         });

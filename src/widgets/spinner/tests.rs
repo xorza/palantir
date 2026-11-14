@@ -71,7 +71,7 @@ fn arc_and_spin_follow_the_spinner_theme() {
                     .id(WidgetId::from_hash("spin"))
                     .size(diameter);
                 match width {
-                    Some(px) => spinner.width(px),
+                    Some(px) => spinner.stroke_width(px),
                     None => spinner,
                 }
                 .show(ui);
@@ -94,7 +94,7 @@ fn arc_and_spin_follow_the_spinner_theme() {
             .paint_animations
             .entries
             .iter()
-            .find_map(|e| e.animation.channel.turn.map(|_| e.animation.timing.period))
+            .find_map(|e| e.animation.channels.turn.map(|_| e.animation.timing.period))
             .expect("spinner registers a turning anim");
         Recorded {
             sweep: arc.0,
@@ -167,7 +167,7 @@ fn a_spinner_of_no_length_draws_nothing() {
         let report = h.frame(|ui| {
             let spinner = Spinner::new().id(WidgetId::from_hash("spin")).size(24.0);
             match width {
-                Some(px) => spinner.width(px),
+                Some(px) => spinner.stroke_width(px),
                 None => spinner,
             }
             .show(ui);

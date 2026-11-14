@@ -240,14 +240,14 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
     let r0 = h.frame(|ui| body(ui, half));
     assert_eq!(r0.processing, FrameProcessing::SingleLayout);
     assert_eq!(r0.repaint_at, Some(half));
-    let (rendered, recorded) = (h.ui().render_frame_id(), h.ui().record_frame_id());
+    let (rendered, recorded) = (h.ui().render_frame_idx(), h.ui().record_frame_idx());
 
     let r1 = h.at(half).frame(|ui| body(ui, half));
     assert_eq!(r1.processing, FrameProcessing::PaintOnly);
 
-    // `record_frame_id` must not count the painted frame, or retained state stamping it reads an idle blink as a skipped surface.
-    assert_eq!(h.ui().render_frame_id(), rendered + 1);
-    assert_eq!(h.ui().record_frame_id(), recorded);
+    // `record_frame_idx` must not count the painted frame, or retained state stamping it reads an idle blink as a skipped surface.
+    assert_eq!(h.ui().render_frame_idx(), rendered + 1);
+    assert_eq!(h.ui().record_frame_idx(), recorded);
 
     match r1.plan {
         Some(RenderPlan {
@@ -277,8 +277,8 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
     let r4 = h.at(half * 4).frame(|ui| body(ui, half));
     assert_eq!(r4.processing, FrameProcessing::PaintOnly);
 
-    assert_eq!(h.ui().render_frame_id(), rendered + 4);
-    assert_eq!(h.ui().record_frame_id(), recorded + 1);
+    assert_eq!(h.ui().render_frame_idx(), rendered + 4);
+    assert_eq!(h.ui().record_frame_idx(), recorded + 1);
 }
 
 /// A `PaintOnly` frame must not clear the record store: retained `ShapeRecord`s' payload indices

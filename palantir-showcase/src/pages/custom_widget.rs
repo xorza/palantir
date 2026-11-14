@@ -177,7 +177,7 @@ fn surface(ui: &mut Ui, k: Kit) {
                     .id_salt(i)
                     .size((Sizing::FILL, Sizing::HUG))
                     .gap(ROW_GAP)
-                    .child_align(Align::v(VAlign::Center))
+                    .child_align(VAlign::Center)
                     .show(ui, |ui| {
                         Text::new(item)
                             .style(&k.t.mono(k.t.ink))
@@ -196,7 +196,7 @@ fn labeled(ui: &mut Ui, k: Kit, label: &'static str, body: impl FnOnce(&mut Ui))
         .auto_id()
         .size((Sizing::FILL, Sizing::HUG))
         .gap(ROW_GAP)
-        .child_align(Align::v(VAlign::Center))
+        .child_align(VAlign::Center)
         .show(ui, |ui| {
             Text::new(label)
                 .style(&k.t.caption())
@@ -228,7 +228,7 @@ impl<'a> Stepper<'a> {
         }
         .gap(M.space.sm)
         .padding(RING_ROOM)
-        .child_align(Align::v(VAlign::Center))
+        .child_align(VAlign::Center)
         .focusable(true)
     }
 
@@ -331,7 +331,7 @@ impl StepButton {
         // The theme's button looks, so the stepper follows a scheme switch as palantir's own
         // widgets do; only the corners are the stepper's.
         let looks = &ui.theme().button.unselected;
-        let look = if response.pressed() {
+        let look = if response.is_pressed() {
             &looks.active
         } else if response.hovered() {
             &looks.hovered

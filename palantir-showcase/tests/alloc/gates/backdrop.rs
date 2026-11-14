@@ -2,7 +2,7 @@
 
 use palantir::bench::scene::{BENCH_DPR, BENCH_SURFACE};
 use palantir::widget::Shape;
-use palantir::{App, Depth, Harness};
+use palantir::{App, Harness, HarnessDepth};
 use palantir::{
     Configure, FramePaint, Lens, Material, MaterialPaint, Panel, Rect, RgbaF32, Sizing, Ui,
 };
@@ -62,7 +62,7 @@ fn backdrop_cpu_frames_alloc_free() {
             let mut shell = Shell::open(0);
             let mut frontend = Harness::builder(BENCH_SURFACE)
                 .system_scale(BENCH_DPR)
-                .depth(Depth::Compose)
+                .depth(HarnessDepth::Compose)
                 .build();
             let mut odd = false;
             Audit::new()

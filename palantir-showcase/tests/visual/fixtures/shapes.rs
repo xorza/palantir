@@ -76,7 +76,7 @@ fn line_diagonal_aa_matches_golden() {
     });
 }
 
-/// Pin: `Shape::polyline` with `per_point` colors paints a gradient by vertex interpolation; a stride-1 cross-section would collapse to single-color strips.
+/// Pin: `Shape::polyline` with `point_colors` paints a gradient by vertex interpolation; a stride-1 cross-section would collapse to single-color strips.
 #[test]
 fn polyline_gradient_matches_golden() {
     GoldenName::PolylineGradient.assert_scene(UVec2::new(160, 140), |ui| {
@@ -94,7 +94,7 @@ fn polyline_gradient_matches_golden() {
                 RgbaF32::srgb(0.2, 0.6, 1.0),
             ];
             ui.add_shape(
-                Shape::polyline(&pts).per_point(&cols),
+                Shape::polyline(&pts).point_colors(&cols),
                 Stroke::new(RgbaF32::WHITE, 5.0),
             );
         });

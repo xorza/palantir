@@ -252,7 +252,7 @@ fn an_empty_run_is_answered_at_the_boundary_and_shapes_nothing() {
             text: "",
             font: params.font,
             wrap: TextWrap::Wrap,
-            align: Align::h(HAlign::Auto),
+            align: Align::from(HAlign::Auto),
             max_width: None,
         }
         .unbounded_key(&FamilyKeys::default())
@@ -426,7 +426,7 @@ fn a_probe_shapes_under_the_key_the_paint_committed() {
             text,
             font: params.font,
             wrap,
-            align: Align::h(HAlign::Auto),
+            align: Align::from(HAlign::Auto),
             max_width: Some(width),
         });
         assert_eq!(
@@ -467,7 +467,7 @@ fn a_glyphless_line_takes_its_caret_from_the_run_not_the_key() {
         text,
         font: shape(16.0).leading(19.2).font,
         wrap: TextWrap::SingleLine,
-        align: Align::h(halign),
+        align: Align::from(halign),
         max_width: None,
     };
 

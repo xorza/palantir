@@ -75,8 +75,7 @@ impl<'a> Modal<'a> {
     ///
     /// Panics unless `scrim` passes its checks, as a widget's `chrome` does.
     #[track_caller]
-    pub fn scrim(mut self, scrim: impl Into<Chrome>) -> Self {
-        let scrim = scrim.into();
+    pub const fn scrim(mut self, scrim: Chrome) -> Self {
         scrim.validate();
         self.scrim = Some(scrim);
         self

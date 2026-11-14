@@ -43,7 +43,7 @@ use crate::diagnostics::gpu_pass_stats::BatchKind;
 use crate::gpu::bench_gpu::{BenchGpu, Timing};
 use crate::gpu::surface::owned_target::OwnedTarget;
 use crate::host::harness::Harness;
-use crate::host::harness::harness_builder::Depth;
+use crate::host::harness::harness_builder::HarnessDepth;
 use crate::host::offscreen::{OffscreenHost, OffscreenTime};
 use crate::primitives::input::input_event::InputEvent;
 use crate::primitives::input::keyboard::key::Key;
@@ -97,7 +97,8 @@ fn force_full_effects(ui: &mut Ui) {
 /// second, at once.
 pub(crate) fn settle_look(ui: &mut Ui, n: u32) {
     if n == 1 {
-        ui.set_theme(ColorScheme::Dark, bench_theme()).unwrap();
+        ui.set_scheme_theme(ColorScheme::Dark, bench_theme())
+            .unwrap();
     }
 }
 
@@ -188,7 +189,7 @@ impl CpuHarness {
     fn new(time: OffscreenTime) -> Self {
         let mut h = Harness::builder(BENCH_SURFACE)
             .system_scale(BENCH_DPR)
-            .depth(Depth::Compose)
+            .depth(HarnessDepth::Compose)
             .build();
         force_full_effects(h.ui_mut());
         Self {
@@ -340,7 +341,7 @@ impl Arm {
             return;
         }
         let roomy = ui.theme().text.font_size == Metrics::DEFAULT.text.body;
-        ui.set_theme(
+        ui.set_scheme_theme(
             ColorScheme::Dark,
             Theme {
                 transition: THEMING,

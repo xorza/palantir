@@ -56,13 +56,13 @@ impl AnimationMap {
         self.stores.get_or_default::<AnimationMapTyped<T>>()
     }
 
-    /// Drop every row that render frame `render_frame_id` did not tick: a removed widget's, and a
+    /// Drop every row that render frame `render_frame_idx` did not tick: a removed widget's, and a
     /// slot its caller stopped asking for. Once per recorded frame, from
     /// `WindowFrames::finalize_frame`; a row ticked under an id no widget recorded stays.
     ///
     /// A typed map that drains to empty is dropped ([`Drained::Drop`]), so an app gone idle holds none.
-    pub(crate) fn sweep(&mut self, render_frame_id: u64) {
-        self.stores.sweep(&render_frame_id, Drained::Drop);
+    pub(crate) fn sweep(&mut self, render_frame_idx: u64) {
+        self.stores.sweep(&render_frame_idx, Drained::Drop);
     }
 }
 

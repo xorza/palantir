@@ -148,12 +148,12 @@ fn a_scroll_viewport_cuts_its_first_and_last_rows() {
 #[test]
 fn a_clipped_canvas_of_cards_with_fields() {
     let mut mesh = Mesh::with_capacity(4, 6);
-    let a = mesh.vertex(Vec2::new(10.0, 10.0), RgbaF32::hex(0x1d2230));
-    let b = mesh.vertex(Vec2::new(290.0, 10.0), RgbaF32::hex(0x1d2230));
-    let c = mesh.vertex(Vec2::new(290.0, 190.0), RgbaF32::hex(0x2a3142));
-    let d = mesh.vertex(Vec2::new(10.0, 190.0), RgbaF32::hex(0x2a3142));
-    mesh.triangle(a, b, c);
-    mesh.triangle(a, c, d);
+    let a = mesh.add_vertex(Vec2::new(10.0, 10.0), RgbaF32::hex(0x1d2230));
+    let b = mesh.add_vertex(Vec2::new(290.0, 10.0), RgbaF32::hex(0x1d2230));
+    let c = mesh.add_vertex(Vec2::new(290.0, 190.0), RgbaF32::hex(0x2a3142));
+    let d = mesh.add_vertex(Vec2::new(10.0, 190.0), RgbaF32::hex(0x2a3142));
+    mesh.add_triangle(a, b, c);
+    mesh.add_triangle(a, c, d);
     let mut texts: [String; 4] = std::array::from_fn(|i| format!("value {i}"));
     let at = [(20.0, 20.0), (150.0, 30.0), (190.0, 60.0), (40.0, 120.0)];
     let census = census_of(|ui| {

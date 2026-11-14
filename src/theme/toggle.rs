@@ -3,7 +3,7 @@
 use crate::animation::animation_spec::AnimationSpec;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::spacing::Spacing;
-use crate::primitives::input::interaction::response_state::ResponseState;
+use crate::primitives::input::interaction::response::Response;
 use crate::primitives::math::domain;
 use crate::primitives::paint::border::Border;
 use crate::primitives::paint::chrome::Chrome;
@@ -39,7 +39,7 @@ pub struct ToggleTheme {
     pub indicator: RgbaF32,
     /// Color of the switch knob over the `unchecked` chrome ([`crate::Switch`] only; a checkbox
     /// and a radio paint no mark when off).
-    pub unchecked_indicator: RgbaF32,
+    pub indicator_unchecked: RgbaF32,
     /// Box side.
     #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub box_size: f32,
@@ -178,7 +178,7 @@ impl ToggleGeometry {
             unchecked,
             checked,
             indicator: p.on_accent,
-            unchecked_indicator: p.text,
+            indicator_unchecked: p.text,
             box_size,
             indicator_width: m.stroke.line,
             indicator_inset,
@@ -203,7 +203,7 @@ impl ThemeSlot for ToggleTheme {
     type Pick = CheckState;
 
     /// The checked or unchecked pack, then its state (`active` = pressed).
-    fn look(&self, response: &ResponseState, check: CheckState) -> &WidgetLook {
+    fn look(&self, response: &Response, check: CheckState) -> &WidgetLook {
         let pack = match check {
             CheckState::Checked => &self.checked,
             CheckState::Unchecked => &self.unchecked,

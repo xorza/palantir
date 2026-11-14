@@ -170,15 +170,15 @@ impl Configurator<'_> {
 
     /// See [`Configure::align`](crate::widget_core::configure::Configure::align).
     #[inline]
-    pub const fn align(&mut self, a: Align) -> &mut Self {
-        self.widget.node.align = a;
+    pub fn align(&mut self, a: impl Into<Align>) -> &mut Self {
+        self.widget.node.align = a.into();
         self
     }
 
     /// See [`Configure::child_align`](crate::widget_core::configure::Configure::child_align).
     #[inline]
-    pub const fn child_align(&mut self, a: Align) -> &mut Self {
-        self.widget.node.child_align = a;
+    pub fn child_align(&mut self, a: impl Into<Align>) -> &mut Self {
+        self.widget.node.child_align = a.into();
         self
     }
 
@@ -315,15 +315,15 @@ impl Configurator<'_> {
 
     /// See [`ThemeDefaults::default_align`](crate::widget_core::configure::ThemeDefaults::default_align).
     #[inline]
-    pub const fn default_align(&mut self, a: Align) -> &mut Self {
-        self.widget.node.fill_align(a);
+    pub fn default_align(&mut self, a: impl Into<Align>) -> &mut Self {
+        self.widget.node.fill_align(a.into());
         self
     }
 
     /// See [`ThemeDefaults::default_child_align`](crate::widget_core::configure::ThemeDefaults::default_child_align).
     #[inline]
-    pub const fn default_child_align(&mut self, a: Align) -> &mut Self {
-        self.widget.node.fill_child_align(a);
+    pub fn default_child_align(&mut self, a: impl Into<Align>) -> &mut Self {
+        self.widget.node.fill_child_align(a.into());
         self
     }
 

@@ -30,7 +30,7 @@ fn root() -> WidgetId {
 }
 
 fn header() -> WidgetId {
-    Expander::header_id(root())
+    root().with("header")
 }
 
 fn body() -> WidgetId {

@@ -6,7 +6,7 @@ use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::color::RgbaF32;
 
 /// What a backdrop effect paints in its place while transparency is reduced
-/// ([`Ui::is_transparency_reduced`](crate::Ui::is_transparency_reduced)), a property of any
+/// ([`Ui::reductions`](crate::Reductions::transparency)), a property of any
 /// backdrop effect: a [`Material`](crate::Material)'s box draws as a plain one, this its fill, its
 /// border and shadow as they are, with no capture, blur or effect, and a backdrop
 /// [`EffectPaint`](crate::widget::EffectPaint) paints it over its shape alike.

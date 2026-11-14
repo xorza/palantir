@@ -49,7 +49,9 @@ fn style_takes_an_option_and_none_falls_back_to_the_slot() {
     let plain_id = WidgetId::from_hash("style-override-plain");
 
     let mut h = Harness::mono(SURFACE);
-    h.ui_mut().set_theme(ColorScheme::Dark, theme).unwrap();
+    h.ui_mut()
+        .set_scheme_theme(ColorScheme::Dark, theme)
+        .unwrap();
     h.frame(|ui| {
         for (id, style) in [(styled_id, Some(&wide)), (plain_id, None)] {
             Button::new().id(id).label("x").style(style).show(ui);
@@ -83,7 +85,9 @@ fn text_style_none_inherits_the_ambient_text_style() {
     let styled_id = WidgetId::from_hash("style-text-styled");
 
     let mut h = Harness::mono(SURFACE);
-    h.ui_mut().set_theme(ColorScheme::Dark, theme).unwrap();
+    h.ui_mut()
+        .set_scheme_theme(ColorScheme::Dark, theme)
+        .unwrap();
     h.frame(|ui| {
         Text::new("m").id(plain_id).style(None).show(ui);
         Text::new("m").id(styled_id).style(Some(&big)).show(ui);
@@ -159,7 +163,9 @@ fn per_axis_setters_outrank_the_style_bundle() {
     let edit_axes = WidgetId::from_hash("axis-edit-set");
 
     let mut h = Harness::mono(SURFACE);
-    h.ui_mut().set_theme(ColorScheme::Dark, theme).unwrap();
+    h.ui_mut()
+        .set_scheme_theme(ColorScheme::Dark, theme)
+        .unwrap();
     let mut plain_buf = String::from("m");
     let mut axes_buf = String::from("m");
     h.frame(|ui| {

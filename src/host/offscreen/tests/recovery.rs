@@ -123,10 +123,10 @@ impl Scene {
             *texel = SrgbaU8::rgb((i * 10) as u8, 200, 255 - (i * 10) as u8);
         }
         let mut mesh = Mesh::with_capacity(3, 3);
-        let a = mesh.vertex(Vec2::new(4.0, 116.0), RgbaF32::hex(0xff5e44));
-        let b = mesh.vertex(Vec2::new(20.0, 90.0), RgbaF32::hex(0xfacc15));
-        let c = mesh.vertex(Vec2::new(36.0, 116.0), RgbaF32::hex(0x46c46c));
-        mesh.triangle(a, b, c);
+        let a = mesh.add_vertex(Vec2::new(4.0, 116.0), RgbaF32::hex(0xff5e44));
+        let b = mesh.add_vertex(Vec2::new(20.0, 90.0), RgbaF32::hex(0xfacc15));
+        let c = mesh.add_vertex(Vec2::new(36.0, 116.0), RgbaF32::hex(0x46c46c));
+        mesh.add_triangle(a, b, c);
         Self {
             tile: RgbaF32::WHITE,
             image,

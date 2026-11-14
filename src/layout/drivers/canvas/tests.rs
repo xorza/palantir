@@ -1,7 +1,7 @@
 use crate::internals::layout_rig::{LayoutRig, TextRun};
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
-use crate::primitives::layout::align::{Align, HAlign, VAlign};
+use crate::primitives::layout::align::{HAlign, VAlign};
 use crate::primitives::layout::sizing::Sizing;
 use crate::text::wrap::TextWrap;
 use crate::widget_core::configure::Configure;
@@ -190,7 +190,7 @@ fn canvas_ignores_child_align() {
                         .at((30.0, 40.0))
                         .size((50.0, 50.0))
                         // Would matter on Stack/ZStack/Grid; Canvas ignores it.
-                        .align(Align::new(HAlign::Right, VAlign::Bottom)),
+                        .align((HAlign::Right, VAlign::Bottom)),
                 );
             },
         );

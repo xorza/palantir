@@ -91,7 +91,7 @@ impl WindowTheme {
     }
 
     /// Both themes, once at the start and once after a set replaced either: what the next frame
-    /// wants the press and material effects of ([`Ui::set_theme`](crate::Ui::set_theme)). A theme
+    /// wants the press and material effects of ([`Ui::set_scheme_theme`](crate::Ui::set_scheme_theme)). A theme
     /// a later set replaced before that frame is never handed out, so its effects build nothing.
     pub(crate) fn take_replaced(&mut self) -> Option<[&Rc<Theme>; 2]> {
         if !mem::take(&mut self.replaced) {

@@ -203,7 +203,7 @@ impl<T: DockTab> DockState<T> {
             DockOperation::CloseTab { tab } => self.close_tab(tab),
             DockOperation::MoveTab { tab, to } => self.move_tab(tab, to),
             DockOperation::SetRatio { split, ratio } => self.set_ratio(split, ratio),
-            DockOperation::FocusPane { group } => self.focus(group),
+            DockOperation::FocusGroup { group } => self.focus(group),
         }
     }
 
@@ -276,7 +276,7 @@ impl<T: DockTab> DockState<T> {
             .remove_tab(source.idx);
 
         match drop {
-            DockDrop::Into { group, idx } => {
+            DockDrop::Join { group, idx } => {
                 // `idx` addresses the strip as the caller saw it, before the tab left it.
                 let idx = if group == source.group {
                     reindex::landing(source.idx, idx)
@@ -344,7 +344,7 @@ impl<T: DockTab> DockState<T> {
             return false;
         };
         let target = match drop {
-            DockDrop::Into { group, .. } | DockDrop::Split { group, .. } => group,
+            DockDrop::Join { group, .. } | DockDrop::Split { group, .. } => group,
         };
         if self.group(target).is_none() {
             return false;

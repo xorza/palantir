@@ -165,7 +165,7 @@ impl ImageStore for WgpuImageStore {
     fn write(&self, id: TextureId, image: &Image) -> Result<(), ImageTooLarge> {
         let mut attached = self.attached_mut();
         // Registration checks the device it ran on; a later device can be smaller.
-        TextureLimit::from_device(attached.gpu.max_texture_dim()).accepts(image.size)?;
+        TextureLimit::from_device(attached.gpu.max_texture_dimension()).accepts(image.size)?;
         let AttachedStore {
             gpu,
             binding,

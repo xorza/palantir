@@ -117,9 +117,11 @@ fn theme_reads_share_and_writes_copy_on_write() {
         "an unshared theme must be written in place, with no copy",
     );
 
-    // `set_theme` takes the handle, so swapping themes is a move.
+    // `set_scheme_theme` takes the handle, so swapping themes is a move.
     let swapped: Rc<Theme> = Rc::new(support::still_theme(ColorScheme::Dark));
     let swapped_ptr = Rc::as_ptr(&swapped);
-    h.ui_mut().set_theme(ColorScheme::Dark, swapped).unwrap();
+    h.ui_mut()
+        .set_scheme_theme(ColorScheme::Dark, swapped)
+        .unwrap();
     assert_eq!(Rc::as_ptr(h.ui().theme()), swapped_ptr);
 }

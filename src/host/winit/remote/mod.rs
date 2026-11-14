@@ -104,7 +104,7 @@ impl<T: 'static> AgentWindow<T> for Remote<T> {
     /// [`PlayError::Hidden`] at once when it cannot, and [`PlayError::Disconnected`] when it is
     /// not open. A window that opened and has run no frame yet owes one, which a settle waits for.
     fn settle(&mut self) -> Result<u32, PlayError> {
-        let first = self.record_frame_id();
+        let first = self.record_frame_idx();
         self.wait_frame(Until::Settled)?;
         Ok(self.frames_since(first))
     }
@@ -117,7 +117,7 @@ impl<T: 'static> AgentWindow<T> for Remote<T> {
     ///
     /// [`StepError`], naming the step it stopped at.
     fn play<X: Locate<T>>(&mut self, actions: &[Action<X>]) -> Result<u32, StepError> {
-        let first = self.record_frame_id();
+        let first = self.record_frame_idx();
         play::play_all(&mut RemoteStage { remote: self }, actions)?;
         Ok(self.frames_since(first))
     }
@@ -304,15 +304,15 @@ impl<T: 'static> Remote<T> {
             .ok_or(PlayError::Disconnected)
     }
 
-    fn record_frame_id(&self) -> u64 {
+    fn record_frame_idx(&self) -> u64 {
         self.handle
             .last_frame(self.window)
-            .map_or(0, |last| last.summary.record_frame_id)
+            .map_or(0, |last| last.summary.record_frame_idx)
     }
 
     /// The frames recorded since `first`.
     fn frames_since(&self, first: u64) -> u32 {
-        play::frames_recorded(first, self.record_frame_id())
+        play::frames_recorded(first, self.record_frame_idx())
     }
 
     /// Wait for a frame `until` names. A busy app's wait for its next frame starts again at each,
@@ -320,7 +320,7 @@ impl<T: 'static> Remote<T> {
     fn wait_frame(&self, until: Until) -> Result<(), PlayError> {
         let settled = until == Until::Settled;
         let start = Instant::now();
-        let first = self.record_frame_id();
+        let first = self.record_frame_idx();
         let mut seen = first;
         let mut progressed = start;
         loop {
@@ -334,8 +334,8 @@ impl<T: 'static> Remote<T> {
             }
             // A frame from before an event says nothing of the app after it.
             let working = settled && saw_events && last.busy && !last.repaint_requested;
-            if last.record_frame_id != seen {
-                seen = last.record_frame_id;
+            if last.record_frame_idx != seen {
+                seen = last.record_frame_idx;
                 progressed = Instant::now();
             }
             let since = if working { progressed } else { start };

@@ -614,7 +614,7 @@ fn a_run_keeps_the_last_output_only_while_its_inputs_hold() {
                 fill: color,
             }
             .show(ui);
-            ui.layer(Layer::Popup).fixed_at(popup_at).show(|ui| {
+            ui.layer(Layer::Popup).at(popup_at).show(|ui| {
                 Block::new()
                     .id(WidgetId::from_hash("popup"))
                     .size((Sizing::fixed(30.0), Sizing::fixed(10.0)))

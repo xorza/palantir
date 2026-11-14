@@ -593,7 +593,7 @@ fn a_dialog_in_a_dialog_takes_focus_and_gives_it_back() {
     );
 }
 
-/// `focus_within` enters a subtree at either end of its Tab order, as a list opened by Home or End
+/// `set_focus_within` enters a subtree at either end of its Tab order, as a list opened by Home or End
 /// lands: the first stop or the last, at the end of the frame that asks.
 #[test]
 fn focus_within_lands_on_either_end_of_a_subtree() {
@@ -609,7 +609,7 @@ fn focus_within_lands_on_either_end_of_a_subtree() {
     };
     h.frame(&mut record);
     for (end, lands) in [(TabEnd::Last, "z"), (TabEnd::First, "x")] {
-        h.ui_mut().focus_within(id("group"), end);
+        h.ui_mut().set_focus_within(id("group"), end);
         h.frame(&mut record);
         assert_eq!(h.ui().focus(), Some(id(lands)), "{end:?}");
     }

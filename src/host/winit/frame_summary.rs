@@ -7,8 +7,8 @@
 /// and [`HostHandle::is_hidden`](crate::HostHandle::is_hidden).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct FrameSummary {
-    /// The frame's [`Ui::record_frame_id`](crate::Ui::record_frame_id).
-    pub(crate) record_frame_id: u64,
+    /// The frame's [`Ui::record_frame_idx`](crate::Ui::record_frame_idx).
+    pub(crate) record_frame_idx: u64,
     /// How many events a [`Remote`](crate::Remote) sent through the handle reached the window
     /// before this frame, its inputs and its queries. A sender that counts what it sent knows a
     /// frame ran after its last event once this reaches the count, whatever frames were already
@@ -25,7 +25,7 @@ pub(crate) struct FrameSummary {
 impl FrameSummary {
     /// A window that opened and ran no frame: it owes its first, so nothing settles on it yet.
     pub(crate) const AT_OPEN: Self = Self {
-        record_frame_id: 0,
+        record_frame_idx: 0,
         sent_events: 0,
         repaint_requested: true,
         busy: false,

@@ -39,8 +39,8 @@ impl fmt::Display for GpuSegment {
 /// Record the opt-in FPS readout into the top-right of `Layer::Debug`.
 pub(crate) fn record(ui: &mut Ui) {
     let FrameStats {
-        record_frame_id,
-        render_frame_id,
+        record_frame_idx,
+        render_frame_idx,
         fps,
         settle_frames,
         gpu,
@@ -48,7 +48,7 @@ pub(crate) fn record(ui: &mut Ui) {
     let gpu = GpuSegment(gpu);
     // `settle/frame` reads as a ratio across a gesture: a double-recording drag advances both halves, one that stops advances only the right.
     let label = ui.fmt(format_args!(
-        "f {render_frame_id} · {fps:>4.0} fps · settle {settle_frames}/{record_frame_id}{gpu}"
+        "f {render_frame_idx} · {fps:>4.0} fps · settle {settle_frames}/{record_frame_idx}{gpu}"
     ));
     let style = TextStyle {
         family: FontFamily::MONO,

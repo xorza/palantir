@@ -45,7 +45,7 @@ use std::process::{Child, Command, ExitCode, Stdio};
 use std::time::Duration;
 
 use palantir::glam::{UVec2, Vec2};
-use palantir::{Depth, Harness, RequestedGpu, Scroll, SystemScale};
+use palantir::{Harness, HarnessDepth, RequestedGpu, Scroll, SystemScale};
 
 use crate::deck::{Deck, SLIDE, SLIDES};
 use crate::downscale::{Linear, Shrink};
@@ -146,25 +146,18 @@ impl Render {
     }
 }
 
-#[expect(
-    clippy::default_trait_access,
-    reason = "the device features are wgpu's type, which only palantir's gpu module names"
-)]
 fn run(args: &Args) -> Result<(), String> {
     let render = match args.mode {
         Mode::Final { .. } => Render::FINAL,
         Mode::Preview { .. } | Mode::Png { .. } => Render::PREVIEW,
     };
-    let gpu = RequestedGpu::headless(
-        palantir::PowerPreference::HighPerformance,
-        Default::default(),
-    )
-    .map_err(|error| error.to_string())?
-    .gpu;
+    let gpu = RequestedGpu::headless(palantir::PowerPreference::HighPerformance)
+        .map_err(|error| error.to_string())?
+        .gpu;
     let depth = if render.float {
-        Depth::gpu_float(gpu)
+        HarnessDepth::gpu_float(gpu)
     } else {
-        Depth::gpu(gpu)
+        HarnessDepth::gpu(gpu)
     };
     let mut h = Harness::builder(render.size())
         .system_scale(SystemScale::new(render.scale).unwrap())
@@ -485,7 +478,7 @@ impl Encoder {
 mod tests {
     use palantir::glam::{UVec2, Vec2};
     use palantir::internals::headless_test_gpu;
-    use palantir::{Depth, Harness, SystemScale};
+    use palantir::{Harness, HarnessDepth, SystemScale};
 
     use crate::Beat;
     use crate::deck::{self, Deck};
@@ -499,7 +492,7 @@ mod tests {
     fn no_slide_collides_an_explicit_id() {
         let mut h = Harness::builder(UVec2::new(320, 180))
             .system_scale(SystemScale::new(0.25).unwrap())
-            .depth(Depth::Compose)
+            .depth(HarnessDepth::Compose)
             .build();
         let mut d = Deck::new();
         deck::dress(h.ui_mut());
@@ -522,7 +515,7 @@ mod tests {
         let render = |gpu| {
             let mut h = Harness::builder(UVec2::new(320, 180))
                 .system_scale(SystemScale::new(0.25).unwrap())
-                .depth(Depth::gpu(gpu))
+                .depth(HarnessDepth::gpu(gpu))
                 .build();
             let mut d = Deck::new();
             deck::dress(h.ui_mut());

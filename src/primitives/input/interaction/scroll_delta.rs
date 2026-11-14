@@ -33,7 +33,7 @@ pub struct ScrollDelta {
 
 impl ScrollDelta {
     /// Nothing routed: no pan and a pinch at [`ZoomFactor::ONE`].
-    pub(crate) const NONE: Self = Self {
+    pub const NONE: Self = Self {
         pixels: Vec2::ZERO,
         lines: Vec2::ZERO,
         notches: Vec2::ZERO,

@@ -21,7 +21,7 @@ const fn range(min: f64, max: f64) -> SliderRange {
     }
 }
 
-/// Explicit `.size(...)` wins over the `Fill × knob_size` default; hugged, it is the knob alone.
+/// Explicit `.size(...)` wins over the `Fill × knob_diameter` default; hugged, it is the knob alone.
 #[test]
 fn explicit_size_overrides_fill_default() {
     let mut v = 0.5_f64;
@@ -45,7 +45,7 @@ fn explicit_size_overrides_fill_default() {
     // a 40-tall slider centers the 18 px knob at `(40 - 18) / 2 = 11`.
     let id = WidgetId::from_hash("slider-align");
     let mut h = Harness::mono(UVec2::new(200, 100));
-    for (align, y) in [(None, 11.0), (Some(Align::v(VAlign::Top)), 0.0)] {
+    for (align, y) in [(None, 11.0), (Some(Align::from(VAlign::Top)), 0.0)] {
         h.frame(|ui| {
             let mut slider = Slider::new(&mut v, 0.0..=1.0).id(id).size((200.0, 40.0));
             if let Some(align) = align {

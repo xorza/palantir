@@ -65,6 +65,27 @@ const _: () = {
     );
 };
 
+/// The horizontal axis alone, the vertical `Auto`.
+impl From<HAlign> for Align {
+    fn from(h: HAlign) -> Self {
+        Self::new(h, VAlign::Auto)
+    }
+}
+
+/// The vertical axis alone, the horizontal `Auto`.
+impl From<VAlign> for Align {
+    fn from(v: VAlign) -> Self {
+        Self::new(HAlign::Auto, v)
+    }
+}
+
+/// Both axes, horizontal first, as [`Align::new`] takes them.
+impl From<(HAlign, VAlign)> for Align {
+    fn from((h, v): (HAlign, VAlign)) -> Self {
+        Self::new(h, v)
+    }
+}
+
 /// Two-axis alignment packed into a byte: `HAlign` in the lower 3 bits, `VAlign` in
 /// the next 3.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
@@ -75,8 +96,8 @@ impl Align {
     const HMASK: u8 = 0b111;
     const VMASK: u8 = 0b111 << Self::VSHIFT;
 
-    /// Pack both axes. [`Self::h`] / [`Self::v`] set one axis and leave the other
-    /// `Auto`.
+    /// Pack both axes. A setter that takes `impl Into<Align>` takes the pair as a tuple,
+    /// `(HAlign, VAlign)`, or one axis alone, the other `Auto`.
     pub const fn new(h: HAlign, v: VAlign) -> Self {
         Self((h as u8) | ((v as u8) << Self::VSHIFT))
     }
@@ -87,14 +108,6 @@ impl Align {
     #[inline]
     pub(crate) const fn from_raw(b: u8) -> Self {
         Self(b)
-    }
-    /// Single horizontal axis; vertical defaults to `Auto`.
-    pub const fn h(h: HAlign) -> Self {
-        Self::new(h, VAlign::Auto)
-    }
-    /// Single vertical axis; horizontal defaults to `Auto`.
-    pub const fn v(v: VAlign) -> Self {
-        Self::new(HAlign::Auto, v)
     }
     /// Unpack the horizontal axis.
     pub const fn halign(self) -> HAlign {
@@ -258,5 +271,39 @@ mod tests {
             Rect::new(0.0, 0.0, 80.0, 16.0),
             "oversize content clamps to the top-left"
         );
+    }
+
+    /// One axis converts with the other `Auto`, and a pair converts as `new` packs it: each
+    /// conversion reads back its own axes, and every value of the other axis is `Auto`.
+    #[test]
+    fn an_axis_or_a_pair_converts_to_its_align() {
+        const HS: [HAlign; 5] = [
+            HAlign::Auto,
+            HAlign::Left,
+            HAlign::Center,
+            HAlign::Right,
+            HAlign::Stretch,
+        ];
+        const VS: [VAlign; 5] = [
+            VAlign::Auto,
+            VAlign::Top,
+            VAlign::Center,
+            VAlign::Bottom,
+            VAlign::Stretch,
+        ];
+        for h in HS {
+            let one = Align::from(h);
+            assert_eq!((one.halign(), one.valign()), (h, VAlign::Auto));
+            for v in VS {
+                let pair = Align::from((h, v));
+                assert_eq!(pair, Align::new(h, v));
+                assert_eq!((pair.halign(), pair.valign()), (h, v));
+            }
+        }
+        for v in VS {
+            let one = Align::from(v);
+            assert_eq!((one.halign(), one.valign()), (HAlign::Auto, v));
+        }
+        assert_eq!(Align::from((HAlign::Left, VAlign::Center)), Align::LEFT);
     }
 }

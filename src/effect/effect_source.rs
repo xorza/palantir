@@ -94,7 +94,7 @@ impl<U: EffectParams, K: EffectKind> EffectSource<U, K> {
     /// Build the effect's pipelines at the next frame, whether anything draws it yet: for an
     /// effect a shape draws at a moment where a build would show as a stutter. `false`, the
     /// default, builds them at the first frame that draws the effect, or after a theme that names
-    /// it is set ([`Ui::set_theme`](crate::Ui::set_theme)), so an effect no use reaches builds
+    /// it is set ([`Ui::set_scheme_theme`](crate::Ui::set_scheme_theme)), so an effect no use reaches builds
     /// nothing. Every build runs at the start of a frame's GPU phase, before any pass.
     pub const fn prebuild(mut self, prebuild: bool) -> Self {
         self.prebuild = prebuild;
@@ -111,7 +111,7 @@ impl<U: EffectParams, K: EffectKind> EffectSource<U, K> {
     }
 
     /// What paints in place of the effect while motion is reduced
-    /// ([`Ui::is_motion_reduced`](crate::Ui::is_motion_reduced)); [`ReducedEffect::Same`] by
+    /// ([`Ui::reductions`](crate::Reductions::motion)); [`ReducedEffect::Same`] by
     /// default, where the effect's paint animation alone holds still, as
     /// [`MotionRole`](crate::widget::MotionRole) says. It wins over [`Self::power_saver`], as what
     /// a person needs to bear comes before what a device saves.
@@ -121,7 +121,7 @@ impl<U: EffectParams, K: EffectKind> EffectSource<U, K> {
     }
 
     /// What paints in place of the effect while power is reduced
-    /// ([`Ui::is_power_reduced`](crate::Ui::is_power_reduced)); [`ReducedEffect::Same`] by
+    /// ([`Ui::reductions`](crate::Reductions::power)); [`ReducedEffect::Same`] by
     /// default.
     pub const fn power_saver(mut self, paint: ReducedEffect<U, K>) -> Self {
         self.power_saver = paint;

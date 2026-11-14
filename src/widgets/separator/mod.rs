@@ -79,11 +79,11 @@ impl<'a> Separator<'a> {
         let (default_size, stretch) = match self.axis {
             Axis::X => (
                 SizeSpec::new(Sizing::HUG, Sizing::fixed(t)),
-                Align::h(HAlign::Stretch),
+                Align::from(HAlign::Stretch),
             ),
             Axis::Y => (
                 SizeSpec::new(Sizing::fixed(t), Sizing::HUG),
-                Align::v(VAlign::Stretch),
+                Align::from(VAlign::Stretch),
             ),
         };
         let size = self.widget.authored().size().unwrap_or(default_size);

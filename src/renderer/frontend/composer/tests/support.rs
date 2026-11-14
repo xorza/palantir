@@ -171,9 +171,9 @@ pub(super) fn run(
 pub(super) fn run_with_texture_cap(
     build: impl FnOnce(&mut PaintCapture, &mut RecordStore),
     display: &Display,
-    max_texture_dim: u32,
+    max_texture_dimension: u32,
 ) -> RenderBuffer {
-    let limit = TextureLimit::from_device(NonZeroU32::new(max_texture_dim).unwrap());
+    let limit = TextureLimit::from_device(NonZeroU32::new(max_texture_dimension).unwrap());
     run_in(ComposeRig::with_texture_limit(*display, limit), build)
 }
 

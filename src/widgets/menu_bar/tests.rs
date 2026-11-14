@@ -1,9 +1,9 @@
 use super::*;
 use crate::host::harness::Harness;
 use crate::primitives::geometry::spacing::Spacing;
-use crate::primitives::input::interaction::button_phase::ButtonPhase;
-use crate::primitives::input::interaction::button_state::ButtonState;
-use crate::primitives::input::interaction::response_state::ResponseState;
+use crate::primitives::input::interaction::pointer_button_phase::PointerButtonPhase;
+use crate::primitives::input::interaction::pointer_button_state::PointerButtonState;
+use crate::primitives::input::interaction::response::Response;
 use crate::scene::layer::Layer;
 use crate::shape::paint::lowered_brush::LoweredBrush;
 use crate::theme::color_scheme::ColorScheme;
@@ -312,27 +312,27 @@ fn a_menu_dropped_before_the_open_one_leaves_it_open() {
 fn the_open_title_wears_the_open_look() {
     let theme = Theme::stock(ColorScheme::Dark).menu_bar.title;
     let hovered = &theme.unselected.hovered;
-    let pressed = ResponseState {
+    let pressed = Response {
         pointer_over: true,
-        left: ButtonState {
-            phase: ButtonPhase::Held,
-            ..ButtonState::default()
+        left: PointerButtonState {
+            phase: PointerButtonPhase::Held,
+            ..PointerButtonState::default()
         },
-        ..ResponseState::default()
+        ..Response::idle(WidgetId::from_hash("probe"))
     };
-    assert!(pressed.pressed(), "premise");
-    let disabled = ResponseState {
+    assert!(pressed.is_pressed(), "premise");
+    let disabled = Response {
         disabled: true,
-        ..ResponseState::default()
+        ..Response::idle(WidgetId::from_hash("probe"))
     };
     for (label, state) in [
-        ("rest", ResponseState::default()),
+        ("rest", Response::idle(WidgetId::from_hash("probe"))),
         ("pressed", pressed),
         ("disabled", disabled),
     ] {
         assert_eq!(theme.look(&state, Selection::Selected), hovered, "{label}");
     }
-    let rest = ResponseState::default();
+    let rest = Response::idle(WidgetId::from_hash("probe"));
     assert_eq!(
         theme.look(&rest, Selection::Unselected),
         &theme.unselected.normal

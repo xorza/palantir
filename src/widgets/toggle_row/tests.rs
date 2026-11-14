@@ -1,7 +1,7 @@
 use crate::host::harness::Harness;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::primitives::layout::align::{Align, VAlign};
+use crate::primitives::layout::align::VAlign;
 use crate::primitives::layout::sizing::Sizing;
 use crate::scene::layer::Layer;
 use crate::ui::Ui;
@@ -92,7 +92,7 @@ fn record_spaced(ui: &mut Ui, kind: Toggle, id: WidgetId, value: &mut bool, expl
             row.padding(Spacing::ZERO)
                 .margin(Spacing::ZERO)
                 .gap(0.0)
-                .child_align(Align::v(VAlign::Top))
+                .child_align(VAlign::Top)
         } else {
             row
         }

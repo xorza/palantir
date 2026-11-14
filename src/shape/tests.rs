@@ -13,6 +13,7 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::line_style::LineCap;
 use crate::primitives::paint::paint::Paint;
 use crate::primitives::paint::shadow::Shadow;
+use crate::primitives::paint::shadow::ShadowKind;
 use crate::primitives::paint::stroke::Stroke;
 use crate::primitives::reduction::Reductions;
 use crate::shape::Shape;
@@ -736,9 +737,9 @@ fn a_box_takes_each_paint_part_alone() {
     assert_eq!(
         inset,
         Shadow {
-            inset: true,
+            kind: ShadowKind::Inset,
             ..shadow
         }
     );
-    assert!(!shadow.inset, "a drop shadow casts outward");
+    assert_eq!(shadow.kind, ShadowKind::Drop, "a drop shadow casts outward");
 }

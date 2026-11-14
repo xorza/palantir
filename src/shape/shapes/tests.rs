@@ -8,6 +8,7 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::image::Image;
 use crate::primitives::paint::paint::Paint;
+use crate::primitives::paint::shadow::ShadowKind;
 use crate::primitives::paint::stroke::Stroke;
 use crate::primitives::reduction::Reductions;
 use crate::shape::Shape;
@@ -37,8 +38,8 @@ impl ColorSource {
     fn apply<'a>(self, shape: PolylineShape<'a>, colors: &'a [RgbaF32]) -> PolylineShape<'a> {
         match self {
             Self::Single => shape,
-            Self::PerPoint => shape.per_point(colors),
-            Self::PerSegment => shape.per_segment(colors),
+            Self::PerPoint => shape.point_colors(colors),
+            Self::PerSegment => shape.segment_colors(colors),
         }
     }
 
@@ -394,7 +395,7 @@ fn builders_refuse_what_they_check() {
         offset: Vec2::splat(-65504.0),
         blur: 65504.0,
         spread: 65504.0,
-        inset: false,
+        kind: ShadowKind::Drop,
     };
     let lowered = LoweredShadow::lower(widest).geometry();
     assert_eq!(
@@ -478,7 +479,7 @@ fn builders_refuse_what_they_check() {
     panic_probe::assert_panics_with(domain::COLOR_RULE, || {
         let colors = [white, RgbaF32::new(N, 0.0, 0.0, 1.0)];
         check(&(
-            Shape::polyline(&[Vec2::ZERO, Vec2::X]).per_point(&colors),
+            Shape::polyline(&[Vec2::ZERO, Vec2::X]).point_colors(&colors),
             thin(),
         ));
     });
@@ -487,16 +488,16 @@ fn builders_refuse_what_they_check() {
     let bright = Stroke::new(RgbaF32::new(256.0, 1.0, 1.0, 1.0), 1.0);
     let two = [Vec2::ZERO, Vec2::X];
     check(&(
-        Shape::polyline(&two).per_segment(&[RgbaF32::new(255.0, 1.0, 1.0, 1.0)]),
+        Shape::polyline(&two).segment_colors(&[RgbaF32::new(255.0, 1.0, 1.0, 1.0)]),
         bright,
     ));
     panic_probe::assert_panics_with(COLOR_PRODUCT_RULE, || {
         let colors = [white, RgbaF32::new(256.0, 1.0, 1.0, 1.0)];
-        check(&(Shape::polyline(&two).per_point(&colors), bright));
+        check(&(Shape::polyline(&two).point_colors(&colors), bright));
     });
     panic_probe::assert_panics_with(COLOR_PRODUCT_RULE, || {
         check(&(
-            Shape::polyline(&two).per_segment(&[RgbaF32::new(256.0, 1.0, 1.0, 1.0)]),
+            Shape::polyline(&two).segment_colors(&[RgbaF32::new(256.0, 1.0, 1.0, 1.0)]),
             bright,
         ));
     });

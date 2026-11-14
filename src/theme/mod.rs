@@ -167,7 +167,7 @@ pub struct Theme {
     /// any page, opaque where none does, so the box reads as the theme's float surface,
     /// translucent and readable.
     pub material_fallback: RgbaF32,
-    /// The spec a change to this theme runs under, whether [`Ui::set_theme`](crate::Ui::set_theme)
+    /// The spec a change to this theme runs under, whether [`Ui::set_scheme_theme`](crate::Ui::set_scheme_theme)
     /// or a turn of the scheme brought it, as CSS reads the new values of `transition-*`
     /// (<https://www.w3.org/TR/css-transitions-1/>). [`AnimationSpec::THEME`] in a stock theme. A
     /// blend holds one end's, so read it from [`Ui::scheme_theme`](crate::Ui::scheme_theme).

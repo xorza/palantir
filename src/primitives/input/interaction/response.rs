@@ -1,20 +1,31 @@
 //! [`Response`]: a widget's interaction state this frame, with its id.
 
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::size::Size;
+use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::primitives::input::interaction::response_state::ResponseState;
-use std::ops;
+use crate::primitives::input::interaction::drag::Drag;
+use crate::primitives::input::interaction::pointer_button_phase::PointerButtonPhase;
+use crate::primitives::input::interaction::pointer_button_state::PointerButtonState;
+use crate::primitives::input::interaction::scroll_delta::ScrollDelta;
+use crate::primitives::input::pointer::PointerButton;
+use crate::primitives::math::domain::vec2;
+use glam::Vec2;
 
-/// A widget's interaction state this frame, probed once as the widget shows and owned: it
-/// borrows nothing, so `&mut Ui` calls interleave with its reads, an overlay anchors to it
-/// ([`Tooltip::on`](crate::Tooltip::on), [`Menu::context`](crate::Menu::context)), and a
-/// composite gathers its children's.
+/// A widget's interaction state this frame: where it arranged, and what the pointer and keyboard
+/// did to it. Probed once as the widget shows and owned: it borrows nothing, so `&mut Ui` calls
+/// interleave with its reads, an overlay anchors to it ([`Tooltip::on`](crate::Tooltip::on),
+/// [`Menu::context`](crate::Menu::context)), and a composite gathers its children's.
+/// [`Ui::response_for`](crate::Ui::response_for) probes one by id. Plain data: the docs below
+/// state what the crate produces, which a value built by hand need not keep.
 ///
-/// It derefs to [`ResponseState`], so `r.hovered()`, `r.clicked()` etc. read like the state.
-/// [`Ui::response_for`](crate::Ui::response_for) probes one by id.
+/// `disabled` is the cascaded flag (self or any ancestor), one frame stale, with the widget's own
+/// `NodeFlags::is_disabled` folded on top by `Widget::response`. `focused` is current, not stale.
 ///
 /// Owned, not a lazy probe over `&Ui`: probing every widget's state as it shows costs 9 µs a
 /// record pass of the frame bench's tree, and the borrow made an owned twin of each response
-/// (`src/widgets/AGENTS.md`, "A `Response` is owned").
+/// (`src/widgets/AGENTS.md`, "A `Response` is owned"). One struct, its reads inherent, not an id
+/// beside a state it derefs to, which the Rust API Guidelines keep for smart pointers (C-DEREF).
 ///
 /// # Reaching one out of a richer result
 ///
@@ -27,15 +38,166 @@ use std::ops;
 pub struct Response {
     /// Widget id of the originating widget.
     pub id: WidgetId,
-    /// The widget's state as it showed.
-    pub state: ResponseState,
+    /// Last frame's *visible* rect in surface space, after ancestor transforms and clipping; `None` on the first frame. See [`Self::layout_rect`] for untrimmed geometry.
+    pub rect: Option<Rect>,
+    /// Pre-transform, unclipped layout rect in world coords: a widget's true position regardless of parent scroll or clip.
+    pub layout_rect: Option<Rect>,
+    /// Cumulative ancestor transform mapping `layout_rect` into unclipped surface space; identity under none.
+    pub transform: TranslateScale,
+    /// Cursor position in widget-local logical coordinates relative to [`Self::layout_rect`]'s origin; `None` when off-surface or unarranged.
+    pub pointer_local: Option<Vec2>,
+    /// Pointer is over this widget's visible rect and nothing above took it (previous frame's cascade).
+    ///
+    /// **The observation; [`Self::hovered`] is the reaction.** A disabled widget still covers what is behind it, which a tooltip explaining why it is disabled needs, so this survives the disabled fold and `hovered` does not.
+    pub pointer_over: bool,
+    /// Disabled: this widget or any ancestor.
+    ///
+    /// **In a state the crate produces, `true` empties the interaction half:** `left`, `right`,
+    /// `middle` and `scroll` are default, so `clicked()`, `held()`, `is_pressed()` and drags read `false`; guarding with `!response.disabled &&` is dead code. `pointer_over`, `rect` and `pointer_local` survive as geometry.
+    pub disabled: bool,
+    /// This widget holds keyboard focus; current, not one frame stale.
+    pub focused: bool,
+    /// Primary-button state (`clicked`, `held`, press runs, drags).
+    pub left: PointerButtonState,
+    /// Secondary-button state; `right.clicked` is the context-menu trigger.
+    pub right: PointerButtonState,
+    /// Middle / wheel-button state, same surface as [`Self::left`].
+    pub middle: PointerButtonState,
+    /// Wheel / touchpad / pinch deltas routed to this widget.
+    pub scroll: ScrollDelta,
 }
 
-impl ops::Deref for Response {
-    type Target = ResponseState;
+impl Response {
+    /// The response of a widget `id` that nothing touched and that has not arranged: what a
+    /// probe answers before the widget's first frame, and the base a test builds one on. No
+    /// `Default`, as a response names its widget.
+    pub const fn idle(id: WidgetId) -> Self {
+        Self {
+            id,
+            rect: None,
+            layout_rect: None,
+            transform: TranslateScale::IDENTITY,
+            pointer_local: None,
+            pointer_over: false,
+            disabled: false,
+            focused: false,
+            left: PointerButtonState::IDLE,
+            right: PointerButtonState::IDLE,
+            middle: PointerButtonState::IDLE,
+            scroll: ScrollDelta::NONE,
+        }
+    }
 
+    /// Folds one source of "disabled" in, dropping the interaction half once any says so.
+    ///
+    /// Three sources arrive at different times (cascade flag, this frame's ancestor scratch, the widget's own flag, visible only to `Widget::response`); each goes through here, so a widget disabled this frame never reports `disabled` beside `hovered` or `left.clicked()`. Idempotent: a later `false` re-enables nothing.
+    ///
+    /// **This is the whole of what disabling does:** the cascade keeps a disabled widget in the hit index, so input still routes to it, and emptying what it reads makes that nothing happen. `pointer_over` stays; `hovered` goes by reading `disabled`.
     #[inline]
-    fn deref(&self) -> &ResponseState {
-        &self.state
+    pub(crate) const fn merge_disabled(&mut self, disabled: bool) {
+        self.disabled |= disabled;
+        if self.disabled {
+            self.clear_interaction();
+        }
+    }
+
+    /// Reports one left click the pointer never made: an activation key or a menu shortcut, so a
+    /// reader of `clicked()` need not know which device acted. Only over a left button with no
+    /// gesture of its own this frame: a held press keeps its gesture and makes its own click on
+    /// release, a click already counts, and a drag that stopped keeps its edge.
+    #[inline]
+    pub(crate) fn activate(&mut self) {
+        if let (PointerButtonPhase::Idle | PointerButtonPhase::Up { click: None }, Drag::None) =
+            (self.left.phase, self.left.drag)
+        {
+            self.left =
+                PointerButtonState::new(PointerButtonPhase::Up { click: Some(1) }, Drag::None);
+        }
+    }
+
+    /// Everything the pointer and wheel contributed this frame, back to default. Geometry stays: `rect`, `transform`, `pointer_over`, and `pointer_local`, which say where the pointer is, not what it did.
+    #[inline]
+    const fn clear_interaction(&mut self) {
+        self.left = PointerButtonState::IDLE;
+        self.right = PointerButtonState::IDLE;
+        self.middle = PointerButtonState::IDLE;
+        self.scroll = ScrollDelta::NONE;
+    }
+
+    /// Pointer is over this widget and it can react: `pointer_over` minus disabled widgets. Derived, so the two can't disagree.
+    #[inline]
+    pub const fn hovered(&self) -> bool {
+        self.pointer_over && !self.disabled
+    }
+
+    /// One-frame edge: a primary-button press+release landed on the widget without latching a drag.
+    ///
+    /// The activation predicate for buttons, menu rows and tabs, reading `left` like [`Self::is_pressed`] and [`Self::press_fraction`]. A disabled widget's slices are empty, so no `disabled` guard is needed.
+    #[inline]
+    pub const fn clicked(&self) -> bool {
+        self.left.clicked()
+    }
+
+    /// One-frame edge: this primary click completed a double; [`Self::clicked`] fires too. See [`PointerButtonState::click_count`] for triple and beyond.
+    #[inline]
+    pub const fn double_clicked(&self) -> bool {
+        self.left.double_clicked()
+    }
+
+    /// One-frame edge: a press+release landed on the widget on **any** button without latching a drag; the dismissal question for overlay backdrops, where `clicked` would leave a menu opened by a secondary button un-closable by it.
+    #[inline]
+    pub const fn any_clicked(&self) -> bool {
+        let mut i = 0;
+        while i < PointerButton::COUNT {
+            if self.button(PointerButton::ALL[i]).clicked() {
+                return true;
+            }
+            i += 1;
+        }
+        false
+    }
+
+    /// The per-button slice for a **runtime** `button`; for a known button read the field directly (`response.left`).
+    #[inline]
+    pub const fn button(&self, button: PointerButton) -> &PointerButtonState {
+        match button {
+            PointerButton::Left => &self.left,
+            PointerButton::Right => &self.right,
+            PointerButton::Middle => &self.middle,
+        }
+    }
+
+    /// [`Self::button`], mutably; the one way the router writes a slot. Indexing by `PointerButton::idx()` would make the enum's declaration order a silent contract.
+    #[inline]
+    pub(crate) const fn button_mut(&mut self, button: PointerButton) -> &mut PointerButtonState {
+        match button {
+            PointerButton::Left => &mut self.left,
+            PointerButton::Right => &mut self.right,
+            PointerButton::Middle => &mut self.middle,
+        }
+    }
+
+    /// Primary-button press with the pointer still over the widget ("shows pressed visuals"): `left.held && hovered`.
+    /// A level, where [`PointerButtonState::pressed`] is the press's edge.
+    #[inline]
+    pub const fn is_pressed(&self) -> bool {
+        self.left.held() && self.hovered()
+    }
+
+    /// Where the primary button's gesture sits across the widget, a `0..1` share per axis, on the press, every drag frame and the release; `None` otherwise, while disabled, and before arrangement.
+    ///
+    /// Shared by pointer-driven axis widgets. `band` is the width of a centered knob that comes off each end (zero when the pointer is the position), see [`domain::band_fraction`](crate::widget::domain::band_fraction). Clamped.
+    #[inline]
+    pub fn press_fraction(&self, band: f32) -> Option<Vec2> {
+        let in_gesture = self.is_pressed() || self.left.drag.is_live() || self.left.released();
+        if self.disabled || !in_gesture {
+            return None;
+        }
+        let local = self.pointer_local?;
+        let rect = self.layout_rect?;
+        Some(vec2::fraction_or(
+            vec2::band_fraction(local, rect.size, Size::from(band)),
+            Vec2::ZERO,
+        ))
     }
 }

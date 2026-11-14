@@ -509,10 +509,10 @@ mod tests {
 
         let (mut host, target) = host();
         host.ui_mut()
-            .set_theme(ColorScheme::Dark, sparkle())
+            .set_scheme_theme(ColorScheme::Dark, sparkle())
             .unwrap();
         host.ui_mut()
-            .set_theme(ColorScheme::Dark, Theme::stock(ColorScheme::Dark))
+            .set_scheme_theme(ColorScheme::Dark, Theme::stock(ColorScheme::Dark))
             .unwrap();
         let ripples = |host: &OffscreenHost| {
             host.effect_store()
@@ -527,7 +527,7 @@ mod tests {
             ColorScheme::Light => ColorScheme::Dark,
             ColorScheme::Dark => ColorScheme::Light,
         };
-        host.ui_mut().set_theme(hidden, sparkle()).unwrap();
+        host.ui_mut().set_scheme_theme(hidden, sparkle()).unwrap();
         assert_eq!(ripples(&host), [false, false]);
         host.frame(target.as_target(), &mut fill);
         assert_eq!(ripples(&host), [true, true]);

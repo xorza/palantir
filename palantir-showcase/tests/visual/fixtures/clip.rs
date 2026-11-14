@@ -45,10 +45,10 @@ fn every_draw_kind_at_a_clip_edge_matches_golden() {
     .unwrap();
     let handle = rig.host.ui().load_image(&image).unwrap();
     let mut mesh = Mesh::new();
-    let a = mesh.vertex(Vec2::new(-20.0, 110.0), RgbaF32::srgb(1.0, 0.3, 0.3));
-    let b = mesh.vertex(Vec2::new(30.0, 125.0), RgbaF32::srgb(0.3, 1.0, 0.4));
-    let c = mesh.vertex(Vec2::new(-20.0, 140.0), RgbaF32::srgb(0.3, 0.5, 1.0));
-    mesh.triangle(a, b, c);
+    let a = mesh.add_vertex(Vec2::new(-20.0, 110.0), RgbaF32::srgb(1.0, 0.3, 0.3));
+    let b = mesh.add_vertex(Vec2::new(30.0, 125.0), RgbaF32::srgb(0.3, 1.0, 0.4));
+    let c = mesh.add_vertex(Vec2::new(-20.0, 140.0), RgbaF32::srgb(0.3, 0.5, 1.0));
+    mesh.add_triangle(a, b, c);
     let img = rig
         .size(UVec2::new(240, 180))
         .frame(|ui| {

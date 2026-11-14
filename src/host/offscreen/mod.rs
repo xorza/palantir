@@ -278,7 +278,7 @@ impl OffscreenHost {
     }
 
     /// Report the system as asking for less motion, or not, as the winit host reports the
-    /// desktop's; `false` at the start. See [`Ui::is_motion_reduced`].
+    /// desktop's; `false` at the start. See [`Ui::reductions`].
     pub fn set_system_motion_reduced(&mut self, reduced: bool) -> &mut Self {
         self.window
             .set_preferences(|preferences| preferences.reductions.motion = Reduction::of(reduced));
@@ -286,7 +286,7 @@ impl OffscreenHost {
     }
 
     /// Report the system as asking for less transparency, or not, as the winit host reports the
-    /// desktop's; `false` at the start. See [`Ui::is_transparency_reduced`].
+    /// desktop's; `false` at the start. See [`Ui::reductions`].
     pub fn set_system_transparency_reduced(&mut self, reduced: bool) -> &mut Self {
         self.window.set_preferences(|preferences| {
             preferences.reductions.transparency = Reduction::of(reduced);
@@ -295,7 +295,7 @@ impl OffscreenHost {
     }
 
     /// Report the system's power-saver mode as on, or not, as the winit host reports the
-    /// desktop's; `false` at the start. See [`Ui::is_power_reduced`].
+    /// desktop's; `false` at the start. See [`Ui::reductions`].
     pub fn set_system_power_reduced(&mut self, reduced: bool) -> &mut Self {
         self.window
             .set_preferences(|preferences| preferences.reductions.power = Reduction::of(reduced));

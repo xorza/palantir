@@ -399,7 +399,7 @@ impl BackdropBlur {
         .pipeline;
         let params = DynamicBuffer::uniform(gpu, "palantir.backdrop.blur.params", 16);
         let params_group = params_group(gpu, &params_layout, &params.buffer);
-        let ceiling = gpu.max_texture_dim().get();
+        let ceiling = gpu.max_texture_dimension().get();
         Self {
             filtered,
             loaded,

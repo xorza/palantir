@@ -41,7 +41,7 @@ pub(super) enum FramePlan {
 /// frame checks, so a move forces a record.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct RecordBaseline {
-    /// Bumped by every write to the shown theme (`Ui::set_theme`) and every change of the
+    /// Bumped by every write to the shown theme (`Ui::set_scheme_theme`) and every change of the
     /// shown scheme.
     pub(super) theme_epoch: u32,
     /// `TextShaper::font_epoch`, which a font load in any window sharing the shaper moves.
@@ -85,8 +85,8 @@ pub(crate) struct FrameRuntime {
     pub(super) dt: f32,
     /// Bumped once per [`WindowFrames::frame`](crate::ui::window_frames::WindowFrames::frame), before either record pass, so a
     /// settling pass cannot double-advance animation. Counts `PaintOnly`
-    /// frames too, unlike [`Self::record_frame_id`].
-    pub(super) render_frame_id: u64,
+    /// frames too, unlike [`Self::record_frame_idx`].
+    pub(super) render_frame_idx: u64,
     /// This frame's display and host-supplied monotonic time, set by [`Self::begin_frame`].
     pub(super) stamp: FrameStamp,
     /// Time and display from the previous frame, `None` before the first;
@@ -95,12 +95,12 @@ pub(crate) struct FrameRuntime {
     /// EMA of `1/raw_dt`; zero before a second timestamp. Uses unclamped wall
     /// time so stalls stay visible.
     pub(super) fps_ema: f32,
-    /// Full-record frames so far, published as [`crate::Ui::record_frame_id`].
+    /// Full-record frames so far, published as [`crate::Ui::record_frame_idx`].
     /// Bumped in [`Self::note_processing`], so inside a record pass it counts
     /// the record frames before this one: consecutive frames see consecutive
     /// values and both passes of one frame see the same one.
-    pub(super) record_frame_id: u64,
-    /// How many of [`Self::record_frame_id`]'s frames needed a settling second pass.
+    pub(super) record_frame_idx: u64,
+    /// How many of [`Self::record_frame_idx`]'s frames needed a settling second pass.
     /// Cumulative so a caller reads the delta across a gesture. `PaintOnly`
     /// frames are excluded from both halves of the ratio. Shown by the
     /// frame-stats overlay.
@@ -152,15 +152,15 @@ impl FrameRuntime {
         self.text_frame = Some(text.frame());
     }
 
-    /// Fold this frame's outcome into [`Self::record_frame_id`] and the settle tally.
+    /// Fold this frame's outcome into [`Self::record_frame_idx`] and the settle tally.
     /// Called once per [`WindowFrames::frame`](crate::ui::window_frames::WindowFrames::frame) after the pass count is known, so
     /// the overlay always reads both through the previous frame.
     pub(super) const fn note_processing(&mut self, processing: FrameProcessing) {
         match processing {
             FrameProcessing::PaintOnly => {}
-            FrameProcessing::SingleLayout => self.record_frame_id += 1,
+            FrameProcessing::SingleLayout => self.record_frame_idx += 1,
             FrameProcessing::DoubleLayout => {
-                self.record_frame_id += 1;
+                self.record_frame_idx += 1;
                 self.settle_frames += 1;
             }
         }
@@ -249,7 +249,7 @@ impl FrameRuntime {
     pub(super) fn advance_clock(&mut self, now: Duration) {
         let true_dt = now.saturating_sub(self.stamp.time).as_secs_f32();
         let raw_dt = true_dt.min(MAX_ANIMATION_DT);
-        if self.render_frame_id > 0 && true_dt > EPS {
+        if self.render_frame_idx > 0 && true_dt > EPS {
             let instant_fps = 1.0 / true_dt;
             self.fps_ema = if self.fps_ema == 0.0 {
                 instant_fps
@@ -259,7 +259,7 @@ impl FrameRuntime {
         }
         self.dt = raw_dt;
         self.stamp.time = now;
-        self.render_frame_id += 1;
+        self.render_frame_idx += 1;
     }
 
     /// Take this frame's slot on the reduced frame-rate grid, and hold the next a

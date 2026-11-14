@@ -734,7 +734,7 @@ mod record_store_tests {
                 .show(ui, |ui| {
                     ui.add_shape(Shape::mesh(self.mesh), RgbaF32::WHITE);
                     ui.add_shape(
-                        Shape::polyline(self.points).per_point(self.colors),
+                        Shape::polyline(self.points).point_colors(self.colors),
                         Stroke::new(RgbaF32::WHITE, 3.0),
                     );
                     let label = ui.intern(self.label);
@@ -1091,7 +1091,7 @@ mod screenshot_tests {
     use crate::gpu::test_gpu::headless_test_gpu;
     use crate::gpu::texel::TargetFormat;
     use crate::host::harness::Harness;
-    use crate::host::harness::harness_builder::Depth;
+    use crate::host::harness::harness_builder::HarnessDepth;
     use crate::primitives::geometry::rect::Rect;
     use crate::primitives::geometry::size::Size;
     use crate::primitives::paint::chrome::Chrome;
@@ -1134,7 +1134,7 @@ mod screenshot_tests {
             let window = Harness::builder(PHYSICAL)
                 .system_scale(SystemScale::new(scale).unwrap())
                 .mono()
-                .depth(Depth::Gpu {
+                .depth(HarnessDepth::Gpu {
                     gpu: gpu.handles(),
                     format: TargetFormat::new(format),
                 })
@@ -1230,7 +1230,7 @@ mod screenshot_tests {
             let shot = scene.capture(None);
             let image = shot.image();
             assert_eq!(image.size(), PHYSICAL, "{format:?}");
-            assert_eq!(shot.scale(), 1.0);
+            assert_eq!(shot.scale_factor(), 1.0);
             assert_eq!(shot.region(), Rect::new(0.0, 0.0, 64.0, 48.0));
             assert_eq!(image.pixels, scene.target().into_raw(), "{format:?}");
             reference.get_or_insert(shot);
@@ -1271,7 +1271,7 @@ mod screenshot_tests {
             assert_eq!(shot.region(), clamped);
             let image = shot.image();
             assert_eq!(image.size(), size, "{region:?}");
-            assert_eq!(shot.scale(), 2.0);
+            assert_eq!(shot.scale_factor(), 2.0);
             let crop = imageops::crop_imm(&target, min.x, min.y, size.x, size.y).to_image();
             assert_eq!(image.pixels, crop.into_raw(), "{region:?}");
             // A BGRA target's region is copied and swapped, a float one's blitted at the

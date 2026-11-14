@@ -149,7 +149,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
                             s.items.push(TabItem::new(TabKey::of(i), ui.intern(*label)));
                         }
                         let hit = TabStrip::new(&s.items)
-                            .selected(s.overflowing)
+                            .selected_idx(s.overflowing)
                             .overflow(TabOverflow::Menu)
                             .show(ui, |ui, chip| chip.show_label(ui));
                         if let Some(i) = hit.activated {
@@ -172,8 +172,8 @@ fn strip_demo(ui: &mut Ui, k: Kit, s: &mut State) {
         }
         let open = &s.open;
         let hit = TabStrip::new(&s.items)
-            .selected(s.picked)
-            .show(ui, |ui, chip| layer_chip(ui, chip, open[chip.slot]));
+            .selected_idx(s.picked)
+            .show(ui, |ui, chip| layer_chip(ui, chip, open[chip.idx]));
         if let Some(slot) = hit.closed
             && s.open.len() > 1
         {

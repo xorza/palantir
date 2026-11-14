@@ -10,6 +10,7 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::image::{ImageDownsample, ImageFilter};
 use crate::primitives::paint::line_style::{LineCap, LineJoin};
 use crate::primitives::paint::shadow::Shadow;
+use crate::primitives::paint::shadow::ShadowKind;
 use crate::primitives::paint::stroke::Stroke;
 use crate::shape::geometry::arc_geometry::ArcGeometry;
 use crate::shape::geometry::bezier_geometry::BezierGeometry;
@@ -111,7 +112,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         offset: Vec2::new(1.0, 2.0),
         blur: 3.0,
         spread: 1.0,
-        inset: false,
+        kind: ShadowKind::Drop,
     };
     moves("Quad/Box.shadow", &base, &box_with(sh, None));
     for (label, changed) in [
@@ -131,7 +132,13 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         ),
         ("blur", Shadow { blur: 4.0, ..sh }),
         ("spread", Shadow { spread: 2.0, ..sh }),
-        ("inset", Shadow { inset: true, ..sh }),
+        (
+            "inset",
+            Shadow {
+                kind: ShadowKind::Inset,
+                ..sh
+            },
+        ),
     ] {
         moves(
             &format!("Quad/Box.shadow.{label}"),

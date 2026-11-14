@@ -9,7 +9,7 @@ use crate::image_registry::texture_limit::TextureLimit;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::sense::Sense;
-use crate::primitives::layout::align::{Align, HAlign, VAlign};
+use crate::primitives::layout::align::{HAlign, VAlign};
 use crate::renderer::frontend::Frontend;
 use crate::renderer::render_plan::RenderPlan;
 use crate::scene::layer::Layer;
@@ -138,7 +138,7 @@ fn the_live_roster_lists_a_view_the_damage_plan_culls() {
         GpuView::new(&scene())
             .id(WidgetId::from_hash("gpu_view_retained"))
             .size((Sizing::fixed(100.0), Sizing::fixed(100.0)))
-            .align(Align::new(HAlign::Right, VAlign::Bottom))
+            .align((HAlign::Right, VAlign::Bottom))
             .show(ui);
     });
 

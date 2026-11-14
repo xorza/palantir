@@ -132,7 +132,7 @@ fn raising_an_overlapping_node_redamages_only_the_overlap() {
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |_| {});
         for (key, r) in order {
-            ui.layer(Layer::Popup).fixed_at(r.min).show(|ui| {
+            ui.layer(Layer::Popup).at(r.min).show(|ui| {
                 block(key, r.size.w).show(ui);
             });
         }
@@ -599,7 +599,7 @@ fn reparent_at_same_rect_damages_moved_subtree() {
 fn a_root_moved_to_another_plane_damages_its_extent() {
     const PROBE: Rect = Rect::new(45.0, 45.0, 2.0, 2.0);
     let build = |ui: &mut Ui, layer: Layer| {
-        ui.layer(layer).fixed_at(Vec2::new(40.0, 40.0)).show(|ui| {
+        ui.layer(layer).at(Vec2::new(40.0, 40.0)).show(|ui| {
             Block::new()
                 .id(WidgetId::from_hash("moved"))
                 .size(30.0)

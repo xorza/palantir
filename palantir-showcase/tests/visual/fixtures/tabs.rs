@@ -28,7 +28,7 @@ fn tab_strip_matches_golden() {
             .show(ui, |ui| {
                 TabStrip::new(&items)
                     .id_salt("strip")
-                    .selected(1)
+                    .selected_idx(1)
                     .show(ui, |ui, chip| {
                         chip.show_label(ui);
                         if chip.selected {

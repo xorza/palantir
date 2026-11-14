@@ -23,7 +23,7 @@ pub struct SliderTheme {
     pub disabled: SliderColors,
     /// Knob diameter in logical px — also the widget's height.
     #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
-    pub knob_size: f32,
+    pub knob_diameter: f32,
     /// Track thickness in logical px; the pill radius is half.
     #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub track_thickness: f32,
@@ -66,7 +66,7 @@ impl SliderTheme {
                 fill: p.text_disabled,
                 knob: p.text_disabled,
             },
-            knob_size: 18.0,
+            knob_diameter: 18.0,
             track_thickness: 4.0,
         }
     }

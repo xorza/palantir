@@ -107,10 +107,10 @@ fn retained_mesh(ui: &mut Ui, key: &'static str, build: impl FnOnce(&mut Mesh)) 
 
 fn mesh_triangle(ui: &mut Ui, k: Kit) {
     retained_mesh(ui, "triangle", |m| {
-        let a = m.vertex(B, k.swatch.red);
-        let b = m.vertex(C, k.swatch.red);
-        let c = m.vertex(A, k.swatch.red);
-        m.triangle(a, b, c);
+        let a = m.add_vertex(B, k.swatch.red);
+        let b = m.add_vertex(C, k.swatch.red);
+        let c = m.add_vertex(A, k.swatch.red);
+        m.add_triangle(a, b, c);
     });
 }
 
@@ -128,26 +128,26 @@ fn polygon_star(ui: &mut Ui, k: Kit) {
             };
             Vec2::new(cx + r * theta.cos(), cy + r * theta.sin())
         };
-        let centroid = m.vertex(Vec2::new(cx, cy), k.swatch.orange);
-        let first = m.vertex(point(0), k.swatch.orange);
+        let centroid = m.add_vertex(Vec2::new(cx, cy), k.swatch.orange);
+        let first = m.add_vertex(point(0), k.swatch.orange);
         let mut prev = first;
         for i in 1..10 {
-            let next = m.vertex(point(i), k.swatch.orange);
-            m.triangle(centroid, prev, next);
+            let next = m.add_vertex(point(i), k.swatch.orange);
+            m.add_triangle(centroid, prev, next);
             prev = next;
         }
-        m.triangle(centroid, prev, first);
+        m.add_triangle(centroid, prev, first);
     });
 }
 
 fn gradient_quad(ui: &mut Ui, k: Kit) {
     retained_mesh(ui, "gradient-quad", |m| {
-        let tl = m.vertex(Vec2::new(16.0, 16.0), k.swatch.red);
-        let tr = m.vertex(Vec2::new(152.0, 16.0), k.swatch.lime);
-        let br = m.vertex(Vec2::new(152.0, 152.0), k.swatch.teal);
-        let bl = m.vertex(Vec2::new(16.0, 152.0), k.swatch.orange);
-        m.triangle(tl, tr, br);
-        m.triangle(tl, br, bl);
+        let tl = m.add_vertex(Vec2::new(16.0, 16.0), k.swatch.red);
+        let tr = m.add_vertex(Vec2::new(152.0, 16.0), k.swatch.lime);
+        let br = m.add_vertex(Vec2::new(152.0, 152.0), k.swatch.teal);
+        let bl = m.add_vertex(Vec2::new(16.0, 152.0), k.swatch.orange);
+        m.add_triangle(tl, tr, br);
+        m.add_triangle(tl, br, bl);
     });
 }
 

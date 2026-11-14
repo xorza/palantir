@@ -4,8 +4,8 @@ use crate::primitives::input::zoom_factor::ZoomFactor;
 use glam::Vec2;
 
 /// Which pointer button an event came from; the discriminants are dense indices, for the host's
-/// per-button tables. [`ResponseState::button`](crate::ResponseState::button) maps one to its
-/// [`ButtonState`](crate::ButtonState).
+/// per-button tables. [`Response::button`](crate::Response::button) maps one to its
+/// [`PointerButtonState`](crate::PointerButtonState).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[repr(u8)]
 pub enum PointerButton {
@@ -42,7 +42,7 @@ const _: () = {
 
 /// Unified pointer event stream, populated when the matching
 /// [`PointerWake`](crate::PointerWake) flag is set. No "click": that is
-/// per-widget logic ([`ButtonState::clicked`](crate::ButtonState::clicked)). An
+/// per-widget logic ([`PointerButtonState::clicked`](crate::PointerButtonState::clicked)). An
 /// overlay scrim empties it for the layers below.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum PointerEvent {

@@ -48,8 +48,8 @@ fn compatible_caps() -> SurfaceCapabilities {
 
 #[test]
 fn surface_config_enforces_renderer_contract_and_clamps_dimensions() {
-    let max_texture_dim = NonZeroU32::new(4096).unwrap();
-    let size = SurfaceManager::clamp_extent(max_texture_dim, UVec2::new(0, u32::MAX));
+    let max_texture_dimension = NonZeroU32::new(4096).unwrap();
+    let size = SurfaceManager::clamp_extent(max_texture_dimension, UVec2::new(0, u32::MAX));
     assert_eq!(size, UVec2::new(1, 4096));
 
     let config = build_surface_config(&compatible_caps(), size, Vsync::Off).unwrap();

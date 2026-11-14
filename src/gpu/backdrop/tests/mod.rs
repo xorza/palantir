@@ -4,7 +4,7 @@
 use crate::common::expiry_window::EXPIRY_FRAMES;
 use crate::gpu::test_gpu::{TestGpu, headless_test_gpu};
 use crate::host::harness::Harness;
-use crate::host::harness::harness_builder::Depth;
+use crate::host::harness::harness_builder::HarnessDepth;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::spacing::Spacing;
@@ -403,7 +403,7 @@ impl Reference {
 fn window(gpu: &TestGpu, size: UVec2, clear: RgbaF32) -> Harness {
     let mut window = Harness::builder(size)
         .mono()
-        .depth(Depth::gpu(gpu.handles()))
+        .depth(HarnessDepth::gpu(gpu.handles()))
         .build();
     window.ui_mut().theme_mut().window_bg = clear;
     window

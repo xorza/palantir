@@ -78,12 +78,12 @@ fn cascade_visible_to_relayout_pass() {
         match pass.get() {
             0 => {
                 // Pass A: no cascade yet; triggers pass B.
-                pass_a_rect.set(resp.state.rect);
+                pass_a_rect.set(resp.rect);
                 ui.request_relayout();
             }
             1 => {
                 // Pass B: `response_for` returns pass A's arranged rect.
-                pass_b_rect.set(resp.state.rect);
+                pass_b_rect.set(resp.rect);
             }
             _ => unreachable!("relayout capped at one retry per frame"),
         }
@@ -182,7 +182,7 @@ fn frame_pass_count_matches_action_trigger() {
         prime(&mut h);
 
         let count = Cell::new(0u32);
-        let render_frame_before = h.ui().frame_runtime.render_frame_id;
+        let render_frame_before = h.ui().frame_runtime.render_frame_idx;
         let _ = h.frame(|ui| {
             count.set(count.get() + 1);
             build_target(ui);
@@ -195,9 +195,9 @@ fn frame_pass_count_matches_action_trigger() {
         );
         // The render frame id bumps once per `frame`, so pass B's anim ticks see pass A's id.
         assert_eq!(
-            h.ui().frame_runtime.render_frame_id,
+            h.ui().frame_runtime.render_frame_idx,
             render_frame_before + 1,
-            "{label}: render_frame_id must bump once per frame (passes: {expected})",
+            "{label}: render_frame_idx must bump once per frame (passes: {expected})",
         );
     }
 }
@@ -472,7 +472,8 @@ fn a_first_pass_sees_input_that_arrived_after_a_quiescent_pass() {
     impl App for Probe {
         fn record(&mut self, _win: WindowToken, ui: &mut Ui) {
             let response = ui.response_for(self.id);
-            self.seen.push(response.pressed() && response.pointer_over);
+            self.seen
+                .push(response.is_pressed() && response.pointer_over);
             Button::new().id(self.id).size(40.0).show(ui);
         }
     }
@@ -512,12 +513,12 @@ impl App for CountingApp {
             RecordPass::Warmup => assert_eq!(ui.peek_pointer_pos(), None, "a scratch input"),
             RecordPass::First => {
                 assert_eq!(ui.peek_pointer_pos(), self.expected_pointer);
-                assert_eq!(ui.record_frame_id(), self.frames_begun, "one id per frame");
+                assert_eq!(ui.record_frame_idx(), self.frames_begun, "one id per frame");
                 self.frames_begun += 1;
             }
             RecordPass::Second => {
                 assert_eq!(
-                    ui.record_frame_id() + 1,
+                    ui.record_frame_idx() + 1,
                     self.frames_begun,
                     "the first's id"
                 );
@@ -781,7 +782,7 @@ fn a_theme_or_font_move_records_where_an_animation_frame_would_only_paint() {
     );
 
     h.ui_mut()
-        .set_theme(ColorScheme::Dark, support::still_theme(ColorScheme::Dark))
+        .set_scheme_theme(ColorScheme::Dark, support::still_theme(ColorScheme::Dark))
         .unwrap();
     assert_ne!(
         animation_frame(&mut h),

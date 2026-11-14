@@ -5,7 +5,7 @@ use glam::UVec2;
 
 use crate::gpu::test_gpu::headless_test_gpu;
 use crate::host::harness::Harness;
-use crate::host::harness::harness_builder::Depth;
+use crate::host::harness::harness_builder::HarnessDepth;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
@@ -54,12 +54,12 @@ fn reduced_transparency_records_every_material_by_its_fallback() {
     let mut h = Harness::mono(SURFACE);
     h.prime(2, record);
     assert!(filtered(&h), "full transparency");
-    assert!(!h.ui().is_transparency_reduced());
+    assert!(!h.ui().reductions().transparency.is_reduced());
 
     h.set_system_transparency_reduced(true);
     h.frame(record);
-    assert!(h.ui().is_transparency_reduced());
-    assert!(h.ui().system_transparency_reduced());
+    assert!(h.ui().reductions().transparency.is_reduced());
+    assert!(h.ui().system_reductions().transparency.is_reduced());
     assert!(!filtered(&h), "the system's ask");
 
     h.ui_mut().set_preferences(UiPreferences {
@@ -67,7 +67,7 @@ fn reduced_transparency_records_every_material_by_its_fallback() {
         ..UiPreferences::default()
     });
     h.frame(record);
-    assert!(!h.ui().is_transparency_reduced());
+    assert!(!h.ui().reductions().transparency.is_reduced());
     assert!(filtered(&h), "a pick of full over the system's ask");
 
     h.set_system_transparency_reduced(false);
@@ -96,7 +96,7 @@ fn a_material_draws_as_a_plain_box_of_its_fallback_while_transparency_is_reduced
     let paint = |reduced: bool, under: bool, draw: &dyn Fn(&mut Ui)| {
         let mut h = Harness::builder(UVec2::new(32, 16))
             .mono()
-            .depth(Depth::gpu(gpu.handles()))
+            .depth(HarnessDepth::gpu(gpu.handles()))
             .build();
         h.set_system_transparency_reduced(reduced);
         h.prime(2, |ui| {

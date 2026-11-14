@@ -153,8 +153,8 @@ impl<'a> Text<'a> {
     /// Position of the glyph bbox inside this widget's arranged rect, distinct from
     /// [`Configure::align`], which positions the *widget*. Meaningful only when the
     /// widget is Fixed larger than the text.
-    pub const fn text_align(mut self, a: Align) -> Self {
-        self.align = a;
+    pub fn text_align(mut self, a: impl Into<Align>) -> Self {
+        self.align = a.into();
         self
     }
 

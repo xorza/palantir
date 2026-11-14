@@ -30,7 +30,7 @@ impl IconHandle {
     /// The artwork's viewBox extent in logical px, the size to give its node.
     /// Valid to read after the set is gone; drawing is not.
     #[inline]
-    pub const fn view_box(&self) -> Size {
+    pub const fn view_box(self) -> Size {
         self.view_box
     }
 }

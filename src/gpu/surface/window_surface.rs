@@ -60,7 +60,7 @@ impl WindowSurface {
     }
 
     pub(crate) fn format(&self) -> TargetFormat {
-        TargetFormat::new(self.config.format)
+        TargetFormat::held(self.config.format)
     }
 
     /// Whether pixels can be copied out of the swapchain's images, as a backdrop's capture is.

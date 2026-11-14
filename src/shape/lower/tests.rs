@@ -19,6 +19,7 @@ use crate::primitives::paint::material::backdrop_reach::BackdropReach;
 use crate::primitives::paint::material::material_paint::MaterialPaint;
 use crate::primitives::paint::paint::Paint;
 use crate::primitives::paint::shadow::Shadow;
+use crate::primitives::paint::shadow::ShadowKind;
 use crate::primitives::reduction::{Reduction, Reductions};
 use crate::shape::Shape;
 use crate::shape::geometry::closed_geometry::ClosedGeometry;
@@ -241,7 +242,7 @@ fn chrome_lowering_keeps_an_authored_field() {
         offset: Vec2::new(1.0, 2.0),
         blur: 3.0,
         spread: 1.0,
-        inset: false,
+        kind: ShadowKind::Drop,
     };
     let base = with_corners(sane)
         .with_border(Border::new(RgbaF32::WHITE, 1.0))
@@ -287,7 +288,7 @@ fn chrome_lowering_keeps_an_authored_field() {
         (
             "shadow inset",
             with_shadow(Shadow {
-                inset: true,
+                kind: ShadowKind::Inset,
                 ..shadow
             }),
         ),

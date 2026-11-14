@@ -3,7 +3,7 @@
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::sense::Sense;
-use crate::primitives::layout::align::{Align, VAlign};
+use crate::primitives::layout::align::VAlign;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::text::text_input::TextInput;
@@ -118,7 +118,7 @@ impl ToggleRow<'_> {
         widget
             .configure()
             .default_gap(slot.gap)
-            .default_child_align(Align::v(VAlign::Center));
+            .default_child_align(VAlign::Center);
 
         widget.record(ui, None, |ui| {
             F::boxed(slot)
@@ -138,7 +138,7 @@ impl ToggleRow<'_> {
                 Text::new(label)
                     .id(id.with("label"))
                     .style(&look.text)
-                    .text_align(Align::v(VAlign::Center))
+                    .text_align(VAlign::Center)
                     .show(ui);
             }
         });

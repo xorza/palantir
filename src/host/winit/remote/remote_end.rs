@@ -81,7 +81,7 @@ impl RemoteEnd {
                 None => true,
             });
         FrameSummary {
-            record_frame_id: ui.record_frame_id(),
+            record_frame_idx: ui.record_frame_idx(),
             sent_events: self.sent_events,
             repaint_requested: report.repaint_requested,
             busy,

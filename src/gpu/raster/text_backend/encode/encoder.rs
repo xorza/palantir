@@ -145,7 +145,7 @@ impl TextEncoder {
             let Found::Raster(placement) = found else {
                 continue;
             };
-            let quad = placement.quad(g.physical, color);
+            let quad = placement.quad(g.physical_pos, color);
             pass.push(quad);
             cache.stage(EncodedGlyph {
                 offset: quad.pos - run_key.pixel,

@@ -210,7 +210,7 @@ impl<'a, S, L: Fn(&S) -> &str, K: Fn(usize, &S) -> TabKey> TabbedView<'a, S, L, 
                 }
                 let strip = TabStrip::new(&buf.items)
                     .id(strip_id)
-                    .selected(shown)
+                    .selected_idx(shown)
                     .overflow(overflow)
                     .style(t)
                     .menu_style(menu_style)

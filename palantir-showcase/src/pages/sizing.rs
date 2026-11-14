@@ -145,7 +145,10 @@ fn visibility(ui: &mut Ui, k: Kit) {
 
 fn alignment(ui: &mut Ui, k: Kit) {
     Section::new("Alignment")
-        .apis(&[api!(Panel::child_align), api!(Block::align)])
+        .apis(&[
+            api!(Panel::child_align as fn(Panel, Align) -> Panel),
+            api!(Block::align as fn(Block, Align) -> Block),
+        ])
         .show(ui, k, |ui| {
             support::note(
                 ui,
@@ -157,7 +160,7 @@ fn alignment(ui: &mut Ui, k: Kit) {
                 .size((Sizing::FILL, Sizing::fixed(96.0)))
                 .gap(8.0)
                 .padding(8.0)
-                .child_align(Align::v(VAlign::Center))
+                .child_align(VAlign::Center)
                 .chrome(k.t.card())
                 .show(ui, |ui| {
                     aligned_chip(k.swatch.teal, Align::default())
@@ -166,7 +169,7 @@ fn alignment(ui: &mut Ui, k: Kit) {
                     aligned_chip(k.swatch.teal, Align::default())
                         .id_salt("b")
                         .show(ui);
-                    aligned_chip(k.swatch.orange, Align::v(VAlign::Bottom))
+                    aligned_chip(k.swatch.orange, Align::from(VAlign::Bottom))
                         .id_salt("c-self-bot")
                         .show(ui);
                     aligned_chip(k.swatch.teal, Align::default())
@@ -177,13 +180,13 @@ fn alignment(ui: &mut Ui, k: Kit) {
                 .size((Sizing::FILL, Sizing::fixed(110.0)))
                 .gap(8.0)
                 .padding(8.0)
-                .child_align(Align::h(HAlign::Right))
+                .child_align(HAlign::Right)
                 .chrome(k.t.card())
                 .show(ui, |ui| {
                     aligned_chip(k.swatch.teal, Align::default())
                         .id_salt("a-vs")
                         .show(ui);
-                    aligned_chip(k.swatch.orange, Align::h(HAlign::Left))
+                    aligned_chip(k.swatch.orange, Align::from(HAlign::Left))
                         .id_salt("b-self-left")
                         .show(ui);
                     aligned_chip(k.swatch.teal, Align::default())
@@ -378,7 +381,7 @@ fn playground(ui: &mut Ui, k: Kit) {
                                 .id_salt(name)
                                 .size((width, Sizing::fixed(36.0)))
                                 .padding((M.space.md, M.space.sm))
-                                .child_align(Align::v(VAlign::Center))
+                                .child_align(VAlign::Center)
                                 .chrome(support::swatch_chrome(color))
                                 .show(ui, |ui| {
                                     Text::new(name).style(&support::on_swatch_style()).show(ui);

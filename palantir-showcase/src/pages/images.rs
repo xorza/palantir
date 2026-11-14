@@ -374,7 +374,7 @@ fn live(ui: &mut Ui, k: Kit, src: &Sources) {
 mod tests {
     use palantir::glam::UVec2;
     use palantir::internals::headless_test_gpu;
-    use palantir::{ColorScheme, Depth, Harness, ImageHandle, Palette, Ui};
+    use palantir::{ColorScheme, Harness, HarnessDepth, ImageHandle, Palette, Ui};
 
     use crate::pages::images::{Sources, build, sources_id};
     use crate::support::Kits;
@@ -387,7 +387,7 @@ mod tests {
         let k = Kits::default().kit(ColorScheme::Dark, &Palette::DARK);
         let mut record = |ui: &mut Ui| build(ui, k);
         let mut h = Harness::builder(UVec2::new(1000, 600))
-            .depth(Depth::gpu(gpu.handles()))
+            .depth(HarnessDepth::gpu(gpu.handles()))
             .build();
         h.frame(&mut record);
         let before = h.read_back();

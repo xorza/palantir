@@ -59,13 +59,13 @@
 //! Three doors, widest first.
 //!
 //! - **[`Theme`]** is the whole style tree, one per [`ColorScheme`]
-//!   ([`Ui::set_theme`](Ui::set_theme) swaps one; [`UiPreferences::scheme`]
+//!   ([`Ui::set_scheme_theme`](Ui::set_scheme_theme) swaps one; [`UiPreferences::scheme`]
 //!   picks which shows; [`Theme::transition`] blends a change), with per-widget bundles
 //!   ([`Theme::button`], [`Theme::slider`]).
 //! - **`style(&…Theme)`** overrides the bundle for one call site; it takes an
 //!   `Option`, so `.style(overrides.as_ref())` works.
 //! - **A per-axis setter** ([`Text::color`], [`Separator::color`],
-//!   [`Spinner::width`], [`Modal::scrim`]) overrides one field.
+//!   [`Spinner::stroke_width`], [`Modal::scrim`]) overrides one field.
 //!
 //! The third door exists only where an axis has one meaning: [`Separator`] draws
 //! one rule, but [`Slider`] has a track, fill and knob and [`Button`] a color per
@@ -148,7 +148,7 @@ pub use diagnostics::gpu_pass_stats::{BatchKind, GpuPassStats, PipelineStats};
 pub use wgpu;
 
 // Re-exported whole for the same reason: points, sizes and screen coordinates are `glam` vectors
-// (`Configure::at`, `Display::physical`, polyline points), so a consumer names them from the
+// (`Configure::at`, `Display::physical_size`, polyline points), so a consumer names them from the
 // version palantir is built against.
 pub use glam;
 
@@ -214,7 +214,7 @@ pub mod widget {
     /// `fn(f32) -> f32`, see [`PaintCurve`].
     pub use crate::shape::paint_animation::curves;
     pub use crate::shape::paint_animation::{
-        PaintAnimation, PaintChannel, PaintCurve, PaintRange, PaintRepeat, PaintSteps, PaintTiming,
+        PaintAnimation, PaintChannels, PaintCurve, PaintRange, PaintRepeat, PaintSteps, PaintTiming,
     };
     pub use crate::shape::polyline::PolylineShape;
     pub use crate::shape::rect::RectShape;
@@ -275,7 +275,7 @@ pub use gpu::gpu_paint::gpu_init_ctx::GpuInitCtx;
 pub use gpu::surface::render_target::RenderTarget;
 pub use gpu::texel::TargetFormat;
 pub use host::harness::Harness;
-pub use host::harness::harness_builder::{Depth, HarnessBuilder};
+pub use host::harness::harness_builder::{HarnessBuilder, HarnessDepth};
 pub use host::harness::harness_session::HarnessSession;
 pub use host::offscreen::{OffscreenHost, OffscreenHostBuilder, OffscreenTime};
 #[cfg(feature = "winit")]
@@ -304,14 +304,13 @@ pub use primitives::identity::icon_handle::IconHandle;
 pub use primitives::identity::widget_id::WidgetId;
 pub use primitives::input::ime_preedit::ImePreedit;
 pub use primitives::input::input_event::InputEvent;
-pub use primitives::input::interaction::button_phase::ButtonPhase;
-pub use primitives::input::interaction::button_state::ButtonState;
 pub use primitives::input::interaction::drag::Drag;
 pub use primitives::input::interaction::input_delta::InputDelta;
 pub use primitives::input::interaction::pointer_action::PointerAction;
+pub use primitives::input::interaction::pointer_button_phase::PointerButtonPhase;
+pub use primitives::input::interaction::pointer_button_state::PointerButtonState;
 pub use primitives::input::interaction::pointer_edge::PointerEdge;
 pub use primitives::input::interaction::response::Response;
-pub use primitives::input::interaction::response_state::ResponseState;
 pub use primitives::input::interaction::scroll_delta::ScrollDelta;
 pub use primitives::input::key_class::{KeyClass, KeyFilter};
 pub use primitives::input::keyboard::key::Key;
@@ -362,10 +361,10 @@ pub use primitives::paint::material::lens::Lens;
 pub use primitives::paint::material::material_effect::MaterialEffect;
 pub use primitives::paint::material::material_paint::MaterialPaint;
 pub use primitives::paint::paint::Paint;
-pub use primitives::paint::shadow::Shadow;
+pub use primitives::paint::shadow::{Shadow, ShadowKind};
 pub use primitives::paint::stroke::Stroke;
 pub use primitives::preference::Preference;
-pub use primitives::reduction::Reduction;
+pub use primitives::reduction::{Reduction, Reductions};
 pub use primitives::text::interned_str::InternedStr;
 pub use primitives::text::text_input::TextInput;
 pub use scene::layer::Layer;

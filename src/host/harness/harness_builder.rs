@@ -1,4 +1,4 @@
-//! [`HarnessBuilder`]: the settings a [`Harness`] seals at build, and the [`Depth`] its frames
+//! [`HarnessBuilder`]: the settings a [`Harness`] seals at build, and the [`HarnessDepth`] its frames
 //! run to.
 
 use crate::display::system_scale::SystemScale;
@@ -19,12 +19,12 @@ use crate::ui::window_frames::present::PresentStrategy;
 use glam::UVec2;
 use std::time::Duration;
 
-/// The label of the texture a [`Depth::Gpu`] harness paints into.
+/// The label of the texture a [`HarnessDepth::Gpu`] harness paints into.
 pub(super) const TARGET_LABEL: &str = "palantir.harness";
 
 /// How far a [`Harness`]'s frames run.
 #[derive(Debug)]
-pub enum Depth {
+pub enum HarnessDepth {
     /// Record through damage, and build no draw list: input, layout and hit tests, as a unit
     /// test reads them, at the least cost.
     Record,
@@ -34,13 +34,13 @@ pub enum Depth {
     Gpu {
         /// The device the window paints on.
         gpu: Gpu,
-        /// The texture format of the window: [`Depth::gpu`] takes 8-bit sRGB RGBA, and a float
+        /// The texture format of the window: [`HarnessDepth::gpu`] takes 8-bit sRGB RGBA, and a float
         /// format keeps linear values past 8 bits, for a [`Harness::capture`] that blends frames.
         format: TargetFormat,
     },
 }
 
-impl Depth {
+impl HarnessDepth {
     /// [`Self::Gpu`] on `gpu` in 8-bit sRGB RGBA, the format a shot reads.
     pub const fn gpu(gpu: Gpu) -> Self {
         Self::Gpu {
@@ -78,7 +78,7 @@ pub(super) struct SettlePace {
 pub struct HarnessBuilder {
     size: UVec2,
     settings: HeadlessSettings,
-    depth: Depth,
+    depth: HarnessDepth,
     strategy: PresentStrategy,
     pace: SettlePace,
 }
@@ -88,7 +88,7 @@ impl HarnessBuilder {
         Self {
             size,
             settings: HeadlessSettings::new(FontScope::Bundled),
-            depth: Depth::Record,
+            depth: HarnessDepth::Record,
             strategy: PresentStrategy::Retained,
             pace: SettlePace {
                 frame_dt: Duration::from_nanos(16_666_667),
@@ -168,8 +168,8 @@ impl HarnessBuilder {
         self
     }
 
-    /// How far each frame runs; [`Depth::Record`] by default.
-    pub fn depth(mut self, depth: Depth) -> Self {
+    /// How far each frame runs; [`HarnessDepth::Record`] by default.
+    pub fn depth(mut self, depth: HarnessDepth) -> Self {
         self.depth = depth;
         self
     }
@@ -209,7 +209,7 @@ impl HarnessBuilder {
     ///
     /// # Panics
     ///
-    /// As each setter says; at [`Depth::Gpu`], when either side of the size is zero or past the
+    /// As each setter says; at [`HarnessDepth::Gpu`], when either side of the size is zero or past the
     /// device's largest 2D texture, or the device cannot run Palantir's pipelines
     /// ([`DeviceRequirements`](crate::DeviceRequirements)).
     pub fn build(self) -> Harness {
@@ -217,13 +217,13 @@ impl HarnessBuilder {
         let shaper = options.shaper_or_else(|| TextShaper::with_fonts(options.fonts));
         let token = Harness::WINDOW;
         match &self.depth {
-            Depth::Record => {
+            HarnessDepth::Record => {
                 let mut cpu = HostCpu::new(options, shaper);
                 let frames = cpu.open(token, self.strategy);
                 let paint = HarnessPaint::Record { size: self.size };
                 self.open(cpu, frames, paint)
             }
-            Depth::Compose => {
+            HarnessDepth::Compose => {
                 let mut cpu = HostCpu::new(options, shaper);
                 let frames = cpu.open(token, self.strategy);
                 let paint = HarnessPaint::Compose {
@@ -232,7 +232,7 @@ impl HarnessBuilder {
                 };
                 self.open(cpu, frames, paint)
             }
-            Depth::Gpu { gpu, format } => {
+            HarnessDepth::Gpu { gpu, format } => {
                 let target = OwnedTarget::window(gpu, TARGET_LABEL, self.size, *format);
                 let mut core = HostCore::new(gpu.clone(), options, shaper);
                 let frames = core.open(token, self.strategy);
@@ -263,9 +263,9 @@ impl HarnessBuilder {
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
     use crate::gpu::frame::gpu_timings::FrameTiming;
-    #[cfg(test)]
-    use crate::host::harness::harness_builder::Depth;
     use crate::host::harness::harness_builder::HarnessBuilder;
+    #[cfg(test)]
+    use crate::host::harness::harness_builder::HarnessDepth;
     #[cfg(test)]
     use crate::host::harness::{Harness, HarnessPaint};
     #[cfg(test)]
@@ -308,12 +308,14 @@ pub(crate) mod internals {
             let mut cpu = HostCpu::over(resources, &self.settings.options);
             let frames = cpu.open(token, self.strategy);
             let paint = match self.depth {
-                Depth::Record => HarnessPaint::Record { size: self.size },
-                Depth::Compose => HarnessPaint::Compose {
+                HarnessDepth::Record => HarnessPaint::Record { size: self.size },
+                HarnessDepth::Compose => HarnessPaint::Compose {
                     size: self.size,
                     rows: RowTable::default(),
                 },
-                Depth::Gpu { .. } => unreachable!("a window over shared resources has no device"),
+                HarnessDepth::Gpu { .. } => {
+                    unreachable!("a window over shared resources has no device")
+                }
             };
             self.open(cpu, frames, paint)
         }

@@ -65,20 +65,20 @@ impl<'a> Splitter<'a> {
     /// share.
     #[track_caller]
     pub fn row(ratio: &'a mut f32) -> Self {
-        Self::along(ratio, Axis::X)
+        Self::along(Axis::X, ratio)
     }
 
     /// Stacked panes with a horizontal divider bar; `ratio` is the top pane's
     /// share.
     #[track_caller]
     pub fn col(ratio: &'a mut f32) -> Self {
-        Self::along(ratio, Axis::Y)
+        Self::along(Axis::Y, ratio)
     }
 
     /// Panes laid along `axis`, with the divider bar across it; `ratio` is the first pane's
     /// share. [`Axis::X`] is [`Self::row`].
     #[track_caller]
-    pub fn along(ratio: &'a mut f32, axis: Axis) -> Self {
+    pub fn along(axis: Axis, ratio: &'a mut f32) -> Self {
         Self {
             widget: Widget::grid(),
             ratio,
@@ -151,7 +151,7 @@ impl<'a> Splitter<'a> {
         // The splitter's own `disabled` reaches its divider through the cascade only next
         // frame; folded here, a splitter disabled mid-drag stops painting and steering at once.
         let mut divider = ui.response_for(divider_id);
-        divider.state.merge_disabled(response.disabled);
+        divider.merge_disabled(response.disabled);
         // A Tab stop taking the `CARET` keys as WAI-ARIA's window splitter does;
         // built here so it reads its keys before the grid records.
         let mut divider_widget = Widget::leaf()

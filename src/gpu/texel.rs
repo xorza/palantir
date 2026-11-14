@@ -31,10 +31,10 @@ pub struct TargetFormat(wgpu::TextureFormat);
 
 impl TargetFormat {
     /// 8-bit sRGB RGBA, what an image file holds: the format of the crate's own window targets.
-    pub(crate) const RGBA8_SRGB: Self = Self(wgpu::TextureFormat::Rgba8UnormSrgb);
+    pub const RGBA8_SRGB: Self = Self(wgpu::TextureFormat::Rgba8UnormSrgb);
 
     /// 16-bit float RGBA, which keeps linear values past 8 bits.
-    pub(crate) const RGBA16_FLOAT: Self = Self(wgpu::TextureFormat::Rgba16Float);
+    pub const RGBA16_FLOAT: Self = Self(wgpu::TextureFormat::Rgba16Float);
 
     /// Name a format directly, under [`RenderTarget::new`](crate::RenderTarget::new)'s rule.
     ///
@@ -61,8 +61,19 @@ impl TargetFormat {
             )
     }
 
-    pub(crate) const fn get(self) -> wgpu::TextureFormat {
+    /// The wgpu format.
+    pub const fn get(self) -> wgpu::TextureFormat {
         self.0
+    }
+
+    /// A format the crate already holds to the rule: a target's or a swapchain's, which
+    /// [`Self::new`] checked or the surface configuration chose from sRGB and float formats.
+    pub(crate) fn held(format: wgpu::TextureFormat) -> Self {
+        debug_assert!(
+            Self::encodes_linear(format),
+            "a held format is sRGB or float"
+        );
+        Self(format)
     }
 }
 

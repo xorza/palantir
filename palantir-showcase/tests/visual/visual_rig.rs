@@ -82,7 +82,7 @@ impl VisualRig {
         });
         for scheme in [ColorScheme::Dark, ColorScheme::Light] {
             host.ui_mut()
-                .set_theme(scheme, theme::fixture(scheme))
+                .set_scheme_theme(scheme, theme::fixture(scheme))
                 .unwrap();
         }
 

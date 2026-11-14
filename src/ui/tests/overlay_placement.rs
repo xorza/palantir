@@ -73,14 +73,12 @@ fn an_anchored_layer_takes_the_gap_and_flips_to_fit() {
     }
 }
 
-/// `fixed_at` doesn't flip: the near-bottom point that made `anchor` flip leaves a fixed layer
+/// `at` doesn't flip: the near-bottom point that made `anchor` flip leaves a fixed layer
 /// hanging off the surface, so the two are distinct answers.
 #[test]
 fn a_fixed_layer_stays_where_it_was_put() {
     let rect = placed(|ui| {
-        ui.layer(Layer::Popup)
-            .fixed_at(Vec2::new(20.0, 250.0))
-            .show(body);
+        ui.layer(Layer::Popup).at(Vec2::new(20.0, 250.0)).show(body);
     });
     assert_eq!(rect.min, Vec2::new(20.0, 250.0));
 }
@@ -100,15 +98,13 @@ fn a_layer_raised_from_a_disabled_scope_is_disabled() {
                     .size((Sizing::FILL, Sizing::FILL))
                     .disabled(disabled)
                     .show(ui, |ui| {
-                        ui.layer(Layer::Popup)
-                            .fixed_at(Vec2::new(40.0, 40.0))
-                            .show(|ui| {
-                                let response = Button::new()
-                                    .id(WidgetId::from_hash("in-popup"))
-                                    .label("go")
-                                    .show(ui);
-                                read = response.disabled;
-                            });
+                        ui.layer(Layer::Popup).at(Vec2::new(40.0, 40.0)).show(|ui| {
+                            let response = Button::new()
+                                .id(WidgetId::from_hash("in-popup"))
+                                .label("go")
+                                .show(ui);
+                            read = response.disabled;
+                        });
                     });
                 read
             })
@@ -129,9 +125,7 @@ fn main_is_refused_as_an_overlay_layer() {
     let mut h = Harness::mono(SURFACE);
     panic_probe::assert_panics_with(Layer::MAIN_IS_NO_OVERLAY, || {
         h.frame(|ui| {
-            ui.layer(Layer::Main)
-                .fixed_at(Vec2::new(10.0, 10.0))
-                .show(body);
+            ui.layer(Layer::Main).at(Vec2::new(10.0, 10.0)).show(body);
         });
     });
     panic_probe::assert_panics_with(Layer::MAIN_IS_NO_OVERLAY, || {
@@ -143,7 +137,7 @@ fn main_is_refused_as_an_overlay_layer() {
     {
         let mut h = Harness::mono(SURFACE);
         h.frame(|ui| {
-            ui.layer(layer).fixed_at(Vec2::new(10.0, 10.0)).show(body);
+            ui.layer(layer).at(Vec2::new(10.0, 10.0)).show(body);
         });
         assert_eq!(h.ui().tree(layer).roots.len(), 1, "{layer:?}");
     }

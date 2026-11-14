@@ -2,7 +2,7 @@
 
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::spacing::Spacing;
-use crate::primitives::input::interaction::response_state::ResponseState;
+use crate::primitives::input::interaction::response::Response;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::theme::look::WidgetLook;
@@ -91,7 +91,7 @@ impl MenuItemTheme {
 impl ThemeSlot for MenuItemTheme {
     type Pick = Selection;
 
-    fn look(&self, response: &ResponseState, selection: Selection) -> &WidgetLook {
+    fn look(&self, response: &Response, selection: Selection) -> &WidgetLook {
         selection
             .pack(&self.unselected, &self.selected)
             .pick(response, Engagement::Pressed)

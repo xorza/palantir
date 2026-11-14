@@ -247,15 +247,13 @@ fn layout_outputs_stay_isolated_per_layer_across_cache_hits() {
                     .size((40.0, 20.0))
                     .show(ui);
             });
-        ui.layer(Layer::Popup)
-            .fixed_at(Vec2::new(80.0, 60.0))
-            .show(|ui| {
-                Button::new()
-                    .id(popup_id)
-                    .label("popup layer")
-                    .size((70.0, 30.0))
-                    .show(ui);
-            });
+        ui.layer(Layer::Popup).at(Vec2::new(80.0, 60.0)).show(|ui| {
+            Button::new()
+                .id(popup_id)
+                .label("popup layer")
+                .size((70.0, 30.0))
+                .show(ui);
+        });
     };
     let node_for = |h: &Harness, layer: Layer, id: WidgetId| {
         let at = h.node_of(id).expect("recorded");

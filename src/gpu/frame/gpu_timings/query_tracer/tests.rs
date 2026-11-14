@@ -146,7 +146,7 @@ fn readback_waits_for_every_mapping() {
 #[test]
 fn a_frame_publishes_after_the_next_frame_resolved_it() {
     let test_gpu = test_gpu::headless_test_gpu();
-    let features = (test_gpu.device.features() & DeviceRequirements::GPU_TIMING_FEATURES)
+    let features = (test_gpu.device.features() & DeviceRequirements::GPU_STATS_FEATURES)
         .difference(wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES);
     if !features.contains(wgpu::Features::TIMESTAMP_QUERY) {
         return;
@@ -203,7 +203,7 @@ fn a_frame_publishes_after_the_next_frame_resolved_it() {
 #[test]
 fn every_frame_is_measured_when_callbacks_land_only_in_a_submit() {
     let test_gpu = test_gpu::headless_test_gpu();
-    let features = (test_gpu.device.features() & DeviceRequirements::GPU_TIMING_FEATURES)
+    let features = (test_gpu.device.features() & DeviceRequirements::GPU_STATS_FEATURES)
         .difference(wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES);
     if !features.contains(wgpu::Features::TIMESTAMP_QUERY) {
         return;
@@ -258,7 +258,7 @@ fn every_frame_is_measured_when_callbacks_land_only_in_a_submit() {
 #[test]
 fn a_break_between_passes_counts_in_no_kind() {
     let test_gpu = test_gpu::headless_test_gpu();
-    let features = test_gpu.device.features() & DeviceRequirements::GPU_TIMING_FEATURES;
+    let features = test_gpu.device.features() & DeviceRequirements::GPU_STATS_FEATURES;
     if !features.contains(wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES) {
         return;
     }

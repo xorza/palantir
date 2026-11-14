@@ -2,7 +2,7 @@ use crate::cascade::plane_backdrop::PlaneBackdrop;
 use crate::damage::dirty_backdrops::DirtyBackdrops;
 use crate::display::Display;
 use crate::host::harness::Harness;
-use crate::host::harness::harness_builder::Depth;
+use crate::host::harness::harness_builder::HarnessDepth;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::identity::backdrop_key::BackdropKey;
@@ -417,7 +417,7 @@ fn a_backdrop_whose_key_moves_takes_a_new_result() {
     let red = RgbaF32::srgb(1.0, 0.2, 0.1);
     let mut h = Harness::builder(UVec2::new(200, 200))
         .mono()
-        .depth(Depth::Compose)
+        .depth(HarnessDepth::Compose)
         .build();
     let sources = |h: &Harness| -> Vec<(u32, BackdropSource)> {
         h.render_buffer()

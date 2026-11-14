@@ -12,7 +12,7 @@ use std::num::NonZeroU32;
 pub(crate) struct TextureLimit(Option<NonZeroU32>);
 
 impl TextureLimit {
-    /// The ceiling a device granted at creation; see `Gpu::max_texture_dim`.
+    /// The ceiling a device granted at creation; see `Gpu::max_texture_dimension`.
     pub(crate) const fn from_device(max_dimension: NonZeroU32) -> Self {
         Self(Some(max_dimension))
     }

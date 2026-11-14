@@ -346,12 +346,12 @@ impl Harness {
     }
 
     /// Give the window `size` physical pixels from the next frame on, which reads the change as a
-    /// resize. At [`Depth::Gpu`](crate::Depth::Gpu) a new texture holds it, and the frame paints
+    /// resize. At [`HarnessDepth::Gpu`](crate::HarnessDepth::Gpu) a new texture holds it, and the frame paints
     /// whole.
     ///
     /// # Panics
     ///
-    /// At [`Depth::Gpu`](crate::Depth::Gpu), when either side is zero or past the device's
+    /// At [`HarnessDepth::Gpu`](crate::HarnessDepth::Gpu), when either side is zero or past the device's
     /// largest 2D texture.
     pub fn resize(&mut self, size: UVec2) -> &mut Self {
         match &mut self.paint {
@@ -395,7 +395,7 @@ impl Harness {
     }
 
     /// Report the system as asking for less motion, or not, as the winit host reports the
-    /// desktop's; `false` at the start. See [`Ui::is_motion_reduced`].
+    /// desktop's; `false` at the start. See [`Ui::reductions`].
     pub fn set_system_motion_reduced(&mut self, reduced: bool) -> &mut Self {
         self.window
             .set_preferences(|preferences| preferences.reductions.motion = Reduction::of(reduced));
@@ -403,7 +403,7 @@ impl Harness {
     }
 
     /// Report the system as asking for less transparency, or not, as the winit host reports the
-    /// desktop's; `false` at the start. See [`Ui::is_transparency_reduced`].
+    /// desktop's; `false` at the start. See [`Ui::reductions`].
     pub fn set_system_transparency_reduced(&mut self, reduced: bool) -> &mut Self {
         self.window.set_preferences(|preferences| {
             preferences.reductions.transparency = Reduction::of(reduced);
@@ -412,7 +412,7 @@ impl Harness {
     }
 
     /// Report the system's power-saver mode as on, or not, as the winit host reports the
-    /// desktop's; `false` at the start. See [`Ui::is_power_reduced`].
+    /// desktop's; `false` at the start. See [`Ui::reductions`].
     pub fn set_system_power_reduced(&mut self, reduced: bool) -> &mut Self {
         self.window
             .set_preferences(|preferences| preferences.reductions.power = Reduction::of(reduced));
@@ -737,7 +737,7 @@ impl Harness {
     /// Block until the device finished every frame painted so far, and the copies of their
     /// screenshots are back, so a screenshot asked lands in the next frame. Returns how the wait
     /// ended: [`GpuWait::Done`], or why the copies did not come back. Below
-    /// [`Depth::Gpu`](crate::Depth::Gpu) nothing paints, and it is done at once.
+    /// [`HarnessDepth::Gpu`](crate::HarnessDepth::Gpu) nothing paints, and it is done at once.
     pub fn wait_for_gpu(&self) -> GpuWait {
         match &self.paint {
             HarnessPaint::Record { .. } | HarnessPaint::Compose { .. } => GpuWait::Done,
@@ -760,13 +760,13 @@ impl Harness {
 
     /// Whether the device this harness paints with is lost, as
     /// [`OffscreenHost::is_device_lost`](crate::OffscreenHost::is_device_lost) reads it; never
-    /// below [`Depth::Gpu`](crate::Depth::Gpu). A frame then runs the app and paints nothing
+    /// below [`HarnessDepth::Gpu`](crate::HarnessDepth::Gpu). A frame then runs the app and paints nothing
     /// until [`Self::recover`] hands the harness a new device.
     pub fn is_device_lost(&self) -> bool {
         self.gpu().is_some_and(Gpu::is_lost)
     }
 
-    /// The device this harness paints with; none below [`Depth::Gpu`](crate::Depth::Gpu).
+    /// The device this harness paints with; none below [`HarnessDepth::Gpu`](crate::HarnessDepth::Gpu).
     pub(crate) const fn gpu(&self) -> Option<&Gpu> {
         match &self.paint {
             HarnessPaint::Record { .. } | HarnessPaint::Compose { .. } => None,
@@ -781,14 +781,14 @@ impl Harness {
     ///
     /// # Panics
     ///
-    /// Below [`Depth::Gpu`](crate::Depth::Gpu), which paints with no device; when either side of
-    /// the window's physical size, [`Display::physical`](crate::Display::physical) of
+    /// Below [`HarnessDepth::Gpu`](crate::HarnessDepth::Gpu), which paints with no device; when either side of
+    /// the window's physical size, [`Display::physical_size`](crate::Display::physical_size) of
     /// [`Self::ui`]'s display, is past `gpu`'s largest 2D texture, which a smaller GPU can hold,
     /// as [`HarnessBuilder::build`] and [`Self::resize`] panic past it; and if `gpu` cannot run
     /// Palantir's pipelines, as [`HarnessBuilder::build`] says.
     pub fn recover(&mut self, gpu: Gpu) {
         let HarnessPaint::Gpu { target, device } = &mut self.paint else {
-            panic!("a harness below Depth::Gpu paints with no device to recover");
+            panic!("a harness below HarnessDepth::Gpu paints with no device to recover");
         };
         *target = OwnedTarget::window(
             &gpu,
@@ -801,7 +801,7 @@ impl Harness {
 
     /// Render one frame of `app` at the clock as it stands, where [`Self::at`] parks it, and write
     /// the window's pixels into `pixels` in the target's format
-    /// ([`Depth::Gpu`](crate::Depth::Gpu)'s `format`): rows top down with no
+    /// ([`HarnessDepth::Gpu`](crate::HarnessDepth::Gpu)'s `format`): rows top down with no
     /// padding, 4 bytes a pixel of 8-bit sRGB RGBA by default, 8 of `Rgba16Float`. That frame
     /// alone: no held input is delivered, the clock does not move, and no frame waits for the
     /// picture to land, as [a session's shot](crate::AgentWindow::shot) does. For a recording,
@@ -809,7 +809,7 @@ impl Harness {
     ///
     /// # Errors
     ///
-    /// [`PlayError::NoPixels`] below [`Depth::Gpu`](crate::Depth::Gpu),
+    /// [`PlayError::NoPixels`] below [`HarnessDepth::Gpu`](crate::HarnessDepth::Gpu),
     /// [`PlayError::DeviceLost`] when the device is lost before the pixels come back, and
     /// [`PlayError::GpuTimedOut`] when it does not finish the frame in time; `pixels` is left
     /// empty on either.
@@ -842,7 +842,7 @@ impl Harness {
     }
 
     /// One frame of `app` at the harness's time: record to the harness's depth, keep the window
-    /// commands, and paint onto the target at [`Depth::Gpu`](crate::Depth::Gpu) while the device
+    /// commands, and paint onto the target at [`HarnessDepth::Gpu`](crate::HarnessDepth::Gpu) while the device
     /// lives.
     fn drive(&mut self, app: &mut impl App) -> FrameReport {
         if let Some(at) = self.earliest_repaint_at {
@@ -881,7 +881,7 @@ impl Harness {
     /// [`settle_frames`](crate::HarnessBuilder::settle_frames): a frame a busy app's wake brought
     /// is its progress, and the wait for the next wake starts again after each.
     fn settle_frames_of(&mut self, app: &mut impl App) -> Result<u32, PlayError> {
-        let first = self.ui().record_frame_id();
+        let first = self.ui().record_frame_idx();
         let began = Instant::now();
         let busy_limit = self.pace.background_wait.saturating_mul(BUSY_SETTLE_WAITS);
         let mut asking = 0;
@@ -916,7 +916,7 @@ impl Harness {
                 continue;
             }
             if !busy {
-                return Ok(play::frames_recorded(first, self.ui().record_frame_id()));
+                return Ok(play::frames_recorded(first, self.ui().record_frame_idx()));
             }
             if !self.window.wait_for_wake(self.pace.background_wait) {
                 return Err(PlayError::Busy {
@@ -1035,10 +1035,12 @@ pub(crate) mod internals {
         ///
         /// # Panics
         ///
-        /// At [`Depth::Record`](crate::Depth::Record), which builds no draw list.
+        /// At [`HarnessDepth::Record`](crate::HarnessDepth::Record), which builds no draw list.
         pub(super) fn rows_mut(&mut self) -> &mut RowTable {
             match self {
-                Self::Record { .. } => panic!("a harness at Depth::Record builds no draw list"),
+                Self::Record { .. } => {
+                    panic!("a harness at HarnessDepth::Record builds no draw list")
+                }
                 Self::Compose { rows, .. } => rows,
                 Self::Gpu { device, .. } => device.rows_mut(),
             }
@@ -1069,7 +1071,7 @@ pub(crate) mod internals {
         ///
         /// # Panics
         ///
-        /// At [`Depth::Record`](crate::Depth::Record), which builds no draw list.
+        /// At [`HarnessDepth::Record`](crate::HarnessDepth::Record), which builds no draw list.
         pub(crate) fn rebuild(&mut self, plan: RenderPlan) -> &RenderBuffer {
             self.window.cpu.frontend.build(
                 self.window.frames.ui().frame_scene(),
@@ -1079,11 +1081,11 @@ pub(crate) mod internals {
         }
 
         /// Build the draw list of the whole retained scene, as a full repaint does; at
-        /// [`Depth::Compose`](crate::Depth::Compose), it paints nothing.
+        /// [`HarnessDepth::Compose`](crate::HarnessDepth::Compose), it paints nothing.
         ///
         /// # Panics
         ///
-        /// At [`Depth::Record`](crate::Depth::Record), which builds no draw list.
+        /// At [`HarnessDepth::Record`](crate::HarnessDepth::Record), which builds no draw list.
         pub fn paint_full(&mut self) {
             let plan = RenderPlan {
                 clear: self.ui().theme().window_bg,
@@ -1099,10 +1101,10 @@ pub(crate) mod internals {
         ///
         /// # Panics
         ///
-        /// Below [`Depth::Gpu`](crate::Depth::Gpu), which paints no pixels.
+        /// Below [`HarnessDepth::Gpu`](crate::HarnessDepth::Gpu), which paints no pixels.
         pub fn read_back(&self) -> RgbaImage {
             let HarnessPaint::Gpu { target, .. } = &self.paint else {
-                panic!("a harness below Depth::Gpu paints no pixels");
+                panic!("a harness below HarnessDepth::Gpu paints no pixels");
             };
             target.read_back()
         }
@@ -1181,7 +1183,7 @@ pub(crate) mod internals {
             match &self.paint {
                 HarnessPaint::Gpu { device, .. } => device.backend().backdrop_blurs(),
                 HarnessPaint::Record { .. } | HarnessPaint::Compose { .. } => {
-                    panic!("a harness below Depth::Gpu runs no blur")
+                    panic!("a harness below HarnessDepth::Gpu runs no blur")
                 }
             }
         }
@@ -1193,7 +1195,7 @@ pub(crate) mod internals {
                     device.backend().atlas_scratch_texels(AtlasFormat::Rgba16F)
                 }
                 HarnessPaint::Record { .. } | HarnessPaint::Compose { .. } => {
-                    panic!("a harness below Depth::Gpu keeps no result")
+                    panic!("a harness below HarnessDepth::Gpu keeps no result")
                 }
             }
         }
@@ -1203,7 +1205,7 @@ pub(crate) mod internals {
             match &self.paint {
                 HarnessPaint::Gpu { device, .. } => device.backend().atlas_decayed(),
                 HarnessPaint::Record { .. } | HarnessPaint::Compose { .. } => {
-                    panic!("a harness below Depth::Gpu holds no pool")
+                    panic!("a harness below HarnessDepth::Gpu holds no pool")
                 }
             }
         }
@@ -1215,7 +1217,7 @@ pub(crate) mod internals {
                     device.backend().image_store().read_effect_groups().len()
                 }
                 HarnessPaint::Record { .. } | HarnessPaint::Compose { .. } => {
-                    panic!("a harness below Depth::Gpu binds no image")
+                    panic!("a harness below HarnessDepth::Gpu binds no image")
                 }
             }
         }

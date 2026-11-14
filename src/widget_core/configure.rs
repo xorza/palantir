@@ -239,19 +239,21 @@ pub trait Configure: Sized {
         self
     }
 
-    /// Alignment inside the parent's inner rect. For one axis use [`Align::h`] / [`Align::v`].
+    /// Alignment inside the parent's inner rect: an [`Align`] for both axes, or an
+    /// [`HAlign`](crate::HAlign) or [`VAlign`](crate::VAlign) for one, the other `Auto`.
     #[inline]
     #[must_use]
-    fn align(mut self, a: Align) -> Self {
+    fn align(mut self, a: impl Into<Align>) -> Self {
         self.configure().align(a);
         self
     }
 
-    /// Default alignment for children whose own axis is `Auto` (CSS `align-items`). For one axis
-    /// use [`Align::h`] / [`Align::v`].
+    /// Default alignment for children whose own axis is `Auto` (CSS `align-items`): an
+    /// [`Align`] for both axes, or an [`HAlign`](crate::HAlign) or [`VAlign`](crate::VAlign) for
+    /// one, the other `Auto`.
     #[inline]
     #[must_use]
-    fn child_align(mut self, a: Align) -> Self {
+    fn child_align(mut self, a: impl Into<Align>) -> Self {
         self.configure().child_align(a);
         self
     }
@@ -446,7 +448,7 @@ pub trait ThemeDefaults: Configure {
     /// Alignment to fall back on, per axis.
     #[inline]
     #[must_use]
-    fn default_align(mut self, a: Align) -> Self {
+    fn default_align(mut self, a: impl Into<Align>) -> Self {
         self.configure().default_align(a);
         self
     }
@@ -454,7 +456,7 @@ pub trait ThemeDefaults: Configure {
     /// Child alignment to fall back on, per axis.
     #[inline]
     #[must_use]
-    fn default_child_align(mut self, a: Align) -> Self {
+    fn default_child_align(mut self, a: impl Into<Align>) -> Self {
         self.configure().default_child_align(a);
         self
     }

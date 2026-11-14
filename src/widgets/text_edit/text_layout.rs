@@ -37,7 +37,7 @@ impl TextLayout {
     /// The alignment the block is placed by; a multi-line field aligns vertically and lets the shaper align each line. Read by both the layout engine and the record pass's hit-test.
     pub(super) const fn block_align(&self) -> Align {
         if self.ctx.multiline {
-            Align::v(self.text_align.valign())
+            Align::new(HAlign::Auto, self.text_align.valign())
         } else {
             self.text_align
         }

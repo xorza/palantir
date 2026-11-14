@@ -131,7 +131,7 @@ pub enum PlayError {
     /// A picture of a region that holds no pixel of the window.
     EmptyRegion,
     /// A picture of a window that paints no pixels: a harness below
-    /// [`Depth::Gpu`](crate::Depth::Gpu).
+    /// [`HarnessDepth::Gpu`](crate::HarnessDepth::Gpu).
     NoPixels,
     /// The device was lost before the window's pixels came back.
     DeviceLost,

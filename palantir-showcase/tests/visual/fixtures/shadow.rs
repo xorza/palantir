@@ -8,7 +8,8 @@ use image::{Rgba, RgbaImage};
 use palantir::glam::{IVec2, UVec2, Vec2};
 use palantir::widget::Shape;
 use palantir::{
-    Border, Chrome, ClipMode, Configure, Corners, Panel, Rect, RgbaF32, Shadow, Sizing, Ui,
+    Border, Chrome, ClipMode, Configure, Corners, Panel, Rect, RgbaF32, Shadow, ShadowKind, Sizing,
+    Ui,
 };
 use std::f64::consts::SQRT_2;
 
@@ -253,7 +254,7 @@ fn inset_chrome_shadow_paints_over_the_fill_inside_the_border() {
         offset: Vec2::ZERO,
         blur: 4.0,
         spread: 0.0,
-        inset: true,
+        kind: ShadowKind::Inset,
     };
     let boxed = |on_chrome: bool| {
         render(CLEAR, |ui| {
@@ -582,7 +583,11 @@ fn cutout_grid(ui: &mut Ui) {
                             offset: Vec2::new(3.0, 5.0),
                             blur,
                             spread: if inset { 4.0 } else { 2.0 },
-                            inset,
+                            kind: if inset {
+                                ShadowKind::Inset
+                            } else {
+                                ShadowKind::Drop
+                            },
                         },
                     );
                 }
@@ -607,7 +612,11 @@ fn cutout_grid(ui: &mut Ui) {
                     offset: Vec2::new(3.0, 5.0),
                     blur: 16.0,
                     spread: if inset { 4.0 } else { 2.0 },
-                    inset,
+                    kind: if inset {
+                        ShadowKind::Inset
+                    } else {
+                        ShadowKind::Drop
+                    },
                 },
             );
         }
@@ -746,7 +755,11 @@ fn template_case_shadow(ui: &mut Ui, case: TemplateCase, at: Rect) {
             offset: case.offset,
             blur: case.blur,
             spread: case.spread,
-            inset: case.inset,
+            kind: if case.inset {
+                ShadowKind::Inset
+            } else {
+                ShadowKind::Drop
+            },
         },
     );
 }

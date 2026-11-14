@@ -35,7 +35,7 @@ impl<A: App> AgentWindow<A> for HarnessSession<'_, A> {
     ///
     /// [`StepError`], naming the step it stopped at.
     fn play<X: Locate<A>>(&mut self, actions: &[Action<X>]) -> Result<u32, StepError> {
-        let first = self.harness.ui().record_frame_id();
+        let first = self.harness.ui().record_frame_idx();
         let mut stage = HarnessStage {
             h: self.harness,
             app: self.app,
@@ -43,7 +43,7 @@ impl<A: App> AgentWindow<A> for HarnessSession<'_, A> {
         play::play_all(&mut stage, actions)?;
         Ok(play::frames_recorded(
             first,
-            self.harness.ui().record_frame_id(),
+            self.harness.ui().record_frame_idx(),
         ))
     }
 
@@ -72,7 +72,7 @@ impl<A: App> AgentWindow<A> for HarnessSession<'_, A> {
     ///
     /// # Errors
     ///
-    /// [`PlayError::NoPixels`] below [`Depth::Gpu`](crate::Depth::Gpu),
+    /// [`PlayError::NoPixels`] below [`HarnessDepth::Gpu`](crate::HarnessDepth::Gpu),
     /// [`PlayError::EmptyRegion`] for a region outside the window, [`PlayError::DeviceLost`] when
     /// the device is lost, [`PlayError::GpuTimedOut`] when it does not finish the frame in time,
     /// and [`PlayError::Unsettled`] when the picture has not landed after the builder's
@@ -130,7 +130,7 @@ impl<A: App> AgentWindow<A> for HarnessSession<'_, A> {
     ///
     /// # Errors
     ///
-    /// [`PlayError::NoPixels`] below [`Depth::Gpu`](crate::Depth::Gpu).
+    /// [`PlayError::NoPixels`] below [`HarnessDepth::Gpu`](crate::HarnessDepth::Gpu).
     fn lose_device(&mut self) -> Result<(), PlayError> {
         self.harness.gpu().ok_or(PlayError::NoPixels)?.lose();
         Ok(())

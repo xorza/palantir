@@ -23,7 +23,7 @@ use std::panic::Location;
 use palantir::Ui;
 use palantir::glam::UVec2;
 use palantir::internals::SHAPED_BUFFER_RING_FRAMES;
-use palantir::{Depth, Harness};
+use palantir::{Harness, HarnessDepth};
 
 use crate::allocator;
 use crate::allocator::AuditResult;
@@ -43,7 +43,7 @@ pub(crate) fn new_ui() -> Harness {
 pub(crate) fn new_compose() -> Harness {
     Harness::builder(SURFACE)
         .mono()
-        .depth(Depth::Compose)
+        .depth(HarnessDepth::Compose)
         .build()
 }
 

@@ -363,7 +363,7 @@ fn hash_static_covers_channel_timing_and_curve() {
         (
             "alpha range",
             PaintAnimation {
-                channel: PaintChannel {
+                channels: PaintChannels {
                     alpha: Some(PaintRange { from: 0.0, to: 0.5 }),
                     turn: None,
                 },
@@ -373,7 +373,7 @@ fn hash_static_covers_channel_timing_and_curve() {
         (
             "the same range on the other channel",
             PaintAnimation {
-                channel: PaintChannel {
+                channels: PaintChannels {
                     alpha: None,
                     turn: Some(PaintRange { from: 0.0, to: 1.0 }),
                 },
@@ -398,8 +398,8 @@ fn reduced_motion_keeps_progress_and_lands_decoration() {
     let spinner = spinning(1.0).with_motion(MotionRole::Essential);
     let kept = spinner.reduced().expect("progress runs");
     assert_eq!(
-        (kept.channel, kept.timing),
-        (spinner.channel, spinner.timing)
+        (kept.channels, kept.timing),
+        (spinner.channels, spinner.timing)
     );
     assert!(spinning(1.0).reduced().is_none(), "a decorative turn");
     assert!(blink().reduced().is_none(), "a settling blink");

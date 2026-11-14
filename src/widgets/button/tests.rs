@@ -267,9 +267,9 @@ fn a_label_truncates_to_one_line_in_a_narrow_button() {
 #[test]
 fn an_activation_key_under_a_held_press_keeps_the_gesture() {
     use crate::primitives::identity::widget_id::WidgetId;
-    use crate::primitives::input::interaction::button_phase::ButtonPhase;
-    use crate::primitives::input::interaction::button_state::ButtonState;
     use crate::primitives::input::interaction::drag::Drag;
+    use crate::primitives::input::interaction::pointer_button_phase::PointerButtonPhase;
+    use crate::primitives::input::interaction::pointer_button_state::PointerButtonState;
     use crate::primitives::input::keyboard::key::Key;
     use crate::primitives::input::pointer::PointerButton;
     use crate::ui::Ui;
@@ -289,7 +289,7 @@ fn an_activation_key_under_a_held_press_keeps_the_gesture() {
     let _ = h.frame_value(record);
     h.key(Key::Char(' '));
     let held = h.frame_value(record);
-    assert_eq!(held.phase, ButtonPhase::Held, "the press holds");
+    assert_eq!(held.phase, PointerButtonPhase::Held, "the press holds");
     assert_eq!(
         held.drag,
         Drag::Active {
@@ -302,7 +302,7 @@ fn an_activation_key_under_a_held_press_keeps_the_gesture() {
     h.release(PointerButton::Left);
     assert_eq!(
         h.frame_value(record),
-        ButtonState::new(ButtonPhase::Up { click: None }, Drag::Stopped),
+        PointerButtonState::new(PointerButtonPhase::Up { click: None }, Drag::Stopped),
         "the release ends the drag with no click"
     );
 }
@@ -395,7 +395,7 @@ mod press {
             enter: ms(225),
             exit: ms(150),
         });
-        h.ui_mut().set_theme(scheme, theme).unwrap();
+        h.ui_mut().set_scheme_theme(scheme, theme).unwrap();
         let id = WidgetId::from_hash("button");
         let record = move |ui: &mut Ui| {
             Button::new().id(id).size((80.0, 30.0)).show(ui);

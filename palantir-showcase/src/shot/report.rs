@@ -71,7 +71,7 @@ pub(crate) fn shot(
         picture.x,
         picture.y,
         rect(region),
-        shot.scale(),
+        shot.scale_factor(),
     )?;
     for entry in &legend.entries {
         writeln!(out, "  {} {}", quoted(&entry.text), rect(entry.rect))?;

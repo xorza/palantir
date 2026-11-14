@@ -5,7 +5,7 @@ use crate::animation::animation_spec::AnimationSpec;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
-use crate::primitives::input::interaction::response_state::ResponseState;
+use crate::primitives::input::interaction::response::Response;
 use crate::primitives::paint::border::Border;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::{RgbaF32, TEXT_CONTRAST};
@@ -152,7 +152,7 @@ impl ThemeSlot for TextEditTheme {
 
     /// `active` = focused. Disabled beats focused, focused beats hovered.
     #[inline(always)]
-    fn look(&self, response: &ResponseState, _pick: ()) -> &WidgetLook {
+    fn look(&self, response: &Response, _pick: ()) -> &WidgetLook {
         self.looks.pick(response, Engagement::Focused)
     }
 

@@ -150,7 +150,7 @@ fn focus_moves_only_the_focused_group() {
     assert_ne!(fresh, primary, "the new pane took focus");
     let actives: Vec<Tab> = d.active_tabs().collect();
 
-    d.apply(DockOperation::FocusPane { group: primary });
+    d.apply(DockOperation::FocusGroup { group: primary });
     d.validate().unwrap();
     assert_eq!(d.focused(), primary);
     assert_eq!(
@@ -159,11 +159,11 @@ fn focus_moves_only_the_focused_group() {
         "focus alone moved — no pane switched tabs"
     );
 
-    d.apply(DockOperation::FocusPane { group: primary });
+    d.apply(DockOperation::FocusGroup { group: primary });
     assert_eq!(d.focused(), primary, "re-focusing the same pane is inert");
 
     let gone = d.absent_group();
-    d.apply(DockOperation::FocusPane { group: gone });
+    d.apply(DockOperation::FocusGroup { group: gone });
     assert_eq!(
         d.focused(),
         primary,
@@ -181,7 +181,7 @@ fn open_tab_reuses_an_existing_tab_and_focuses_its_pane() {
     split_off(&mut d, viewer(1), primary, SplitSide::Right);
     let fresh = d.focused();
 
-    d.apply(DockOperation::FocusPane { group: primary });
+    d.apply(DockOperation::FocusGroup { group: primary });
     d.apply(DockOperation::OpenTab { tab: viewer(1) });
     assert_eq!(
         d.all_tabs().collect::<Vec<_>>(),
@@ -227,7 +227,7 @@ fn split_move_and_collapse_roundtrip() {
     // Moving back into the primary strip collapses the split.
     d.apply(DockOperation::MoveTab {
         tab: viewer(1),
-        to: DockDrop::Into {
+        to: DockDrop::Join {
             group: primary,
             idx: 1,
         },
@@ -289,7 +289,7 @@ fn degenerate_and_forbidden_moves_change_nothing() {
     let gone = d.absent_group();
     d.apply(DockOperation::MoveTab {
         tab: Tab::Prefs,
-        to: DockDrop::Into {
+        to: DockDrop::Join {
             group: gone,
             idx: 0,
         },
@@ -409,7 +409,7 @@ fn a_same_group_reorder_uses_pre_move_indices() {
         d.insert_into(viewer(2), primary);
         d.apply(DockOperation::MoveTab {
             tab: from,
-            to: DockDrop::Into {
+            to: DockDrop::Join {
                 group: primary,
                 idx,
             },
@@ -603,7 +603,7 @@ fn nested_splits_stay_canonical() {
     // Collapse the inner split; the outer survives.
     d.apply(DockOperation::MoveTab {
         tab: viewer(2),
-        to: DockDrop::Into {
+        to: DockDrop::Join {
             group: primary,
             idx: 99,
         },
@@ -818,7 +818,7 @@ fn a_drop_classifies_into_strip_slots_join_and_wedges() {
     assert_eq!(
         hit,
         DropTarget::Region {
-            drop: DockDrop::Into { group, idx: 2 },
+            drop: DockDrop::Join { group, idx: 2 },
             wash: content,
         }
     );
@@ -839,12 +839,12 @@ fn a_drop_classifies_into_strip_slots_join_and_wedges() {
     let p = Vec2::new(90.0, 165.0);
     assert_eq!(classify(p).drop(), left.drop());
     let narrow = geometry(true, AllowedSplits::ALL, 0.2).classify(p);
-    assert_eq!(narrow.drop(), DockDrop::Into { group, idx: 2 });
+    assert_eq!(narrow.drop(), DockDrop::Join { group, idx: 2 });
 
     // At the cap, or where the policy forbids the nearest edge, wedges join.
     let at = Vec2::new(20.0, 60.0);
     let capped = geometry(false, AllowedSplits::ALL, 0.25).classify(at);
-    assert_eq!(capped.drop(), DockDrop::Into { group, idx: 2 });
+    assert_eq!(capped.drop(), DockDrop::Join { group, idx: 2 });
     let col_only = geometry(true, AllowedSplits::COL, 0.25).classify(at);
     assert_eq!(
         col_only.drop(),
@@ -855,7 +855,7 @@ fn a_drop_classifies_into_strip_slots_join_and_wedges() {
         "the nearest *offered* edge wins when Left is refused"
     );
     let none = geometry(true, AllowedSplits::NONE, 0.25).classify(at);
-    assert_eq!(none.drop(), DockDrop::Into { group, idx: 2 });
+    assert_eq!(none.drop(), DockDrop::Join { group, idx: 2 });
 }
 
 /// The minimal viewer: every tab is a label and an empty body.

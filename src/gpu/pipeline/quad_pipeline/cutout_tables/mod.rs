@@ -202,7 +202,7 @@ impl CutoutTables {
         if self.bakes.is_empty() {
             return UVec2::ZERO;
         }
-        let edge = gpu.max_texture_dim().get();
+        let edge = gpu.max_texture_dimension().get();
         self.staging_packer
             .reset(u16::try_from(edge).unwrap_or(u16::MAX));
         let mut round = 0;

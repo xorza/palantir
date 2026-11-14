@@ -120,7 +120,7 @@ impl Page {
                         .size((Sizing::FILL, Sizing::HUG))
                         .gap(M.space.xs)
                         .line_gap(M.space.xs)
-                        .child_align(Align::v(VAlign::Center))
+                        .child_align(VAlign::Center)
                         .show(ui, |ui| {
                             Text::new("keys")
                                 .style(&t.caption())
@@ -728,7 +728,7 @@ fn ui_scale_row(ui: &mut Ui, k: Kit) {
         .id_salt("ui scale")
         .size((Sizing::FILL, Sizing::HUG))
         .gap(M.space.xs)
-        .child_align(Align::v(VAlign::Center))
+        .child_align(VAlign::Center)
         .show(ui, |ui| {
             Text::new("UI scale")
                 .style(&k.t.caption())

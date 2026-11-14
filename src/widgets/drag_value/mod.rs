@@ -129,8 +129,8 @@ impl<'a> DragValue<'a> {
 
     /// The value's position inside the chip, and the inline editor's. Default
     /// [`Align::CENTER`].
-    pub const fn text_align(mut self, a: Align) -> Self {
-        self.text_align = a;
+    pub fn text_align(mut self, a: impl Into<Align>) -> Self {
+        self.text_align = a.into();
         self
     }
 
@@ -293,7 +293,7 @@ impl<'a> DragValue<'a> {
         let enter = focused && self.widget.shortcut_pressed(ui, Key::Enter);
         if edits && (response.clicked() || enter) {
             ui.set_focus(id);
-            response.state.focused = true;
+            response.focused = true;
             ui.with_state::<DragValueState, _>(id, |_, s| {
                 *s = DragValueState::Editing {
                     buffer: self.value.edit_string(),

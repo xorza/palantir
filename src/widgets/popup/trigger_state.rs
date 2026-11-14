@@ -130,7 +130,7 @@ pub(crate) struct TriggerFrame {
 impl TriggerFrame {
     /// The frame of a popup dropped below `trigger`, as a dropdown's is: the trigger's click
     /// toggles it and its rect anchors it.
-    pub(crate) fn below(trigger: &Response) -> Self {
+    pub(crate) const fn below(trigger: &Response) -> Self {
         Self {
             for_id: trigger.id,
             toggled: trigger.clicked(),

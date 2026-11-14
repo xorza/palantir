@@ -26,7 +26,7 @@ fn a_line_lays_out_left_to_right_and_repeats_itself() {
     );
     assert_eq!(out.len(), 3, "{out:?}");
     // Whole-pixel pen positions; the fraction goes to the raster key's subpixel bin.
-    let xs: Vec<_> = out.iter().map(|glyph| glyph.physical.x).collect();
+    let xs: Vec<_> = out.iter().map(|glyph| glyph.physical_pos.x).collect();
     assert_eq!(xs, [0, 9, 18], "{out:?}");
 
     let first: Vec<_> = out.iter().map(|glyph| glyph.raster_key).collect();
@@ -116,10 +116,10 @@ fn scale_changes_the_raster_and_not_the_run() {
             "two scales shared one raster"
         );
     }
-    let xs: Vec<_> = single.iter().map(|glyph| glyph.physical.x).collect();
+    let xs: Vec<_> = single.iter().map(|glyph| glyph.physical_pos.x).collect();
     assert_eq!(xs, [0, 9, 18], "{single:?}");
     // Doubled advances: the 1× subpixel bins put the pen at 9 + ~0 and 18 + ~3/4, so 18 and 37 + ~1/2 at 2×.
-    let xs: Vec<_> = double.iter().map(|glyph| glyph.physical.x).collect();
+    let xs: Vec<_> = double.iter().map(|glyph| glyph.physical_pos.x).collect();
     assert_eq!(xs, [0, 18, 37], "{double:?}");
 
     // The measured extent is in logical pixels, untouched by raster scale.

@@ -64,7 +64,7 @@ fn zstack_per_axis_alignment() {
             "parent_center_with_h_override_only",
             Some(Align::CENTER),
             // Child: 20×20, override H=Right (auto V → CENTER). Expected: x=80, y=40.
-            vec![((20.0, 20.0), Align::h(HAlign::Right), (80.0, 40.0))],
+            vec![((20.0, 20.0), Align::from(HAlign::Right), (80.0, 40.0))],
         ),
     ];
     for (label, parent_align, children) in &cases {

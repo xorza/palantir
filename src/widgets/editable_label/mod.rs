@@ -40,7 +40,8 @@ struct EditableLabelState {
 /// [`TextEdit`] the first Escape drops a selection and the next one the edit.
 /// The label wears the editor theme's resting look and reserves the editor's caret room, so the
 /// glyphs hold their place across the swap. Both halves record under one id, which must be
-/// stable across frames, as the editor's draft is kept under it.
+/// stable across frames, as the editor's draft is kept under it; the idle label's text is
+/// `id.with("label")`.
 ///
 /// The label senses a click and a drag, so a drag that starts on it reports, for a caller that
 /// moves what the label names.
@@ -212,7 +213,7 @@ impl<'a> EditableLabel<'a> {
             .default_child_align(Align::LEFT)
             .record(ui, Some(&slot.looks.normal.chrome), |ui| {
                 Text::new(label)
-                    .id(Self::label_id(id))
+                    .id(id.with("label"))
                     .style(&text)
                     .min_size((0.0, text.block_height(1)))
                     .show(ui);
@@ -278,12 +279,6 @@ impl<'a> EditableLabel<'a> {
     fn extent(&self) -> (Sizing, Sizing) {
         let size = self.widget.authored().size().unwrap_or_default();
         (size.w(), size.h())
-    }
-
-    /// The id of the idle label's text inside `editable_label`, derived from it so the text keeps
-    /// its identity wherever the label records.
-    pub fn label_id(editable_label: WidgetId) -> WidgetId {
-        editable_label.with("label")
     }
 
     /// Open the editor of the label `id` and give it the focus, as a double click does, for a

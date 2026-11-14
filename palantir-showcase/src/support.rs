@@ -16,7 +16,7 @@ use std::ops::RangeInclusive;
 use std::panic::Location;
 
 use palantir::{
-    Align, Axis, Block, Border, Checkbox, Chrome, ColorCoords, ColorModel, ColorScheme, Configure,
+    Axis, Block, Border, Checkbox, Chrome, ColorCoords, ColorModel, ColorScheme, Configure,
     Corners, Expander, FontWeight, Justify, Modal, OverlayResponse, Palette, Panel, RadioGroup,
     RadioOptions, RgbaF32, Sizing, Slider, Text, TextInput, TextStyle, TextWrap, Ui, VAlign,
     WidgetId, fmt,
@@ -231,7 +231,7 @@ impl<'a> Section<'a> {
                     .size((Sizing::FILL, Sizing::HUG))
                     .gap(M.space.xs)
                     .line_gap(M.space.xs)
-                    .child_align(Align::v(VAlign::Center))
+                    .child_align(VAlign::Center)
                     .show(ui, |ui| {
                         Text::new(self.title)
                             .style(&section_style(k))
@@ -264,7 +264,7 @@ pub(crate) fn row(ui: &mut Ui, body: impl FnOnce(&mut Ui)) {
         .auto_id()
         .size((Sizing::FILL, Sizing::HUG))
         .gap(ROW_GAP)
-        .child_align(Align::v(VAlign::Center))
+        .child_align(VAlign::Center)
         .show(ui, body);
 }
 
@@ -279,7 +279,7 @@ pub(crate) fn radio_row<T: PartialEq>(
         .auto_id()
         .axis(Axis::X)
         .gap(ROW_GAP)
-        .child_align(Align::v(VAlign::Center))
+        .child_align(VAlign::Center)
         .show(ui, body);
 }
 
@@ -426,7 +426,7 @@ impl Knob {
         Panel::hstack()
             .auto_id()
             .gap(M.space.sm)
-            .child_align(Align::v(VAlign::Center))
+            .child_align(VAlign::Center)
             .show(ui, |ui| {
                 Text::new(self.label)
                     .style(&k.t.caption())

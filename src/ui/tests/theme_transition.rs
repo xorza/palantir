@@ -38,8 +38,12 @@ fn under(scheme: ColorScheme, transition: AnimationSpec) -> Rc<Theme> {
 /// A harness past its second frame, its themes under [`SPEC`], with the dark theme it shows.
 fn running() -> (Harness, Rc<Theme>) {
     let mut h = Harness::mono(SURFACE);
-    h.ui_mut().set_theme(Dark, under(Dark, SPEC)).unwrap();
-    h.ui_mut().set_theme(Light, under(Light, SPEC)).unwrap();
+    h.ui_mut()
+        .set_scheme_theme(Dark, under(Dark, SPEC))
+        .unwrap();
+    h.ui_mut()
+        .set_scheme_theme(Light, under(Light, SPEC))
+        .unwrap();
     h.prime(2, record);
     let dark = Rc::clone(h.ui().theme());
     (h, dark)
@@ -66,7 +70,9 @@ fn the_default_is_300_ms_out_cubic() {
 fn each_frame_shows_the_lerp_at_its_phase() {
     let (mut h, dark) = running();
     let light = under(Light, SPEC);
-    h.ui_mut().set_theme(Dark, Rc::clone(&light)).unwrap();
+    h.ui_mut()
+        .set_scheme_theme(Dark, Rc::clone(&light))
+        .unwrap();
     assert_eq!(
         **h.ui().theme(),
         *dark,
@@ -96,7 +102,7 @@ fn each_frame_shows_the_lerp_at_its_phase() {
     );
 
     // The next run blends into the first run's buffer, so a window allocates for its first alone.
-    h.ui_mut().set_theme(Dark, Rc::clone(&dark)).unwrap();
+    h.ui_mut().set_scheme_theme(Dark, Rc::clone(&dark)).unwrap();
     h.advance(QUARTER).frame(record);
     assert_eq!(Some(Rc::as_ptr(h.ui().theme())), blend);
 }
@@ -107,9 +113,11 @@ fn each_frame_shows_the_lerp_at_its_phase() {
 fn a_change_back_mid_way_runs_only_the_way_it_came() {
     let (mut h, dark) = running();
     let light = under(Light, SPEC);
-    h.ui_mut().set_theme(Dark, Rc::clone(&light)).unwrap();
+    h.ui_mut()
+        .set_scheme_theme(Dark, Rc::clone(&light))
+        .unwrap();
     h.advance(QUARTER).frame(record);
-    h.ui_mut().set_theme(Dark, Rc::clone(&dark)).unwrap();
+    h.ui_mut().set_scheme_theme(Dark, Rc::clone(&dark)).unwrap();
     h.advance(QUARTER / 2).frame(record);
     assert_eq!(
         **h.ui().theme(),
@@ -130,17 +138,19 @@ fn a_turn_takes_the_spec_of_the_theme_it_heads_for() {
         Dark,
         AnimationSpec::duration(Duration::from_millis(250), Easing::Linear),
     );
-    h.ui_mut().set_theme(Dark, Rc::clone(&dark)).unwrap();
+    h.ui_mut().set_scheme_theme(Dark, Rc::clone(&dark)).unwrap();
     h.prime(2, record);
     let light = under(Light, SPEC);
-    h.ui_mut().set_theme(Dark, Rc::clone(&light)).unwrap();
+    h.ui_mut()
+        .set_scheme_theme(Dark, Rc::clone(&light))
+        .unwrap();
     h.advance(QUARTER).frame(record);
     h.advance(QUARTER).frame(record);
     assert_eq!(
         **h.ui().theme(),
         Theme::lerp(&Theme::clone(&dark), &Theme::clone(&light), 0.5)
     );
-    h.ui_mut().set_theme(Dark, Rc::clone(&dark)).unwrap();
+    h.ui_mut().set_scheme_theme(Dark, Rc::clone(&dark)).unwrap();
     h.advance(QUARTER).frame(record);
     assert_eq!(
         **h.ui().theme(),
@@ -162,7 +172,7 @@ fn a_theme_set_every_frame_trails_by_a_steady_lag() {
         let target = 1.0 + f32::from(n) * STEP;
         let mut theme = Theme::stock(Dark);
         theme.focus_ring.width = target;
-        h.ui_mut().set_theme(Dark, theme).unwrap();
+        h.ui_mut().set_scheme_theme(Dark, theme).unwrap();
         h.advance(Duration::from_nanos(16_666_667)).frame(record);
         lag_frames = (target - h.ui().theme().focus_ring.width) / STEP;
     }
@@ -175,7 +185,9 @@ fn a_theme_set_every_frame_trails_by_a_steady_lag() {
 fn a_scheme_change_takes_the_spec_of_the_theme_it_turns_to() {
     let (mut h, dark) = running();
     let light = under(Light, AnimationSpec::SNAP);
-    h.ui_mut().set_theme(Light, Rc::clone(&light)).unwrap();
+    h.ui_mut()
+        .set_scheme_theme(Light, Rc::clone(&light))
+        .unwrap();
     h.set_system_color_scheme(Some(Light));
     h.advance(QUARTER).frame(record);
     assert!(shows(&h, &light));
@@ -195,18 +207,24 @@ fn a_scheme_change_takes_the_spec_of_the_theme_it_turns_to() {
 #[test]
 fn a_change_of_the_transition_alone_is_a_change() {
     let (mut h, dark) = running();
-    h.ui_mut().set_theme(Dark, Theme::clone(&dark)).unwrap();
+    h.ui_mut()
+        .set_scheme_theme(Dark, Theme::clone(&dark))
+        .unwrap();
     assert!(!h.ui().window_theme.is_moving(), "an equal theme");
 
     let slower = under(
         Dark,
         AnimationSpec::duration(Duration::from_millis(250), Easing::Linear),
     );
-    h.ui_mut().set_theme(Dark, Rc::clone(&slower)).unwrap();
+    h.ui_mut()
+        .set_scheme_theme(Dark, Rc::clone(&slower))
+        .unwrap();
     assert!(h.ui().window_theme.is_moving(), "a moving spec");
 
     let still = under(Dark, AnimationSpec::SNAP);
-    h.ui_mut().set_theme(Dark, Rc::clone(&still)).unwrap();
+    h.ui_mut()
+        .set_scheme_theme(Dark, Rc::clone(&still))
+        .unwrap();
     assert!(!h.ui().window_theme.is_moving(), "no transition");
     assert!(shows(&h, &still));
 }
@@ -216,13 +234,17 @@ fn a_change_of_the_transition_alone_is_a_change() {
 fn a_third_theme_mid_way_starts_from_the_blend_shown() {
     let (mut h, dark) = running();
     let light = under(Light, SPEC);
-    h.ui_mut().set_theme(Dark, Rc::clone(&light)).unwrap();
+    h.ui_mut()
+        .set_scheme_theme(Dark, Rc::clone(&light))
+        .unwrap();
     h.advance(QUARTER).frame(record);
     let blend = Theme::clone(h.ui().theme());
     let mut third = Theme::clone(&dark);
     third.focus_ring.width = 9.0;
     let third = Rc::new(third);
-    h.ui_mut().set_theme(Dark, Rc::clone(&third)).unwrap();
+    h.ui_mut()
+        .set_scheme_theme(Dark, Rc::clone(&third))
+        .unwrap();
     assert_eq!(**h.ui().theme(), blend, "the change keeps the blend");
     h.advance(QUARTER).frame(record);
     assert_eq!(
@@ -253,7 +275,9 @@ fn a_scheme_change_blends_from_the_next_frame() {
     for reduced in [false, true] {
         let (mut h, dark) = running();
         h.set_system_motion_reduced(reduced);
-        h.ui_mut().set_theme(Light, Rc::clone(&dark)).unwrap();
+        h.ui_mut()
+            .set_scheme_theme(Light, Rc::clone(&dark))
+            .unwrap();
         let epoch = h.ui().window_theme.epoch();
         h.set_system_color_scheme(Some(Light));
         let report = h.advance(QUARTER).frame(record);
@@ -272,35 +296,50 @@ fn a_change_snaps_where_nothing_should_move() {
     let light = under(Light, SPEC);
 
     let mut fresh = Harness::mono(SURFACE);
-    fresh.ui_mut().set_theme(Dark, Rc::clone(&light)).unwrap();
+    fresh
+        .ui_mut()
+        .set_scheme_theme(Dark, Rc::clone(&light))
+        .unwrap();
     assert!(shows(&fresh, &light), "before the first frame");
 
     let still = under(Light, AnimationSpec::SNAP);
     let (mut h, _) = running();
-    h.ui_mut().set_theme(Dark, Rc::clone(&still)).unwrap();
+    h.ui_mut()
+        .set_scheme_theme(Dark, Rc::clone(&still))
+        .unwrap();
     assert!(shows(&h, &still), "no transition");
 
     let (mut h, _) = running();
     h.set_system_motion_reduced(true);
     h.frame(record);
-    h.ui_mut().set_theme(Dark, Rc::clone(&light)).unwrap();
+    h.ui_mut()
+        .set_scheme_theme(Dark, Rc::clone(&light))
+        .unwrap();
     assert!(shows(&h, &light), "motion reduced");
 
     let (mut h, _) = running();
-    h.ui_mut().set_theme(Dark, Rc::clone(&light)).unwrap();
+    h.ui_mut()
+        .set_scheme_theme(Dark, Rc::clone(&light))
+        .unwrap();
     h.advance(QUARTER).frame(record);
-    h.ui_mut().set_theme(Dark, Rc::clone(&still)).unwrap();
+    h.ui_mut()
+        .set_scheme_theme(Dark, Rc::clone(&still))
+        .unwrap();
     assert!(shows(&h, &still), "no transition ends a running one");
 
     let (mut h, _) = running();
-    h.ui_mut().set_theme(Dark, Rc::clone(&light)).unwrap();
+    h.ui_mut()
+        .set_scheme_theme(Dark, Rc::clone(&light))
+        .unwrap();
     h.advance(QUARTER).frame(record);
     h.set_system_motion_reduced(true);
     h.advance(QUARTER).frame(record);
     assert!(shows(&h, &light), "reduced mid-way");
 
     let (mut h, _) = running();
-    h.ui_mut().set_theme(Dark, Rc::clone(&light)).unwrap();
+    h.ui_mut()
+        .set_scheme_theme(Dark, Rc::clone(&light))
+        .unwrap();
     h.ui_mut().host.window_frame.facts.shown_again = true;
     h.advance(QUARTER).frame(record);
     assert!(shows(&h, &light), "a frame after a hidden span");
@@ -315,7 +354,7 @@ fn a_spring_swing_past_the_end_shows_the_end() {
     wide.transition = AnimationSpec::spring(300.0, 10.0);
     wide.focus_ring.width = dark.focus_ring.width + 4.0;
     let wide = Rc::new(wide);
-    h.ui_mut().set_theme(Dark, Rc::clone(&wide)).unwrap();
+    h.ui_mut().set_scheme_theme(Dark, Rc::clone(&wide)).unwrap();
     let mut held_at_end = false;
     for _ in 0..240 {
         let report = h.advance(Duration::from_millis(16)).frame(record);

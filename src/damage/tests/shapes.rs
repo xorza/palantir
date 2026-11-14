@@ -280,8 +280,8 @@ fn a_turning_shape_is_damaged_against_the_square_it_sweeps() {
     let (lo, hi) = (Vec2::new(10.0, 10.0), Vec2::new(70.0, 30.0));
     let corner = Vec2::new(10.0, 30.0);
     let mut mesh = Mesh::with_capacity(3, 3);
-    let vertices = [lo, hi, corner].map(|pos| mesh.vertex(pos, RED));
-    mesh.triangle(vertices[0], vertices[1], vertices[2]);
+    let vertices = [lo, hi, corner].map(|pos| mesh.add_vertex(pos, RED));
+    mesh.add_triangle(vertices[0], vertices[1], vertices[2]);
     let owner_id = WidgetId::from_hash("spin_owner");
     let r = 30.0_f32.libm_hypot(10.0);
     for (kind, pad) in [

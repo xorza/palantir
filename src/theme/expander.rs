@@ -4,7 +4,7 @@ use crate::animation::animation_spec::AnimationSpec;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
-use crate::primitives::input::interaction::response_state::ResponseState;
+use crate::primitives::input::interaction::response::Response;
 use crate::primitives::math::lerp::Lerp;
 use crate::primitives::paint::chrome::Chrome;
 use crate::theme::look::WidgetLook;
@@ -112,7 +112,7 @@ impl ExpanderTheme {
 impl ThemeSlot for ExpanderTheme {
     type Pick = ();
 
-    fn look(&self, response: &ResponseState, (): ()) -> &WidgetLook {
+    fn look(&self, response: &Response, (): ()) -> &WidgetLook {
         self.looks.pick(response, Engagement::Pressed)
     }
 

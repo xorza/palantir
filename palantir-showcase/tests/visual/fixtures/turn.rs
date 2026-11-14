@@ -35,10 +35,10 @@ fn owner(ui: &mut Ui, id: &str, body: impl FnOnce(&mut Ui)) {
 #[test]
 fn a_turned_triangle_and_mesh_match_golden() {
     let mut mesh = Mesh::new();
-    let a = mesh.vertex(Vec2::new(15.0, 80.0), RgbaF32::srgb(1.0, 0.3, 0.3));
-    let b = mesh.vertex(Vec2::new(85.0, 80.0), RgbaF32::srgb(0.3, 1.0, 0.4));
-    let c = mesh.vertex(Vec2::new(50.0, 15.0), RgbaF32::srgb(0.3, 0.5, 1.0));
-    mesh.triangle(a, b, c);
+    let a = mesh.add_vertex(Vec2::new(15.0, 80.0), RgbaF32::srgb(1.0, 0.3, 0.3));
+    let b = mesh.add_vertex(Vec2::new(85.0, 80.0), RgbaF32::srgb(0.3, 1.0, 0.4));
+    let c = mesh.add_vertex(Vec2::new(50.0, 15.0), RgbaF32::srgb(0.3, 0.5, 1.0));
+    mesh.add_triangle(a, b, c);
     GoldenName::TurnedTriangleAndMesh.assert_scene(UVec2::new(220, 120), |ui| {
         Panel::hstack().auto_id().padding(10.0).show(ui, |ui| {
             owner(ui, "triangle", |ui| {

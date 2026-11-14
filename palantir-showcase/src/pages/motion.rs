@@ -18,7 +18,7 @@ use palantir::widget::{
     AnimationRequest, GlyphFont, Mesh, MotionRole, PaintAnimation, PaintRepeat, Shape,
 };
 use palantir::{
-    Align, Animated, AnimationSpec, Block, Border, Button, Chrome, Configure, Corners, Easing, Fit,
+    Animated, AnimationSpec, Block, Border, Button, Chrome, Configure, Corners, Easing, Fit,
     IconHandle, IconSet, IconTable, Image, Panel, Rect, RgbaF32, Sense, Shadow, Sizing, Spinner,
     Text, TranslateScale, Ui, VAlign, WidgetId,
 };
@@ -61,7 +61,7 @@ fn spinner(ui: &mut Ui, k: Kit) {
             support::well(ui, k, |ui| {
                 Panel::hstack()
                     .gap(M.space.lg)
-                    .child_align(Align::v(VAlign::Center))
+                    .child_align(VAlign::Center)
                     .show(ui, |ui| {
                         Spinner::new().size(20.0).show(ui);
                         Spinner::new().size(32.0).show(ui);
@@ -167,10 +167,10 @@ fn turn(ui: &mut Ui, k: Kit) {
                 .with_motion(MotionRole::Essential);
             let source = Rect::new(20.0, 30.0, 60.0, 40.0);
             let mut mesh = Mesh::new();
-            let a = mesh.vertex(Vec2::new(15.0, 80.0), RgbaF32::srgb(1.0, 0.3, 0.3));
-            let b = mesh.vertex(Vec2::new(85.0, 80.0), RgbaF32::srgb(0.3, 1.0, 0.4));
-            let c = mesh.vertex(Vec2::new(50.0, 15.0), RgbaF32::srgb(0.3, 0.5, 1.0));
-            mesh.triangle(a, b, c);
+            let a = mesh.add_vertex(Vec2::new(15.0, 80.0), RgbaF32::srgb(1.0, 0.3, 0.3));
+            let b = mesh.add_vertex(Vec2::new(85.0, 80.0), RgbaF32::srgb(0.3, 1.0, 0.4));
+            let c = mesh.add_vertex(Vec2::new(50.0, 15.0), RgbaF32::srgb(0.3, 0.5, 1.0));
+            mesh.add_triangle(a, b, c);
             support::tiles(ui, |ui| {
                 let cell = |ui: &mut Ui, label: &'static str, body: &mut dyn FnMut(&mut Ui)| {
                     DemoCell::new(label).size(120.0, 120.0).show(ui, k, |ui| {
@@ -507,7 +507,7 @@ fn plot(ui: &mut Ui, k: Kit, easing: Easing, t: f32) {
 mod tests {
     use palantir::glam::UVec2;
     use palantir::internals::headless_test_gpu;
-    use palantir::{ColorScheme, Depth, Harness, Palette, Ui};
+    use palantir::{ColorScheme, Harness, HarnessDepth, Palette, Ui};
 
     use crate::pages::motion::{TurnSources, turn, turn_sources_id};
     use crate::support::Kits;
@@ -520,7 +520,7 @@ mod tests {
         let k = Kits::default().kit(ColorScheme::Dark, &Palette::DARK);
         let mut record = |ui: &mut Ui| turn(ui, k);
         let mut h = Harness::builder(UVec2::new(1000, 600))
-            .depth(Depth::gpu(gpu.handles()))
+            .depth(HarnessDepth::gpu(gpu.handles()))
             .build();
         h.frame(&mut record);
         let before = h.read_back();

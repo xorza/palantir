@@ -90,8 +90,8 @@ pub(crate) trait PaintSink {
     fn mesh(&mut self, payload: DrawMeshPayload);
 
     /// Paint a stroke along a cubic, an arc or a polyline; a polyline's points and colors are
-    /// already staged, their counts checked upstream by `PolylineShape::per_point` and
-    /// `PolylineShape::per_segment`.
+    /// already staged, their counts checked upstream by `PolylineShape::point_colors` and
+    /// `PolylineShape::segment_colors`.
     fn stroke(&mut self, payload: DrawStrokePayload);
 
     /// Paint an image over a box or a triangle, and the `GpuView` it composites, if any.

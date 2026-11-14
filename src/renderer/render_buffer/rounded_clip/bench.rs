@@ -24,7 +24,7 @@ use crate::diagnostics::gpu_pass_stats::BatchKind;
 use crate::fmt;
 use crate::gpu::bench_gpu::{BenchGpu, Timing};
 use crate::host::harness::Harness;
-use crate::host::harness::harness_builder::Depth;
+use crate::host::harness::harness_builder::HarnessDepth;
 use crate::image_registry::image_handle::ImageHandle;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::fit::Fit;
@@ -295,7 +295,7 @@ impl ClipScene {
 
 /// A window of the bench's surface and scale at `depth`, whose panels paint no theme chrome; it
 /// collects GPU stats where `stats` says.
-fn window(depth: Depth, stats: bool) -> Harness {
+fn window(depth: HarnessDepth, stats: bool) -> Harness {
     let mut window = Harness::builder(BENCH_SURFACE)
         .system_scale(BENCH_DPR)
         .swapchain_present()
@@ -316,7 +316,7 @@ struct WholeFrames {
 impl WholeFrames {
     fn new(gpu: &BenchGpu) -> Self {
         Self {
-            window: window(Depth::gpu(gpu.handles()), true),
+            window: window(HarnessDepth::gpu(gpu.handles()), true),
             odd: false,
         }
     }
@@ -430,7 +430,7 @@ fn cpu_frames(
     case: &str,
 ) {
     group.bench_function(backend.case(case), |b| {
-        let mut h = window(Depth::Compose, false);
+        let mut h = window(HarnessDepth::Compose, false);
         let mut scene = ClipScene::new(h.ui(), arm);
         let mut step = || {
             scene.advance(frame);
@@ -459,7 +459,7 @@ fn gpu_frames(
     };
     group.bench_function(backend.case(case), |b| {
         let gpu = backends.device(Timing::PassOnly);
-        let mut window = window(Depth::gpu(gpu.handles()), false);
+        let mut window = window(HarnessDepth::gpu(gpu.handles()), false);
         let mut scene = ClipScene::new(window.ui(), arm);
         let mut step = || {
             scene.advance(frame);

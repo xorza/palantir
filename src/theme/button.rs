@@ -2,7 +2,7 @@
 
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::spacing::Spacing;
-use crate::primitives::input::interaction::response_state::ResponseState;
+use crate::primitives::input::interaction::response::Response;
 use crate::primitives::paint::border::Border;
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::chrome::Chrome;
@@ -166,7 +166,7 @@ impl ThemeSlot for ButtonTheme {
 
     /// The resting or the selected pack, then its state: `active` = pressed. Disabled wins over hover and press, pressed over hover; `response.disabled` already carries the node's own flag.
     #[inline(always)]
-    fn look(&self, response: &ResponseState, selection: Selection) -> &WidgetLook {
+    fn look(&self, response: &Response, selection: Selection) -> &WidgetLook {
         selection
             .pack(&self.unselected, &self.selected)
             .pick(response, Engagement::Pressed)

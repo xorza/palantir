@@ -50,7 +50,7 @@ impl<'a> Spinner<'a> {
         }
     }
 
-    /// Per-instance override of [`Theme::spinner`](crate::Theme::spinner); [`Self::color`], [`Self::width`]
+    /// Per-instance override of [`Theme::spinner`](crate::Theme::spinner); [`Self::color`], [`Self::stroke_width`]
     /// and a fixed size still win.
     pub fn style(mut self, s: impl Into<Option<&'a SpinnerTheme>>) -> Self {
         self.style = s.into();
@@ -74,7 +74,7 @@ impl<'a> Spinner<'a> {
     ///
     /// Panics unless `px` is a [length](crate::widget::domain::length).
     #[track_caller]
-    pub const fn width(mut self, px: f32) -> Self {
+    pub const fn stroke_width(mut self, px: f32) -> Self {
         self.width = Some(domain::length(px));
         self
     }

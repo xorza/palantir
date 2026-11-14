@@ -67,7 +67,7 @@ impl<'a> RenderTarget<'a> {
     }
 
     pub(crate) fn format(self) -> TargetFormat {
-        TargetFormat::new(self.texture.format())
+        TargetFormat::held(self.texture.format())
     }
 
     /// Whether a frame can be copied onto this target (false for a GLES swapchain image).

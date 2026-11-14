@@ -148,9 +148,9 @@ mod tests {
     use std::thread;
     use std::time::{Duration, Instant};
 
-    const fn summary(record_frame_id: u64, repaint_requested: bool) -> FrameSummary {
+    const fn summary(record_frame_idx: u64, repaint_requested: bool) -> FrameSummary {
         FrameSummary {
-            record_frame_id,
+            record_frame_idx,
             sent_events: 0,
             repaint_requested,
             busy: false,

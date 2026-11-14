@@ -19,15 +19,15 @@ pub(super) struct Memory {
 }
 
 impl Memory {
-    /// Drop what each widget in `removed` kept, and each animation row frame `render_frame_id`
+    /// Drop what each widget in `removed` kept, and each animation row frame `render_frame_idx`
     /// did not touch.
-    pub(super) fn sweep(&mut self, removed: &WidgetIdSet, render_frame_id: u64) {
+    pub(super) fn sweep(&mut self, removed: &WidgetIdSet, render_frame_idx: u64) {
         let Self {
             state,
             animation,
             gpu_views,
         } = self;
-        animation.sweep(render_frame_id);
+        animation.sweep(render_frame_idx);
         state.sweep_removed(removed);
         gpu_views.sweep_removed(removed);
     }

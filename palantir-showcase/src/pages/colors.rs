@@ -8,8 +8,8 @@ use crate::scaffold::tokens::M;
 use crate::support;
 use crate::support::{Kit, Section, Swatches};
 use palantir::{
-    Align, Button, ColorButton, ColorCoords, ColorField, ColorModel, ColorPicker, ColorStrip,
-    ColorSwatch, Configure, Panel, RgbaF32, Sizing, SwatchRow, Ui, VAlign, WidgetId,
+    Button, ColorButton, ColorCoords, ColorField, ColorModel, ColorPicker, ColorStrip, ColorSwatch,
+    Configure, Panel, RgbaF32, Sizing, SwatchRow, Ui, VAlign, WidgetId,
 };
 
 #[derive(Debug)]
@@ -136,7 +136,7 @@ fn panels(ui: &mut Ui, body: impl FnOnce(&mut Ui)) {
     Panel::hstack()
         .auto_id()
         .gap(support::TILE_GAP)
-        .child_align(Align::v(VAlign::Top))
+        .child_align(VAlign::Top)
         .show(ui, body);
 }
 

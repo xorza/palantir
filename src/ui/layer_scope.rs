@@ -8,7 +8,7 @@ use crate::scene::layer::Layer;
 use crate::ui::Ui;
 use glam::Vec2;
 
-/// A side layer being configured, terminated by [`Self::show`]. With neither [`Self::fixed_at`] nor
+/// A side layer being configured, terminated by [`Self::show`]. With neither [`Self::at`] nor
 /// [`Self::anchor`], the body sits at the surface origin with the whole surface available.
 #[derive(Debug)]
 #[must_use = "a layer records nothing until `show`"]
@@ -27,14 +27,15 @@ impl<'a> LayerScope<'a> {
         }
     }
 
-    /// Pins the body's top-left at `point`. [`Self::anchor`] instead keeps the body on screen.
+    /// Pins the body's top-left at `p`, where it stays though it overflows the surface;
+    /// [`Self::anchor`] instead flips or shifts the body to fit.
     ///
     /// # Panics
     ///
-    /// Panics unless both axes of `point` are [offsets](crate::widget::domain::offset).
+    /// Panics unless both axes of `p` are [offsets](crate::widget::domain::offset).
     #[track_caller]
-    pub const fn fixed_at(mut self, point: Vec2) -> Self {
-        self.placement = self.placement.with_fixed(vec2::offset(point));
+    pub fn at(mut self, p: impl Into<Vec2>) -> Self {
+        self.placement = self.placement.with_fixed(vec2::offset(p.into()));
         self
     }
 

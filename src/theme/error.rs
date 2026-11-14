@@ -1,4 +1,4 @@
-//! [`ThemeEffectError`]: why [`Ui::set_theme`](crate::Ui::set_theme) refused a theme.
+//! [`ThemeEffectError`]: why [`Ui::set_scheme_theme`](crate::Ui::set_scheme_theme) refused a theme.
 
 use std::error;
 use std::fmt;

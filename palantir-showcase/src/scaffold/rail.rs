@@ -177,10 +177,10 @@ fn preference_rows(ui: &mut Ui, track: &Segmented) {
         "Motion",
         REDUCE,
         held.motion,
-        if ui.is_power_reduced() {
+        if ui.reductions().power.is_reduced() {
             "Follows the system, transitions snap under reduced power"
         } else {
-            follows_reduction(ui.system_motion_reduced())
+            follows_reduction(ui.system_reductions().motion.is_reduced())
         },
     );
     let transparency = track.row(
@@ -189,10 +189,10 @@ fn preference_rows(ui: &mut Ui, track: &Segmented) {
         "Transparency",
         REDUCE,
         held.transparency,
-        if ui.is_power_reduced() {
+        if ui.reductions().power.is_reduced() {
             "Follows the system, less now under reduced power"
         } else {
-            follows_reduction(ui.system_transparency_reduced())
+            follows_reduction(ui.system_reductions().transparency.is_reduced())
         },
     );
     let power = track.row(
@@ -201,7 +201,7 @@ fn preference_rows(ui: &mut Ui, track: &Segmented) {
         "Power",
         REDUCE,
         held.power,
-        follows_reduction(ui.system_power_reduced()),
+        follows_reduction(ui.system_reductions().power.is_reduced()),
     );
     let frame_rate = track.row(
         ui,
@@ -209,7 +209,7 @@ fn preference_rows(ui: &mut Ui, track: &Segmented) {
         "Frame rate",
         REDUCE,
         held.frame_rate,
-        if ui.is_power_reduced() {
+        if ui.reductions().power.is_reduced() {
             "Follows the power, 30 Hz now"
         } else {
             "Follows the power, full now"
@@ -291,7 +291,7 @@ impl Segmented {
             .style(&self.t.caption())
             .margin((INSET, 0.0, 0.0, 0.0))
             .grid_cell(GridCell::at(row, 0))
-            .align(Align::v(VAlign::Center))
+            .align(VAlign::Center)
             .show(ui);
         RadioGroup::new(&mut next)
             .look(RadioLook::Segment(Some(&self.style)))

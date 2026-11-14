@@ -191,7 +191,7 @@ impl OverlayScope {
 
     /// Whether a press landed on the barrier rather than the body; all four
     /// pointer interactions are absorbed, so a secondary press counts (see
-    /// `ResponseState::any_clicked`).
+    /// `Response::any_clicked`).
     fn barrier_clicked(&self, ui: &Ui) -> bool {
         let id = match self.spec.barrier {
             Barrier::None => return false,

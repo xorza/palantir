@@ -172,7 +172,7 @@ impl BackendSpec {
         let texture_binding = TextureBinding::new(&gpu);
         self.image_store.attach(&gpu, texture_binding.clone());
         self.effect_store.attach(&gpu, &texture_binding);
-        cpu.attach_device(TextureLimit::from_device(gpu.max_texture_dim()));
+        cpu.attach_device(TextureLimit::from_device(gpu.max_texture_dimension()));
         WgpuBackend::new(
             gpu,
             BackendResources {

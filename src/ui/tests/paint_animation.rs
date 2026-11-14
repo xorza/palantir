@@ -148,8 +148,8 @@ fn a_turn_reaches_a_triangle_and_a_mesh() {
 
     let mut mesh = Mesh::with_capacity(3, 3);
     let vertices =
-        [Vec2::ZERO, Vec2::X * 8.0, Vec2::Y * 8.0].map(|pos| mesh.vertex(pos, RgbaF32::WHITE));
-    mesh.triangle(vertices[0], vertices[1], vertices[2]);
+        [Vec2::ZERO, Vec2::X * 8.0, Vec2::Y * 8.0].map(|pos| mesh.add_vertex(pos, RgbaF32::WHITE));
+    mesh.add_triangle(vertices[0], vertices[1], vertices[2]);
     let quarter = PaintAnimation::turn(0.25, 0.25);
 
     let mut h = Harness::mono(SURFACE);

@@ -15,7 +15,7 @@ use crate::primitives::paint::color::RgbaF32;
 /// take their colors from the theme).
 ///
 /// A widget keeps at most [`Self::MAX_PRESSES`] live; a press past them starts none. A theme file
-/// names the effect by its string, which [`Ui::set_theme`](crate::Ui::set_theme) checks against
+/// names the effect by its string, which [`Ui::set_scheme_theme`](crate::Ui::set_scheme_theme) checks against
 /// the loaded effects; a theme transition snaps it, as two effects do not blend. A slot with none
 /// holds `None` ([`SlotDefaults::press`](crate::SlotDefaults::press)), so no press effect lacks
 /// its effect.

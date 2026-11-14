@@ -1,7 +1,7 @@
 //! The bundle a widget wears whole and the rule picking one look from a response.
 
 use crate::animation::animation_key::AnimationKey;
-use crate::primitives::input::interaction::response_state::ResponseState;
+use crate::primitives::input::interaction::response::Response;
 use crate::theme::look::WidgetLook;
 use crate::theme::look::look_plan::LookPlan;
 use crate::theme::look::press_edge::PressEdge;
@@ -34,7 +34,7 @@ pub trait ThemeSlot {
     /// `disabled`, `pressed()`, `focused` and `hovered()`, which key the look's animation in
     /// [`Self::plan`]: a look that turned on anything else would change under one key and be
     /// followed at once instead of fading.
-    fn look(&self, response: &ResponseState, pick: Self::Pick) -> &WidgetLook;
+    fn look(&self, response: &Response, pick: Self::Pick) -> &WidgetLook;
 
     /// Slot defaults.
     fn defaults(&self) -> SlotDefaults;
@@ -47,13 +47,13 @@ pub trait ThemeSlot {
     /// motion.
     // Cross-codegen-unit chain like `Widget::wear`; the default inliner leaves it outlined.
     #[inline(always)]
-    fn plan(&self, response: &ResponseState, pick: Self::Pick, text: TextStyle) -> LookPlan {
+    fn plan(&self, response: &Response, pick: Self::Pick, text: TextStyle) -> LookPlan {
         LookPlan {
             target: self.look(response, pick).to_animated(text),
             key: AnimationKey::of((
                 pick,
                 response.disabled,
-                response.pressed(),
+                response.is_pressed(),
                 response.focused,
                 response.hovered(),
             )),

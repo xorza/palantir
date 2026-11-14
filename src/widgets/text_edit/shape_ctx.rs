@@ -2,8 +2,7 @@
 
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::spacing::Spacing;
-use crate::primitives::layout::align::Align;
-use crate::primitives::layout::align::HAlign;
+use crate::primitives::layout::align::{Align, HAlign, VAlign};
 use crate::text::glyph_font::GlyphFont;
 use crate::text::run::TextRun;
 use crate::text::wrap::TextWrap;
@@ -44,7 +43,7 @@ impl ShapeCtx {
             } else {
                 TextWrap::SingleLine
             },
-            align: Align::h(self.halign),
+            align: Align::new(self.halign, VAlign::Auto),
             max_width: self.wrap_target,
         }
     }

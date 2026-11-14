@@ -19,7 +19,6 @@ use crate::primitives::geometry::mesh::MeshVertex;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::interaction::response::Response;
-use crate::primitives::input::interaction::response_state::ResponseState;
 use crate::primitives::layout::layout_mode::LayoutMode;
 use crate::primitives::layout::packed_layout_meta::PackedLayoutMeta;
 use crate::primitives::paint::border::Border;
@@ -249,7 +248,6 @@ const PINS: &[Pin] = &[
     pin::<EntryRow>("cascade::EntryRow", 32, 4),
     pin::<HitRow>("cascade::HitRow", 32, 8),
     pin::<Paint>("cascade::Paint", 24, 8),
-    pin::<ResponseState>("input::ResponseState", 152, 4),
     pin::<Widget>("widget_core::Widget", 128, 8),
     pin::<TargetScrollDelta>("input::TargetScrollDelta", 48, 8),
     pin::<DamageRegion>("damage::DamageRegion", 132, 4),

@@ -106,7 +106,7 @@ fn the_label_and_its_editor_take_one_rect() {
             let idle = h.rect(id).expect("label arranged");
             heights.push(idle.size.h);
             if style.is_some() {
-                let text = h.rect(EditableLabel::label_id(id)).expect("text arranged");
+                let text = h.rect(id.with("label")).expect("text arranged");
                 assert_eq!(text.min.x, idle.min.x, "{name}: text on the leading edge");
             }
             let hit = idle.center();
@@ -314,7 +314,7 @@ fn a_label_that_is_not_editable_stays_a_label() {
     h.key(Key::Enter);
     assert_eq!(h.frame_value(|ui| record(ui, id, false)), Shown::default());
     assert!(
-        h.rect(EditableLabel::label_id(id)).is_some(),
+        h.rect(id.with("label")).is_some(),
         "the label stays a label"
     );
 }

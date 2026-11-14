@@ -1,12 +1,10 @@
 //! The chip row on its own: geometry, selection cap, close button, overflow, keyboard travel, drag sensing.
 
-use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::interaction::response::Response;
-use crate::primitives::input::interaction::response_state::ResponseState;
 use crate::primitives::input::key_class::KeyFilter;
 use crate::primitives::input::keyboard::key::Key;
 use crate::primitives::input::sense::Sense;
@@ -89,7 +87,7 @@ enum ChipDrag {
 /// ```
 /// # use palantir::{TabItem, TabStrip, Ui};
 /// # fn demo(ui: &mut Ui, items: &[TabItem], active: usize) {
-/// let hit = TabStrip::new(items).selected(active).show(ui, |ui, chip| chip.show_label(ui));
+/// let hit = TabStrip::new(items).selected_idx(active).show(ui, |ui, chip| chip.show_label(ui));
 /// if let Some(i) = hit.activated {
 ///     // activate items[i]
 /// }
@@ -130,8 +128,8 @@ impl<'a> TabStrip<'a> {
     }
 
     /// Which chip wears the selection cap; unset caps nothing. An index past the end is coerced to the last chip.
-    pub fn selected(mut self, selected: impl Into<Option<usize>>) -> Self {
-        self.selected = selected.into();
+    pub fn selected_idx(mut self, idx: impl Into<Option<usize>>) -> Self {
+        self.selected = idx.into();
         self
     }
 
@@ -282,7 +280,7 @@ impl<'a> TabStrip<'a> {
                 .id(id.with("row"))
                 .size((Sizing::FILL, Sizing::HUG))
                 .gap(t.gap)
-                .child_align(Align::v(VAlign::Bottom));
+                .child_align(VAlign::Bottom);
             let reveal = pass.reveal_delta(ui);
             row.record(ui, None, |ui| {
                 Scroll::horizontal()
@@ -292,7 +290,7 @@ impl<'a> TabStrip<'a> {
                     .pan_by(reveal)
                     .padding(t.strip_padding)
                     .gap(t.gap)
-                    .child_align(Align::v(VAlign::Bottom))
+                    .child_align(VAlign::Bottom)
                     .show(ui, |ui| {
                         for slot in 0..items.len() {
                             pass.chip(ui, slot, &mut content);
@@ -414,8 +412,8 @@ pub(crate) struct ChipHits {
 
 impl ChipHits {
     /// Fold in the chip at `slot`. The close button wins over the click the same press reads as.
-    fn add(&mut self, slot: usize, chip: &ResponseState, close: Option<&ResponseState>) {
-        if close.is_some_and(ResponseState::clicked) {
+    fn add(&mut self, slot: usize, chip: &Response, close: Option<&Response>) {
+        if close.is_some_and(Response::clicked) {
             self.closed.get_or_insert(slot);
         } else if chip.clicked() {
             self.clicked.get_or_insert(slot);
@@ -519,10 +517,7 @@ impl StripPass<'_> {
         let state = widget.response(ui);
         let plan = t.plan(&state, Selection::from(selected), self.ambient);
         let look = widget.wear(ui, plan);
-        let chip_chrome = Chrome {
-            corners: Corners::top(t.radius),
-            ..look.chrome
-        };
+        let chip_chrome = look.chrome;
         // The selected chip lifts its inner top inset by the cap, so height is unchanged; a close button trades the right inset for its box (`TabsTheme::trailing_inset`).
         let [pad_l, pad_t, pad_r, pad_b] = t.chip_padding.to_array();
         let trailing = if item.closable {
@@ -533,7 +528,7 @@ impl StripPass<'_> {
         let padding = Spacing::new(pad_l, (pad_t - cap).max(0.0), trailing, pad_b);
 
         let chip = TabChip {
-            slot,
+            idx: slot,
             key: item.key,
             label: item.label,
             selected,
@@ -561,7 +556,7 @@ impl StripPass<'_> {
             .min_size(Size::new(0.0, t.close_size + padding.sums().h))
             .padding(padding)
             .gap(t.label_gap)
-            .child_align(Align::v(VAlign::Center));
+            .child_align(VAlign::Center);
         widget.record(ui, Some(&chip_chrome), |ui| {
             if selected {
                 Widget::leaf()
@@ -576,7 +571,7 @@ impl StripPass<'_> {
                         .id(close_id)
                         .size((Sizing::fixed(t.close_size), Sizing::fixed(t.close_size)))
                         .sense(Sense::CLICK)
-                        .align(Align::v(VAlign::Center))
+                        .align(VAlign::Center)
                         .child_align(Align::CENTER);
                     button.record(ui, Some(&close.chrome), |ui| {
                         close.cross(ui, t.close_size, t.close_glyph_span, t.close_glyph_width);
@@ -593,7 +588,7 @@ impl StripPass<'_> {
 
         self.hits
             .chips
-            .add(slot, &state, close.as_ref().map(|c| &c.response.state));
+            .add(slot, &state, close.as_ref().map(|c| &c.response));
     }
 
     /// The insertion mark at the boundary of `slot`: centered in the gutter before its chip, or
@@ -616,12 +611,12 @@ impl StripPass<'_> {
             (None, Some(prev)) => prev.max().x + half_gap,
             (None, None) => clip.min.x,
         };
-        let width = domain::length_at_least(t.caret_width, 0.0);
+        let width = domain::length_at_least(t.drop_mark_width, 0.0);
         let x = x.clamp(clip.min.x, clip.max().x.max(clip.min.x));
         let mark = Rect::new(x - width * 0.5, clip.min.y, width, clip.size.h.max(0.0));
-        let fill = Chrome::new(t.caret);
+        let fill = Chrome::new(t.drop_mark);
         ui.layer(Layer::Tooltip)
-            .fixed_at(mark.min)
+            .at(mark.min)
             .max_size(mark.size)
             .show(|ui| {
                 Widget::leaf()
@@ -656,7 +651,7 @@ impl StripPass<'_> {
             .size((Sizing::fixed(t.close_size), Sizing::fixed(t.close_size)))
             .margin(Spacing::new(0.0, 0.0, band_r, band_b))
             .sense(Sense::CLICK)
-            .align(Align::v(VAlign::Bottom))
+            .align(VAlign::Bottom)
             .child_align(Align::CENTER);
         button.record(ui, Some(&chevron.chrome), |ui| {
             chevron.ellipsis(ui, t.close_size, t.close_glyph_span, t.close_glyph_width);

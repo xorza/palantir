@@ -2,7 +2,7 @@
 
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::spacing::Spacing;
-use crate::primitives::input::interaction::response_state::ResponseState;
+use crate::primitives::input::interaction::response::Response;
 use crate::primitives::paint::border::Border;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
@@ -56,9 +56,6 @@ pub struct TabsTheme {
     /// Hairline breadth in logical px; `0.0` records no rule.
     #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub rule_thickness: f32,
-    /// Chip corner radius, top corners only.
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
-    pub radius: f32,
     /// Inset between a chip's edges and its label, apart from [`SlotDefaults::padding`].
     #[serde(deserialize_with = "crate::primitives::math::domain::file::padding")]
     pub chip_padding: Spacing,
@@ -90,10 +87,10 @@ pub struct TabsTheme {
     #[animate(snap)]
     pub close_shown: CloseShown,
     /// The insertion mark a chip drag shows at the slot it would drop into.
-    pub caret: RgbaF32,
+    pub drop_mark: RgbaF32,
     /// Breadth of the insertion mark in logical px.
     #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
-    pub caret_width: f32,
+    pub drop_mark_width: f32,
     /// Gutter between the parts of a chip's content, and before its close button.
     #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub label_gap: f32,
@@ -137,7 +134,6 @@ impl TabsTheme {
             gap: m.space.xs,
             rule: p.border_soft(),
             rule_thickness: 0.0,
-            radius,
             chip_padding: m.row_padding(),
             trailing_inset: m.space.xs,
             min_width: 64.0,
@@ -165,8 +161,8 @@ impl TabsTheme {
             close_glyph_span: 8.0,
             close_glyph_width: m.stroke.fine,
             close_shown: CloseShown::SelectedOrHovered,
-            caret: p.accent,
-            caret_width: m.stroke.line,
+            drop_mark: p.accent,
+            drop_mark_width: m.stroke.line,
             label_gap: m.space.sm,
             defaults: SlotDefaults {
                 padding: Spacing::ZERO,
@@ -182,7 +178,7 @@ impl ThemeSlot for TabsTheme {
     type Pick = Selection;
 
     /// The unselected or selected pack, then its state (`active` = pressed).
-    fn look(&self, response: &ResponseState, selection: Selection) -> &WidgetLook {
+    fn look(&self, response: &Response, selection: Selection) -> &WidgetLook {
         selection
             .pack(&self.unselected, &self.selected)
             .pick(response, Engagement::Pressed)

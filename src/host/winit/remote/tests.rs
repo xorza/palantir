@@ -18,7 +18,7 @@ use crate::driver::error::{LocateError, PlayError};
 use crate::driver::locator::{Found, Locator};
 use crate::gpu::test_gpu::{headless_test_gpu, isolated_headless_test_gpu};
 use crate::host::harness::Harness;
-use crate::host::harness::harness_builder::Depth;
+use crate::host::harness::harness_builder::HarnessDepth;
 use crate::host::winit::frame_log::FrameLog;
 use crate::host::winit::frame_summary::FrameSummary;
 use crate::host::winit::handle::{EventSender, HostHandle, UserEvent};
@@ -198,10 +198,10 @@ impl Loop {
 /// A handle to a loop of the test's own on a thread of its own, with no device: a device is shared
 /// by the tests, so a wait for it would hold this window's frames for work of others.
 fn serve() -> (HostHandle<Counter>, JoinHandle<()>) {
-    serve_at(Depth::Record)
+    serve_at(HarnessDepth::Record)
 }
 
-fn serve_at(depth: Depth) -> (HostHandle<Counter>, JoinHandle<()>) {
+fn serve_at(depth: HarnessDepth) -> (HostHandle<Counter>, JoinHandle<()>) {
     let (sender, events) = mpsc::channel();
     let frame_log = Arc::new(FrameLog::default());
     frame_log.open(WINDOW);
@@ -231,11 +231,11 @@ fn serve_at(depth: Depth) -> (HostHandle<Counter>, JoinHandle<()>) {
 /// not open, or after the loop ended, is disconnected.
 #[test]
 fn a_remote_plays_and_reads_a_live_window() {
-    let (handle, thread) = serve_at(Depth::gpu(headless_test_gpu().handles()));
+    let (handle, thread) = serve_at(HarnessDepth::gpu(headless_test_gpu().handles()));
     let mut remote = handle.remote(WINDOW).with_tick(TICK);
 
     let (clicks, frame) = remote
-        .query(|app, ui| (app.clicks, ui.record_frame_id()))
+        .query(|app, ui| (app.clicks, ui.record_frame_idx()))
         .unwrap();
     assert_eq!(clicks, 0);
     assert!(frame > 0, "a frame ran before the query");
@@ -398,7 +398,7 @@ fn a_settle_waits_through_a_windows_first_frame() {
         log.record(
             WINDOW,
             FrameSummary {
-                record_frame_id: 1,
+                record_frame_idx: 1,
                 repaint_requested: false,
                 ..FrameSummary::AT_OPEN
             },
@@ -423,8 +423,8 @@ fn a_remote_counts_against_the_window_as_it_is_open_now() {
         sender: EventSender::Channel(sender),
         frame_log: Arc::default(),
     };
-    let idle = |record_frame_id, sent_events| FrameSummary {
-        record_frame_id,
+    let idle = |record_frame_idx, sent_events| FrameSummary {
+        record_frame_idx,
         sent_events,
         repaint_requested: false,
         busy: false,
@@ -479,7 +479,7 @@ fn a_settle_after_a_query_sees_what_it_changed() {
 #[test]
 fn a_remote_loses_the_device_and_a_settle_waits_for_the_frame_after() {
     let gpu = isolated_headless_test_gpu();
-    let (handle, thread) = serve_at(Depth::gpu(gpu.handles()));
+    let (handle, thread) = serve_at(HarnessDepth::gpu(gpu.handles()));
     let mut remote = handle.remote(WINDOW).with_tick(TICK);
     remote.settle().unwrap();
     let before = handle.last_frame(WINDOW).unwrap().summary.sent_events;
@@ -506,12 +506,12 @@ fn a_remote_answers_a_hidden_window_and_settles_a_busy_app() {
     let mut remote = handle.remote(WINDOW).with_tick(TICK);
     assert_eq!(remote.query(|app, _| app.clicks).unwrap(), 0);
     remote.settle().unwrap();
-    let frame = remote.record_frame_id();
+    let frame = remote.record_frame_idx();
     let sent = remote.sent;
     assert!(frame > 0, "a frame ran before the reads");
     handle.frame_log.set_hidden(WINDOW, true);
     assert_eq!(
-        remote.read(|app, ui| (app.clicks, ui.record_frame_id())),
+        remote.read(|app, ui| (app.clicks, ui.record_frame_idx())),
         Ok((0, frame))
     );
     let button = remote.widgets(Some("press")).unwrap()[0].rect;
@@ -521,7 +521,7 @@ fn a_remote_answers_a_hidden_window_and_settles_a_busy_app() {
     );
     assert_eq!(remote.sent, sent);
     assert_eq!(remote.settle(), Ok(0));
-    assert_eq!(remote.record_frame_id(), frame);
+    assert_eq!(remote.record_frame_idx(), frame);
     // A query runs between frames, a hidden window's too, so its answer outlasts the ticks that
     // give up a wait for a hidden window's frame.
     let slow = remote.query(|app, _| {
@@ -694,7 +694,7 @@ fn both_players_play_each_gesture_alike() {
     ];
     let gpu = headless_test_gpu();
     let mut h = Harness::builder(SIZE)
-        .depth(Depth::gpu(gpu.handles()))
+        .depth(HarnessDepth::gpu(gpu.handles()))
         .build();
     let mut app = Counter::default();
     // The first frame, which the served window runs at its open, before a step locates in it.

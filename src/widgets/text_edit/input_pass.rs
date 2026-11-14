@@ -1,6 +1,6 @@
 //! One frame's pointer and keyboard dispatch for a TextEdit.
 
-use crate::primitives::input::interaction::response_state::ResponseState;
+use crate::primitives::input::interaction::response::Response;
 use crate::primitives::input::key_class::KeyFilter;
 use crate::primitives::input::keyboard::key::Key;
 use crate::primitives::input::keyboard::key_press::KeyPress;
@@ -48,7 +48,7 @@ pub(super) struct AcceptPolicy {
 /// keyboard drain, which hands `&mut Ui` to each handler.
 #[derive(Debug)]
 pub(super) struct InputPass<'a> {
-    pub(super) resp_state: &'a ResponseState,
+    pub(super) resp_state: &'a Response,
     pub(super) is_focused: bool,
     pub(super) text: &'a mut String,
     pub(super) layout: &'a TextLayout,
@@ -78,7 +78,7 @@ impl InputPass<'_> {
         } = policy;
         let mut ended = None;
 
-        let was_focused = view.was_focused(ui.record_frame_id());
+        let was_focused = view.was_focused(ui.record_frame_idx());
         // Repair persisted byte offsets: application code may have replaced
         // `*text` with a string whose UTF-8 boundaries differ.
         edit.normalize(text);

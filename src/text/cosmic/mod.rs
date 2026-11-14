@@ -555,7 +555,7 @@ impl CosmicMeasure {
                 let physical = glyph.physical((origin_x, origin.y), scale);
                 out.push(PlacedGlyph {
                     raster_key: GlyphRasterKey(physical.cache_key),
-                    physical: IVec2::new(physical.x, line_y_px + physical.y),
+                    physical_pos: IVec2::new(physical.x, line_y_px + physical.y),
                 });
             }
         }

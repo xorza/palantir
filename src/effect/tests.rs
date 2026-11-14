@@ -23,7 +23,7 @@ use crate::gpu::device::gpu::Gpu;
 use crate::gpu::test_gpu::headless_test_gpu;
 use crate::gpu::test_gpu::isolated_headless_test_gpu;
 use crate::host::harness::Harness;
-use crate::host::harness::harness_builder::Depth;
+use crate::host::harness::harness_builder::HarnessDepth;
 use crate::image_registry::image_handle::ImageHandle;
 use crate::internals::paint_capture::PaintCall;
 use crate::internals::panic_probe::assert_panics_with;
@@ -574,7 +574,7 @@ fn a_theme_names_only_loaded_effects() {
     };
     let missing = EffectName::named("missing").unwrap();
     assert_eq!(
-        h.ui_mut().set_theme(scheme, naming("missing")),
+        h.ui_mut().set_scheme_theme(scheme, naming("missing")),
         Err(ThemeEffectError::UnloadedPress(missing))
     );
     assert_eq!(
@@ -583,7 +583,7 @@ fn a_theme_names_only_loaded_effects() {
     );
     let blend = EffectName::named(BLEND.name()).unwrap();
     assert_eq!(
-        h.ui_mut().set_theme(scheme, naming(BLEND.name())),
+        h.ui_mut().set_scheme_theme(scheme, naming(BLEND.name())),
         Err(ThemeEffectError::NotPress(blend))
     );
     assert_eq!(
@@ -604,7 +604,7 @@ fn a_theme_names_only_loaded_effects() {
         (),
     );
     assert_eq!(
-        h.ui_mut().set_theme(scheme, wearing("missing")),
+        h.ui_mut().set_scheme_theme(scheme, wearing("missing")),
         Err(ThemeEffectError::UnloadedMaterial(missing_material))
     );
     assert_eq!(
@@ -617,7 +617,7 @@ fn a_theme_names_only_loaded_effects() {
         (),
     ));
     assert_eq!(
-        h.ui_mut().set_theme(scheme, scrimmed),
+        h.ui_mut().set_scheme_theme(scheme, scrimmed),
         Err(ThemeEffectError::UnloadedMaterial(missing_material))
     );
     let blend_material = MaterialEffect::new(
@@ -625,7 +625,7 @@ fn a_theme_names_only_loaded_effects() {
         (),
     );
     assert_eq!(
-        h.ui_mut().set_theme(scheme, wearing(BLEND.name())),
+        h.ui_mut().set_scheme_theme(scheme, wearing(BLEND.name())),
         Err(ThemeEffectError::NotMaterial(blend_material))
     );
     assert_eq!(
@@ -638,7 +638,8 @@ fn a_theme_names_only_loaded_effects() {
         (),
     );
     assert_eq!(
-        h.ui_mut().set_theme(scheme, wearing("palantir.frosted")),
+        h.ui_mut()
+            .set_scheme_theme(scheme, wearing("palantir.frosted")),
         Err(ThemeEffectError::MaterialParams {
             effect: frosted,
             want: 2,
@@ -661,16 +662,16 @@ fn a_theme_names_only_loaded_effects() {
     );
     let mut glassy = Theme::stock(scheme);
     glassy.tooltip.material = Some(Material::glass(Lens::WINDOW_GLASS));
-    h.ui_mut().set_theme(scheme, glassy).unwrap();
+    h.ui_mut().set_scheme_theme(scheme, glassy).unwrap();
 
     h.ui_mut()
-        .set_theme(scheme, naming("palantir.sparkle"))
+        .set_scheme_theme(scheme, naming("palantir.sparkle"))
         .unwrap();
     let ours = EffectName::<PressParams>::named("ours").unwrap();
     h.ui()
         .load_effect(ours, EffectSource::new(RIPPLE_WGSL))
         .unwrap();
-    h.ui_mut().set_theme(scheme, naming("ours")).unwrap();
+    h.ui_mut().set_scheme_theme(scheme, naming("ours")).unwrap();
     assert_eq!(
         h.ui()
             .scheme_theme(scheme)
@@ -762,7 +763,7 @@ fn painted(paint: impl Fn(&mut Ui), at: &[(u32, u32)]) -> Vec<[u8; 4]> {
     let gpu = headless_test_gpu();
     let mut h = Harness::builder(UVec2::new(160, 40))
         .mono()
-        .depth(Depth::gpu(gpu.handles()))
+        .depth(HarnessDepth::gpu(gpu.handles()))
         .build();
     h.ui()
         .load_effect(BLEND, EffectSource::new(BLEND_WGSL))
@@ -838,7 +839,7 @@ fn a_rounded_clip_cuts_an_effect_by_its_coverage() {
     let gpu = headless_test_gpu();
     let mut h = Harness::builder(UVec2::new(40, 32))
         .mono()
-        .depth(Depth::gpu(gpu.handles()))
+        .depth(HarnessDepth::gpu(gpu.handles()))
         .build();
     h.set_pixel_snap(false);
     h.ui()
@@ -1297,7 +1298,7 @@ fn a_recovered_device_paints_the_loaded_effects() {
     let gpu = isolated_headless_test_gpu();
     let mut h = Harness::builder(UVec2::new(16, 16))
         .mono()
-        .depth(Depth::gpu(gpu.handles()))
+        .depth(HarnessDepth::gpu(gpu.handles()))
         .build();
     h.ui()
         .load_effect(BLEND, EffectSource::new(BLEND_WGSL))
@@ -1335,7 +1336,7 @@ fn a_reload_repaints_the_unchanged_shapes() {
     let gpu = headless_test_gpu();
     let mut h = Harness::builder(UVec2::new(16, 16))
         .mono()
-        .depth(Depth::gpu(gpu.handles()))
+        .depth(HarnessDepth::gpu(gpu.handles()))
         .build();
     h.ui()
         .load_effect(BLEND, EffectSource::new(BLEND_WGSL))
@@ -1569,7 +1570,7 @@ fn the_time_reaches_the_effect() {
     let gpu = headless_test_gpu();
     let mut h = Harness::builder(UVec2::new(16, 16))
         .mono()
-        .depth(Depth::gpu(gpu.handles()))
+        .depth(HarnessDepth::gpu(gpu.handles()))
         .build();
     let timed = "
 struct Params { color: vec4<f32>, mode: u32, pad0: u32, pad1: u32, pad2: u32 }
@@ -1689,7 +1690,7 @@ fn solid(hex: u32) -> Image {
 fn pair_window(gpu: &Gpu) -> Harness {
     let h = Harness::builder(UVec2::new(32, 16))
         .mono()
-        .depth(Depth::gpu(gpu.clone()))
+        .depth(HarnessDepth::gpu(gpu.clone()))
         .build();
     h.ui()
         .load_effect(PAIR, EffectSource::new(PAIR_WGSL).image_slots(2))
@@ -1932,7 +1933,7 @@ fn a_backdrop_effect_reads_under_its_reach_and_clamps_past_it() {
     let gpu = headless_test_gpu();
     let mut h = Harness::builder(UVec2::new(32, 16))
         .mono()
-        .depth(Depth::gpu(gpu.handles()))
+        .depth(HarnessDepth::gpu(gpu.handles()))
         .build();
     h.ui().load_effect(SHIFT, reaching_shift()).unwrap();
     let red = RgbaF32::new(1.0, 0.0, 0.0, 1.0);
@@ -2128,7 +2129,7 @@ fn a_backdrop_effect_blurs_as_a_material() {
     let row = |backdrop: &dyn Fn(&mut Ui)| {
         let mut h = Harness::builder(UVec2::new(32, 16))
             .mono()
-            .depth(Depth::gpu_float(gpu.handles()))
+            .depth(HarnessDepth::gpu_float(gpu.handles()))
             .build();
         h.ui()
             .load_effect(SHIFT, EffectSource::new(SHIFT_WGSL))
@@ -2301,7 +2302,7 @@ fn a_reach_past_the_window_reads_its_edge() {
     let gpu = headless_test_gpu();
     let mut h = Harness::builder(UVec2::new(32, 16))
         .mono()
-        .depth(Depth::gpu(gpu.handles()))
+        .depth(HarnessDepth::gpu(gpu.handles()))
         .build();
     h.ui().load_effect(SHIFT, reaching_shift()).unwrap();
     let green = RgbaF32::new(0.0, 1.0, 0.0, 1.0);
@@ -2327,7 +2328,7 @@ fn a_turn_turns_an_effect_as_a_quad() {
     let gpu = headless_test_gpu();
     let mut h = Harness::builder(UVec2::new(32, 32))
         .mono()
-        .depth(Depth::gpu(gpu.handles()))
+        .depth(HarnessDepth::gpu(gpu.handles()))
         .build();
     h.ui()
         .load_effect(BLEND, EffectSource::new(BLEND_WGSL))
@@ -2359,7 +2360,7 @@ fn the_reach_runs_from_the_exact_rect() {
     let mut h = Harness::builder(UVec2::new(32, 16))
         .mono()
         .pixel_snap(false)
-        .depth(Depth::gpu(gpu.handles()))
+        .depth(HarnessDepth::gpu(gpu.handles()))
         .build();
     h.ui().load_effect(SHIFT, reaching_shift()).unwrap();
     let blue = RgbaF32::new(0.0, 0.0, 1.0, 1.0);
@@ -2390,7 +2391,7 @@ fn a_turned_backdrop_effect_reads_through_its_turn() {
     let gpu = headless_test_gpu();
     let mut h = Harness::builder(UVec2::new(32, 32))
         .mono()
-        .depth(Depth::gpu(gpu.handles()))
+        .depth(HarnessDepth::gpu(gpu.handles()))
         .build();
     h.ui()
         .load_effect(SHIFT, EffectSource::new(SHIFT_WGSL))

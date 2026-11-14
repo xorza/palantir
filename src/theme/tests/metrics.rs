@@ -162,7 +162,11 @@ fn every_recipe_reads_its_geometry_from_the_metrics() {
             t.dock.preview.corners.to_array()[0],
             11.0,
         ),
-        ("tab radius", t.tabs.radius, 15.0),
+        (
+            "tab radius",
+            t.tabs.unselected.normal.chrome.corners.to_array()[0],
+            15.0,
+        ),
         ("separator", t.separator.thickness, 0.25),
         ("splitter rule", t.splitter.rule_thickness, 0.25),
         (
@@ -186,7 +190,7 @@ fn every_recipe_reads_its_geometry_from_the_metrics() {
         ("picker handle", t.color_picker.handle_width, 0.5),
         ("focus ring", t.focus_ring.width, 0.75),
         ("tab cap", t.tabs.cap_thickness, 0.75),
-        ("tab caret", t.tabs.caret_width, 0.75),
+        ("tab caret", t.tabs.drop_mark_width, 0.75),
         ("check mark", t.checkbox.indicator_width, 0.75),
     ];
     for (slot, got, want) in lengths {

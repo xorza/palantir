@@ -735,8 +735,8 @@ fn ink_outsets_cover_what_the_rasterizer_draws() {
                     continue;
                 };
                 let top_left = glam::IVec2::new(
-                    glyph.physical.x + image.bearing.x,
-                    glyph.physical.y - image.bearing.y,
+                    glyph.physical_pos.x + image.bearing.x,
+                    glyph.physical_pos.y - image.bearing.y,
                 );
                 lo = lo.min(top_left);
                 hi = hi.max(top_left + image.size.as_ivec2());

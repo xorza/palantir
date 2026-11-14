@@ -57,7 +57,7 @@ impl Default for Display {
 impl Display {
     /// Physical surface size in pixels, as in `wgpu::SurfaceConfiguration`.
     #[inline]
-    pub const fn physical(&self) -> UVec2 {
+    pub const fn physical_size(&self) -> UVec2 {
         self.physical
     }
 

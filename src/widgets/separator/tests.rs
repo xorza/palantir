@@ -5,7 +5,7 @@ use crate::theme::Theme;
 use crate::theme::color_scheme::ColorScheme;
 
 use crate::primitives::geometry::spacing::Spacing;
-use crate::primitives::layout::align::{Align, HAlign, VAlign};
+use crate::primitives::layout::align::{HAlign, VAlign};
 use crate::primitives::layout::sizing::Sizing;
 use crate::scene::layer::Layer;
 use crate::theme::separator::SeparatorTheme;
@@ -110,11 +110,11 @@ fn a_callers_alignment_survives_the_stretch_default_axis_by_axis() {
                 [
                     Separator::horizontal().show(ui).node(ui),
                     Separator::horizontal()
-                        .align(Align::h(HAlign::Center))
+                        .align(HAlign::Center)
                         .show(ui)
                         .node(ui),
                     Separator::horizontal()
-                        .align(Align::v(VAlign::Bottom))
+                        .align(VAlign::Bottom)
                         .show(ui)
                         .node(ui),
                 ]

@@ -7,7 +7,7 @@ use crate::gpu::device::gpu_wait::GpuWait;
 use crate::gpu::test_gpu::{
     headless_test_gpu, isolated_headless_test_gpu, isolated_headless_test_gpu_capped,
 };
-use crate::host::harness::harness_builder::Depth;
+use crate::host::harness::harness_builder::HarnessDepth;
 use crate::host::harness::{Harness, device_answered};
 use crate::internals::panic_probe::assert_panics_with;
 use crate::primitives::geometry::rect::Rect;
@@ -58,7 +58,10 @@ fn tile(ui: &mut Ui) {
 #[test]
 fn each_depth_builds_what_it_names() {
     let tile_rect = Rect::new(0.0, 0.0, 20.0, 20.0);
-    for (depth, built) in [(Depth::Record, vec![]), (Depth::Compose, vec![tile_rect])] {
+    for (depth, built) in [
+        (HarnessDepth::Record, vec![]),
+        (HarnessDepth::Compose, vec![tile_rect]),
+    ] {
         let mut h = Harness::builder(UVec2::new(64, 32))
             .mono()
             .depth(depth)
@@ -94,7 +97,7 @@ fn each_depth_builds_what_it_names() {
 fn a_composing_window_evicts_its_idle_rows() {
     let mut h = Harness::builder(UVec2::new(64, 32))
         .mono()
-        .depth(Depth::Compose)
+        .depth(HarnessDepth::Compose)
         .build();
     for i in 0..300u32 {
         h.frame(|ui: &mut Ui| {
@@ -242,7 +245,7 @@ impl App for Board {
 fn play_acts_as_a_person() {
     let gpu = headless_test_gpu();
     let mut h = Harness::builder(UVec2::new(400, 200))
-        .depth(Depth::gpu(gpu.handles()))
+        .depth(HarnessDepth::gpu(gpu.handles()))
         .build();
     let mut app = Board::default();
     h.session(&mut app).settle().unwrap();
@@ -512,7 +515,7 @@ fn a_settle_waits_for_a_busy_apps_wake() {
     }
 }
 
-/// A session loses the harness's device, which a harness below `Depth::Gpu` has none of. On a lost
+/// A session loses the harness's device, which a harness below `HarnessDepth::Gpu` has none of. On a lost
 /// device a shot, and a settle that waits on a screenshot, report the loss: no copy comes back,
 /// where both ran out their frames and read as an animation that runs on. A new device recovers
 /// the harness, whose next shot is the window at its size again.
@@ -527,7 +530,7 @@ fn a_lost_device_fails_a_shot_and_a_settle_on_one() {
 
     let gpu = isolated_headless_test_gpu();
     let mut h = Harness::builder(UVec2::new(64, 32))
-        .depth(Depth::gpu(gpu.handles()))
+        .depth(HarnessDepth::gpu(gpu.handles()))
         .build();
     h.session(&mut app).settle().unwrap();
     assert!(!gpu.is_lost());
@@ -555,7 +558,7 @@ fn a_lost_device_fails_a_shot_and_a_settle_on_one() {
 #[test]
 fn a_recovery_onto_a_device_too_small_for_the_window_panics() {
     let mut h = Harness::builder(UVec2::new(2049, 1))
-        .depth(Depth::gpu(headless_test_gpu().handles()))
+        .depth(HarnessDepth::gpu(headless_test_gpu().handles()))
         .build();
     let small = isolated_headless_test_gpu_capped(2048);
     assert_panics_with(
@@ -572,13 +575,13 @@ fn a_shot_is_the_painted_window() {
     let gpu = headless_test_gpu();
     let mut h = Harness::builder(UVec2::new(600, 300))
         .system_scale(SystemScale::new(1.5).unwrap())
-        .depth(Depth::gpu(gpu.handles()))
+        .depth(HarnessDepth::gpu(gpu.handles()))
         .build();
     let mut app = Board::default();
     h.session(&mut app).settle().unwrap();
     let whole = h.session(&mut app).shot(None).unwrap();
     assert_eq!(whole.image().size(), UVec2::new(600, 300));
-    assert_eq!(whole.scale(), 1.5);
+    assert_eq!(whole.scale_factor(), 1.5);
     let region = h
         .session(&mut app)
         .shot(Some(Rect::new(10.0, 10.0, 20.0, 10.0)))
@@ -602,16 +605,16 @@ fn a_capture_is_one_frame_at_the_parked_clock() {
     let gpu = headless_test_gpu();
     let mut h = Harness::builder(UVec2::new(120, 80))
         .system_scale(SystemScale::new(2.0).unwrap())
-        .depth(Depth::gpu(gpu.handles()))
+        .depth(HarnessDepth::gpu(gpu.handles()))
         .build();
     let mut app = Board::default();
     h.session(&mut app).settle().unwrap();
     let at = Duration::from_secs(7);
     h.at(at);
-    let frames = h.ui().render_frame_id();
+    let frames = h.ui().render_frame_idx();
     let mut pixels = Vec::new();
     h.capture(&mut app, &mut pixels).unwrap();
-    assert_eq!(h.ui().render_frame_id(), frames + 1, "one frame");
+    assert_eq!(h.ui().render_frame_idx(), frames + 1, "one frame");
     assert_eq!(h.time, at, "the clock stays");
     assert_eq!(pixels.len(), 120 * 80 * 4);
     let shot = h.session(&mut app).shot(None).unwrap();
@@ -634,7 +637,7 @@ fn a_capture_is_one_frame_at_the_parked_clock() {
 fn a_float_window_captures_its_linear_values() {
     let gpu = headless_test_gpu();
     let mut h = Harness::builder(UVec2::new(16, 8))
-        .depth(Depth::gpu_float(gpu.handles()))
+        .depth(HarnessDepth::gpu_float(gpu.handles()))
         .build();
     h.ui_mut().theme_mut().window_bg = RgbaF32::BLACK;
     let mut app = |ui: &mut Ui| {
@@ -686,8 +689,8 @@ fn input_aims_by_text_id_and_point() {
 
 /// A read hands back the app and the last frame, and runs no frame and moves no clock, as a find
 /// through it does, which also says when a locator names nothing; the next caret blink only paints,
-/// so `record_frame_id` holds. A query changes the app and asks a repaint, so the frame at the same
-/// blink records: `record_frame_id` moves by exactly 1. A settle over a blink's frame alone runs
+/// so `record_frame_idx` holds. A query changes the app and asks a repaint, so the frame at the same
+/// blink records: `record_frame_idx` moves by exactly 1. A settle over a blink's frame alone runs
 /// that frame and returns 0.
 #[test]
 fn a_session_reads_with_no_frame_and_queries_with_one() {
@@ -696,12 +699,12 @@ fn a_session_reads_with_no_frame_and_queries_with_one() {
     let mut app = Board::default();
     h.session(&mut app).settle().unwrap();
     h.session(&mut app).play(&[Action::click(edit())]).unwrap();
-    let recorded = h.ui().record_frame_id();
-    let (frames, time) = (h.ui().render_frame_id(), h.time);
+    let recorded = h.ui().record_frame_idx();
+    let (frames, time) = (h.ui().render_frame_idx(), h.time);
 
     let read = h
         .session(&mut app)
-        .read(|app, ui| (app.text.clone(), ui.record_frame_id()));
+        .read(|app, ui| (app.text.clone(), ui.record_frame_idx()));
     assert_eq!(read, Ok((String::new(), recorded)));
     let field = h.rect(edit()).unwrap();
     assert_eq!(
@@ -714,11 +717,11 @@ fn a_session_reads_with_no_frame_and_queries_with_one() {
             .find(&Locator::<Infallible>::from("Missing")),
         Err(PlayError::Locate(LocateError::NotFound { .. }))
     ));
-    assert_eq!(h.ui().render_frame_id(), frames, "a read runs no frame");
+    assert_eq!(h.ui().render_frame_idx(), frames, "a read runs no frame");
     assert_eq!(h.time, time, "a read moves no clock");
     h.advance(blink);
     h.frame_app(&mut app);
-    assert_eq!(h.ui().record_frame_id(), recorded, "the blink only paints");
+    assert_eq!(h.ui().record_frame_idx(), recorded, "the blink only paints");
 
     assert_eq!(
         h.session(&mut app)
@@ -727,36 +730,36 @@ fn a_session_reads_with_no_frame_and_queries_with_one() {
     );
     assert_eq!(app.text, "typed");
     assert_eq!(
-        h.ui().render_frame_id(),
+        h.ui().render_frame_idx(),
         frames + 1,
         "a query runs no frame by itself"
     );
     h.advance(blink);
     h.frame_app(&mut app);
     assert_eq!(
-        h.ui().record_frame_id(),
+        h.ui().record_frame_idx(),
         recorded + 1,
         "the frame after a query records"
     );
 
-    let rendered = h.ui().render_frame_id();
+    let rendered = h.ui().render_frame_idx();
     h.advance(blink);
     assert_eq!(
         h.session(&mut app).settle(),
         Ok(0),
         "a settle counts the frames recorded, and the blink's frame only paints"
     );
-    assert_eq!(h.ui().render_frame_id(), rendered + 1);
+    assert_eq!(h.ui().render_frame_idx(), rendered + 1);
 
     // A `Wait` of 100 ms is 6 frames of 1/60 s, and its settle one more: 7 run. No blink falls in
     // them, so each records, and `play` counts all 7.
-    let (recorded, rendered) = (h.ui().record_frame_id(), h.ui().render_frame_id());
+    let (recorded, rendered) = (h.ui().record_frame_idx(), h.ui().render_frame_idx());
     let played = h
         .session(&mut app)
         .play(&[Action::<Infallible>::Wait(Duration::from_millis(100))]);
-    assert_eq!(h.ui().render_frame_id(), rendered + 7);
+    assert_eq!(h.ui().render_frame_idx(), rendered + 7);
     assert_eq!(played, Ok(7));
-    assert_eq!(h.ui().record_frame_id(), recorded + 7);
+    assert_eq!(h.ui().record_frame_idx(), recorded + 7);
 }
 
 /// A white 2 × 1 logical block at the origin over a black clear. At scale 1 on 8 × 6 it covers
@@ -767,7 +770,7 @@ fn a_new_display_reads_back_the_new_size_and_scale() {
     let gpu = headless_test_gpu();
     let mut h = Harness::builder(UVec2::new(8, 6))
         .mono()
-        .depth(Depth::gpu(gpu.handles()))
+        .depth(HarnessDepth::gpu(gpu.handles()))
         .build();
     h.ui_mut().theme_mut().window_bg = RgbaF32::BLACK;
     let app = |ui: &mut Ui| {

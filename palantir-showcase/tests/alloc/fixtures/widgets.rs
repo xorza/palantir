@@ -288,7 +288,7 @@ fn theme_transition_alloc_free() {
     ];
     let mut h = harness::new_ui();
     h.ui_mut()
-        .set_theme(ColorScheme::Dark, Rc::clone(&themes[0]))
+        .set_scheme_theme(ColorScheme::Dark, Rc::clone(&themes[0]))
         .unwrap();
     let mut scene = |ui: &mut Ui| {
         Button::new().id_salt("apply").label("Apply").show(ui);
@@ -310,7 +310,7 @@ fn theme_transition_alloc_free() {
         };
         if let Some(set) = set {
             h.ui_mut()
-                .set_theme(ColorScheme::Dark, Rc::clone(&themes[set]))
+                .set_scheme_theme(ColorScheme::Dark, Rc::clone(&themes[set]))
                 .unwrap();
         }
         frame += 1;

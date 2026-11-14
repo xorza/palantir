@@ -5,8 +5,8 @@ use std::{env, fs, process};
 use palantir::glam::{UVec2, Vec2};
 use palantir::internals::{headless_test_gpu, main_pass_counts};
 use palantir::{
-    Action, AgentWindow, ColorScheme, Depth, Harness, Key, Locator, Palette, PointerButton, Rect,
-    Shortcut, ShortcutMods, SystemScale, ZoomFactor,
+    Action, AgentWindow, ColorScheme, Harness, HarnessDepth, Key, Locator, Palette, PointerButton,
+    Rect, Shortcut, ShortcutMods, SystemScale, ZoomFactor,
 };
 
 use crate::shell::Shell;
@@ -444,7 +444,7 @@ fn page_opens_the_window_on_a_page() {
 fn draws_every_page(scheme: ColorScheme) {
     let gpu = headless_test_gpu();
     let mut h = Harness::builder(UVec2::new(480, 320))
-        .depth(Depth::gpu(gpu.handles()))
+        .depth(HarnessDepth::gpu(gpu.handles()))
         .build();
     h.set_system_color_scheme(Some(scheme));
     let palette = Palette::for_scheme(scheme);
@@ -509,7 +509,7 @@ fn every_page_records_its_census() {
     let gpu = headless_test_gpu();
     let size = UVec2::new(1280, 720);
     let mut h = Harness::builder(size)
-        .depth(Depth::gpu(gpu.handles()))
+        .depth(HarnessDepth::gpu(gpu.handles()))
         .build();
     let mut census = Vec::new();
     for (page, label) in Shell::page_labels().enumerate() {

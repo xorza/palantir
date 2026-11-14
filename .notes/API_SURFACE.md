@@ -40,10 +40,8 @@ AgentWindow
         fn widgets(&mut self, filter: Option<&str>) -> Result<Vec<InspectedWidget>, PlayError> { .. }
 
 Align
-    struct Align: Clone, Copy, Debug, Default, DockTab (blanket), Eq, Hash, PartialEq
+    struct Align: Clone, Copy, Debug, Default, DockTab (blanket), Eq, From<(HAlign, VAlign)>, From<HAlign>, From<VAlign>, Hash, PartialEq
         pub const fn new(h: HAlign, v: VAlign) -> Self
-        pub const fn h(h: HAlign) -> Self
-        pub const fn v(v: VAlign) -> Self
         pub const fn halign(self) -> HAlign
         pub const fn valign(self) -> VAlign
         pub const TOP_LEFT: Self
@@ -194,28 +192,10 @@ Button
         pub fn style(self, s: impl Into<Option<&'a ButtonTheme>>) -> Self
         pub fn label(self, label: impl Into<TextInput<'a>>) -> Self
         pub const fn text_wrap(self, wrap: TextWrap) -> Self
-        pub const fn text_align(self, a: Align) -> Self
+        pub fn text_align(self, a: impl Into<Align>) -> Self
         pub const fn selected(self, selected: bool) -> Self
         pub fn show(self, ui: &mut Ui) -> Response
         pub fn show_with<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui, &TextStyle) -> R) -> InnerResponse<R>
-
-ButtonPhase
-    enum ButtonPhase: Clone, Copy, Debug, Default, Eq, PartialEq
-        Idle
-        Down { count: u8 }
-        Held
-        Up { click: Option<u8> }
-
-ButtonState
-    struct ButtonState: Clone, Copy, Debug, Default, PartialEq
-        pub phase: ButtonPhase
-        pub drag: Drag
-        pub const fn held(self) -> bool
-        pub const fn clicked(self) -> bool
-        pub const fn released(self) -> bool
-        pub const fn press_count(self) -> u8
-        pub const fn click_count(self) -> u8
-        pub const fn double_clicked(self) -> bool
 
 ButtonTheme
     struct ButtonTheme: Clone, Debug, Deserialize<'de>, Lerp, PartialEq, Serialize, ThemeSlot
@@ -422,8 +402,8 @@ Configure
         fn gap(self, g: f32) -> Self { .. }
         fn line_gap(self, g: f32) -> Self { .. }
         fn justify(self, j: Justify) -> Self { .. }
-        fn align(self, a: Align) -> Self { .. }
-        fn child_align(self, a: Align) -> Self { .. }
+        fn align(self, a: impl Into<Align>) -> Self { .. }
+        fn child_align(self, a: impl Into<Align>) -> Self { .. }
         fn sense(self, s: Sense) -> Self { .. }
         fn add_sense(self, s: Sense) -> Self { .. }
         fn disabled(self, disabled: bool) -> Self { .. }
@@ -478,26 +458,18 @@ DebugOverlayConfig
         pub dim_undamaged: bool
         pub frame_stats: bool
 
-Depth
-    enum Depth: Debug
-        Record
-        Compose
-        Gpu { gpu: Gpu, format: TargetFormat }
-        pub const fn gpu(gpu: Gpu) -> Self
-        pub const fn gpu_float(gpu: Gpu) -> Self
-
 DeviceRequirements
     struct DeviceRequirements: Clone, Debug
         pub features: Features
         pub limits: Limits
-        pub const FEATURES: Features
-        pub const DOWNLEVEL: DownlevelFlags
-        pub const GPU_TIMING_FEATURES: Features
+        pub const REQUIRED_FEATURES: Features
+        pub const REQUIRED_DOWNLEVEL: DownlevelFlags
+        pub const GPU_STATS_FEATURES: Features
         pub fn negotiate(adapter: &Adapter, optional: Features) -> Result<Self, UnmetRequirements>
 
 Display
     struct Display: Clone, Copy, Debug, Default, PartialEq
-        pub const fn physical(&self) -> UVec2
+        pub const fn physical_size(&self) -> UVec2
         pub const fn system_scale(&self) -> SystemScale
         pub const fn user_scale(&self) -> UserScale
         pub const fn pixel_snap(&self) -> bool
@@ -510,7 +482,7 @@ Display
 
 DockDrop
     enum DockDrop: Clone, Copy, Debug, Deserialize<'de>, Eq, PartialEq, Serialize
-        Into { group: TabGroupId, idx: usize }
+        Join { group: TabGroupId, idx: usize }
         Split { group: TabGroupId, side: SplitSide }
 
 DockError
@@ -549,7 +521,7 @@ DockOperation
         CloseTab { tab: T }
         MoveTab { tab: T, to: DockDrop }
         SetRatio { split: DockPath, ratio: f32 }
-        FocusPane { group: TabGroupId }
+        FocusGroup { group: TabGroupId }
         impl<'de, T> Deserialize<'de> where T: Deserialize<'de>
         impl<T: Clone> Clone for DockOperation<T>
         impl<T: Copy> Copy for DockOperation<T>
@@ -650,7 +622,7 @@ Drag
 DragValue
     struct DragValue<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn new(value: impl Into<BoundNum<'a>>) -> Self
-        pub const fn text_align(self, a: Align) -> Self
+        pub fn text_align(self, a: impl Into<Align>) -> Self
         pub const fn speed(self, speed: f64) -> Self
         pub const fn range(self, range: RangeInclusive<f64>) -> Self
         pub const fn step(self, step: f64) -> Self
@@ -704,7 +676,6 @@ EditableLabel
         pub const fn editable(self, editable: bool) -> Self
         pub const fn max_chars(self, n: usize) -> Self
         pub fn show(self, ui: &mut Ui) -> EditableLabelResponse
-        pub fn label_id(editable_label: WidgetId) -> WidgetId
         pub fn start_editing(ui: &mut Ui, id: WidgetId)
         pub fn stop_editing(ui: &mut Ui, id: WidgetId, end: EditEnd)
         pub fn is_editing(ui: &Ui, id: WidgetId) -> bool
@@ -795,7 +766,6 @@ Expander
         pub const fn start_open(self, start_open: bool) -> Self
         pub const fn keep_body(self, keep_body: bool) -> Self
         pub fn style(self, s: impl Into<Option<&'a ExpanderTheme>>) -> Self
-        pub fn header_id(expander: WidgetId) -> WidgetId
         pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> ExpanderResponse<R>
         pub fn open(ui: &mut Ui, id: WidgetId)
         pub fn close(ui: &mut Ui, id: WidgetId)
@@ -927,7 +897,8 @@ Gpu
         pub const fn device(&self) -> &Device
         pub const fn queue(&self) -> &Queue
         pub fn lose(&self)
-        pub fn max_texture_dim(&self) -> NonZeroU32
+        pub fn max_texture_dimension(&self) -> NonZeroU32
+        pub fn is_lost(&self) -> bool
 
 GpuFrameCtx
     #[non_exhaustive]
@@ -1042,6 +1013,7 @@ HAlign
         Center = 2
         Right = 3
         Stretch = 4
+        impl From<HAlign> for Align
 
 Harness
     struct Harness: Debug
@@ -1112,11 +1084,19 @@ HarnessBuilder
         pub const fn pixel_snap(self, pixel_snap: bool) -> Self
         pub const fn fonts(self, scope: FontScope) -> Self
         pub fn shaper(self, shaper: TextShaper) -> Self
-        pub fn depth(self, depth: Depth) -> Self
+        pub fn depth(self, depth: HarnessDepth) -> Self
         pub const fn frame_dt(self, dt: Duration) -> Self
         pub const fn settle_frames(self, frames: u32) -> Self
         pub const fn background_wait(self, wait: Duration) -> Self
         pub fn build(self) -> Harness
+
+HarnessDepth
+    enum HarnessDepth: Debug
+        Record
+        Compose
+        Gpu { gpu: Gpu, format: TargetFormat }
+        pub const fn gpu(gpu: Gpu) -> Self
+        pub const fn gpu_float(gpu: Gpu) -> Self
 
 HarnessSession
     struct HarnessSession<'h, A>
@@ -1143,7 +1123,7 @@ IconDefinition
 
 IconHandle
     struct IconHandle: Clone, Copy, Debug, PartialEq
-        pub const fn view_box(&self) -> Size
+        pub const fn view_box(self) -> Size
 
 IconSet
     struct IconSet: Clone, Debug
@@ -1253,7 +1233,7 @@ InspectedWidget
 
 InternedStr
     struct InternedStr: Clone, Copy, Debug
-        pub const fn is_empty(&self) -> bool
+        pub const fn is_empty(self) -> bool
         impl From<InternedStr> for TextInput<'_>
 
 Interpolation
@@ -1384,7 +1364,7 @@ Layer
 
 LayerScope
     struct LayerScope<'a>: Debug
-        pub const fn fixed_at(self, point: Vec2) -> Self
+        pub fn at(self, p: impl Into<Vec2>) -> Self
         pub const fn anchor(self, anchor: Anchor) -> Self
         pub fn max_size(self, s: impl Into<Size>) -> Self
         pub fn show<R>(self, body: impl FnOnce(&mut Ui) -> R) -> R
@@ -1490,15 +1470,15 @@ MaterialPaint
 Menu
     struct Menu<'a, O = TriggerOwned>: ThemeDefaults (blanket)
         impl Menu<'_, TriggerOwned>
-            pub fn for_id(for_id: WidgetId) -> Self
+            pub fn for_id(trigger: WidgetId) -> Self
             pub fn context(trigger: &Response) -> Self
             pub fn below(trigger: &Response) -> Self
             pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> Option<OverlayResponse<R>>
-            pub fn open(ui: &mut Ui, for_id: WidgetId)
-            pub fn open_at(ui: &mut Ui, for_id: WidgetId, point: Vec2)
+            pub fn open(ui: &mut Ui, trigger: WidgetId)
+            pub fn open_at(ui: &mut Ui, trigger: WidgetId, point: Vec2)
             pub fn menu_id(trigger: WidgetId) -> WidgetId
-            pub fn close(ui: &mut Ui, for_id: WidgetId)
-            pub fn is_open(ui: &Ui, for_id: WidgetId) -> bool
+            pub fn close(ui: &mut Ui, trigger: WidgetId)
+            pub fn is_open(ui: &Ui, trigger: WidgetId) -> bool
         impl Menu<'_, CallerOwned>
             pub fn at(point: Vec2) -> Self
             pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> OverlayResponse<R>
@@ -1588,7 +1568,7 @@ Modal
     struct Modal<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn new() -> Self
         pub fn style(self, s: impl Into<Option<&'a ModalTheme>>) -> Self
-        pub fn scrim(self, scrim: impl Into<Chrome>) -> Self
+        pub const fn scrim(self, scrim: Chrome) -> Self
         pub const fn click_outside(self, click_outside: ClickOutside) -> Self
         pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> OverlayResponse<R>
         pub const fn chrome(self, chrome: Chrome) -> Self
@@ -1820,6 +1800,26 @@ PointerButton
         Right = 1
         Middle = 2
 
+PointerButtonPhase
+    enum PointerButtonPhase: Clone, Copy, Debug, Default, Eq, PartialEq
+        Idle
+        Down { count: u8 }
+        Held
+        Up { click: Option<u8> }
+
+PointerButtonState
+    struct PointerButtonState: Clone, Copy, Debug, Default, PartialEq
+        pub phase: PointerButtonPhase
+        pub drag: Drag
+        pub const IDLE: Self
+        pub const fn held(self) -> bool
+        pub const fn pressed(self) -> bool
+        pub const fn clicked(self) -> bool
+        pub const fn released(self) -> bool
+        pub const fn press_count(self) -> u8
+        pub const fn click_count(self) -> u8
+        pub const fn double_clicked(self) -> bool
+
 PointerEdge
     enum PointerEdge: Clone, Copy, Debug, Eq, PartialEq
         Pressed { count: u8 }
@@ -1877,9 +1877,9 @@ PopupTrigger
         pub const fn chrome(self, chrome: Chrome) -> Self
         pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> Option<OverlayResponse<R>>
         pub fn popup_id(trigger: WidgetId) -> WidgetId
-        pub fn open(ui: &mut Ui, for_id: WidgetId)
-        pub fn close(ui: &mut Ui, for_id: WidgetId)
-        pub fn is_open(ui: &Ui, for_id: WidgetId) -> bool
+        pub fn open(ui: &mut Ui, trigger: WidgetId)
+        pub fn close(ui: &mut Ui, trigger: WidgetId)
+        pub fn is_open(ui: &Ui, trigger: WidgetId) -> bool
 
 PowerPreference
     enum PowerPreference: Clone, Copy, Debug, Default, DockTab (blanket), Eq, From<PowerPreference>, Hash, PartialEq
@@ -2014,6 +2014,14 @@ Reduction
     enum Reduction: Clone, Copy, Debug, Default, Deserialize<'de>, DockTab (blanket), Eq, Hash, PartialEq, Serialize
         Unreduced
         Reduced
+        pub const fn is_reduced(self) -> bool
+
+Reductions
+    struct Reductions: Clone, Copy, Debug, Default, Eq, PartialEq
+        pub transparency: Reduction
+        pub motion: Reduction
+        pub power: Reduction
+        pub const NONE: Self
 
 Remote  [features: winit]
     struct Remote<T: 'static>: AgentWindow<T>, Debug
@@ -2028,15 +2036,11 @@ RequestedGpu
     struct RequestedGpu: Debug
         pub adapter: Adapter
         pub gpu: Gpu
-        pub fn headless(power_preference: PowerPreference, optional: Features) -> Result<Self, GpuRequestError>
+        pub fn headless(power_preference: PowerPreference) -> Result<Self, GpuRequestError>
 
 Response
-    struct Response: Clone, Copy, Debug, Deref, PartialEq
+    struct Response: Clone, Copy, Debug, PartialEq
         pub id: WidgetId
-        pub state: ResponseState
-
-ResponseState
-    struct ResponseState: Clone, Copy, Debug, Default, PartialEq
         pub rect: Option<Rect>
         pub layout_rect: Option<Rect>
         pub transform: TranslateScale
@@ -2044,16 +2048,17 @@ ResponseState
         pub pointer_over: bool
         pub disabled: bool
         pub focused: bool
-        pub left: ButtonState
-        pub right: ButtonState
-        pub middle: ButtonState
+        pub left: PointerButtonState
+        pub right: PointerButtonState
+        pub middle: PointerButtonState
         pub scroll: ScrollDelta
+        pub const fn idle(id: WidgetId) -> Self
         pub const fn hovered(&self) -> bool
         pub const fn clicked(&self) -> bool
         pub const fn double_clicked(&self) -> bool
         pub const fn any_clicked(&self) -> bool
-        pub const fn button(&self, button: PointerButton) -> &ButtonState
-        pub const fn pressed(&self) -> bool
+        pub const fn button(&self, button: PointerButton) -> &PointerButtonState
+        pub const fn is_pressed(&self) -> bool
         pub fn press_fraction(&self, band: f32) -> Option<Vec2>
 
 RgbaF32
@@ -2085,7 +2090,7 @@ RgbaF32
 Screenshot
     struct Screenshot: Clone, Debug, PartialEq
         pub const fn image(&self) -> &Image
-        pub const fn scale(&self) -> f32
+        pub const fn scale_factor(&self) -> f32
         pub const fn region(&self) -> Rect
         pub fn place(&self, rect: Rect, picture: UVec2) -> Option<Rect>
 
@@ -2121,6 +2126,7 @@ ScrollDelta
         pub notches: Vec2
         pub pages: Vec2
         pub zoom: ZoomFactor
+        pub const NONE: Self
         pub const fn pan(self, line_height: f32, viewport: Size) -> Vec2
 
 ScrollbarTheme
@@ -2185,7 +2191,7 @@ Shadow
         pub offset: Vec2
         pub blur: f32
         pub spread: f32
-        pub inset: bool
+        pub kind: ShadowKind
         pub const NONE: Self
         pub const fn drop(color: RgbaF32, offset: Vec2, blur: f32) -> Self
         pub const fn inset(color: RgbaF32, offset: Vec2, blur: f32) -> Self
@@ -2197,6 +2203,11 @@ ShadowGeometry
     struct ShadowGeometry: Clone, Copy, Debug, Deserialize<'de>, PartialEq, Serialize
         pub offset: Vec2
         pub blur: f32
+
+ShadowKind
+    enum ShadowKind: Clone, Copy, Debug, Default, Deserialize<'de>, DockTab (blanket), Eq, Hash, PartialEq, Serialize
+        Drop
+        Inset
 
 Shortcut
     struct Shortcut: Clone, Copy, Debug, Display, DockTab (blanket), Eq, From<Key>, FromStr, Hash, PartialEq
@@ -2281,7 +2292,7 @@ SliderTheme
     struct SliderTheme: Clone, Debug, Deserialize<'de>, Lerp, PartialEq, Serialize
         pub enabled: SliderColors
         pub disabled: SliderColors
-        pub knob_size: f32
+        pub knob_diameter: f32
         pub track_thickness: f32
         pub const fn from_parts(p: &Palette, _m: &Metrics) -> Self
 
@@ -2330,7 +2341,7 @@ Spinner
         pub fn new() -> Self
         pub fn style(self, s: impl Into<Option<&'a SpinnerTheme>>) -> Self
         pub const fn color(self, color: RgbaF32) -> Self
-        pub const fn width(self, px: f32) -> Self
+        pub const fn stroke_width(self, px: f32) -> Self
         pub fn show(self, ui: &mut Ui) -> Response
 
 SpinnerTheme
@@ -2361,7 +2372,7 @@ Splitter
     struct Splitter<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn row(ratio: &'a mut f32) -> Self
         pub fn col(ratio: &'a mut f32) -> Self
-        pub fn along(ratio: &'a mut f32, axis: Axis) -> Self
+        pub fn along(axis: Axis, ratio: &'a mut f32) -> Self
         pub const fn min_pane(self, px: f32) -> Self
         pub const fn min_ratio(self, ratio: f32) -> Self
         pub fn style(self, s: impl Into<Option<&'a SplitterTheme>>) -> Self
@@ -2401,7 +2412,7 @@ StatefulLook
         pub hovered: WidgetLook
         pub active: WidgetLook
         pub disabled: WidgetLook
-        pub const fn pick(&self, state: &ResponseState, engagement: Engagement) -> &WidgetLook
+        pub const fn pick(&self, response: &Response, engagement: Engagement) -> &WidgetLook
         pub const fn each_mut(&mut self) -> [&mut WidgetLook; 4]
 
 StepError
@@ -2477,7 +2488,7 @@ TabAddress
 
 TabChip
     struct TabChip: Clone, Copy, Debug
-        pub slot: usize
+        pub idx: usize
         pub key: TabKey
         pub label: InternedStr
         pub selected: bool
@@ -2536,7 +2547,7 @@ TabOverflow
 TabStrip
     struct TabStrip<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn new(items: &'a [TabItem]) -> Self
-        pub fn selected(self, selected: impl Into<Option<usize>>) -> Self
+        pub fn selected_idx(self, idx: impl Into<Option<usize>>) -> Self
         pub const fn focused(self, focused: bool) -> Self
         pub const fn overflow(self, overflow: TabOverflow) -> Self
         pub fn style(self, s: impl Into<Option<&'a TabsTheme>>) -> Self
@@ -2595,7 +2606,6 @@ TabsTheme
         pub gap: f32
         pub rule: RgbaF32
         pub rule_thickness: f32
-        pub radius: f32
         pub chip_padding: Spacing
         pub trailing_inset: f32
         pub min_width: f32
@@ -2605,15 +2615,18 @@ TabsTheme
         pub close_glyph_span: f32
         pub close_glyph_width: f32
         pub close_shown: CloseShown
-        pub caret: RgbaF32
-        pub caret_width: f32
+        pub drop_mark: RgbaF32
+        pub drop_mark_width: f32
         pub label_gap: f32
         pub defaults: SlotDefaults
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
 
 TargetFormat
     struct TargetFormat: Clone, Copy, Debug, DockTab (blanket), Eq, Hash, PartialEq
+        pub const RGBA8_SRGB: Self
+        pub const RGBA16_FLOAT: Self
         pub fn new(format: TextureFormat) -> Self
+        pub const fn get(self) -> TextureFormat
 
 Text
     struct Text<'a>: Configure, Debug, ThemeDefaults (blanket)
@@ -2628,7 +2641,7 @@ Text
         pub const fn bold(self) -> Self
         pub const fn italic(self) -> Self
         pub const fn text_wrap(self, wrap: TextWrap) -> Self
-        pub const fn text_align(self, a: Align) -> Self
+        pub fn text_align(self, a: impl Into<Align>) -> Self
         pub fn show(self, ui: &mut Ui) -> Response
 
 TextEdit
@@ -2647,7 +2660,7 @@ TextEdit
         pub const fn select_all_on_focus(self, select_all_on_focus: bool) -> Self
         pub const fn escape_falls_through(self, escape_falls_through: bool) -> Self
         pub const fn max_chars(self, n: usize) -> Self
-        pub const fn text_align(self, a: Align) -> Self
+        pub fn text_align(self, a: impl Into<Align>) -> Self
         pub const fn multiline(self, multiline: bool) -> Self
         pub fn placeholder(self, text: impl Into<TextInput<'a>>) -> Self
         pub fn show(self, ui: &mut Ui) -> TextEditResponse
@@ -2795,7 +2808,7 @@ ToggleTheme
         pub unchecked: StatefulLook
         pub checked: StatefulLook
         pub indicator: RgbaF32
-        pub unchecked_indicator: RgbaF32
+        pub indicator_unchecked: RgbaF32
         pub box_size: f32
         pub indicator_width: f32
         pub check_points: [Vec2; 3]
@@ -2868,18 +2881,14 @@ Ui
         pub fn waker(&self) -> Waker
         pub const fn theme(&self) -> &Rc<Theme>
         pub const fn scheme_theme(&self, scheme: ColorScheme) -> &Rc<Theme>
-        pub fn set_theme(&mut self, scheme: ColorScheme, theme: impl Into<Rc<Theme>>) -> Result<(), ThemeEffectError>
+        pub fn set_scheme_theme(&mut self, scheme: ColorScheme, theme: impl Into<Rc<Theme>>) -> Result<(), ThemeEffectError>
         pub fn preferences(&self) -> UiPreferences
         pub fn set_preferences(&mut self, preferences: UiPreferences)
         pub const fn color_scheme(&self) -> ColorScheme
         pub fn system_color_scheme(&self) -> Option<ColorScheme>
-        pub const fn is_motion_reduced(&self) -> bool
-        pub fn system_motion_reduced(&self) -> bool
-        pub const fn is_transparency_reduced(&self) -> bool
-        pub fn system_transparency_reduced(&self) -> bool
-        pub const fn is_power_reduced(&self) -> bool
+        pub const fn reductions(&self) -> Reductions
+        pub fn system_reductions(&self) -> Reductions
         pub const fn is_frame_rate_reduced(&self) -> bool
-        pub fn system_power_reduced(&self) -> bool
         pub fn pointer_events(&mut self, wake: PointerWake) -> &[PointerEvent]
         pub fn keyboard_events(&mut self, wake: KeyboardWake) -> &[KeyPress]
         pub fn key_pressed(&mut self, key: Key) -> bool
@@ -2935,10 +2944,10 @@ Ui
         pub const fn display(&self) -> Display
         pub fn user_scale(&self) -> UserScale
         pub fn set_user_scale(&mut self, scale: UserScale)
-        pub const fn record_frame_id(&self) -> u64
+        pub const fn record_frame_idx(&self) -> u64
         pub fn inspect(&self, out: &mut Vec<InspectedWidget>)
         pub fn double_click_interval(&self) -> Duration
-        pub const fn render_frame_id(&self) -> u64
+        pub const fn render_frame_idx(&self) -> u64
         pub fn probe_text<'a>(&'a mut self, run: TextRun<'a>) -> TextProbe<'a>
         pub fn pointer_actions(&self) -> impl Iterator<Item = PointerAction> + '_
         pub const fn set_focus(&mut self, id: WidgetId)
@@ -2948,7 +2957,7 @@ Ui
         pub fn ime_preedit(&self) -> Option<ImePreedit<'_>>
         pub const fn is_focus_visible(&self) -> bool
         pub const fn focus_first_within(&mut self, ancestor: WidgetId)
-        pub const fn focus_within(&mut self, ancestor: WidgetId, end: TabEnd)
+        pub const fn set_focus_within(&mut self, ancestor: WidgetId, end: TabEnd)
         pub const fn pointer_pos(&mut self) -> Option<Vec2>
         pub const fn modifiers(&mut self) -> Modifiers
         pub const fn peek_pointer_pos(&self) -> Option<Vec2>
@@ -2992,6 +3001,7 @@ VAlign
         Center = 2
         Bottom = 3
         Stretch = 4
+        impl From<VAlign> for Align
 
 ValueResponse
     struct ValueResponse: Clone, Copy, Debug
@@ -3073,7 +3083,7 @@ WinitHost  [features: winit]
             pub fn run(self) -> Result<(), WinitHostError>
 
 WinitHostBuilder  [features: winit]
-    struct WinitHostBuilder<T>
+    struct WinitHostBuilder<T>: Debug
         impl<T> WinitHostBuilder<T> where T: App + 'static
             pub fn window(self, window: WindowConfig) -> Self
             pub fn title(self, title: impl Into<String>) -> Self
@@ -3085,7 +3095,6 @@ WinitHostBuilder  [features: winit]
             pub const fn pixel_snap(self, pixel_snap: bool) -> Self
             pub const fn system_clipboard(self, system_clipboard: bool) -> Self
             pub fn build(self, create_app: impl FnOnce(&mut Ui, HostHandle<T>) -> T + 'static) -> Result<WinitHost<T>, WinitHostError>
-        impl<T: Debug> Debug for WinitHostBuilder<T>
 
 WinitHostError  [features: winit]
     #[non_exhaustive]
@@ -3292,8 +3301,8 @@ widget::Configurator
         pub fn gap(&mut self, g: f32) -> &mut Self
         pub fn line_gap(&mut self, g: f32) -> &mut Self
         pub const fn justify(&mut self, j: Justify) -> &mut Self
-        pub const fn align(&mut self, a: Align) -> &mut Self
-        pub const fn child_align(&mut self, a: Align) -> &mut Self
+        pub fn align(&mut self, a: impl Into<Align>) -> &mut Self
+        pub fn child_align(&mut self, a: impl Into<Align>) -> &mut Self
         pub const fn sense(&mut self, s: Sense) -> &mut Self
         pub fn add_sense(&mut self, s: Sense) -> &mut Self
         pub const fn disabled(&mut self, disabled: bool) -> &mut Self
@@ -3311,8 +3320,8 @@ widget::Configurator
         pub const fn default_id(&mut self, id: WidgetId) -> &mut Self
         pub fn default_padding(&mut self, p: impl Into<Spacing>) -> &mut Self
         pub fn default_margin(&mut self, m: impl Into<Spacing>) -> &mut Self
-        pub const fn default_align(&mut self, a: Align) -> &mut Self
-        pub const fn default_child_align(&mut self, a: Align) -> &mut Self
+        pub fn default_align(&mut self, a: impl Into<Align>) -> &mut Self
+        pub fn default_child_align(&mut self, a: impl Into<Align>) -> &mut Self
         pub const fn default_justify(&mut self, j: Justify) -> &mut Self
         pub fn default_gap(&mut self, g: f32) -> &mut Self
         pub fn default_line_gap(&mut self, g: f32) -> &mut Self
@@ -3417,8 +3426,8 @@ widget::Mesh
         pub fn clear(&mut self)
         pub const fn is_noop(&self) -> bool
         pub fn content_hash(&self) -> ContentHash
-        pub fn vertex(&mut self, pos: Vec2, color: impl Into<RgbaF32>) -> u32
-        pub fn triangle(&mut self, a: u32, b: u32, c: u32)
+        pub fn add_vertex(&mut self, pos: Vec2, color: impl Into<RgbaF32>) -> u32
+        pub fn add_triangle(&mut self, a: u32, b: u32, c: u32)
         pub fn append(&mut self, other: &Self)
         pub const fn bbox(&self) -> Rect
         pub fn filled_polygon(points: &[Vec2], color: impl Into<RgbaF32>) -> Self
@@ -3446,7 +3455,7 @@ widget::OverlaySpec
 
 widget::PaintAnimation
     struct PaintAnimation: Clone, Copy, Debug
-        pub channel: PaintChannel
+        pub channels: PaintChannels
         pub timing: PaintTiming
         pub curve: PaintCurve
         pub motion: MotionRole
@@ -3462,8 +3471,8 @@ widget::PaintAnimation
         pub const fn with_curve(self, curve: PaintCurve) -> Self
         pub const fn with_motion(self, motion: MotionRole) -> Self
 
-widget::PaintChannel
-    struct PaintChannel: Clone, Copy, Debug, PartialEq
+widget::PaintChannels
+    struct PaintChannels: Clone, Copy, Debug, PartialEq
         pub alpha: Option<PaintRange>
         pub turn: Option<PaintRange>
 
@@ -3500,14 +3509,14 @@ widget::PaintedBy
 widget::PlacedGlyph
     struct PlacedGlyph: Clone, Copy, Debug
         pub raster_key: GlyphRasterKey
-        pub physical: IVec2
+        pub physical_pos: IVec2
 
 widget::PolylineShape
     struct PolylineShape<'a>: Clone, Debug, PaintedBy<Stroke>
         pub const fn at(self, rect: Rect) -> Self
         pub const fn fit(self, fit: Fit) -> Self
-        pub const fn per_point(self, colors: &'a [RgbaF32]) -> Self
-        pub const fn per_segment(self, colors: &'a [RgbaF32]) -> Self
+        pub const fn point_colors(self, colors: &'a [RgbaF32]) -> Self
+        pub const fn segment_colors(self, colors: &'a [RgbaF32]) -> Self
 
 widget::QuadraticBezier
     struct QuadraticBezier: Clone, Copy, Debug, PartialEq
@@ -3573,7 +3582,7 @@ widget::TextShape
     struct TextShape: Clone, Debug, PaintedBy<RgbaF32>
         pub const fn at_origin(self, origin: Vec2) -> Self
         pub const fn wrap(self, wrap: TextWrap) -> Self
-        pub const fn align(self, a: Align) -> Self
+        pub fn align(self, a: impl Into<Align>) -> Self
 
 widget::ThemeDefaults
     trait ThemeDefaults: Configure
@@ -3581,8 +3590,8 @@ widget::ThemeDefaults
         fn default_size(self, s: impl Into<SizeSpec>) -> Self { .. }
         fn default_padding(self, p: impl Into<Spacing>) -> Self { .. }
         fn default_margin(self, m: impl Into<Spacing>) -> Self { .. }
-        fn default_align(self, a: Align) -> Self { .. }
-        fn default_child_align(self, a: Align) -> Self { .. }
+        fn default_align(self, a: impl Into<Align>) -> Self { .. }
+        fn default_child_align(self, a: impl Into<Align>) -> Self { .. }
         fn default_justify(self, j: Justify) -> Self { .. }
         fn default_gap(self, g: f32) -> Self { .. }
         fn default_line_gap(self, g: f32) -> Self { .. }
@@ -3594,9 +3603,9 @@ widget::ThemeDefaults
 widget::ThemeSlot
     trait ThemeSlot
         type Pick: Copy + Hash
-        fn look(&self, response: &ResponseState, pick: Self::Pick) -> &WidgetLook
+        fn look(&self, response: &Response, pick: Self::Pick) -> &WidgetLook
         fn defaults(&self) -> SlotDefaults
-        fn plan(&self, response: &ResponseState, pick: Self::Pick, text: TextStyle) -> LookPlan { .. }
+        fn plan(&self, response: &Response, pick: Self::Pick, text: TextStyle) -> LookPlan { .. }
 
 widget::TriangleShape
     struct TriangleShape: Clone, Debug, PaintedBy<ImagePaint>, PaintedBy<Material>, PaintedBy<MaterialPaint>

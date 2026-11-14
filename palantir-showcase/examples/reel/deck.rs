@@ -709,6 +709,6 @@ pub(crate) fn dress(ui: &mut Ui) {
         scheme: Preference::Fixed(ColorScheme::Dark),
         ..ui.preferences()
     });
-    ui.set_theme(ColorScheme::Dark, Theme::stock(ColorScheme::Dark))
+    ui.set_scheme_theme(ColorScheme::Dark, Theme::stock(ColorScheme::Dark))
         .unwrap();
 }

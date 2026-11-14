@@ -10,7 +10,6 @@ use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::interaction::response::Response;
-use crate::primitives::input::interaction::response_state::ResponseState;
 use crate::primitives::input::keyboard::key::Key;
 use crate::primitives::input::pointer::PointerButton;
 use crate::primitives::layout::sizing::Sizing;
@@ -58,12 +57,9 @@ fn content_growth_and_shrink_reposition_without_input_or_settling() {
     let trigger_id = WidgetId::from_hash("dynamic-tooltip-trigger");
     let trigger = Rect::new(350.0, 250.0, 40.0, 24.0);
     let snapshot = Response {
-        id: trigger_id,
-        state: ResponseState {
-            rect: Some(trigger),
-            pointer_over: true,
-            ..ResponseState::default()
-        },
+        rect: Some(trigger),
+        pointer_over: true,
+        ..Response::idle(trigger_id)
     };
     let bubble_id = Tooltip::bubble_id(trigger_id);
     let frame = |h: &mut Harness, text: &str| {
@@ -132,12 +128,9 @@ fn tooltip_text_inherits_the_ambient_leading() {
     let mut h = Harness::mono(SURFACE);
     h.ui_mut().theme_mut().text.line_height_factor = 2.0;
     let snapshot = Response {
-        id: WidgetId::from_hash("leading-trigger"),
-        state: ResponseState {
-            rect: Some(Rect::new(40.0, 40.0, 40.0, 24.0)),
-            pointer_over: true,
-            ..ResponseState::default()
-        },
+        rect: Some(Rect::new(40.0, 40.0, 40.0, 24.0)),
+        pointer_over: true,
+        ..Response::idle(WidgetId::from_hash("leading-trigger"))
     };
     h.frame(|ui| {
         Tooltip::on(&snapshot, "tip").delay(Duration::ZERO).show(ui);
@@ -159,12 +152,9 @@ fn tooltip_text_inherits_the_ambient_leading() {
 fn configure_reaches_the_bubble_and_explicit_id_beats_the_derived_one() {
     let trigger_id = WidgetId::from_hash("unbounded-tooltip-trigger");
     let snapshot = Response {
-        id: trigger_id,
-        state: ResponseState {
-            rect: Some(Rect::new(40.0, 40.0, 40.0, 24.0)),
-            pointer_over: true,
-            ..ResponseState::default()
-        },
+        rect: Some(Rect::new(40.0, 40.0, 40.0, 24.0)),
+        pointer_over: true,
+        ..Response::idle(trigger_id)
     };
 
     let mut h = Harness::mono(SURFACE);
@@ -212,12 +202,9 @@ fn visible_tooltip_at(trigger_x: f32, text: &'static str) -> Harness {
     let mut h = Harness::mono(SURFACE);
     let trigger_id = WidgetId::from_hash("edge-trigger");
     let snapshot = Response {
-        id: trigger_id,
-        state: ResponseState {
-            rect: Some(Rect::new(trigger_x, 40.0, 40.0, 24.0)),
-            pointer_over: true,
-            ..ResponseState::default()
-        },
+        rect: Some(Rect::new(trigger_x, 40.0, 40.0, 24.0)),
+        pointer_over: true,
+        ..Response::idle(trigger_id)
     };
     for why in [
         "measured placement resolves in the layout pass",
@@ -267,12 +254,9 @@ fn tooltip_delay_keeps_subsecond_precision_after_long_uptime() {
     let mut h = Harness::mono(SURFACE);
     let trigger_id = WidgetId::from_hash("long-uptime-trigger");
     let snapshot = Response {
-        id: trigger_id,
-        state: ResponseState {
-            rect: Some(Rect::new(40.0, 40.0, 40.0, 24.0)),
-            pointer_over: true,
-            ..ResponseState::default()
-        },
+        rect: Some(Rect::new(40.0, 40.0, 40.0, 24.0)),
+        pointer_over: true,
+        ..Response::idle(trigger_id)
     };
     let record_at = |h: &mut Harness, time: Duration| {
         h.at(time).frame(|ui| {
@@ -590,7 +574,7 @@ fn when_disabled_reaches_a_disabled_trigger() {
                             .when_disabled(allow)
                             .delay(Duration::from_millis(300))
                             .show(ui);
-                        r.state.disabled
+                        r.disabled
                     })
                     .inner
             })
@@ -627,12 +611,9 @@ fn an_authored_min_above_the_themed_max_width_wins() {
     let mut h = Harness::mono(SURFACE);
     let trigger_id = WidgetId::from_hash("wide-tip-trigger");
     let snapshot = Response {
-        id: trigger_id,
-        state: ResponseState {
-            rect: Some(Rect::new(20.0, 40.0, 40.0, 24.0)),
-            pointer_over: true,
-            ..ResponseState::default()
-        },
+        rect: Some(Rect::new(20.0, 40.0, 40.0, 24.0)),
+        pointer_over: true,
+        ..Response::idle(trigger_id)
     };
     h.prime(2, |ui| {
         Tooltip::on(&snapshot, "wide")
@@ -650,12 +631,9 @@ fn an_authored_min_above_the_themed_max_width_wins() {
 fn a_press_or_escape_dismisses_until_the_pointer_leaves() {
     let trigger_id = WidgetId::from_hash("dismissed-trigger");
     let snapshot = |pointer_over: bool| Response {
-        id: trigger_id,
-        state: ResponseState {
-            rect: Some(Rect::new(100.0, 100.0, 40.0, 24.0)),
-            pointer_over,
-            ..ResponseState::default()
-        },
+        rect: Some(Rect::new(100.0, 100.0, 40.0, 24.0)),
+        pointer_over,
+        ..Response::idle(trigger_id)
     };
     let show = |h: &mut Harness, pointer_over: bool| {
         let shown = snapshot(pointer_over);

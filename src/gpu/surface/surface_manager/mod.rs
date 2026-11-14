@@ -102,7 +102,7 @@ impl SurfaceManager {
             cfg,
         };
         // Clamped here, before the host core that keeps the cap exists.
-        let size = Self::clamp_extent(gpu.max_texture_dim(), size);
+        let size = Self::clamp_extent(gpu.max_texture_dimension(), size);
         let first_surface = surfaces.build_window_surface(surface, size)?;
         Ok(SurfaceStartup {
             surfaces,
@@ -134,7 +134,7 @@ impl SurfaceManager {
         let RequestedGpu { adapter, gpu } = open_device(&instance, self.cfg, &raw)?;
         self.instance = instance;
         self.adapter = adapter;
-        *surface = self.rebuilt(raw, surface, gpu.max_texture_dim())?;
+        *surface = self.rebuilt(raw, surface, gpu.max_texture_dimension())?;
         Ok(gpu)
     }
 }
@@ -151,7 +151,7 @@ fn open_device(
         power_preference: cfg.power_preference,
         optional: match cfg.timing {
             FrameTiming::Off => wgpu::Features::empty(),
-            FrameTiming::On => DeviceRequirements::GPU_TIMING_FEATURES,
+            FrameTiming::On => DeviceRequirements::GPU_STATS_FEATURES,
         },
         compatible_surface: Some(surface),
     }
@@ -176,8 +176,8 @@ impl SurfaceManager {
     /// A surface extent the device can back: at least one texel, at most
     /// `max_texture_dimension_2d`. Takes the limit so the host can clamp before
     /// borrowing the window.
-    pub(crate) fn clamp_extent(max_texture_dim: NonZeroU32, size: UVec2) -> UVec2 {
-        let max = max_texture_dim.get();
+    pub(crate) fn clamp_extent(max_texture_dimension: NonZeroU32, size: UVec2) -> UVec2 {
+        let max = max_texture_dimension.get();
         UVec2::new(size.x.clamp(1, max), size.y.clamp(1, max))
     }
 
@@ -195,7 +195,7 @@ impl SurfaceManager {
         self.build_window_surface(surface, size)
     }
 
-    /// Make `window`'s `surface` again, at its size inside `max_texture_dim` and its pacing,
+    /// Make `window`'s `surface` again, at its size inside `max_texture_dimension` and its pacing,
     /// configured on its first [`WindowSurface::prepare`]: after the platform lost it, or on the
     /// device a recovery attached. The old one goes first, as in [`Self::reopen`]; on a failure the
     /// surface reads lost, and the host tries again.
@@ -203,26 +203,26 @@ impl SurfaceManager {
         &self,
         window: &Arc<W>,
         surface: &mut WindowSurface,
-        max_texture_dim: NonZeroU32,
+        max_texture_dimension: NonZeroU32,
     ) -> Result<(), SurfaceError>
     where
         W: wgpu::DisplayAndWindowHandle + fmt::Debug + 'static,
     {
         surface.release();
         let raw = create_surface(&self.instance, window)?;
-        *surface = self.rebuilt(raw, surface, max_texture_dim)?;
+        *surface = self.rebuilt(raw, surface, max_texture_dimension)?;
         Ok(())
     }
 
-    /// `raw` configured as `old` was: its size inside `max_texture_dim`, and its pacing.
+    /// `raw` configured as `old` was: its size inside `max_texture_dimension`, and its pacing.
     fn rebuilt(
         &self,
         raw: wgpu::Surface<'static>,
         old: &WindowSurface,
-        max_texture_dim: NonZeroU32,
+        max_texture_dimension: NonZeroU32,
     ) -> Result<WindowSurface, SurfaceError> {
         let mut surface =
-            self.build_window_surface(raw, Self::clamp_extent(max_texture_dim, old.size()))?;
+            self.build_window_surface(raw, Self::clamp_extent(max_texture_dimension, old.size()))?;
         let _ = surface.set_vsync(old.vsync());
         Ok(surface)
     }

@@ -14,7 +14,6 @@ use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::interaction::response::Response;
-use crate::primitives::input::interaction::response_state::ResponseState;
 use crate::primitives::input::interaction::scroll_delta::page_step;
 use crate::primitives::input::keyboard::modifiers::Modifiers;
 use crate::primitives::input::sense::Sense;
@@ -368,7 +367,7 @@ impl<'a> Scroll<'a> {
     /// into a zoom factor (positive `notches.y` zooms out) and suppresses the pan.
     /// `pivot` resolves only when a step lands, falling back to the viewport center
     /// when the pointer is off the widget or there is no rect yet.
-    fn read_input(&self, ui: &Ui, response: &ResponseState, viewport: Size) -> ScrollInput {
+    fn read_input(&self, ui: &Ui, response: &Response, viewport: Size) -> ScrollInput {
         // Line step for wheel to pixel conversion, from the theme's default text size.
         let line_px = ui.theme().text.font().line_height;
         let scroll = response.scroll;
@@ -420,7 +419,7 @@ impl<'a> Scroll<'a> {
         id.with("viewport")
     }
 
-    fn measure(&self, ui: &Ui, id: WidgetId, response: &ResponseState) -> ScrollGeometry {
+    fn measure(&self, ui: &Ui, id: WidgetId, response: &Response) -> ScrollGeometry {
         let theme = self.bars_theme(ui);
         let start = ui.state::<ScrollState>(id).copied().unwrap_or_default();
         let viewport_id = Self::viewport_id(id);
@@ -503,11 +502,8 @@ impl<'a> Scroll<'a> {
         // The caller's salt names the outer wrapper but the arriving node is the
         // viewport, and the wrappers need the id first: resolve here, outer takes it later.
         // Through `Widget::response`, so a scroll disabled this frame reads no wheel.
-        let snapshot = self.widget.response(ui);
-        let Response {
-            id,
-            state: response,
-        } = snapshot;
+        let response = self.widget.response(ui);
+        let id = response.id;
         // Input routes by `Sense::SCROLL` on the outer ZStack, so wheel over the gutter pans.
         let scroll_id = Self::viewport_id(id);
 
@@ -553,7 +549,7 @@ impl<'a> Scroll<'a> {
         }
         let input = self.read_input(ui, &response, geometry.bounds().viewport);
         let bars = (self.bar_mode != BarMode::Hidden)
-            .then(|| Bars::read(ui, &snapshot, self.bars_theme(ui)));
+            .then(|| Bars::read(ui, &response, self.bars_theme(ui)));
 
         let state = ui.with_state::<ScrollState, _>(id, |_, state| {
             state.focus_seen = focus;
@@ -594,11 +590,8 @@ impl<'a> Scroll<'a> {
         InnerResponse {
             // Eager: the caller usually reads a field, and only `focused` can change in the body.
             response: Response {
-                id,
-                state: ResponseState {
-                    focused: ui.focus() == Some(id),
-                    ..response
-                },
+                focused: ui.focus() == Some(id),
+                ..response
             },
             inner: inner_value,
         }
@@ -621,7 +614,7 @@ impl FocusedScroll {
     /// Note `scroll`, which holds focus this frame, and whether it was the innermost to hold
     /// it the frame before.
     fn innermost(ui: &mut Ui, scroll: WidgetId) -> bool {
-        let frame = ui.render_frame_id();
+        let frame = ui.render_frame_idx();
         ui.with_singleton::<Self, _>(|_, focused| {
             if focused.frame != frame {
                 focused.last = focused.cur.take();

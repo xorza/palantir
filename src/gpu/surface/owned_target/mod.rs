@@ -38,7 +38,7 @@ impl OwnedTarget {
             format,
             usage,
         } = spec;
-        let max = gpu.max_texture_dim().get();
+        let max = gpu.max_texture_dimension().get();
         assert!(
             size.min_element() > 0 && size.max_element() <= max,
             "a target's size is 1..={max} physical pixels per side, got {size}",

@@ -59,13 +59,13 @@ impl BenchGpu {
     )]
     pub(crate) fn open(timing: Timing) -> Self {
         let timing_features = match timing {
-            Timing::Instrumented => DeviceRequirements::GPU_TIMING_FEATURES,
-            Timing::PassOnly => DeviceRequirements::GPU_TIMING_FEATURES
+            Timing::Instrumented => DeviceRequirements::GPU_STATS_FEATURES,
+            Timing::PassOnly => DeviceRequirements::GPU_STATS_FEATURES
                 .difference(wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES),
             Timing::Bare => wgpu::Features::empty(),
         };
-        let gpu =
-            RequestedGpu::headless(BENCH_POWER, timing_features).expect("lease headless bench gpu");
+        let gpu = RequestedGpu::headless_with(BENCH_POWER, timing_features)
+            .expect("lease headless bench gpu");
         let timing_features = gpu.gpu.device.features() & timing_features;
         let info = gpu.adapter.get_info();
         let gpu = Self {

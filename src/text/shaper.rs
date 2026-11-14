@@ -363,7 +363,7 @@ pub(crate) mod internals {
                 text,
                 font: shape.font,
                 wrap: TextWrap::Wrap,
-                align: Align::h(shape.halign),
+                align: Align::from(shape.halign),
                 max_width: shape.max_width,
             }))
         }

@@ -2,7 +2,7 @@
 
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::input::sense::Sense;
-use crate::primitives::layout::align::{Align, VAlign};
+use crate::primitives::layout::align::VAlign;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;
 use crate::primitives::paint::chrome::Chrome;
@@ -94,7 +94,7 @@ impl<'a> Slider<'a> {
         let id = response.id;
 
         let theme = self.style.unwrap_or(&ui.theme().slider);
-        let knob = domain::length_at_least(theme.knob_size, 1.0);
+        let knob = domain::length_at_least(theme.knob_diameter, 1.0);
         let track_h = domain::length_at_least(theme.track_thickness, 0.0);
         let colors = if response.disabled {
             &theme.disabled
@@ -128,7 +128,7 @@ impl<'a> Slider<'a> {
         self.widget
             .configure()
             .default_size((Sizing::FILL, Sizing::fixed(knob)))
-            .default_child_align(Align::v(VAlign::Center));
+            .default_child_align(VAlign::Center);
 
         let [filled, remainder] = Sizing::split(fraction);
         self.widget.record(ui, None, |ui| {

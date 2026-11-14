@@ -5,7 +5,7 @@ use crate::bench::kind::{Kind, Scale};
 use crate::bench::scene::{BENCH_DPR, BENCH_SURFACE, Scene, SceneFrame};
 use crate::damage::Damage;
 use crate::host::harness::Harness;
-use crate::host::harness::harness_builder::Depth;
+use crate::host::harness::harness_builder::HarnessDepth;
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::brush::gradient::Gradient;
 use crate::primitives::paint::chrome::Chrome;
@@ -59,7 +59,7 @@ impl ChromeBench {
         Self {
             h: Harness::builder(PHYSICAL)
                 .mono()
-                .depth(Depth::Compose)
+                .depth(HarnessDepth::Compose)
                 .build(),
             start: Instant::now(),
         }
@@ -123,7 +123,7 @@ pub(crate) fn atomic<S: Scene>(c: &mut Criterion) {
             let mut state = SceneFrame::<S>::default();
             let mut h = Harness::builder(BENCH_SURFACE)
                 .system_scale(BENCH_DPR)
-                .depth(Depth::Compose)
+                .depth(HarnessDepth::Compose)
                 .build();
             for _ in 0..SETTLE_FRAMES {
                 h.frame(|ui| state.record(ui));

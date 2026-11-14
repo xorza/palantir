@@ -56,18 +56,18 @@ fn the_builder_seeds_the_system_preferences() {
         .system_power_reduced(true)
         .build();
     assert_eq!(seeded.ui().system_color_scheme(), Some(ColorScheme::Light));
-    assert!(seeded.ui().system_motion_reduced());
-    assert!(seeded.ui().system_transparency_reduced());
-    assert!(seeded.ui().system_power_reduced());
+    assert!(seeded.ui().system_reductions().motion.is_reduced());
+    assert!(seeded.ui().system_reductions().transparency.is_reduced());
+    assert!(seeded.ui().system_reductions().power.is_reduced());
     seeded.frame(|_| {});
-    assert!(seeded.ui().is_motion_reduced());
-    assert!(seeded.ui().is_transparency_reduced());
-    assert!(seeded.ui().is_power_reduced());
+    assert!(seeded.ui().reductions().motion.is_reduced());
+    assert!(seeded.ui().reductions().transparency.is_reduced());
+    assert!(seeded.ui().reductions().power.is_reduced());
     let plain = Harness::builder(SURFACE).mono().build();
     assert_eq!(plain.ui().system_color_scheme(), None);
-    assert!(!plain.ui().system_motion_reduced());
-    assert!(!plain.ui().system_transparency_reduced());
-    assert!(!plain.ui().system_power_reduced());
+    assert!(!plain.ui().system_reductions().motion.is_reduced());
+    assert!(!plain.ui().system_reductions().transparency.is_reduced());
+    assert!(!plain.ui().system_reductions().power.is_reduced());
 }
 
 #[test]

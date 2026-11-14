@@ -15,7 +15,7 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 use palantir::glam::UVec2;
-use palantir::{AgentWindow, Depth, Gpu, Harness, Image, PlayError, Rect, RequestedGpu};
+use palantir::{AgentWindow, Gpu, Harness, HarnessDepth, Image, PlayError, Rect, RequestedGpu};
 
 use crate::shell::Shell;
 use crate::shot::report::Legend;
@@ -123,17 +123,9 @@ impl Mode {
 
 /// Play the script at `script` on a headless device, its report on stdout.
 pub(crate) fn shots(script: &Path, folders: Folders<'_>) -> Result<(), String> {
-    // No optional features: the tour draws with what every adapter has.
-    #[expect(
-        clippy::default_trait_access,
-        reason = "the features are a wgpu type, which only `palantir::gpu` names"
-    )]
-    let gpu = RequestedGpu::headless(
-        palantir::PowerPreference::HighPerformance,
-        Default::default(),
-    )
-    .map_err(|error| error.to_string())?
-    .gpu;
+    let gpu = RequestedGpu::headless(palantir::PowerPreference::HighPerformance)
+        .map_err(|error| error.to_string())?
+        .gpu;
     run(gpu, script, folders, &mut io::stdout().lock()).map_err(|error| error.to_string())
 }
 
@@ -254,7 +246,7 @@ pub(crate) fn play(
     let page = UnknownPage::find(header.page.as_deref())?;
     let mut h = Harness::builder(header.size)
         .system_scale(header.scale)
-        .depth(Depth::gpu(gpu))
+        .depth(HarnessDepth::gpu(gpu))
         .build();
     h.set_system_color_scheme(header.scheme);
     h.ui_mut().set_preferences(Shell::PREFERENCES);
