@@ -223,11 +223,19 @@ struct Writes {
 }
 
 impl Writes {
-    /// A typed value's commit, which the history keeps.
-    const fn typed(&mut self, edit: &ValueResponse) {
-        self.committed |= edit.committed;
-        self.remember |= edit.committed;
+    /// A channel value's commit; the history keeps it only as a pick.
+    const fn typed(&mut self, cell: &CellWrite) {
+        self.committed |= cell.edit.committed;
+        self.remember |= cell.edit.committed && cell.pick;
     }
+}
+
+/// A channel value's frame: what it reported, and whether a commit in it is a pick the history
+/// keeps, a scrub's release or the editor's commit, rather than a key's nudge on the chip.
+#[derive(Clone, Copy, Debug)]
+struct CellWrite {
+    edit: ValueResponse,
+    pick: bool,
 }
 
 /// One channel's grid cell: its caption, where it sits, and the top of its
@@ -485,14 +493,14 @@ impl Rows<'_> {
                 // edited and the value axis otherwise, completing H, S and V.
                 if alpha_on {
                     let r = self.value_cell(ui, OPACITY, &mut opacity);
-                    if r.changed {
+                    if r.edit.changed {
                         self.writes.alpha = opacity as f32 / 100.0;
                         self.writes.alpha_moved = true;
                     }
                     self.writes.typed(&r);
                 } else {
                     let r = self.value_cell(ui, VALUE, &mut val);
-                    if r.changed {
+                    if r.edit.changed {
                         self.state.coords = self.state.coords.with_value(val as f32 / 100.0);
                         self.writes.axes = true;
                     }
@@ -500,7 +508,7 @@ impl Rows<'_> {
                 }
 
                 let r = self.value_cell(ui, HUE, &mut hue);
-                if r.changed {
+                if r.edit.changed {
                     self.state.coords = self.state.coords.with_hue(hue as f32 / 360.0);
                     self.writes.axes = true;
                 }
@@ -508,7 +516,7 @@ impl Rows<'_> {
 
                 for (channel, cell) in CHANNELS.into_iter().enumerate() {
                     let r = self.value_cell(ui, cell, &mut rgb[channel]);
-                    if r.changed {
+                    if r.edit.changed {
                         let byte = |v: i64| v.clamp(0, 255) as u8;
                         self.writes.exact = Some(
                             RgbaF32::from_srgba8(SrgbaU8::rgb(
@@ -523,7 +531,7 @@ impl Rows<'_> {
                 }
 
                 let r = self.value_cell(ui, SATURATION, &mut sat);
-                if r.changed {
+                if r.edit.changed {
                     self.state.coords = self.state.coords.with_saturation(sat as f32 / 100.0);
                     self.writes.axes = true;
                 }
@@ -533,12 +541,15 @@ impl Rows<'_> {
 
     /// One grid cell: the channel's caption over its value, a drag from zero to the
     /// cell's top.
-    fn value_cell(&self, ui: &mut Ui, cell: ValueCell, value: &mut i64) -> ValueResponse {
+    fn value_cell(&self, ui: &mut Ui, cell: ValueCell, value: &mut i64) -> CellWrite {
         let theme = self.theme;
         // Keyed on the channel letter alone: an id that moved with the unit would
         // drop the widget's state.
         let cell_id = self.id.with(&cell.caption[..1]);
-        Panel::vstack()
+        let value_id = cell_id.with("value");
+        // Read before the show, which closes an editor on its commit.
+        let editing = DragValue::is_editing(ui, value_id);
+        let edit = Panel::vstack()
             .id(cell_id)
             .gap(LABEL_GAP)
             .grid_cell(cell.cell)
@@ -551,11 +562,15 @@ impl Rows<'_> {
                 DragValue::new(value)
                     .range(0.0..=cell.top)
                     .style(&theme.value)
-                    .id(cell_id.with("value"))
+                    .id(value_id)
                     .size((Sizing::FILL, Sizing::HUG))
                     .show(ui)
             })
-            .inner
+            .inner;
+        CellWrite {
+            edit,
+            pick: editing || edit.response.left.released(),
+        }
     }
 
     /// The two models, as one either-or choice.

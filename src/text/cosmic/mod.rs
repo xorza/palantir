@@ -263,16 +263,35 @@ impl CosmicMeasure {
     /// [`FontLoadError::FamilyNameTooLong`] when every family it names is longer than a
     /// [`FontFamily`] holds.
     pub(super) fn load_font(&mut self, source: FontSource) -> Result<FontFamily, FontLoadError> {
+        self.load_font_as(source, FontFamily::named)
+    }
+
+    /// [`Self::load_font`] with the families `named` admits. A load that names no family leaves
+    /// the database as it was: its faces come out again, so nothing shapes in a face no
+    /// [`FontFamily`] can ask for, and no cache holds an answer the load made stale.
+    fn load_font_as(
+        &mut self,
+        source: FontSource,
+        named: impl Fn(&str) -> Option<FontFamily>,
+    ) -> Result<FontFamily, FontLoadError> {
         let source = fontdb::Source::Binary(Arc::new(source.bytes));
         let ids = self.font_system.db_mut().load_font_source(source);
         let mut names: Vec<String> = Vec::new();
-        for id in ids {
-            let Some(face) = self.font_system.db().face(id) else {
+        for id in &ids {
+            let Some(face) = self.font_system.db().face(*id) else {
                 continue;
             };
             names.extend(face.families.iter().map(|(name, _)| name.clone()));
         }
-        let loaded = first_family(&names, FontFamily::named)?;
+        let loaded = match first_family(&names, named) {
+            Ok(loaded) => loaded,
+            Err(refused) => {
+                for id in ids {
+                    self.font_system.db_mut().remove_face(id);
+                }
+                return Err(refused);
+            }
+        };
 
         // Everything downstream of the database is stale: a family that resolved to SANS
         // may answer now. The families already resolved are the ones on screen, so the
@@ -810,13 +829,10 @@ pub(super) fn first_family(
     if names.is_empty() {
         return Err(FontLoadError::NoFaces);
     }
-    let mut loaded = None;
-    for name in names {
-        if let Some(family) = named(name) {
-            loaded.get_or_insert(family);
-        }
-    }
-    loaded.ok_or(FontLoadError::FamilyNameTooLong)
+    names
+        .iter()
+        .find_map(|name| named(name))
+        .ok_or(FontLoadError::FamilyNameTooLong)
 }
 
 #[cfg(feature = "internals")]
@@ -850,6 +866,20 @@ pub(crate) mod internals {
     }
 
     impl CosmicMeasure {
+        /// A load whose every family name `named` refuses, as a font whose names are all too
+        /// long loads.
+        #[cfg(test)]
+        pub(crate) fn load_font_unnamed(&mut self, source: FontSource) -> FontLoadError {
+            self.load_font_as(source, |_| None)
+                .expect_err("no name is admitted")
+        }
+
+        /// How many faces the database holds.
+        #[cfg(test)]
+        pub(crate) fn face_count(&self) -> usize {
+            self.font_system.db().len()
+        }
+
         /// The run resident under `key`, whatever text it holds, for a test that watches
         /// residency.
         #[cfg(test)]

@@ -64,6 +64,8 @@ use std::rc::Rc;
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
 pub struct DockView<'a, T> {
+    /// The id [`Self::scan`] reads, which `show` holds the recorded id to.
+    dock: WidgetId,
     widget: Widget,
     state: &'a DockState<T>,
     operations: &'a mut Vec<DockOperation<T>>,
@@ -82,13 +84,15 @@ const DEFAULT_EDGE_FRACTION: f32 = 0.25;
 impl<'a, T: DockTab> DockView<'a, T> {
     /// A view over `state` under the id `dock`, emitting into `operations`. The widget never
     /// mutates the tree; every decision arrives as an operation. `dock` is the id
-    /// [`Self::scan`] reads and every part's id derives from, so the two calls cannot part.
+    /// [`Self::scan`] reads and every part's id derives from; [`Self::show`] refuses another, so
+    /// the two calls cannot part.
     pub fn new(
         dock: WidgetId,
         state: &'a DockState<T>,
         operations: &'a mut Vec<DockOperation<T>>,
     ) -> Self {
         Self {
+            dock,
             widget: Widget::zstack().id(dock),
             state,
             operations,
@@ -162,10 +166,17 @@ impl<'a, T: DockTab> DockView<'a, T> {
     }
 
     /// Record the pane tree and the drag feedback over it.
+    ///
+    /// # Panics
+    ///
+    /// Panics when a `Configure` id setter (`id`, `id_salt`, `auto_id`) moved the view off the
+    /// id `new` took: [`Self::scan`] reads that id, so every click, close and drag would be lost.
+    #[track_caller]
     pub fn show<D: DockTabs<Tab = T>>(self, ui: &mut Ui, tabs: &mut D) -> Response {
         let app_theme = Rc::clone(ui.theme());
         let theme = self.style.unwrap_or(&app_theme.dock);
         let Self {
+            dock,
             mut widget,
             state,
             operations,
@@ -182,6 +193,10 @@ impl<'a, T: DockTab> DockView<'a, T> {
             .default_size((Sizing::FILL, Sizing::FILL));
         let response = widget.response(ui);
         let id = response.id;
+        assert!(
+            id == dock,
+            "a dock view records under the id `new` took, which `scan` reads",
+        );
         let carried = DockView::drag(ui, id);
         // Classified before the walk, so the strip it lands in records its caret, and kept for
         // the scan that sees the release: the drop lands where the frame showed it.

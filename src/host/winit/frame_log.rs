@@ -14,16 +14,34 @@ use crate::window::window_token::WindowToken;
 /// write pays.
 #[derive(Debug, Default)]
 pub(super) struct FrameLog {
-    windows: Mutex<Vec<LoggedWindow>>,
+    windows: Mutex<Windows>,
     /// Signaled on each write, so a [`Remote`](crate::Remote) waits for a frame without a poll.
     changed: Condvar,
+}
+
+/// The open windows, and how many openings the log has numbered.
+#[derive(Debug, Default)]
+struct Windows {
+    logged: Vec<LoggedWindow>,
+    openings: u64,
 }
 
 #[derive(Clone, Copy, Debug)]
 struct LoggedWindow {
     token: WindowToken,
-    summary: FrameSummary,
+    frame: LoggedFrame,
     hidden: bool,
+}
+
+/// A window's last frame, and which opening of a window under its token ran it: a window opened
+/// again counts its events and frames from zero, so a count read against an earlier opening says
+/// nothing of this one.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct LoggedFrame {
+    /// This opening's number, unique in the log: 1 for the first window the log opened, and one
+    /// more for each opening after.
+    pub(crate) opening: u64,
+    pub(crate) summary: FrameSummary,
 }
 
 impl FrameLog {
@@ -35,12 +53,17 @@ impl FrameLog {
     pub(super) fn open(&self, token: WindowToken) {
         let mut windows = self.windows.lock_unpoisoned();
         assert!(
-            windows.iter().all(|logged| logged.token != token),
+            windows.logged.iter().all(|logged| logged.token != token),
             "{token:?} opened twice"
         );
-        windows.push(LoggedWindow {
+        windows.openings += 1;
+        let opening = windows.openings;
+        windows.logged.push(LoggedWindow {
             token,
-            summary: FrameSummary::AT_OPEN,
+            frame: LoggedFrame {
+                opening,
+                summary: FrameSummary::AT_OPEN,
+            },
             hidden: false,
         });
         drop(windows);
@@ -48,19 +71,21 @@ impl FrameLog {
     }
 
     pub(super) fn record(&self, token: WindowToken, summary: FrameSummary) {
-        Self::entry(&mut self.windows.lock_unpoisoned(), token).summary = summary;
+        Self::entry(&mut self.windows.lock_unpoisoned(), token)
+            .frame
+            .summary = summary;
         self.changed.notify_all();
     }
 
-    /// Block while `token`'s window is shown and its summary is `seen`, for `timeout` at most. The
-    /// check and the wait share the lock, so a write after the caller read `seen` wakes it.
-    pub(super) fn wait_changed(&self, token: WindowToken, seen: FrameSummary, timeout: Duration) {
+    /// Block while `token`'s window is shown and its last frame is `seen`, for `timeout` at most.
+    /// The check and the wait share the lock, so a write after the caller read `seen` wakes it.
+    pub(super) fn wait_changed(&self, token: WindowToken, seen: LoggedFrame, timeout: Duration) {
         let windows = self.windows.lock_unpoisoned();
         drop(
             self.changed
                 .wait_timeout_while_unpoisoned(windows, timeout, |windows| {
-                    windows.iter().any(|logged| {
-                        logged.token == token && logged.summary == seen && !logged.hidden
+                    windows.logged.iter().any(|logged| {
+                        logged.token == token && logged.frame == seen && !logged.hidden
                     })
                 }),
         );
@@ -74,23 +99,26 @@ impl FrameLog {
 
     /// `token`'s window's last frame, [`FrameSummary::AT_OPEN`] until it runs one, or `None` when
     /// it is not open.
-    pub(super) fn get(&self, token: WindowToken) -> Option<FrameSummary> {
+    pub(super) fn get(&self, token: WindowToken) -> Option<LoggedFrame> {
         let windows = self.windows.lock_unpoisoned();
         windows
+            .logged
             .iter()
             .find(|logged| logged.token == token)
-            .map(|logged| logged.summary)
+            .map(|logged| logged.frame)
     }
 
     pub(super) fn is_hidden(&self, token: WindowToken) -> bool {
         let windows = self.windows.lock_unpoisoned();
         windows
+            .logged
             .iter()
             .any(|logged| logged.token == token && logged.hidden)
     }
 
-    fn entry(windows: &mut [LoggedWindow], token: WindowToken) -> &mut LoggedWindow {
+    fn entry(windows: &mut Windows, token: WindowToken) -> &mut LoggedWindow {
         windows
+            .logged
             .iter_mut()
             .find(|logged| logged.token == token)
             .expect("the loop writes a window's entry only while it is open")
@@ -99,20 +127,21 @@ impl FrameLog {
     pub(super) fn remove(&self, token: WindowToken) {
         self.windows
             .lock_unpoisoned()
+            .logged
             .retain(|logged| logged.token != token);
         self.changed.notify_all();
     }
 
     /// Forget every window, as the event loop ends and closes them all.
     pub(super) fn clear(&self) {
-        self.windows.lock_unpoisoned().clear();
+        self.windows.lock_unpoisoned().logged.clear();
         self.changed.notify_all();
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::host::winit::frame_log::FrameLog;
+    use crate::host::winit::frame_log::{FrameLog, LoggedFrame};
     use crate::host::winit::frame_summary::FrameSummary;
     use crate::window::window_token::WindowToken;
     use std::sync::Arc;
@@ -128,9 +157,15 @@ mod tests {
         }
     }
 
+    /// What the log holds for a window at `opening` whose last frame is `summary`.
+    const fn logged(opening: u64, summary: FrameSummary) -> LoggedFrame {
+        LoggedFrame { opening, summary }
+    }
+
     /// An entry lasts from a window's open to its close, and each window keeps its own: a record or
     /// a hide changes only that window's, a remove forgets only that window, a closed token opens
-    /// again from the start, and a clear forgets all.
+    /// again from the start under a new opening, and a clear forgets all. Openings number from 1:
+    /// `a` is 1, `b` 2, and `a` opened again 3.
     #[test]
     fn each_window_keeps_its_entry_from_open_to_close() {
         let log = FrameLog::default();
@@ -139,19 +174,23 @@ mod tests {
 
         log.open(a);
         log.open(b);
-        assert_eq!(log.get(a), Some(FrameSummary::AT_OPEN), "no frame yet");
+        assert_eq!(
+            log.get(a),
+            Some(logged(1, FrameSummary::AT_OPEN)),
+            "no frame yet"
+        );
         log.record(a, summary(1, true));
         log.record(b, summary(1, false));
         let later = summary(2, false);
         log.record(a, later);
-        assert_eq!(log.get(a), Some(later));
-        assert_eq!(log.get(b), Some(summary(1, false)));
+        assert_eq!(log.get(a), Some(logged(1, later)));
+        assert_eq!(log.get(b), Some(logged(2, summary(1, false))));
 
         // Hiding leaves the last frame as it was, and is each window's own.
         log.set_hidden(a, true);
         assert_eq!(
             (log.get(a), log.is_hidden(a), log.is_hidden(b)),
-            (Some(later), true, false)
+            (Some(logged(1, later)), true, false)
         );
         log.set_hidden(a, false);
         assert!(!log.is_hidden(a));
@@ -163,13 +202,13 @@ mod tests {
             (None, false),
             "a closed window is not hidden"
         );
-        assert_eq!(log.get(b), Some(summary(1, false)));
+        assert_eq!(log.get(b), Some(logged(2, summary(1, false))));
 
         log.open(a);
         assert_eq!(
             (log.get(a), log.is_hidden(a)),
-            (Some(FrameSummary::AT_OPEN), false),
-            "it opens again from the start"
+            (Some(logged(3, FrameSummary::AT_OPEN)), false),
+            "it opens again from the start, under a new opening"
         );
 
         log.clear();
@@ -185,8 +224,8 @@ mod tests {
         let window = WindowToken(1);
         let log = Arc::new(FrameLog::default());
         log.open(window);
-        let seen = summary(1, false);
-        log.record(window, seen);
+        log.record(window, summary(1, false));
+        let seen = log.get(window).unwrap();
 
         let held = Instant::now();
         log.wait_changed(window, seen, Duration::from_millis(5));
@@ -202,13 +241,18 @@ mod tests {
             assert!(began.elapsed() < LONG);
         };
         end_on(&|log| log.record(window, summary(2, false)));
-        log.record(window, seen);
+        log.record(window, seen.summary);
         end_on(&|log| log.set_hidden(window, true));
         log.set_hidden(window, false);
         end_on(&|log| log.remove(window));
 
+        // The window opened again with the summary it had: a new opening, which no longer holds.
         log.open(window);
-        log.record(window, seen);
+        log.record(window, seen.summary);
+        let began = Instant::now();
+        log.wait_changed(window, seen, LONG);
+        assert!(began.elapsed() < LONG, "another opening ends the wait");
+        let seen = log.get(window).unwrap();
         let writer = Arc::clone(&log);
         let write = thread::spawn(move || {
             thread::sleep(Duration::from_millis(5));

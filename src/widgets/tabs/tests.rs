@@ -975,6 +975,48 @@ fn a_draggable_view_reports_the_slot_a_drag_released_over() {
     }
 }
 
+/// A carried tab that leaves the strip mid-drag ends the carry: its caret goes at once, and the
+/// tab coming back under the held button does not resume it.
+#[test]
+fn a_carried_tab_that_leaves_the_strip_ends_its_carry() {
+    let view = WidgetId::from_hash("test.gone");
+    let strip = view.with("strip");
+    let caret = strip.with("caret");
+    let record = |ui: &mut Ui, pages: &[&str]| -> Edges {
+        let mut page = 0usize;
+        TabbedView::new(&mut page, pages)
+            .id(view)
+            .draggable(true)
+            .show(ui, |_, _| {})
+            .into()
+    };
+    let mut h = Harness::mono(SURFACE);
+    h.prime(2, |ui| {
+        record(ui, &PAGES);
+    });
+    h.press(
+        TabStrip::chip_id(strip, TabKey::of(2_u64)),
+        PointerButton::Left,
+    );
+    let onto = h.center_of(TabStrip::chip_id(strip, TabKey::of(0_u64)));
+    h.drag_to(Vec2::new(onto.x - 4.0, onto.y));
+    h.prime(2, |ui| {
+        record(ui, &PAGES);
+    });
+    assert!(h.rect(caret).is_some(), "the carried chip marks its slot");
+    assert_eq!(h.frame_value(|ui| record(ui, &PAGES)).dragging, Some(2));
+
+    let gone = h.frame_value(|ui| record(ui, &PAGES[..2]));
+    assert_eq!(gone, Edges::default());
+    assert!(h.rect(caret).is_none(), "no carry, so no caret");
+
+    let back = h.frame_value(|ui| record(ui, &PAGES));
+    assert_eq!(back.dragging, None, "the carry ended when its tab left");
+    assert!(h.rect(caret).is_none());
+    h.release(PointerButton::Left);
+    assert_eq!(h.frame_value(|ui| record(ui, &PAGES)), Edges::default());
+}
+
 /// A drag shows the strip's caret at the slot under the pointer and reports the carried page,
 /// and Escape cancels it: the caret and the report go, and the release reorders nothing.
 #[test]

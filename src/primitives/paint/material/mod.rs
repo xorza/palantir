@@ -595,6 +595,22 @@ impl Animatable for Option<Material> {
             m
         })
     }
+    /// A retarget onto a material over another effect snaps the effect, as a tween does: the
+    /// lanes of two effects mean different things, so the value takes the target's, and the
+    /// velocity's lanes start from rest. The blur keeps springing.
+    #[inline]
+    fn normalize_for_spring(&mut self, target: &Self, velocity: &mut Self) {
+        let (Some(value), Some(target)) = (self.as_mut(), target) else {
+            return;
+        };
+        if value.effect.blends_with(&target.effect) {
+            return;
+        }
+        value.effect = target.effect;
+        if let Some(velocity) = velocity {
+            velocity.effect = target.effect.map(|_| 0.0);
+        }
+    }
 }
 
 /// Whether a blur is 0, which a file leaves out.

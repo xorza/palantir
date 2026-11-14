@@ -1,14 +1,14 @@
 //! `--against DIR`: each shot compared with the picture of the same name an earlier run wrote,
 //! at zero tolerance, so a change shows as the pixels it moved.
 
-use std::io::{self, Write};
+use std::io::{self, ErrorKind, Write};
 use std::path::Path;
 
 use palantir::Image;
 use palantir::glam::UVec2;
 use palantir::golden::Tolerance;
 
-use crate::shot::{read_png, write_png};
+use crate::shot::{ShotError, read_png, write_png};
 
 /// How a shot compares with the earlier picture of its name.
 #[derive(Debug, PartialEq)]
@@ -23,12 +23,24 @@ pub(crate) enum Comparison {
 }
 
 /// Compare `picture` with `earlier`'s PNG, writing the marked difference to `diff` when a pixel
-/// differs.
-pub(crate) fn compare(picture: &Image, earlier: &Path, diff: &Path) -> io::Result<Comparison> {
-    if !earlier.exists() {
-        return Ok(Comparison::Missing);
-    }
-    let earlier = read_png(earlier)?;
+/// differs. A missing earlier picture is [`Comparison::Missing`]; one that does not read is
+/// [`ShotError::Read`], and a difference that does not write [`ShotError::Write`], each naming
+/// its own file.
+pub(crate) fn compare(
+    picture: &Image,
+    earlier: &Path,
+    diff: &Path,
+) -> Result<Comparison, ShotError> {
+    let earlier = match read_png(earlier) {
+        Ok(earlier) => earlier,
+        Err(source) if source.kind() == ErrorKind::NotFound => return Ok(Comparison::Missing),
+        Err(source) => {
+            return Err(ShotError::Read {
+                path: earlier.to_path_buf(),
+                source,
+            });
+        }
+    };
     if earlier.size() != picture.size() {
         return Ok(Comparison::OtherSize {
             earlier: earlier.size(),
@@ -36,7 +48,10 @@ pub(crate) fn compare(picture: &Image, earlier: &Path, diff: &Path) -> io::Resul
     }
     let report = Tolerance::EXACT.diff(picture, &earlier);
     if report.differing_pixels > 0 {
-        write_png(&report.diff_image, diff)?;
+        write_png(&report.diff_image, diff).map_err(|source| ShotError::Write {
+            path: diff.to_path_buf(),
+            source,
+        })?;
     }
     Ok(Comparison::Diff {
         pixels: report.differing_pixels,

@@ -65,6 +65,38 @@ fn bytes_with_no_face_load_no_family() {
     );
 }
 
+/// A load refused for its names changes nothing: the faces it parsed come out of the database
+/// again, so the family it would have answered stays unanswered and every answer given before
+/// it holds.
+#[test]
+fn a_load_refused_for_its_names_leaves_the_database_as_it_was() {
+    let mut c = CosmicMeasure::with_no_fonts();
+    c.load_font(INTER.into()).expect("the bundled Inter loads");
+    let faces = c.face_count();
+    assert!(
+        !c.has_font(FontFamily::MONO),
+        "the fixture holds Inter alone, and this answer is now memoized",
+    );
+
+    let refused = c.load_font_unnamed(MONO.into());
+
+    assert!(matches!(refused, FontLoadError::FamilyNameTooLong));
+    assert_eq!(c.face_count(), faces);
+    assert!(!c.has_font(FontFamily::MONO));
+    assert_eq!(
+        c.resolved_family(
+            "M",
+            GlyphFont {
+                family: FontFamily::MONO,
+                ..GlyphFont::new(16.0)
+            }
+        )
+        .as_deref(),
+        Some("Inter"),
+        "a family the load did not register still falls back",
+    );
+}
+
 /// The encoded-run cache holds templates rasterized from whichever face
 /// resolved, so a load must be visible to it through an epoch readable without
 /// borrowing the shaper.

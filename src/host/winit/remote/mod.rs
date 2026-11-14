@@ -19,7 +19,7 @@ use crate::driver::error::{PlayError, StepError};
 use crate::driver::locator::{Locate, Locator, Reach};
 use crate::driver::play::{self, BUSY_SETTLE_WAITS, Stage};
 use crate::gpu::device::gpu::Gpu;
-use crate::host::winit::frame_summary::FrameSummary;
+use crate::host::winit::frame_log::LoggedFrame;
 use crate::host::winit::handle::{HostHandle, UserEvent};
 use crate::host::winit::owned_input_event::OwnedInputEvent;
 use crate::primitives::geometry::rect::Rect;
@@ -68,7 +68,10 @@ pub struct Remote<T: 'static> {
     /// Boxed, as a type parameter for the caller's probe would reach every signature of a remote.
     blocked: Option<Box<dyn Fn() -> bool + Send>>,
     /// The events sent, inputs, queries and device losses, which a frame that saw them all counts.
+    /// A count of the window's [`opening`](Self::opening): one opened again counts from zero.
     sent: u64,
+    /// The opening of the window `sent` counts against; `None` before the remote saw it open.
+    opening: Option<u64>,
     /// The last press's real time, which the next press waits out the double-click interval from.
     last_press: Option<Instant>,
     /// The longest real time a wait for the window lasts: [`WAIT`] unless [`Self::with_wait`]
@@ -83,6 +86,7 @@ impl<T: 'static> Debug for Remote<T> {
         f.debug_struct("Remote")
             .field("window", &self.window)
             .field("sent", &self.sent)
+            .field("opening", &self.opening)
             .finish_non_exhaustive()
     }
 }
@@ -196,14 +200,13 @@ impl<T: 'static> AgentWindow<T> for Remote<T> {
 
 impl<T: 'static> Remote<T> {
     pub(crate) fn new(handle: HostHandle<T>, window: WindowToken) -> Self {
-        let sent = handle
-            .last_frame(window)
-            .map_or(0, |summary| summary.sent_events);
+        let last = handle.last_frame(window);
         Self {
             handle,
             window,
             blocked: None,
-            sent,
+            sent: last.map_or(0, |last| last.summary.sent_events),
+            opening: last.map(|last| last.opening),
             last_press: None,
             wait: WAIT,
             tick: TICK,
@@ -242,10 +245,10 @@ impl<T: 'static> Remote<T> {
             event,
             UserEvent::Query(..) | UserEvent::LoseDevice(..)
         ));
+        self.count_sent(counted);
         self.handle
             .send(event)
             .map_err(|_| PlayError::Disconnected)?;
-        self.sent += counted;
         let answered = self.receive(&answer, Answer::BetweenFrames);
         if answered.is_err() {
             given_up.store(true, Ordering::Release);
@@ -282,7 +285,20 @@ impl<T: 'static> Remote<T> {
         Ok(())
     }
 
-    fn last_frame(&self) -> Result<FrameSummary, PlayError> {
+    /// Count `counted` events about to go to the window as it is open now, before they are sent,
+    /// as a window that ran them already counts them in its summary. A window closed and opened
+    /// again under the token counts from its own start, so the count restarts at that opening's.
+    fn count_sent(&mut self, counted: u64) {
+        if let Some(last) = self.handle.last_frame(self.window)
+            && self.opening != Some(last.opening)
+        {
+            self.opening = Some(last.opening);
+            self.sent = last.summary.sent_events;
+        }
+        self.sent += counted;
+    }
+
+    fn last_frame(&self) -> Result<LoggedFrame, PlayError> {
         self.handle
             .last_frame(self.window)
             .ok_or(PlayError::Disconnected)
@@ -291,7 +307,7 @@ impl<T: 'static> Remote<T> {
     fn record_frame_id(&self) -> u64 {
         self.handle
             .last_frame(self.window)
-            .map_or(0, |summary| summary.record_frame_id)
+            .map_or(0, |last| last.summary.record_frame_id)
     }
 
     /// The frames recorded since `first`.
@@ -308,8 +324,10 @@ impl<T: 'static> Remote<T> {
         let mut seen = first;
         let mut progressed = start;
         loop {
-            let last = self.last_frame()?;
-            let saw_events = last.sent_events >= self.sent;
+            let logged = self.last_frame()?;
+            let last = logged.summary;
+            // A window opened again since the last send holds none of the events sent before.
+            let saw_events = self.opening != Some(logged.opening) || last.sent_events >= self.sent;
             let unsettled = settled && (last.repaint_requested || last.busy);
             if saw_events && !unsettled {
                 return Ok(());
@@ -338,7 +356,7 @@ impl<T: 'static> Remote<T> {
             }
             self.handle
                 .frame_log
-                .wait_changed(self.window, last, self.tick);
+                .wait_changed(self.window, logged, self.tick);
         }
     }
 }
@@ -393,10 +411,10 @@ impl<T: 'static, X: Locate<T>> Stage<X> for RemoteStage<'_, T> {
     }
 
     fn input(&mut self, event: InputEvent<'_>) {
+        self.remote.count_sent(1);
         self.remote
             .handle
             .send_input(self.remote.window, OwnedInputEvent::from(event));
-        self.remote.sent += 1;
     }
 
     fn frame(&mut self) -> Result<(), PlayError> {

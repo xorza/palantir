@@ -218,7 +218,7 @@ interaction test costs microseconds, so UI behavior stays a plain `cargo test`.
 - **Pick the surface** — size, DPI scale, user scale, pixel snap, refresh
   rate. Test a 4K HiDPI layout on any machine.
 - **Play it as a person** — `play` runs a list of `Action`s, settling after
-  each, and with a GPU (`Harness::builder(size).gpu(gpu)`) `shot` returns the
+  each, and with a GPU (`Harness::builder(size).depth(Depth::gpu(gpu))`) `shot` returns the
   window's pixels.
 
 ```rust

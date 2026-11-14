@@ -953,8 +953,10 @@ impl Ui {
     ///
     /// # Panics
     ///
-    /// When `name`, or an alternative `source` names, was loaded before with another
-    /// parameter type or kind, or the alternative with other image slots.
+    /// When `name` was loaded before with another parameter type or kind; when an alternative
+    /// `source` names ([`ReducedPaint::Effect`](crate::ReducedPaint::Effect)) is not loaded yet,
+    /// or with other types or image slots; when a reload of `name` changes the image slots of an
+    /// effect that paints it in its place.
     #[inline]
     #[track_caller]
     #[expect(
@@ -1060,8 +1062,15 @@ impl Ui {
     /// the one it opened from, whatever their ranks: a [`Layer::Popup`] opened in a
     /// [`Layer::Modal`] dialog sits over the dialog. Focus rules read the layer it
     /// asked for, so a dropdown in a dialog still traps Tab as a popup does.
+    ///
+    /// # Panics
+    ///
+    /// For [`Layer::Main`], which is no overlay: a scope there would record as ordinary content
+    /// and drop its placement.
     #[inline]
+    #[track_caller]
     pub fn layer(&mut self, layer: Layer) -> LayerScope<'_> {
+        assert!(layer != Layer::Main, "{}", Layer::MAIN_IS_NO_OVERLAY);
         LayerScope::new(self, layer)
     }
 

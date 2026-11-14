@@ -584,9 +584,9 @@ impl BackdropBlur {
     }
 
     /// Lay out `jobs` in `batches`, each the jobs [`Self::encode`] records together, make room for
-    /// them once, at the most a batch reads, and write their parameters, ahead of the copies that
-    /// fill their captures and the passes. Ends an expiry window every [`EXPIRY_FRAMES`](crate::common::expiry_window::EXPIRY_FRAMES) display
-    /// frames.
+    /// them once, at the most a batch reads, end an expiry window every
+    /// [`EXPIRY_FRAMES`](crate::common::expiry_window::EXPIRY_FRAMES) display frames, and write
+    /// their parameters, ahead of the copies that fill their captures and the passes.
     pub(crate) fn prepare(
         &mut self,
         ctx: &mut GpuCtx<'_>,
@@ -604,9 +604,12 @@ impl BackdropBlur {
         }
         debug_assert_eq!(laid_out, jobs.len(), "batches cover the jobs");
         self.make_room(ctx.gpu, needs);
-        self.write_params(ctx, jobs);
         self.staging.decay(ctx.gpu, ctx.frame, needs.staging);
         self.expire(ctx, needs);
+        // After the step-down, which may remake a texture smaller, at the window's peak, which
+        // holds this frame's needs: each pass's `source_max` is then the bound of the texture it
+        // binds.
+        self.write_params(ctx, jobs);
     }
 
     /// Grow the capture, the levels and the scratch to hold `needs`.

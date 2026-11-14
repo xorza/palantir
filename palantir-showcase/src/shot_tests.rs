@@ -229,6 +229,22 @@ fn each_refusal_names_its_line() {
             },
         ),
         (
+            "wait 1e300s",
+            1,
+            ParseErrorKind::Bad {
+                expected: "a time as 300ms or 2s",
+                found: "1e300s".to_owned(),
+            },
+        ),
+        (
+            "wait -1s",
+            1,
+            ParseErrorKind::Bad {
+                expected: "a time as 300ms or 2s",
+                found: "-1s".to_owned(),
+            },
+        ),
+        (
             "scheme dusk",
             1,
             ParseErrorKind::Bad {
@@ -385,6 +401,23 @@ fn a_shot_compares_with_an_earlier_run() {
     )
     .unwrap();
     assert!(String::from_utf8(report).unwrap().contains(": missing"));
+
+    // An earlier picture that is not a PNG is a read failure that names it, not a missing one
+    // or a failed write.
+    let broken = first.0.join("broken.png");
+    fs::write(&broken, b"not a png").unwrap();
+    let broken_script = Script::parse("size 160x100\nshot broken\n").unwrap();
+    let refused = shot::play(
+        gpu.handles(),
+        &broken_script,
+        against(&second, &first),
+        &mut Vec::new(),
+    )
+    .unwrap_err();
+    assert!(
+        matches!(&refused, ShotError::Read { path, .. } if *path == broken),
+        "{refused:?}"
+    );
 }
 
 /// The window opens on the first page, or on the one `--page` names, ignoring case; a page no

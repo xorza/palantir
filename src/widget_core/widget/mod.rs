@@ -399,9 +399,9 @@ impl Widget {
         })
     }
 
-    /// [`Self::record`] plus the [`Response`] of the node just recorded, for decorative
-    /// widgets. A widget that acts on input opens with [`Self::response`] and hands that back
-    /// instead.
+    /// [`Self::response`], then [`Self::record`], for decorative widgets: the response is the one
+    /// a widget that acts on input opens with, its own `disabled` folded in, read before the body
+    /// resolves ids of its own.
     ///
     /// # Panics
     ///
@@ -413,12 +413,9 @@ impl Widget {
         chrome: Option<&Chrome>,
         body: impl FnOnce(&mut Ui) -> R,
     ) -> InnerResponse<R> {
-        let id = self.resolve(ui);
+        let response = self.response(ui);
         let inner = self.record(ui, chrome, body);
-        InnerResponse {
-            response: ui.response_for(id),
-            inner,
-        }
+        InnerResponse { response, inner }
     }
 
     /// What the caller authored on this widget: each setting as the caller left it, for a widget

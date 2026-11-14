@@ -77,6 +77,13 @@ struct MenuBarRow {
     pointer: Option<Vec2>,
 }
 
+impl MenuBarRow {
+    /// The menu the bar `bar` has open; allocates no row.
+    fn open_menu(ui: &Ui, bar: WidgetId) -> Option<OpenMenu> {
+        ui.state::<Self>(bar)?.open
+    }
+}
+
 /// The bar's open menu: its title and the trigger state its popup settles.
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct OpenMenu {
@@ -133,7 +140,14 @@ impl<'a> MenuBar<'a> {
         body: impl FnOnce(&mut MenuBarMenus<'_>) -> R,
     ) -> InnerResponse<R> {
         let bar = self.widget.resolve(ui);
-        let mut row = ui.with_state::<MenuBarRow, _>(bar, |_, row| mem::take(row));
+        // The titles leave the row, for their buffer; the open menu stays in it through the body,
+        // so `MenuBar::open`, `close` and `is_open` called from a menu's body act on the bar as
+        // it stands.
+        let mut row = ui.with_state::<MenuBarRow, _>(bar, |_, row| MenuBarRow {
+            titles: mem::take(&mut row.titles),
+            open: row.open,
+            pointer: row.pointer,
+        });
         let mut open = row.open;
         if let Some(menu) = open {
             match switch(ui, &row, menu.title) {
@@ -152,6 +166,9 @@ impl<'a> MenuBar<'a> {
                 }
             }
         }
+        if open != row.open {
+            ui.with_state::<MenuBarRow, _>(bar, |_, row| row.open = open);
+        }
         let mut titles = mem::take(&mut row.titles);
         titles.clear();
 
@@ -162,7 +179,7 @@ impl<'a> MenuBar<'a> {
             .configure()
             .default_gap(style.gap)
             .default_padding(style.bar_padding);
-        let (inner, mut open, step) = self.widget.record(ui, Some(&style.bar), |ui| {
+        let (inner, step) = self.widget.record(ui, Some(&style.bar), |ui| {
             let mut menus = MenuBarMenus {
                 ui,
                 bar,
@@ -170,12 +187,12 @@ impl<'a> MenuBar<'a> {
                 style,
                 menu_style: self.menu_style,
                 titles: &mut titles,
-                open,
                 step: 0,
             };
             let inner = body(&mut menus);
-            (inner, menus.open, menus.step)
+            (inner, menus.step)
         });
+        let mut open = MenuBarRow::open_menu(ui, bar);
         // A menu whose title this frame did not record, as the bar lost it, closes.
         let at = open.and_then(|menu| titles.iter().position(|&title| title == menu.title));
         if let Some(menu) = open
@@ -264,7 +281,6 @@ pub struct MenuBarMenus<'u> {
     style: &'u MenuBarTheme,
     menu_style: Option<&'u MenuTheme>,
     titles: &'u mut Vec<WidgetId>,
-    open: Option<OpenMenu>,
     /// Left (−1) or Right (+1) pressed in the open menu, else 0.
     step: i8,
 }
@@ -286,7 +302,8 @@ impl MenuBarMenus<'_> {
         self.titles.push(title);
         let mut widget = Widget::leaf().id(title).sense(Sense::CLICK).focusable(true);
         let mut response = widget.activation_response(ui, Activation::Button);
-        let here = self.open.filter(|open| open.title == title);
+        let before = MenuBarRow::open_menu(ui, self.bar);
+        let here = before.filter(|open| open.title == title);
         // The APG menubar's title keys: Down opens the menu on its first item, Up on its last
         // (https://www.w3.org/WAI/ARIA/apg/patterns/menubar/). Read as the bar, whose arrow scope
         // takes the arrows and walks the titles with Left and Right.
@@ -329,18 +346,28 @@ impl MenuBarMenus<'_> {
                     inner
                 },
             );
-        if settled.state.is_open_now() {
-            // A title opening while another menu is open takes the bar's one slot from it.
-            if let Some(other) = self.open.filter(|open| open.title != title) {
-                other.trigger.release(ui);
+        // The menu's body may have driven the bar through `MenuBar::open` or `close`: what it
+        // left stands, and this title's own outcome lands only on a slot the body left alone.
+        if MenuBarRow::open_menu(ui, self.bar) == before {
+            let after = if settled.state.is_open_now() {
+                // A title opening while another menu is open takes the bar's one slot from it.
+                if let Some(other) = before.filter(|open| open.title != title) {
+                    other.trigger.release(ui);
+                }
+                self.step = step;
+                Some(OpenMenu {
+                    title,
+                    trigger: settled.state,
+                })
+            } else if here.is_some() {
+                None
+            } else {
+                before
+            };
+            // Written only on a change, so a closed bar's titles write nothing.
+            if after != before {
+                ui.with_state::<MenuBarRow, _>(self.bar, |_, row| row.open = after);
             }
-            self.open = Some(OpenMenu {
-                title,
-                trigger: settled.state,
-            });
-            self.step = step;
-        } else if here.is_some() {
-            self.open = None;
         }
         settled.response
     }
@@ -377,8 +404,7 @@ impl MenuBar<'static> {
 
     /// Whether the bar `bar` has a menu open. Allocates no row.
     pub fn is_open(ui: &Ui, bar: WidgetId) -> bool {
-        ui.state::<MenuBarRow>(bar)
-            .is_some_and(|row| row.open.is_some())
+        MenuBarRow::open_menu(ui, bar).is_some()
     }
 
     /// The title of the bar `bar`'s menu reading `label`. Keyed by its text, so a menu added or

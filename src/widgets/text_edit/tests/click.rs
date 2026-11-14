@@ -589,7 +589,7 @@ fn caret_click_is_scale_invariant_under_zoom() {
 
     // The same field fraction must hit the same glyph at any zoom; the click arrives post-transform.
     fn caret_at_scale(scale: f32) -> usize {
-        let mut h = Harness::new(WIDE);
+        let mut h = Harness::new(WIDE).with_fixture_font_size();
         let mut buf = String::from("abcdefghij");
         let id = WidgetId::from_hash("scaled-ed");
         let render = |ui: &mut Ui, buf: &mut String| {

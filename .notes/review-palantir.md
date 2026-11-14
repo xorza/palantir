@@ -385,94 +385,10 @@ change there. Its uses of what the plan touches: `Locator::{App, Point, Text}` v
 
 Files: as listed per item. No exported signature changes.
 
-- [ ] `palantir-derive/src/effect_params.rs:58-61` (verified): `meta.input.parse::<TokenStream2>()`
-  takes the rest of the list, so `#[repr(align(16), C)]` is refused. Parse the group alone
-  (`syn::parenthesized!`); run `named_fields` before the repr check; add a table test over
-  `repr(C)`, `repr(C, align(16))`, `repr(align(16), C)`, `repr(packed(2), C)`, `repr(transparent)`.
-- [ ] `src/text/cosmic/mod.rs:265-275` (verified): `load_font` returns `FamilyNameTooLong` after
-  the faces are in the database, with `resolved`, the buffers, the ellipsis and the font epoch
-  untouched. Remove the loaded faces on that error so `Err` means unchanged; `first_family`
-  (`:806`) then needs no `named` parameter.
-- [ ] `src/primitives/geometry/rect/mod.rs:91-100,303-326` (verified): `intersect` returns
-  `Some(bounds)` for a NaN operand in release while `intersects` says `false`; `from_min_max` and
-  `clamp_to` assert in debug alone. `intersect` tests the overlap with comparisons a NaN fails,
-  as `intersects` and euclid's `Box2D::is_empty` do, before it builds the result, so the two
-  agree in every build; `from_min_max` drops its assert and the internal callers that own
-  ordered corners keep it; `clamp_to` is total and documented, or asserts in release.
-  `rect/tests.rs:114-122` becomes a table of values, with a row that holds `intersect(a, b)
-  .is_some() == intersects(a, b)` over NaN, empty and touching operands.
-- [ ] `src/widgets/menu_bar/mod.rs:136,197-203,353-382` (verified): `show` takes the whole row out
-  of the state map, so `MenuBar::is_open` reads `false`, `close` does nothing and `open` is
-  overwritten while the body records. Take only `titles`; keep `open` in the row. Test all three
-  from inside the body.
-- [ ] `src/widgets/tabs/tab_strip.rs:252-264,331-353` (verified): a carried key that leaves `items`
-  mid-drag stays `Some` and the drop caret keeps drawing. Filter `carried` against `items` at
-  `:253`; batch 11 shares the lifecycle with the dock. Test a carried key that disappears.
-- [ ] `src/damage/backdrop_walk.rs:68-81,99-101,222`, `src/damage/engine.rs:145` (unrun; the
-  arithmetic is verified): the removed-widget tail is marked at position 0 and gets key 1, so a
-  backdrop at `position(0, 0)` never sees it, against `engine.rs:144`. Reserve 0:
-  `position(ord, row) = (ord << 34) | (2 * row + 2)`, and the two `saturating_sub(1)` become
-  `- 1`. Test two roots where the first is removed and the second's first shape is a material.
-- [ ] `src/host/winit/remote/mod.rs:198-211,312`, `frame_summary.rs:16-18` (unrun): `Remote.sent`
-  only grows while a reopened window's `sent_events` restarts at 0, so every settle runs out its
-  30 s wait. Add an open generation to the `FrameLog` entry and `FrameSummary`; `Remote` restarts
-  `sent` when it changes. Test a `Remote` across close and reopen.
-- [ ] `src/primitives/paint/material/mod.rs:541-598` (unrun): a spring retarget between materials
-  over different effects mixes their lanes for the spring's duration, against `:77-80`. Implement
-  `normalize_for_spring` on `Option<Material>`: install the target's effect and zero the
-  velocity's lanes when `!blends_with`. Test beside `material/tests.rs:506`.
-- [ ] `src/gpu/frame/gpu_timings/query_tracer/mod.rs:53-55` (unrun): with `SLOTS = 3` and callbacks
-  that run only inside the next submit, a slot frees three frames after its frame, so a single
-  window's every fourth frame finds none. Dropping the newest frame at a full queue is the
-  canonical overflow rule (wgpu-profiler); the defect is the count. Target: a named
-  `LAG_FRAMES = 3` with the trace that gives it, `SLOTS = LAG_FRAMES + 1`, the lag corrected in
-  `:7-8` and `gpu_timings/mod.rs:10-11`, and a test that lands callbacks only after the following
-  submit and asserts no frame is skipped. The test at `tests.rs:141-197` waits between frames,
-  which the frame path does not.
-- [ ] `src/scene/tree/root_slot.rs:25,34`, `src/scene/forest.rs:266-295` (unrun):
-  `ui.layer(Layer::Main).fixed_at(p)` type-checks and drops its placement. Release `assert!` with
-  `#[track_caller]` at `Forest::push_layer`, a `# Panics` on `Ui::layer`, and a test; batch 19
-  removes the inference.
-- [ ] `src/widgets/color_picker/mod.rs:225-231` (unrun): `Writes::typed` remembers on every
-  `DragValue` commit, so sixteen arrow presses in a channel box evict the history, against
-  `:219-222`. Remember only a scrub release or an editor commit; extend
-  `keyboard_nudges_leave_the_history_alone` (`tests.rs:272`) to the R box.
-- [ ] `src/widget_core/widget/mod.rs:410-422` (unrun): `Widget::show` reads the response after the
-  body, so a node's own `disabled` is not folded in and the lookup falls back to a hash probe.
-  `show` = `response()`, then `record()`. `editable_label/mod.rs:163,184-186,202-215` takes the
-  first response and the merged `editable`; `overlay_scope.rs:146-150` calls `record`. Test a
-  self-disabled sensing `Panel`.
-- [ ] `src/gpu/backdrop/backdrop_blur/mod.rs:606-609,644-689,978-999` (unrun, latent): `expire` can
-  shrink a texture after `write_params` computed `source_max` from the larger one. Order becomes
-  `expire(needs)` → `make_room` → `write_params`.
-- [ ] `src/effect/effect_registry.rs:247-264,472-510`: a `ReducedPaint::Effect(other)` not yet
-  loaded panics at record time, and only on a machine with reduced motion or power saver on.
-  `load` requires each named alternative; `ReducedName::Effect` holds the `EffectId`.
-- [ ] `src/primitives/paint/brush/gradient/color_ramp.rs:70-82`: `color_at(NaN)` returns a NaN
-  color. Coerce through `domain::fraction` and document the kind.
 - [ ] `src/widgets/scroll/scroll_state.rs:260-272`: `ScrollState::reveal` shows the end of a span
   longer than the view that starts inside it, where its doc, `scroll/mod.rs:710-719` and CSSOM's
-  `nearest` all show the start. Fixed by the shared `reveal_pan` of batch 11; test the three
-  oversized cases.
-- [ ] `src/widgets/dock/dock_view.rs:83-103,251`: `DockView: Configure`, so `.id(other)` after
-  `new(dock)` makes `show` record under an id `scan` never reads. Release `assert!` in `show` that
-  the recorded id is `dock`.
-- [ ] `src/host/harness/mod.rs:97-101,228-231`: a `#[cfg(test)]` statement sets
-  `theme.text.font_size = 16.0` on every harness the unit tests build. Move it to the gated
-  constructors at `:1208-1227`.
-- [ ] `README.md:221` (verified): `Harness::builder(size).gpu(gpu)` does not exist; the call is
-  `.depth(Depth::gpu(gpu))` until batch 4 changes it.
-- [ ] `src/primitives/math/animatable.rs:246,250`: the `Vec2` lerp test calls glam's inherent
-  `lerp`. Use `<Vec2 as Lerp>::lerp(&a, &b, t)`.
-- [ ] `palantir-showcase/src/support.rs:261-268` (verified): `row` lacks `#[track_caller]`, so about
-  55 rows take the id of one line and differ by occurrence order alone.
-- [ ] `palantir-showcase/src/shot/script.rs:437-440`: `wait 1e300s` panics in
-  `Duration::from_secs_f64`; use `try_from_secs_f64`. `shot/mod.rs:284`: `max_element() * zoom`
-  is unchecked; `checked_mul`, then `TooLarge`.
-- [ ] `palantir-showcase/src/shot/mod.rs:350-354`, `shot/against.rs:27-45`: a failed read of the
-  earlier image and a failed write of the diff both report `Write { path: earlier }`.
-  `against::compare` returns `Read { path }` or `WriteDiff { path }`; `Missing` comes from the
-  open's `NotFound`, not from `exists()`.
+  `nearest` all show the start. Not local: fixed by the shared `reveal_pan` of batch 11, which
+  carries this item's test of the three oversized cases.
 
 ### Batch 2: one type per concept (API)
 

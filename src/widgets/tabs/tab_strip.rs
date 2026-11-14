@@ -253,7 +253,9 @@ impl<'a> TabStrip<'a> {
             ChipDrag::Reorder => ui.state::<StripState>(id).and_then(|s| s.carried),
             ChipDrag::Dock { .. } => None,
         };
-        let mut carried = was_carried;
+        // A carried tab that left the strip ends its carry: no chip is left to report the
+        // release, and its caret would stay up.
+        let mut carried = was_carried.filter(|key| items.iter().any(|item| item.key == *key));
         if carried.is_some() && ui.shortcut_pressed(Key::Escape) {
             carried = None;
         }

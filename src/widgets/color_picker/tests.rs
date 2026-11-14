@@ -298,6 +298,30 @@ fn keyboard_nudges_leave_the_history_alone() {
     }
     assert!(committed > 0, "premise: a nudge commits");
     assert_eq!(h.state::<PickerState>(id).unwrap().history.peek(), &*row);
+
+    // The same in a channel's value: each Up on the R chip commits a shade, none a pick.
+    let red = id.with("R").with("value");
+    h.ui_mut().set_focus(red);
+    frame(&mut h, &mut color);
+    let before = color;
+    let mut committed = 0;
+    for _ in 0..16 {
+        h.key(Key::ArrowUp);
+        committed += usize::from(frame(&mut h, &mut color));
+    }
+    assert_eq!(committed, 16, "premise: each nudge of the R value commits");
+    assert_ne!(color, before, "premise: the nudges moved red");
+    assert_eq!(h.state::<PickerState>(id).unwrap().history.peek(), &*row);
+
+    // A value typed into the R editor and committed is a pick.
+    h.key(Key::Char('9'));
+    frame(&mut h, &mut color);
+    h.key(Key::Enter);
+    assert!(frame(&mut h, &mut color), "the typed value commits");
+    assert_eq!(color.to_srgba8().r, 9);
+    let history = h.state::<PickerState>(id).unwrap().history.peek().to_vec();
+    assert_eq!(history[0], color, "a typed value is a pick");
+    assert_eq!(history[1..], row[..history.len() - 1]);
 }
 
 /// The hex field edits a draft of its own: a blur on the shown text, or on a text spelling the

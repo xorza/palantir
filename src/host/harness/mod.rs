@@ -94,12 +94,6 @@ use crate::window::window_token::WindowToken;
 use glam::{UVec2, Vec2};
 use std::time::{Duration, Instant};
 
-/// The ambient font size this crate's unit tests frame at, pinned so the default text size can
-/// move without their hand-computed text metrics moving with it, as the visual suite pins its
-/// palette. A harness outside those tests keeps the stock theme, as a host does.
-#[cfg(test)]
-const FIXTURE_FONT_SIZE: f32 = 16.0;
-
 /// One window with no desktop: its frames, its input and its clock, stepped by the caller. See
 /// the module doc for the rules a frame follows.
 ///
@@ -225,10 +219,6 @@ impl Harness {
             pace,
             window_commands: Vec::new(),
         };
-        #[cfg(test)]
-        {
-            harness.ui_mut().theme_mut().text.font_size = FIXTURE_FONT_SIZE;
-        }
         harness.sync_display();
         harness.mark_warm();
         harness
@@ -984,6 +974,13 @@ pub(crate) mod internals {
     use crate::renderer::render_plan::RenderPlan;
     use crate::renderer::row_table::RowTable;
     use crate::ui::window_frames::WindowFrames;
+
+    /// The ambient font size this crate's unit tests frame at, pinned so the default text size
+    /// can move without their hand-computed text metrics moving with it, as the visual suite pins
+    /// its palette. Every other harness keeps the stock theme, as a host does.
+    #[cfg(test)]
+    const FIXTURE_FONT_SIZE: f32 = 16.0;
+
     #[cfg(test)]
     use crate::{
         gpu::atlas::atlas_format::AtlasFormat,
@@ -1203,10 +1200,17 @@ pub(crate) mod internals {
             }
         }
 
-        /// A window of `size` that shapes with the mono fallback, whose metrics this crate's
-        /// tests compute by hand.
+        /// A window of `size` that shapes with the mono fallback at [`FIXTURE_FONT_SIZE`], whose
+        /// metrics this crate's tests compute by hand.
         pub(crate) fn mono(size: UVec2) -> Self {
-            Self::builder(size).mono().build()
+            Self::builder(size).mono().build().with_fixture_font_size()
+        }
+
+        /// This harness framing at [`FIXTURE_FONT_SIZE`], for a test that computes text metrics
+        /// by hand.
+        pub(crate) fn with_fixture_font_size(mut self) -> Self {
+            self.ui_mut().theme_mut().text.font_size = FIXTURE_FONT_SIZE;
+            self
         }
 
         /// [`Self::mono`] with a cold recorder: frame 1 runs the warmup pass.

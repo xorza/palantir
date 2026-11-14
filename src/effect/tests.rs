@@ -29,7 +29,7 @@ use crate::internals::paint_capture::PaintCall;
 use crate::internals::panic_probe::assert_panics_with;
 use crate::internals::srgb_reference;
 use crate::primitives::effect::effect_kind::{BackdropEffect, ColorEffect, KindId};
-use crate::primitives::effect::effect_name::{EffectName, ErasedEffectName};
+use crate::primitives::effect::effect_name::EffectName;
 use crate::primitives::effect::effect_params::{EffectParam, EffectParams, ParamType};
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
@@ -444,27 +444,22 @@ fn a_load_replaces_and_a_refused_reload_keeps_the_last() {
     let valid = ring_wgsl(RING_PARAMS, RING_ENTRY);
     registry.load(RING, &ring(valid.clone())).unwrap();
     assert_eq!(registry.power_saver_of(RING), Some(ReducedName::Same));
+    registry.load(THIN_RING, &ring(valid.clone())).unwrap();
+    let thin = ReducedName::Effect(registry.id_of_name(THIN_RING));
     registry
         .load(
             RING,
             &ring(valid).power_saver(ReducedPaint::Effect(THIN_RING)),
         )
         .unwrap();
-    assert_eq!(
-        registry.power_saver_of(RING),
-        Some(ReducedName::Effect(
-            ErasedEffectName::new("thin ring").unwrap()
-        ))
-    );
+    assert_eq!(registry.power_saver_of(RING), Some(thin));
 
     let refused = registry.load(RING, &ring("fn effect(").power_saver(ReducedPaint::Nothing));
     assert!(matches!(refused, Err(EffectError::Parse { .. })));
     assert!(registry.contains(RING));
     assert_eq!(
         registry.power_saver_of(RING),
-        Some(ReducedName::Effect(
-            ErasedEffectName::new("thin ring").unwrap()
-        )),
+        Some(thin),
         "the effect before the refused reload"
     );
 }
@@ -481,7 +476,7 @@ fn the_stock_ripples_hold_their_reserved_names() {
     );
     assert_eq!(
         registry.power_saver_of(EffectName::SPARKLE),
-        Some(ReducedName::Effect(EffectName::RIPPLE.erased()))
+        Some(ReducedName::Effect(registry.id_of_name(EffectName::RIPPLE)))
     );
     let reserved = EffectName::<Ring>::named("palantir.ring").unwrap();
     let refused = registry.load(reserved, &ring(ring_wgsl(RING_PARAMS, RING_ENTRY)));
@@ -1461,20 +1456,20 @@ fn reduced_motion_holds_a_decorative_effect() {
 
 /// While power is reduced each effect paints what its source named: `blend` paints `lite`,
 /// `gone` paints nothing, and `lite` itself, `Same`, paints as itself. With full power each
-/// paints as itself: ids 0, 2 and 1 in load order `blend`, `lite`, `gone`.
+/// paints as itself: ids 1, 2 and 0 in load order `lite`, `blend`, `gone`.
 #[test]
 fn reduced_power_paints_each_alternative() {
     let lite: EffectName<Blend> = EffectName::named("lite").unwrap();
     let gone: EffectName<Blend> = EffectName::named("gone").unwrap();
     let mut h = Harness::mono(UVec2::new(16, 16));
     h.ui()
+        .load_effect(lite, EffectSource::new(BLEND_WGSL))
+        .unwrap();
+    h.ui()
         .load_effect(
             BLEND,
             EffectSource::new(BLEND_WGSL).power_saver(ReducedPaint::Effect(lite)),
         )
-        .unwrap();
-    h.ui()
-        .load_effect(lite, EffectSource::new(BLEND_WGSL))
         .unwrap();
     h.ui()
         .load_effect(
@@ -1490,35 +1485,31 @@ fn reduced_power_paints_each_alternative() {
     h.frame(record);
     let ids =
         |h: &Harness| -> Vec<EffectId> { effect_draws(h).iter().map(|&(id, _)| id).collect() };
-    assert_eq!(ids(&h), [app(0), app(2), app(1)]);
+    assert_eq!(ids(&h), [app(1), app(2), app(0)]);
     h.set_system_power_reduced(true);
     h.frame(record);
-    assert_eq!(ids(&h), [app(1), app(1)]);
+    assert_eq!(ids(&h), [app(0), app(0)]);
     h.set_system_power_reduced(false);
     h.frame(record);
-    assert_eq!(ids(&h), [app(0), app(2), app(1)], "back at full power");
+    assert_eq!(ids(&h), [app(1), app(2), app(0)], "back at full power");
 }
 
-/// What an effect's paint cannot be panics as the shape is added: an alternative nothing loaded,
-/// or one loaded later with other types, while power is reduced; a clock-only animation on a
-/// shape that reads no time.
+/// An alternative is held at the load, on every machine, not where it paints, which only one
+/// that reduces power would reach: one nothing loaded yet panics there naming the preference, and
+/// so does one loaded with other types. A clock-only animation on a shape that reads no time
+/// panics as it is added.
 #[test]
 fn an_effect_that_cannot_paint_panics() {
     let missing: EffectName<Blend> = EffectName::named("missing").unwrap();
-    let mut h = Harness::mono(UVec2::new(16, 16));
-    h.ui()
-        .load_effect(
-            BLEND,
-            EffectSource::new(BLEND_WGSL).power_saver(ReducedPaint::Effect(missing)),
-        )
-        .unwrap();
-    h.set_system_power_reduced(true);
+    let h = Harness::mono(UVec2::new(16, 16));
     assert_panics_with(
-        "no effect is loaded under `missing`, the power-saver alternative of `blend`",
+        "no effect is loaded under `missing`, the power-saver alternative of `blend`: load it \
+         first",
         || {
-            h.frame(|ui| {
-                ui.add_shape(Shape::rect(), EffectPaint::new(BLEND, BLUE));
-            })
+            h.ui().load_effect(
+                BLEND,
+                EffectSource::new(BLEND_WGSL).power_saver(ReducedPaint::Effect(missing)),
+            )
         },
     );
     let untyped: EffectName<()> = EffectName::named("missing").unwrap();
@@ -1527,9 +1518,10 @@ fn an_effect_that_cannot_paint_panics() {
         .load_effect(untyped, EffectSource::new(plain))
         .unwrap();
     assert_panics_with("effect `missing` was loaded as", || {
-        h.frame(|ui| {
-            ui.add_shape(Shape::rect(), EffectPaint::new(BLEND, BLUE));
-        })
+        h.ui().load_effect(
+            BLEND,
+            EffectSource::new(BLEND_WGSL).power_saver(ReducedPaint::Effect(missing)),
+        )
     });
 
     let mut h = blend_window();
@@ -1762,8 +1754,8 @@ fn an_image_lost_with_its_device_paints_nothing_until_written_again() {
 }
 
 /// An effect paint binds as many images as the effect it paints declares: one image for two slots
-/// panics with both counts as it is added; so does a power-saver alternative of other slots, at the
-/// load when it is loaded already, and at the paint while power is reduced when it loads later.
+/// panics with both counts as it is added; so does a power-saver alternative of other slots, at
+/// its namer's load, and a reload of the alternative to other slots, at that reload.
 #[test]
 fn an_effect_paint_binds_as_many_images_as_its_effect_declares() {
     let mut h = Harness::mono(UVec2::new(8, 8));
@@ -1801,28 +1793,23 @@ fn an_effect_paint_binds_as_many_images_as_its_effect_declares() {
             )
         },
     );
-    let later: EffectName<()> = EffectName::named("later").unwrap();
+    let twin: EffectName<()> = EffectName::named("twin").unwrap();
+    h.ui()
+        .load_effect(twin, EffectSource::new(PAIR_WGSL).image_slots(2))
+        .unwrap();
     h.ui()
         .load_effect(
             PAIR,
             EffectSource::new(PAIR_WGSL)
                 .image_slots(2)
-                .power_saver(ReducedPaint::Effect(later)),
+                .power_saver(ReducedPaint::Effect(twin)),
         )
         .unwrap();
-    h.ui()
-        .load_effect(later, EffectSource::new(one_image).image_slots(1))
-        .unwrap();
-    h.set_system_power_reduced(true);
     assert_panics_with(
-        "`pair` paints an effect that binds 1 images, and the paint binds 2",
+        "effect `pair` binds 2 images, and `twin`, which paints in its place, 1",
         || {
-            h.frame(|ui| {
-                ui.add_shape(
-                    Shape::rect(),
-                    EffectPaint::new(PAIR, ()).images([red.clone(), red.clone()]),
-                );
-            })
+            h.ui()
+                .load_effect(twin, EffectSource::new(one_image).image_slots(1))
         },
     );
 }
@@ -2172,13 +2159,18 @@ fn a_backdrop_effect_blurs_as_a_material() {
 /// Each preference picks its own alternative, motion's over power's: an effect whose source names
 /// one for each paints itself with nothing reduced, power's with power reduced, and motion's with
 /// motion and power. Transparency names none: a color effect paints itself while it is reduced. An
-/// alternative nothing loaded panics with the preference that named it.
+/// alternative nothing loaded panics at the load with the preference that named it.
 #[test]
 fn each_reduction_paints_its_alternative_in_order() {
     let names = ["base", "still", "saver"]
         .map(|name| -> EffectName<Blend> { EffectName::named(name).unwrap() });
     let [base, still, saver] = names;
     let mut h = Harness::mono(UVec2::new(16, 16));
+    for name in [still, saver] {
+        h.ui()
+            .load_effect(name, EffectSource::new(BLEND_WGSL))
+            .unwrap();
+    }
     h.ui()
         .load_effect(
             base,
@@ -2187,44 +2179,63 @@ fn each_reduction_paints_its_alternative_in_order() {
                 .power_saver(ReducedPaint::Effect(saver)),
         )
         .unwrap();
-    for name in [still, saver] {
-        h.ui()
-            .load_effect(name, EffectSource::new(BLEND_WGSL))
-            .unwrap();
-    }
     let painted = |h: &mut Harness| {
         h.frame(|ui| {
             ui.add_shape(Shape::rect(), EffectPaint::new(base, BLUE));
         });
         effect_draws(h)[0].0
     };
-    assert_eq!(painted(&mut h), app(0));
+    assert_eq!(painted(&mut h), app(2));
     h.ui_mut().set_preferences(UiPreferences {
         transparency: Preference::Fixed(Reduction::Reduced),
         ..UiPreferences::default()
     });
-    assert_eq!(painted(&mut h), app(0), "transparency names none");
+    assert_eq!(painted(&mut h), app(2), "transparency names none");
     h.ui_mut().set_preferences(UiPreferences::default());
     h.set_system_power_reduced(true);
-    assert_eq!(painted(&mut h), app(2), "power");
+    assert_eq!(painted(&mut h), app(1), "power");
     h.set_system_motion_reduced(true);
-    assert_eq!(painted(&mut h), app(1), "motion over power");
+    assert_eq!(painted(&mut h), app(0), "motion over power");
 
     let gone: EffectName<Blend> = EffectName::named("gone").unwrap();
-    h.ui()
-        .load_effect(
-            base,
-            EffectSource::new(BLEND_WGSL).reduced_motion(ReducedPaint::Effect(gone)),
-        )
-        .unwrap();
     assert_panics_with(
         "no effect is loaded under `gone`, the reduced-motion alternative of `base`",
         || {
-            h.frame(|ui| {
-                ui.add_shape(Shape::rect(), EffectPaint::new(base, BLUE));
-            })
+            h.ui().load_effect(
+                base,
+                EffectSource::new(BLEND_WGSL).reduced_motion(ReducedPaint::Effect(gone)),
+            )
         },
     );
+}
+
+/// An effect may name itself as an alternative, on its first load too, and paints itself where it
+/// does: under reduced motion here, which wins over power's `Nothing`; a reload keeps its id.
+#[test]
+fn an_effect_that_names_itself_paints_itself() {
+    let base: EffectName<Blend> = EffectName::named("selfish").unwrap();
+    let mut h = Harness::mono(UVec2::new(16, 16));
+    let source = || {
+        EffectSource::new(BLEND_WGSL)
+            .reduced_motion(ReducedPaint::Effect(base))
+            .power_saver(ReducedPaint::Nothing)
+    };
+    h.ui().load_effect(base, source()).unwrap();
+    h.set_system_power_reduced(true);
+    h.set_system_motion_reduced(true);
+    let painted = |h: &mut Harness| {
+        h.frame(|ui| {
+            ui.add_shape(Shape::rect(), EffectPaint::new(base, BLUE));
+        });
+        effect_draws(h).first().map(|&(id, _)| id)
+    };
+    assert_eq!(
+        painted(&mut h),
+        Some(app(0)),
+        "motion's own name wins over power's nothing"
+    );
+    h.ui().load_effect(base, source()).unwrap();
+    assert_eq!(painted(&mut h), Some(app(0)), "reloaded at the same id");
 }
 
 /// `effect_backdrop` is a backdrop effect's alone: the same text loads as a backdrop effect and

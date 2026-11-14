@@ -144,22 +144,13 @@ pub(crate) struct ResolvedEffect {
     pub(crate) image_slots: u8,
 }
 
-/// [`ReducedPaint`] with the alternative's types checked at the load.
+/// [`ReducedPaint`] resolved at the load: the alternative is loaded by then, with the types and
+/// images it was checked against, so it is held by the id its name holds.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ReducedName {
     Same,
-    Effect(ErasedEffectName),
+    Effect(EffectId),
     Nothing,
-}
-
-impl ReducedName {
-    const fn of<U: EffectParams, K: EffectKind>(paint: ReducedPaint<U, K>) -> Self {
-        match paint {
-            ReducedPaint::Same => Self::Same,
-            ReducedPaint::Effect(other) => Self::Effect(other.erased()),
-            ReducedPaint::Nothing => Self::Nothing,
-        }
-    }
 }
 
 /// A deviceless recorder's registry: the stock effects, compiled nowhere.
@@ -194,8 +185,9 @@ impl EffectRegistry {
     ///
     /// # Panics
     ///
-    /// When `name`, or an alternative its source names, was loaded before with another parameter
-    /// type or kind, or the alternative with other image slots.
+    /// When `name` was loaded before with another parameter type or kind; when an alternative its
+    /// source names is not loaded, or with other types or image slots; when a reload of `name`
+    /// changes the image slots of an alternative another effect paints in its place.
     pub(crate) fn load<U: EffectParams, K: EffectKind>(
         &self,
         name: EffectName<U, K>,
@@ -230,8 +222,13 @@ impl EffectRegistry {
         self.record(*name, source, module);
     }
 
-    /// Panic unless `name`, and each alternative `source` names that is loaded, takes the types
-    /// it was loaded with, the alternative its images too.
+    /// Panic unless `name` takes the types it was loaded with, each alternative `source` names is
+    /// loaded with the same types and images, as its shapes pass both, and a reload of `name`
+    /// keeps the images of each effect it paints in place of.
+    ///
+    /// The alternative is held at the load, not where it paints: a missing one would panic only
+    /// on a machine whose person reduces motion or power, which a developer may never run.
+    /// Refused: an alternative loaded later, checked as it paints, as before.
     #[track_caller]
     fn hold_types<U: EffectParams, K: EffectKind>(
         &self,
@@ -239,29 +236,51 @@ impl EffectRegistry {
         source: &EffectSource<U, K>,
     ) {
         let types = EffectTypes::of::<U, K>();
-        {
-            let effects = self.effects.borrow();
-            if let Some(loaded) = effects.get(name.erased()) {
-                assert_types(name.name(), loaded.types, types);
+        let effects = self.effects.borrow();
+        if let Some(&id) = effects.ids.get(&name.erased()) {
+            assert_types(name.name(), effects.loaded[id.idx()].types, types);
+            // An effect that paints this one in its place bound the images it has now.
+            // An effect that names itself is checked below, by the source that replaces it.
+            for (namer, loaded) in effects.ids.iter().filter_map(|(namer, other)| {
+                let loaded = &effects.loaded[other.idx()];
+                (*other != id && loaded.alternatives.contains(&ReducedName::Effect(id)))
+                    .then_some((namer, loaded))
+            }) {
+                assert!(
+                    loaded.image_slots == source.image_slots,
+                    "effect `{}` binds {} images, and `{}`, which paints in its place, {}",
+                    namer.as_str(),
+                    loaded.image_slots,
+                    name.name(),
+                    source.image_slots,
+                );
             }
-            // An alternative loaded already is held to the same types and images now, as its
-            // shapes pass both; one loaded later is held to them where it paints in place of this
-            // one.
-            for paint in source.alternatives() {
-                if let ReducedPaint::Effect(other) = paint
-                    && let Some(loaded) = effects.get(other.erased())
-                {
-                    assert_types(other.name(), loaded.types, types);
-                    assert!(
-                        loaded.image_slots == source.image_slots,
-                        "effect `{}` binds {} images, and `{}`, which paints in its place, {}",
-                        other.name(),
-                        loaded.image_slots,
-                        name.name(),
-                        source.image_slots,
-                    );
-                }
+        }
+        for (by, paint) in ReducedBy::ALL.into_iter().zip(source.alternatives()) {
+            // An effect that names itself paints the source loading now, which holds itself.
+            let ReducedPaint::Effect(other) = paint else {
+                continue;
+            };
+            if other.erased() == name.erased() {
+                continue;
             }
+            let loaded = effects.get(other.erased()).unwrap_or_else(|| {
+                panic!(
+                    "no effect is loaded under `{}`, the {} alternative of `{}`: load it first",
+                    other.name(),
+                    by.name(),
+                    name.name(),
+                )
+            });
+            assert_types(other.name(), loaded.types, types);
+            assert!(
+                loaded.image_slots == source.image_slots,
+                "effect `{}` binds {} images, and `{}`, which paints in its place, {}",
+                other.name(),
+                loaded.image_slots,
+                name.name(),
+                source.image_slots,
+            );
         }
     }
 
@@ -273,15 +292,22 @@ impl EffectRegistry {
         source: &EffectSource<U, K>,
         module: &EffectModule,
     ) {
-        let id = self.effects.borrow_mut().insert(
-            name.erased(),
-            LoadedEffect {
+        let id = self
+            .effects
+            .borrow_mut()
+            .insert(name.erased(), |ids| LoadedEffect {
                 types: EffectTypes::of::<U, K>(),
                 image_slots: source.image_slots,
-                alternatives: source.alternatives().map(ReducedName::of),
+                alternatives: source.alternatives().map(|paint| match paint {
+                    ReducedPaint::Same => ReducedName::Same,
+                    ReducedPaint::Effect(other) => ReducedName::Effect(
+                        *ids.get(&other.erased())
+                            .expect("`hold_types` found the alternative loaded, or it is this one"),
+                    ),
+                    ReducedPaint::Nothing => ReducedName::Nothing,
+                }),
                 material: MaterialFacts::of(source),
-            },
-        );
+            });
         if let Some(store) = &self.store {
             store.register(id, module);
             if source.build == EffectBuild::Now {
@@ -298,9 +324,8 @@ impl EffectRegistry {
     }
 
     /// Want the effect loaded under `name` built before the next frame draws, with each
-    /// alternative its source names that is loaded now, as a theme that names it does: no frame
-    /// after builds them again, whatever it reduces. An alternative loaded later builds where it
-    /// first paints.
+    /// alternative its source names, as a theme that names it does: no frame after builds them
+    /// again, whatever it reduces.
     ///
     /// # Panics
     ///
@@ -314,7 +339,7 @@ impl EffectRegistry {
         self.want_id(id);
     }
 
-    /// Want `id` built, with each alternative its source names that is loaded now.
+    /// Want `id` built, with each alternative its source names.
     fn want_id(&self, id: EffectId) {
         let Some(store) = &self.store else {
             return;
@@ -322,10 +347,8 @@ impl EffectRegistry {
         store.want(id);
         let effects = self.effects.borrow();
         for alternative in effects.loaded[id.idx()].alternatives {
-            if let ReducedName::Effect(other) = alternative
-                && let Some(&other_id) = effects.ids.get(&other)
-            {
-                store.want(other_id);
+            if let ReducedName::Effect(other) = alternative {
+                store.want(other);
             }
         }
     }
@@ -351,9 +374,9 @@ impl EffectRegistry {
     ///
     /// # Panics
     ///
-    /// When no effect is loaded under `name`, or under the alternative it paints in place of it,
-    /// or one is loaded with another parameter type or kind: a shape that names an effect nothing
-    /// loaded is a logic error, as painting nothing would be quietly wrong.
+    /// When no effect is loaded under `name`, or one with another parameter type or kind: a shape
+    /// that names an effect nothing loaded is a logic error, as painting nothing would be quietly
+    /// wrong.
     #[track_caller]
     pub(crate) fn resolve(
         &self,
@@ -363,7 +386,7 @@ impl EffectRegistry {
         let id = self
             .id_of(name)
             .unwrap_or_else(|| panic!("no effect is loaded under `{}`", name.name.as_str()));
-        let painted = self.painted(id, name.name, reductions)?;
+        let painted = self.painted(id, reductions)?;
         Some(ResolvedEffect {
             id: painted,
             image_slots: self.effects.borrow().loaded[painted.idx()].image_slots,
@@ -406,10 +429,10 @@ impl EffectRegistry {
     ///
     /// # Panics
     ///
-    /// When nothing is loaded under the material's effect, or under the alternative it paints in
-    /// place of it, or the effect is no material's, or takes another count of lanes than the
-    /// material holds: a material that cannot paint is a logic error, as painting nothing would
-    /// be quietly wrong.
+    /// When nothing is loaded under the material's effect, or the effect is no material's, or
+    /// takes another count of lanes than the material holds: a material that cannot paint is a
+    /// logic error, as painting nothing would be quietly wrong. An alternative it paints in place
+    /// of shares its types and images, so it is a material's too.
     #[track_caller]
     pub(crate) fn resolve_material(
         &self,
@@ -432,7 +455,7 @@ impl EffectRegistry {
             );
             id
         };
-        let painted = self.painted(id, name, reductions)?;
+        let painted = self.painted(id, reductions)?;
         let effects = self.effects.borrow();
         let facts = Self::facts(&effects, painted, name);
         Some(ResolvedMaterial {
@@ -446,8 +469,7 @@ impl EffectRegistry {
     ///
     /// # Panics
     ///
-    /// When the effect is no material's, as an alternative loaded after the effect that names it
-    /// may be.
+    /// When the effect is no material's.
     #[track_caller]
     fn facts(effects: &Effects, id: EffectId, name: ErasedEffectName) -> &MaterialFacts {
         effects.loaded[id.idx()].material.as_ref().unwrap_or_else(|| {
@@ -461,51 +483,22 @@ impl EffectRegistry {
         })
     }
 
-    /// The effect a shape that names `id`, loaded under `name`, paints: `id`, or the alternative
-    /// its source names for the first preference `reductions` reduces that names one, in
-    /// [`ReducedBy`]'s order; `None` when that is nothing.
-    ///
-    /// # Panics
-    ///
-    /// When no effect is loaded under the alternative, or one with other types.
-    #[track_caller]
-    fn painted(
-        &self,
-        id: EffectId,
-        name: ErasedEffectName,
-        reductions: Reductions,
-    ) -> Option<EffectId> {
+    /// The effect a shape that names `id` paints: `id`, or the alternative its source names for
+    /// the first preference `reductions` reduces that names one, in [`ReducedBy`]'s order; `None`
+    /// when that is nothing. The load held the alternative to the effect's types and images.
+    fn painted(&self, id: EffectId, reductions: Reductions) -> Option<EffectId> {
         let effects = self.effects.borrow();
-        let loaded = &effects.loaded[id.idx()];
-        let Some((by, alternative)) =
-            ReducedBy::ALL
-                .into_iter()
-                .zip(loaded.alternatives)
-                .find(|&(by, alternative)| {
-                    alternative != ReducedName::Same && by.is_reduced_in(reductions)
-                })
-        else {
-            return Some(id);
-        };
+        let alternative = ReducedBy::ALL
+            .into_iter()
+            .zip(effects.loaded[id.idx()].alternatives)
+            .find(|&(by, alternative)| {
+                alternative != ReducedName::Same && by.is_reduced_in(reductions)
+            })
+            .map_or(ReducedName::Same, |(_, alternative)| alternative);
         match alternative {
-            ReducedName::Same => unreachable!("only an alternative of its own is found"),
+            ReducedName::Same => Some(id),
             ReducedName::Nothing => None,
-            ReducedName::Effect(other) => {
-                let other_id = *effects.ids.get(&other).unwrap_or_else(|| {
-                    panic!(
-                        "no effect is loaded under `{}`, the {} alternative of `{}`",
-                        other.as_str(),
-                        by.name(),
-                        name.as_str()
-                    )
-                });
-                assert_types(
-                    other.as_str(),
-                    effects.loaded[other_id.idx()].types,
-                    loaded.types,
-                );
-                Some(other_id)
-            }
+            ReducedName::Effect(other) => Some(other),
         }
     }
 
@@ -527,10 +520,16 @@ impl Effects {
         self.ids.get(&name).map(|id| &self.loaded[id.idx()])
     }
 
-    /// Hold `effect` under `name`, at the id the name holds, or at a new one for a new name.
-    fn insert(&mut self, name: ErasedEffectName, effect: LoadedEffect) -> EffectId {
+    /// Hold the effect `effect` builds under `name`, at the id the name holds, or at a new one for
+    /// a new name; `effect` reads the ids with `name`'s already in, so an effect can name itself.
+    fn insert(
+        &mut self,
+        name: ErasedEffectName,
+        effect: impl FnOnce(&FxHashMap<ErasedEffectName, EffectId>) -> LoadedEffect,
+    ) -> EffectId {
         let next = EffectId(u32::try_from(self.loaded.len()).expect("fewer than 2³² effects"));
         let id = *self.ids.entry(name).or_insert(next);
+        let effect = effect(&self.ids);
         if id == next {
             self.loaded.push(effect);
         } else {
@@ -554,8 +553,17 @@ pub(crate) mod internals {
     use crate::primitives::effect::effect_kind::EffectKind;
     use crate::primitives::effect::effect_name::EffectName;
     use crate::primitives::effect::effect_params::EffectParams;
+    use crate::primitives::identity::effect_id::EffectId;
 
     impl EffectRegistry {
+        /// The id `name` holds.
+        pub(crate) fn id_of_name<U: EffectParams, K: EffectKind>(
+            &self,
+            name: EffectName<U, K>,
+        ) -> EffectId {
+            self.id_of(name.checked()).expect("the name is loaded")
+        }
+
         /// The power-saver alternative loaded under `name`; `None` when nothing is loaded.
         pub(crate) fn power_saver_of<U: EffectParams, K: EffectKind>(
             &self,

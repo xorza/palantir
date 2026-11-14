@@ -39,7 +39,8 @@ struct RawMark {
 #[derive(Clone, Debug)]
 struct MarkRun {
     /// The mark's position plus one, or `0` for the rects before every mark, which stand before
-    /// every backdrop: a run counts for a backdrop at `position` when `key <= position`.
+    /// every backdrop: a run counts for a backdrop at `position` when `key <= position`. A mark at
+    /// [`BackdropWalk::BEFORE_EVERY`] keys 1, at or below every row's position.
     key: u64,
     rects: Range<u32>,
     bounds: Rect,
@@ -63,10 +64,16 @@ pub(super) struct BackdropWalk {
 }
 
 impl BackdropWalk {
+    /// The position of rects that stand before every backdrop, as the removed-widget tail's, whose
+    /// rows have no place this frame. Below every row's position and every one just before a row.
+    pub(super) const BEFORE_EVERY: u64 = 0;
+
     /// The paint-order position of row `row` of the plane `ord`th in paint order: planes in order,
-    /// rows in order within one, each row at an even position.
+    /// rows in order within one, each row at an even position from 2, so the odd one below each is
+    /// free for the place just before it, the first row's included, and 0 for
+    /// [`Self::BEFORE_EVERY`]. `2 * row + 2` for any `u32` row stays below `1 << 34`.
     pub(super) const fn position(ord: usize, row: u32) -> u64 {
-        ((ord as u64) << 33) | (2 * row as u64)
+        ((ord as u64) << 34) | (2 * row as u64 + 2)
     }
 
     /// The position of a node's rects: its first row's, or, for a node painting no row, just
@@ -74,7 +81,7 @@ impl BackdropWalk {
     pub(super) const fn node_position(ord: usize, span: Span) -> u64 {
         let position = Self::position(ord, span.start);
         if span.len == 0 {
-            position.saturating_sub(1)
+            position - 1
         } else {
             position
         }
@@ -97,7 +104,7 @@ impl BackdropWalk {
     /// The position of a row a node no longer paints: just before its first current row, as it
     /// stood somewhere before every row after it.
     pub(super) const fn gone_position(ord: usize, span: Span) -> u64 {
-        Self::position(ord, span.start).saturating_sub(1)
+        Self::position(ord, span.start) - 1
     }
 
     /// Whether the frame has backdrops, so the rects pushed take marks.
@@ -289,6 +296,7 @@ pub(crate) mod internals {
 #[cfg(test)]
 mod tests {
     use crate::cascade::plane_backdrop::PlaneBackdrop;
+    use crate::common::span::Span;
     use crate::damage::backdrop_walk::BackdropWalk;
     use crate::damage::dirty_backdrops::DirtyBackdrops;
     use crate::primitives::geometry::rect::Rect;
@@ -360,6 +368,65 @@ mod tests {
             stale(&[(None, 2.0), (Some(25), 102.0)]),
             DirtyBackdrops::from_iter([key(0)]),
             "before every mark",
+        );
+    }
+
+    /// Every place a mark takes at the first row of the lowest plane is ordered: before every
+    /// backdrop (0), a removed node's and an empty one's just before the row (1), the row (2). So
+    /// a rect marked before every backdrop stales one at that first row, as the removed-widget
+    /// tail must, and one marked at the row itself does not.
+    #[test]
+    fn the_first_row_stands_after_every_place_before_it() {
+        let empty = Span::new(0, 0);
+        let first = BackdropWalk::position(0, 0);
+        assert_eq!(
+            [
+                BackdropWalk::BEFORE_EVERY,
+                BackdropWalk::gone_position(0, empty),
+                BackdropWalk::node_position(0, empty),
+                BackdropWalk::node_position(0, Span::new(0, 1)),
+                first,
+            ],
+            [0, 1, 1, 2, 2]
+        );
+        assert_eq!(
+            BackdropWalk::position(1, u32::MAX),
+            (1 << 34) | (1 << 33),
+            "the largest row stays inside its plane"
+        );
+
+        let staled = |mark: u64| {
+            let rect = Rect::new(0.0, 0.0, 10.0, 10.0);
+            let backdrop = PlaneBackdrop {
+                key: BackdropKey {
+                    owner: WidgetId::from_hash("first"),
+                    shape: 0,
+                },
+                row: 0,
+                paint_row: 0,
+                rect,
+                plan: BlurPlan::new(1.0),
+                footprint: rect,
+            };
+            let mut keys = BackdropKeys::default();
+            keys.refill([backdrop.key]);
+            let mut walk = BackdropWalk::default();
+            walk.start_over(&keys);
+            walk.start_over(&keys);
+            let mut rects = Vec::new();
+            walk.mark(rects.len(), mark);
+            rects.push(Rect::new(2.0, 2.0, 4.0, 4.0));
+            assert!(walk.walk_over(&[(first, backdrop)], &mut rects));
+            walk.dirty().contains(backdrop.key)
+        };
+        assert!(
+            staled(BackdropWalk::BEFORE_EVERY),
+            "the tail stands before it"
+        );
+        assert!(staled(BackdropWalk::gone_position(0, empty)));
+        assert!(
+            !staled(first),
+            "a rect at the row paints after the backdrop's capture"
         );
     }
 

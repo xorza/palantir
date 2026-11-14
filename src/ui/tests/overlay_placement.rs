@@ -1,6 +1,7 @@
 //! Anchored side-layer placement through the published surface, as an outside widget would use it.
 
 use crate::host::harness::Harness;
+use crate::internals::panic_probe;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::anchor::Anchor;
@@ -9,6 +10,7 @@ use crate::scene::layer::Layer;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
+use crate::widgets::popup::Popup;
 use glam::{UVec2, Vec2};
 
 const SURFACE: UVec2 = UVec2::new(400, 300);
@@ -117,5 +119,32 @@ fn a_layer_raised_from_a_disabled_scope_is_disabled() {
             disabled,
             "through the cascade, disabled {disabled}"
         );
+    }
+}
+
+/// `Layer::Main` is no overlay: a scope there would record as ordinary content and drop its
+/// placement, so both doors to a layer refuse it, and every other layer opens.
+#[test]
+fn main_is_refused_as_an_overlay_layer() {
+    let mut h = Harness::mono(SURFACE);
+    panic_probe::assert_panics_with(Layer::MAIN_IS_NO_OVERLAY, || {
+        h.frame(|ui| {
+            ui.layer(Layer::Main)
+                .fixed_at(Vec2::new(10.0, 10.0))
+                .show(body);
+        });
+    });
+    panic_probe::assert_panics_with(Layer::MAIN_IS_NO_OVERLAY, || {
+        Popup::new().layer(Layer::Main)
+    });
+    for layer in Layer::PAINT_ORDER
+        .into_iter()
+        .filter(|&layer| layer != Layer::Main)
+    {
+        let mut h = Harness::mono(SURFACE);
+        h.frame(|ui| {
+            ui.layer(layer).fixed_at(Vec2::new(10.0, 10.0)).show(body);
+        });
+        assert_eq!(h.ui().tree(layer).roots.len(), 1, "{layer:?}");
     }
 }

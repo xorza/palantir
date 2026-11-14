@@ -258,6 +258,7 @@ pub(crate) fn note(ui: &mut Ui, k: Kit, text: &'static str) {
         .show(ui);
 }
 
+#[track_caller]
 pub(crate) fn row(ui: &mut Ui, body: impl FnOnce(&mut Ui)) {
     Panel::hstack()
         .auto_id()

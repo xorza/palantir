@@ -33,6 +33,10 @@ pub enum Layer {
 impl Layer {
     pub(crate) const COUNT: usize = 7;
 
+    /// The refusal of an overlay asked for in [`Self::Main`].
+    pub(crate) const MAIN_IS_NO_OVERLAY: &str =
+        "an overlay records above `Layer::Main`, which is ordinary content";
+
     /// Every layer, back to front. Hit order is reversed. Held to the discriminants by the assertion below.
     pub(crate) const PAINT_ORDER: [Self; Self::COUNT] = [
         Self::Main,

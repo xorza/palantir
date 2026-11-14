@@ -2,7 +2,8 @@ use crate::diagnostics::gpu_pass_stats::{BackdropTimes, BatchKind, GpuPassStats}
 use crate::gpu::device::device_requirements::DeviceRequirements;
 use crate::gpu::device::gpu_wait::GpuWait;
 use crate::gpu::frame::gpu_timings::query_tracer::{
-    BACKDROP_IDX, COPY_OUT_IDX, MAX_TIMESTAMPS, Publisher, QUERY_COUNT, QueryTracer, maps_landed,
+    BACKDROP_IDX, COPY_OUT_IDX, LAG_FRAMES, MAX_TIMESTAMPS, Publisher, QUERY_COUNT, QueryTracer,
+    maps_landed,
 };
 use crate::gpu::frame::main_segment::MainSegment;
 use crate::gpu::resource::map_state::MapState;
@@ -192,6 +193,61 @@ fn a_frame_publishes_after_the_next_frame_resolved_it() {
         sink.last_pass().is_some(),
         "the second frame resolved the first, which published"
     );
+}
+
+/// On the frame path the queue's callbacks run inside a submit alone, so a slot is busy from its
+/// frame's write to the publish [`LAG_FRAMES`] frames later. Each frame here runs the callbacks of
+/// the work before it just ahead of its own submit, as that submit would, and every frame of a
+/// long run still finds a slot; the first publishes on frame [`LAG_FRAMES`]. Skipped on an adapter
+/// without timestamps.
+#[test]
+fn every_frame_is_measured_when_callbacks_land_only_in_a_submit() {
+    let test_gpu = test_gpu::headless_test_gpu();
+    let features = (test_gpu.device.features() & DeviceRequirements::GPU_TIMING_FEATURES)
+        .difference(wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES);
+    if !features.contains(wgpu::Features::TIMESTAMP_QUERY) {
+        return;
+    }
+    let gpu = &*test_gpu;
+    let mut tracer = QueryTracer::new(gpu, gpu.queue.get_timestamp_period(), features);
+    let target = test_gpu.target("palantir.test.query_tracer", glam::UVec2::splat(64));
+    let mut sink = GpuPassStats::default();
+    let mut first_publish = None;
+    for frame in 0..4 * LAG_FRAMES {
+        let mut encoder = gpu
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        assert!(
+            tracer.pass_writes(MainSegment::Whole).is_some(),
+            "frame {frame} finds a slot"
+        );
+        drop(encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: None,
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: target.view(),
+                resolve_target: None,
+                depth_slice: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            timestamp_writes: tracer.pass_writes(MainSegment::Whole),
+            occlusion_query_set: None,
+            multiview_mask: None,
+        }));
+        tracer.finish(&mut encoder);
+        // What this frame's submit runs before it sends the frame: the callbacks of the work
+        // done before it.
+        assert_eq!(gpu.wait_until(&|| tracer.callbacks_landed()), GpuWait::Done);
+        gpu.queue.submit([encoder.finish()]);
+        tracer.after_submit(gpu, &mut sink);
+        if first_publish.is_none() && sink.last_pass().is_some() {
+            first_publish = Some(frame);
+        }
+    }
+    assert_eq!(first_publish, Some(LAG_FRAMES));
 }
 
 /// A main pass broken at a backdrop timestamps the break's start and end, and the segment between

@@ -5,7 +5,7 @@
 //! - `TIMESTAMP_QUERY_INSIDE_ENCODERS` brackets the backbuffer copy-out at [`COPY_OUT_IDX`], published as [`GpuPassStats::last_copy_out`], and each backdrop break's captures and blurs at [`BACKDROP_IDX`], published as their sums.
 //!
 //! A frame's queries resolve in a later frame, once the queue said the frame's work is done, and
-//! read back after that frame completes: publishing lags two frames. A Metal device on a recent macOS
+//! read back after that frame completes: publishing lags [`LAG_FRAMES`] frames. A Metal device on a recent macOS
 //! reads a timestamp resolved in the command buffer that wrote it, or in one submitted
 //! before the CPU learned it completed, as the value written before it (wgpu #9414); resolving
 //! after the work-done callback reads right on every backend.
@@ -50,9 +50,16 @@ const STATS_QUERY_BYTES: u64 = STATS_FIELD_COUNT as u64 * BYTES_PER_U64;
 const MAX_STATS_PASSES: u32 = 16;
 const STATS_BUFFER_BYTES: u64 = MAX_STATS_PASSES as u64 * STATS_QUERY_BYTES;
 
-/// Slots in rotation: one the recorded frame writes, one whose frame waits for the queue, one whose
-/// resolve maps; with every slot busy a frame goes unmeasured.
-const SLOTS: usize = 3;
+/// Frames from a frame's write to its publish where the queue's callbacks run inside a submit
+/// alone, as the frame path runs them: frame `f`'s work-done callback lands in submit `f + 1`,
+/// `finish(f + 2)` resolves its slot and `after_submit(f + 2)` maps it, the map lands in submit
+/// `f + 3`, and `after_submit(f + 3)` publishes and frees the slot.
+const LAG_FRAMES: usize = 3;
+
+/// Slots in rotation: a slot is busy from its frame's write to its publish, so the frame after the
+/// publish finds it free. A GPU slower than a frame finds every slot busy, and that frame goes
+/// unmeasured: the newest is dropped, as wgpu-profiler drops it, so the older ones still publish.
+const SLOTS: usize = LAG_FRAMES + 1;
 
 const PIPELINE_STATS_FLAGS: wgpu::PipelineStatisticsTypes =
     wgpu::PipelineStatisticsTypes::VERTEX_SHADER_INVOCATIONS
@@ -682,15 +689,20 @@ mod internals {
         /// Whether every callback the slots wait on has run: each submitted frame's work-done,
         /// and each resolving slot's maps. Another thread's poll can run them after a wait on the
         /// device returns, so a test waits for this through `Gpu::wait_until`.
+        /// Whether every callback the tracer asked the queue for has landed. A slot `finish`
+        /// closed and no submit sent yet asked for none.
         pub(super) fn callbacks_landed(&self) -> bool {
-            self.slots.iter().all(|slot| match slot.state {
-                SlotState::Submitted => slot.done.load(Acquire),
-                SlotState::Resolving => {
-                    slot.timestamps_map.is_idle()
-                        || maps_landed(&slot.timestamps_map, &slot.stats_map)
-                }
-                SlotState::Free | SlotState::Writing => true,
-            })
+            self.slots
+                .iter()
+                .enumerate()
+                .all(|(at, slot)| match slot.state {
+                    SlotState::Submitted => self.submitted == Some(at) || slot.done.load(Acquire),
+                    SlotState::Resolving => {
+                        slot.timestamps_map.is_idle()
+                            || maps_landed(&slot.timestamps_map, &slot.stats_map)
+                    }
+                    SlotState::Free | SlotState::Writing => true,
+                })
         }
     }
 }

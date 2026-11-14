@@ -65,9 +65,11 @@ impl ColorRamp {
     }
 
     /// The straight color `t` maps to, as the ramp interpolates it, before the bake rounds it
-    /// to f16; past either end stop, that stop's color. A curve split into pieces paints its
-    /// ramp through them with the colors at its split points.
+    /// to f16; past either end stop, that stop's color, and the first stop's for a NaN. A curve
+    /// split into pieces paints its ramp through them with the colors at its split points.
     pub fn color_at(&self, t: f32) -> RgbaF32 {
+        // A NaN passes both end tests and would blend to a NaN color.
+        let t = if t.is_nan() { 0.0 } else { t };
         let premultiplied = RampColors::of(self).at(t, &mut 1);
         if premultiplied.a <= 0.0 {
             return RgbaF32::TRANSPARENT;
@@ -203,6 +205,9 @@ mod tests {
         assert_eq!(linear.color_at(0.25), RgbaF32::new(0.25, 0.25, 0.25, 1.0));
         assert_eq!(linear.color_at(-1.0), RgbaF32::BLACK);
         assert_eq!(linear.color_at(2.0), RgbaF32::WHITE);
+        assert_eq!(linear.color_at(f32::NEG_INFINITY), RgbaF32::BLACK);
+        assert_eq!(linear.color_at(f32::INFINITY), RgbaF32::WHITE);
+        assert_eq!(linear.color_at(f32::NAN), RgbaF32::BLACK);
         let fade = ColorRamp::from([
             RgbaF32::new(1.0, 0.0, 0.0, 1.0),
             RgbaF32::new(0.0, 0.0, 1.0, 0.0),

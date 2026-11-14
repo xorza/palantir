@@ -242,12 +242,14 @@ mod tests {
         );
         // 2 + (10 − 2)·¼ = 4.
         assert_eq!(f32::lerp(&2.0, &10.0, 0.25), 4.0);
+        // Through the trait: `Vec2::lerp(a, b, t)` by value is glam's own, which is not exact
+        // at the end.
         assert_eq!(
-            Vec2::lerp(Vec2::new(0.32, 2.0), Vec2::new(1.32, 10.0), 1.0),
+            <Vec2 as Lerp>::lerp(&Vec2::new(0.32, 2.0), &Vec2::new(1.32, 10.0), 1.0),
             Vec2::new(1.32, 10.0)
         );
         assert_eq!(
-            Vec2::lerp(Vec2::new(0.0, 2.0), Vec2::new(4.0, 10.0), 0.25),
+            <Vec2 as Lerp>::lerp(&Vec2::new(0.0, 2.0), &Vec2::new(4.0, 10.0), 0.25),
             Vec2::new(1.0, 4.0)
         );
     }

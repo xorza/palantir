@@ -8,8 +8,7 @@ use std::sync::mpsc;
 use winit::event_loop::EventLoopProxy;
 
 use crate::host::winit::error::HostDisconnected;
-use crate::host::winit::frame_log::FrameLog;
-use crate::host::winit::frame_summary::FrameSummary;
+use crate::host::winit::frame_log::{FrameLog, LoggedFrame};
 use crate::host::winit::owned_input_event::OwnedInputEvent;
 use crate::host::winit::remote::{LoseTask, QueryTask, ReadTask, Remote, ShotAsk};
 use crate::host::winit::system_preferences::SystemReport;
@@ -132,18 +131,21 @@ impl<T: 'static> HostHandle<T> {
     }
 
     /// Delivers `event` to `window` before its next frame, as the window's OS input is, stamped
-    /// with the window's input clock, then runs a frame; [`FrameSummary::sent_events`] counts the
+    /// with the window's input clock, then runs a frame; the summary's
+    /// [`sent_events`](crate::host::winit::frame_summary::FrameSummary::sent_events) counts the
     /// event. Events reach the window in the order they are sent. Dropped silently unless the
-    /// window is open. Crate-private, so a [`Remote`], which counts what it sends,
-    /// is the one sender: input from another made its settle end early.
+    /// window is open. Crate-private, so a [`Remote`], which counts what it sends, is the one
+    /// sender: input from another made its settle end early.
     pub(crate) fn send_input(&self, window: WindowToken, event: OwnedInputEvent) {
         self.send(UserEvent::Input(window, event)).ok();
     }
 
-    /// The last frame `window` ran, [`FrameSummary::AT_OPEN`] until it runs one, or `None` when it
-    /// is not open: before it opens, after it closes, and once the loop ends. A window skips its
-    /// frames while hidden, so its summary holds still.
-    pub(crate) fn last_frame(&self, window: WindowToken) -> Option<FrameSummary> {
+    /// The last frame `window` ran,
+    /// [`FrameSummary::AT_OPEN`](crate::host::winit::frame_summary::FrameSummary::AT_OPEN) until it
+    /// runs one, with the opening that ran it, or `None` when it is not open: before it opens,
+    /// after it closes, and once the loop ends. A window skips its frames while hidden, so its
+    /// summary holds still.
+    pub(crate) fn last_frame(&self, window: WindowToken) -> Option<LoggedFrame> {
         self.frame_log.get(window)
     }
 

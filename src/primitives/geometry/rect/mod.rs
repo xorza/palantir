@@ -82,17 +82,11 @@ impl Rect {
         }
     }
 
-    /// A rect from two corners.
-    ///
-    /// # Panics
-    ///
-    /// Debug-asserts that `min` is componentwise `<= max`, unless a corner is NaN.
+    /// A rect from two corners. Total: a `max` below `min` on an axis gives a negative extent
+    /// there, which paints nothing, and a NaN corner is carried into the size, so a bound folded
+    /// from a NaN point reports it.
     #[inline]
     pub const fn from_min_max(min: Vec2, max: Vec2) -> Self {
-        // A NaN corner is expected under the AABB NaN contract (see [`Aabb`](aabb::Aabb)): it is carried into the bounds so the shape-level gate can name the shape. `max - min` keeps the NaN in `size`.
-        debug_assert!(
-            (min.x <= max.x && min.y <= max.y) || nan::vec2_has_nan(min) || nan::vec2_has_nan(max)
-        );
         Self {
             min,
             size: Size::new(max.x - min.x, max.y - min.y),
@@ -298,12 +292,15 @@ impl Rect {
         overlaps(self.min.x, a.x, other.min.x, b.x) && overlaps(self.min.y, a.y, other.min.y, b.y)
     }
 
-    /// Strict intersection: `None` when the inputs don't overlap, touching included. [`Self::clamp_to`] is the saturating one.
+    /// Strict intersection: `Some` exactly where [`Self::intersects`] is true, so `None` when the
+    /// inputs don't overlap, touching included, and for an empty operand or a NaN, in every
+    /// build. [`Self::clamp_to`] is the saturating one.
     #[inline]
     pub const fn intersect(self, other: Self) -> Option<Self> {
-        let clamped = self.clamp_to(other);
-        if clamped.size.w > 0.0 && clamped.size.h > 0.0 {
-            Some(clamped)
+        // Asked first, by comparisons a NaN fails: `clamp_to`'s `f32::max` and `min` drop a NaN
+        // operand, which would answer with the other rect whole.
+        if self.intersects(other) {
+            Some(self.clamp_to(other))
         } else {
             None
         }

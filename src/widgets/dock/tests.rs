@@ -4,6 +4,7 @@
 use glam::{UVec2, Vec2};
 
 use crate::host::harness::Harness;
+use crate::internals::panic_probe;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
@@ -1083,6 +1084,38 @@ fn a_close_click_removes_the_tab_and_does_not_activate_it() {
         "the closed tab is not the active one"
     );
     d.validate().unwrap();
+}
+
+/// A view moved off the id `new` took would record where `scan` never reads, so `show` refuses
+/// it; the same id set again is no move.
+#[test]
+fn a_view_moved_off_its_id_is_refused() {
+    const RULE: &str = "a dock view records under the id `new` took";
+    let d = seeded();
+    let mut tabs = Labels;
+
+    Harness::mono(SURFACE).frame(|ui| {
+        let mut operations = Vec::new();
+        DockView::new(dock(), &d, &mut operations)
+            .id(dock())
+            .show(ui, &mut tabs);
+    });
+    panic_probe::assert_panics_with(RULE, || {
+        Harness::mono(SURFACE).frame(|ui| {
+            let mut operations = Vec::new();
+            DockView::new(dock(), &d, &mut operations)
+                .id(WidgetId::from_hash("elsewhere"))
+                .show(ui, &mut tabs);
+        });
+    });
+    panic_probe::assert_panics_with(RULE, || {
+        Harness::mono(SURFACE).frame(|ui| {
+            let mut operations = Vec::new();
+            DockView::new(dock(), &d, &mut operations)
+                .id_salt("elsewhere")
+                .show(ui, &mut tabs);
+        });
+    });
 }
 
 /// A tab chosen from the overflow menu activates like a chip click. The

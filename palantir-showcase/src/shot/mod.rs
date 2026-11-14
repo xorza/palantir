@@ -150,7 +150,7 @@ pub(crate) struct Folders<'a> {
 /// Why a script stopped.
 #[derive(Debug)]
 pub(crate) enum ShotError {
-    /// The script file does not read.
+    /// A file does not read: the script, or an earlier run's picture a shot compares with.
     Read {
         path: PathBuf,
         source: io::Error,
@@ -165,7 +165,8 @@ pub(crate) enum ShotError {
     /// A zoom that would make a picture past the largest side.
     TooLarge {
         line: usize,
-        side: u32,
+        /// The zoomed side, which a `u32` texel count need not hold.
+        side: u64,
         max_side: u32,
     },
     /// A picture does not write.
@@ -281,8 +282,8 @@ pub(crate) fn play(
                 };
                 let shot = window.shot(region).map_err(failed(line))?;
                 let picture = if *zoom > 1 {
-                    let side = shot.image().size().max_element() * zoom;
-                    if side > header.max_side {
+                    let side = u64::from(shot.image().size().max_element()) * u64::from(*zoom);
+                    if side > u64::from(header.max_side) {
                         return Err(ShotError::TooLarge {
                             line,
                             side,
@@ -347,11 +348,7 @@ fn compare(
     diff: &Path,
     report: &mut impl Write,
 ) -> Result<(), ShotError> {
-    let comparison =
-        against::compare(picture, earlier, diff).map_err(|source| ShotError::Write {
-            path: earlier.to_path_buf(),
-            source,
-        })?;
+    let comparison = against::compare(picture, earlier, diff)?;
     against::report(report, earlier, &comparison, diff).map_err(ShotError::Report)
 }
 
@@ -366,10 +363,16 @@ fn compare(
     unreachable!("main refuses --against without the golden feature")
 }
 
-/// `path`'s PNG, as RGBA bytes.
+/// `path`'s PNG, as RGBA bytes. A file that does not open keeps its own error, so a caller can
+/// tell a missing file from a broken one.
 #[cfg(feature = "golden")]
 fn read_png(path: &Path) -> io::Result<Image> {
-    let decoded = image::open(path).map_err(io::Error::other)?.into_rgba8();
+    let decoded = image::open(path)
+        .map_err(|error| match error {
+            image::ImageError::IoError(error) => error,
+            error => io::Error::other(error),
+        })?
+        .into_rgba8();
     let size = UVec2::new(decoded.width(), decoded.height());
     Image::from_srgba8(size, decoded.into_raw()).map_err(io::Error::other)
 }

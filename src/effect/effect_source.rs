@@ -172,7 +172,8 @@ impl<U: EffectParams, K: EffectKind> EffectSource<U, K> {
 pub enum ReducedPaint<U: EffectParams, K: EffectKind = ColorEffect> {
     /// The effect itself, as cheap enough already.
     Same,
-    /// Another effect with the same parameters and kind, loaded by the time it paints.
+    /// Another effect with the same parameters, kind and image slots, loaded before the effect
+    /// that names it.
     Effect(EffectName<U, K>),
     /// Nothing paints in its place.
     Nothing,

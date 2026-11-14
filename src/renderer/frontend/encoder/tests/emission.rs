@@ -474,7 +474,7 @@ fn text_shape_carries_source_without_reconstructing_buffer() {
 fn encoder_text_alignment_respects_leaf_padding() {
     use crate::widgets::button::Button;
 
-    let mut h = Harness::new(UVec2::new(400, 400));
+    let mut h = Harness::new(UVec2::new(400, 400)).with_fixture_font_size();
     h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Button::new()

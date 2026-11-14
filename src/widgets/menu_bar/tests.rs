@@ -371,6 +371,83 @@ fn menu_style_restyles_the_menus() {
     assert_eq!(height(true) - height(false), 2.0 * 9.0);
 }
 
+/// `open`, `close` and `is_open` act on the bar as it stands when a menu's own body calls them,
+/// while the bar records: `is_open` reads the open menu, `close` closes it, and `open` moves the
+/// bar's one slot to a title recorded after it in the same frame.
+#[test]
+fn open_close_and_is_open_act_from_inside_a_menu_body() {
+    #[derive(Clone, Copy, Debug, PartialEq)]
+    enum Drive {
+        Nothing,
+        Close,
+        OpenView,
+    }
+    /// The bar with `drive` run in the first row of whichever menu is open; what `is_open`
+    /// read there.
+    fn build_driving(ui: &mut Ui, drive: Drive) -> Option<bool> {
+        let mut read = None;
+        MenuBar::new().id(bar()).show(ui, |menus| {
+            for (label, rows) in MENUS {
+                menus.menu(label, |ui| {
+                    read = Some(MenuBar::is_open(ui, bar()));
+                    match drive {
+                        Drive::Nothing => {}
+                        Drive::Close => MenuBar::close(ui, bar()),
+                        Drive::OpenView => MenuBar::open(ui, bar(), "View"),
+                    }
+                    for row in rows {
+                        MenuItem::new(row).id_salt(row).show(ui);
+                    }
+                });
+            }
+        });
+        read
+    }
+    /// A bar with Edit open and settled.
+    fn edit_open() -> Harness {
+        let mut h = Harness::mono(SURFACE);
+        h.prime(2, |ui| {
+            build_driving(ui, Drive::Nothing);
+        });
+        MenuBar::open(h.ui_mut(), bar(), "Edit");
+        h.prime(2, |ui| {
+            build_driving(ui, Drive::Nothing);
+        });
+        assert_eq!(open(&h), Some(1));
+        h
+    }
+
+    let mut h = edit_open();
+    let mut read = None;
+    h.frame(|ui| read = build_driving(ui, Drive::Nothing));
+    assert_eq!(read, Some(true), "the open menu's body reads its bar open");
+
+    let mut h = edit_open();
+    h.frame(|ui| {
+        build_driving(ui, Drive::Close);
+    });
+    assert_eq!(open(&h), None, "a close from the menu's body closes it");
+    h.frame(|ui| {
+        build_driving(ui, Drive::Nothing);
+    });
+    assert!(!recorded(&h, 1) && !MenuBar::is_open(h.ui(), bar()));
+
+    let mut h = edit_open();
+    h.frame(|ui| {
+        build_driving(ui, Drive::OpenView);
+    });
+    assert_eq!(open(&h), Some(2), "an open from Edit's body moves the slot");
+    assert!(
+        recorded(&h, 2),
+        "View records after Edit, so it opens this frame"
+    );
+    h.frame(|ui| {
+        build_driving(ui, Drive::Nothing);
+    });
+    assert_eq!(open(&h), Some(2));
+    assert!(!recorded(&h, 1) && recorded(&h, 2));
+}
+
 /// `open`, `close` and `is_open` drive the bar from outside: `open` names the menu by its label
 /// and moves the bar's one open menu, a label the bar does not show opens nothing, and `close`
 /// closes it.

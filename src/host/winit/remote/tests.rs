@@ -412,6 +412,52 @@ fn a_settle_waits_through_a_windows_first_frame() {
     assert_eq!(settling.settle(), Err(PlayError::Disconnected));
 }
 
+/// A remote kept across its window's close and reopen counts against the window as it is open: the
+/// events it sent the closed one hold no settle of the new one, whose count starts at zero, and an
+/// event it sends the new one counts from there. Thirty seconds bound each wait that must not last.
+#[test]
+fn a_remote_counts_against_the_window_as_it_is_open_now() {
+    const LONG: Duration = Duration::from_secs(30);
+    let (sender, _events) = mpsc::channel();
+    let handle: HostHandle<Counter> = HostHandle {
+        sender: EventSender::Channel(sender),
+        frame_log: Arc::default(),
+    };
+    let idle = |record_frame_id, sent_events| FrameSummary {
+        record_frame_id,
+        sent_events,
+        repaint_requested: false,
+        busy: false,
+    };
+    handle.frame_log.open(WINDOW);
+    handle.frame_log.record(WINDOW, idle(1, 0));
+    let mut remote = handle.remote(WINDOW).with_tick(TICK).with_wait(LONG);
+    for _ in 0..3 {
+        remote.count_sent(1);
+    }
+    assert_eq!(remote.sent, 3);
+    handle.frame_log.record(WINDOW, idle(2, 3));
+    remote.settle().unwrap();
+
+    handle.frame_log.remove(WINDOW);
+    handle.frame_log.open(WINDOW);
+    handle.frame_log.record(WINDOW, idle(1, 0));
+    let began = Instant::now();
+    remote.settle().unwrap();
+    assert!(
+        began.elapsed() < LONG,
+        "the three events went to the closed window"
+    );
+
+    remote.count_sent(1);
+    assert_eq!(
+        remote.sent, 1,
+        "the new opening's count, 0, and the one sent"
+    );
+    handle.frame_log.record(WINDOW, idle(2, 1));
+    remote.settle().unwrap();
+}
+
 /// A query that changes the app shows to the next settle: the frame after it records, and counts
 /// the query as a sent event, so the settle waits for that frame and a read finds what the query
 /// added.
@@ -436,13 +482,16 @@ fn a_remote_loses_the_device_and_a_settle_waits_for_the_frame_after() {
     let (handle, thread) = serve_at(Depth::gpu(gpu.handles()));
     let mut remote = handle.remote(WINDOW).with_tick(TICK);
     remote.settle().unwrap();
-    let before = handle.last_frame(WINDOW).unwrap().sent_events;
+    let before = handle.last_frame(WINDOW).unwrap().summary.sent_events;
     assert!(!gpu.is_lost());
     remote.lose_device().unwrap();
     assert!(gpu.is_lost());
     remote.settle().unwrap();
     // 1 = the loss, the one event sent since `before`.
-    assert_eq!(handle.last_frame(WINDOW).unwrap().sent_events, before + 1);
+    assert_eq!(
+        handle.last_frame(WINDOW).unwrap().summary.sent_events,
+        before + 1
+    );
     handle.quit();
     thread.join().unwrap();
 }

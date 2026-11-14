@@ -7,7 +7,7 @@
 //!   clock, on a device that does not.
 //!
 //! A step a tracer cannot take does nothing, and what it cannot measure publishes as absent.
-//! A frame publishes late: the query tracer's two frames after it, the wall clock's once the
+//! A frame publishes late: the query tracer's three frames after it, the wall clock's once the
 //! queue said it is done. Both ask the queue to call back once a frame's work is done, which
 //! wgpu boxes, an allocation per frame a frame pays only while it collects GPU statistics.
 //!

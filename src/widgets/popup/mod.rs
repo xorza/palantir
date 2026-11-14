@@ -84,7 +84,17 @@ impl<'a> Popup<'a> {
     /// Record into `layer` rather than [`Layer::Popup`]; a context menu uses
     /// [`Layer::Menu`]. Opened inside another overlay, the popup paints above it
     /// either way ([`Ui::layer`]).
+    ///
+    /// # Panics
+    ///
+    /// For [`Layer::Main`], which is no overlay ([`Ui::layer`]).
+    #[track_caller]
     pub const fn layer(mut self, layer: Layer) -> Self {
+        assert!(
+            !matches!(layer, Layer::Main),
+            "{}",
+            Layer::MAIN_IS_NO_OVERLAY
+        );
         self.layer = layer;
         self
     }

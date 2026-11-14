@@ -434,10 +434,11 @@ impl Words {
         let duration = if let Some(ms) = word.strip_suffix("ms") {
             ms.parse::<u64>().ok().map(Duration::from_millis)
         } else {
+            // `try_from_secs_f64` refuses a negative, a NaN and one past `Duration`'s range,
+            // where `from_secs_f64` panics.
             word.strip_suffix('s')
                 .and_then(|seconds| seconds.parse::<f64>().ok())
-                .filter(|seconds| seconds.is_finite() && *seconds >= 0.0)
-                .map(Duration::from_secs_f64)
+                .and_then(|seconds| Duration::try_from_secs_f64(seconds).ok())
         };
         duration.ok_or(ParseErrorKind::Bad {
             expected,

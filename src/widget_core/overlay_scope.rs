@@ -85,7 +85,13 @@ impl OverlayScope {
     /// A light-dismiss overlay a modal cancels this pass records collapsed, with no barrier
     /// and no claim, so its last pass paints nothing and takes no input, and it reports
     /// [`OverlayClose::Dismissed`].
+    ///
+    /// # Panics
+    ///
+    /// For a `spec.layer` of [`Layer::Main`], which is no overlay ([`Ui::layer`]).
+    #[track_caller]
     pub fn claim(ui: &mut Ui, spec: OverlaySpec, root: &mut Widget) -> Self {
+        assert!(spec.layer != Layer::Main, "{}", Layer::MAIN_IS_NO_OVERLAY);
         let owner = root.resolve(ui);
         let opened = ui.response_for(owner).rect.is_none();
         let dismissible = matches!(spec.barrier, Barrier::Surface(_, ClickOutside::Dismiss));
@@ -147,7 +153,7 @@ impl OverlayScope {
                     .id(id)
                     .size((Sizing::FILL, Sizing::FILL))
                     .sense(Sense::ABSORB_POINTER)
-                    .show(ui, None, |_| {});
+                    .record(ui, None, |_| {});
             });
         }
         let dismisses = barrier.click_outside() == Some(ClickOutside::Dismiss);

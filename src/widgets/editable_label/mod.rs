@@ -160,9 +160,10 @@ impl<'a> EditableLabel<'a> {
     /// [editable](Self::editable) or is disabled, itself or by an ancestor, closes an open editor
     /// and gives its focus back.
     pub fn show(mut self, ui: &mut Ui) -> EditableLabelResponse {
-        let Response { id, state } = self.widget.response(ui);
+        let response = self.widget.response(ui);
+        let id = response.id;
         let editing = Self::is_editing(ui, id);
-        let editable = self.editable && !state.disabled;
+        let editable = self.editable && !response.disabled;
         if editing && editable {
             return self.show_editor(ui, id);
         }
@@ -172,7 +173,7 @@ impl<'a> EditableLabel<'a> {
                 ui.clear_focus();
             }
         }
-        self.show_label(ui, id)
+        self.show_label(ui, response, editable)
     }
 
     /// The label: the text in the editor's resting look, with the editor's padding and caret
@@ -180,8 +181,14 @@ impl<'a> EditableLabel<'a> {
     /// target and the label takes the editor's rect whatever it holds. A double click, or Enter
     /// or F2 while the label holds focus, opens the editor and gives it the focus. F2 is read as
     /// the enclosing node reads it, as the label takes no accelerators from the app.
-    fn show_label(mut self, ui: &mut Ui, id: WidgetId) -> EditableLabelResponse {
-        let keyed = self.editable
+    fn show_label(
+        mut self,
+        ui: &mut Ui,
+        response: Response,
+        editable: bool,
+    ) -> EditableLabelResponse {
+        let id = response.id;
+        let keyed = editable
             && ui.focus() == Some(id)
             && (self.widget.shortcut_pressed(ui, Key::Enter) | ui.shortcut_pressed(Key::F2));
         let theme = Rc::clone(ui.theme());
@@ -199,20 +206,18 @@ impl<'a> EditableLabel<'a> {
         );
         let size = self.extent();
         let label = self.text;
-        let response = self
-            .widget
+        self.widget
             .size(size)
             .padding(padding)
             .default_child_align(Align::LEFT)
-            .show(ui, Some(&slot.looks.normal.chrome), |ui| {
+            .record(ui, Some(&slot.looks.normal.chrome), |ui| {
                 Text::new(label)
                     .id(Self::label_id(id))
                     .style(&text)
                     .min_size((0.0, text.block_height(1)))
                     .show(ui);
-            })
-            .response;
-        if keyed || (self.editable && response.left.double_clicked()) {
+            });
+        if keyed || (editable && response.left.double_clicked()) {
             Self::start_editing(ui, id);
         }
         EditableLabelResponse {

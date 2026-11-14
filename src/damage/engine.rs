@@ -142,7 +142,8 @@ impl DamageEngine {
         self.extend_predamaged(&input);
 
         // Removed-widget eviction tail: every remaining `prev` entry painted last frame. Pushed decomposed (chrome plus per-shape) so a multi-shape owner doesn't push the gaps. Its rows have no place this frame, so they stand before every backdrop.
-        self.backdrops.mark(self.raw_rects.len(), 0);
+        self.backdrops
+            .mark(self.raw_rects.len(), BackdropWalk::BEFORE_EVERY);
         #[expect(
             clippy::iter_over_hash_type,
             reason = "a fixed hasher, so the eviction rects repeat from run to run"

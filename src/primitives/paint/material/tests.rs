@@ -524,6 +524,43 @@ fn a_material_springs_its_blur_and_lanes() {
     assert_eq!(to.add(&step), from);
 }
 
+/// A spring retargeted from a frost onto a glass snaps the effect, as a tween does, and springs
+/// the blur on: the value and the velocity take the glass's effect, the velocity's lanes from
+/// rest, so the spring's offset holds no frost lanes and the target plus it paints the glass's
+/// own parameters. The blur's offset, `4 − 2 = 2`, and its velocity stay.
+#[test]
+fn a_spring_onto_another_effect_snaps_the_effect() {
+    use crate::primitives::math::animatable::Animatable;
+    let frost = Some(Material::frosted(4.0));
+    let glass = Some(Material::glass(Lens::WINDOW_GLASS).with_backdrop_blur(2.0));
+    let mut value = frost.clone();
+    let mut velocity = frost.scale(0.5);
+    value.normalize_for_spring(&glass, &mut velocity);
+
+    let (value, velocity, target) = (
+        value.expect("a value"),
+        velocity.expect("a velocity"),
+        glass.clone().expect("a target"),
+    );
+    assert_eq!(value.effect, target.effect);
+    assert!(velocity.effect.blends_with(&target.effect));
+    assert!(velocity.effect.params().iter().all(|&lane| lane == 0.0));
+    assert_eq!(velocity.backdrop_blur, 2.0, "the blur's velocity, 4 × 0.5");
+
+    let offset = Some(value).sub(&glass);
+    let landed = glass.add(&offset).expect("a material");
+    assert_eq!(landed.effect, target.effect);
+    assert_eq!(landed.backdrop_blur, 4.0);
+
+    // Over one effect nothing snaps: a frost onto another frost keeps its lanes.
+    let mut value = frost.clone();
+    let mut velocity = frost.scale(0.5);
+    let other_frost = Some(Material::frosted(1.0));
+    value.normalize_for_spring(&other_frost, &mut velocity);
+    assert_eq!(value, frost);
+    assert_eq!(velocity, frost.scale(0.5));
+}
+
 /// `Paint::with_material` keeps the paint whole over the material, and a material alone paints
 /// as one over [`Paint::NONE`].
 #[test]

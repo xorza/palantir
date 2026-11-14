@@ -105,18 +105,82 @@ fn intersects_cases() {
     assert_eq!(missed, Rect::new(50.0, 50.0, 0.0, 0.0));
 }
 
-/// A NaN operand is a broken contract, not a miss (`f32::max` would drop it).
+/// `intersect` answers `Some` exactly where `intersects` is true, in every build: an overlap,
+/// and never a touch, an empty or negative operand, or a NaN (`f32::max` would drop one and
+/// answer with the other rect whole).
+#[test]
+fn intersect_agrees_with_intersects() {
+    let ten = Rect::new(0.0, 0.0, 10.0, 10.0);
+    let cases: &[(&str, Rect, Rect, Option<Rect>)] = &[
+        (
+            "overlap",
+            ten,
+            Rect::new(5.0, 6.0, 10.0, 10.0),
+            Some(Rect::new(5.0, 6.0, 5.0, 4.0)),
+        ),
+        (
+            "inside",
+            Rect::new(2.0, 3.0, 4.0, 5.0),
+            ten,
+            Some(Rect::new(2.0, 3.0, 4.0, 5.0)),
+        ),
+        ("touching edges", ten, Rect::new(10.0, 0.0, 5.0, 10.0), None),
+        ("apart", ten, Rect::new(50.0, 50.0, 5.0, 5.0), None),
+        ("empty operand", Rect::new(5.0, 5.0, 0.0, 4.0), ten, None),
+        (
+            "negative operand",
+            Rect::new(8.0, 8.0, -4.0, -4.0),
+            ten,
+            None,
+        ),
+        ("nan first", Rect::NAN, ten, None),
+        ("nan second", ten, Rect::NAN, None),
+        (
+            "nan size alone",
+            Rect::new(1.0, 1.0, f32::NAN, 2.0),
+            ten,
+            None,
+        ),
+        (
+            "nan origin alone",
+            Rect::new(f32::NAN, 1.0, 2.0, 2.0),
+            ten,
+            None,
+        ),
+    ];
+    for (label, a, b, want) in cases {
+        assert_eq!(a.intersect(*b), *want, "{label}");
+        assert_eq!(
+            b.intersect(*a).is_some(),
+            want.is_some(),
+            "{label}, swapped"
+        );
+        assert_eq!(a.intersects(*b), want.is_some(), "{label}");
+        assert_eq!(b.intersects(*a), want.is_some(), "{label}, swapped");
+    }
+}
+
+/// Two corners in either order: a `max` below `min` gives a negative extent, which paints
+/// nothing, in every build.
+#[test]
+fn from_min_max_takes_corners_in_either_order() {
+    let reversed = Rect::from_min_max(Vec2::new(11.0, 19.0), Vec2::new(-4.0, 7.0));
+    assert_eq!(reversed, Rect::new(11.0, 19.0, -15.0, -12.0));
+    assert!(reversed.is_paint_empty());
+}
+
+/// A NaN operand to the saturating clamp is a broken contract, not a miss (`f32::max` would drop
+/// it).
 #[test]
 #[cfg_attr(
     not(debug_assertions),
     ignore = "probes a debug_assert!, which release compiles out"
 )]
-fn a_nan_operand_is_refused() {
+fn clamp_to_refuses_a_nan_operand() {
     for (a, b) in [
         (Rect::NAN, Rect::new(0.0, 0.0, 10.0, 10.0)),
         (Rect::new(0.0, 0.0, 10.0, 10.0), Rect::NAN),
     ] {
-        panic_probe::assert_panics_with("NaN operand", || a.intersect(b));
         panic_probe::assert_panics_with("NaN operand", || a.clamp_to(b));
     }
 }

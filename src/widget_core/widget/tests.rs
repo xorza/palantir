@@ -5,6 +5,7 @@ use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::pointer::PointerButton;
 use crate::primitives::input::sense::Sense;
 use crate::primitives::layout::align::{Align, HAlign, VAlign};
 use crate::primitives::layout::axis::Axis;
@@ -13,7 +14,7 @@ use crate::primitives::layout::grid_cell::GridCell;
 use crate::primitives::layout::justify::Justify;
 use crate::primitives::layout::layout_mode::LayoutMode;
 use crate::primitives::layout::scroll_axes::ScrollAxes;
-use crate::primitives::layout::sizing::SizeSpec;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::primitives::layout::visibility::Visibility;
 use crate::primitives::math::domain::{self, MAX_GAP};
 use crate::primitives::packed::serde::LaneCodec;
@@ -23,6 +24,7 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::scene::node::Node;
 use crate::scene::node::id_recipe::{IdRecipe, ScopedRecipe};
 use crate::scene::node::node_mode::NodeMode;
+use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::configure::ThemeDefaults;
@@ -464,4 +466,39 @@ fn position_and_grid_span_validate_their_kinds() {
         (cell.row(), cell.col(), cell.row_span(), cell.col_span()),
         (1, 2, 3, 4),
     );
+}
+
+/// `show` reads the response a widget that acts on input opens with: a sensing node disabled on
+/// this frame, before the cascade knows it, reads disabled and takes no click, as a `Button` does.
+#[test]
+fn show_folds_a_nodes_own_disabled_into_its_response() {
+    let id = WidgetId::from_hash("self-disabled");
+    let mut h = Harness::mono(UVec2::new(200, 100));
+    let record = |ui: &mut Ui, disabled: bool| {
+        Panel::vstack()
+            .id(id)
+            .sense(Sense::CLICK)
+            .disabled(disabled)
+            .size((Sizing::fixed(100.0), Sizing::fixed(50.0)))
+            .show(ui, |ui| {
+                Text::new("child").auto_id().show(ui);
+            })
+            .response
+    };
+    h.frame(|ui| {
+        record(ui, false);
+    });
+    h.press(Vec2::new(50.0, 25.0), PointerButton::Left);
+    h.frame(|ui| {
+        record(ui, false);
+    });
+    h.release(PointerButton::Left);
+    let passes = h.frame_passes(|ui| record(ui, true));
+    let pass_a = passes.a();
+    assert!(
+        pass_a.disabled,
+        "the node's own flag, on the pass the cascade lags"
+    );
+    assert!(!pass_a.clicked(), "a disabled node takes no click");
+    assert_eq!(passes.count_where(|response| response.clicked()), 0);
 }

@@ -13,7 +13,7 @@ use crate::primitives::geometry::urect::URect;
 use crate::primitives::math::libm_ext::Libm;
 use crate::shape::paint::blur_plan::BlurPlan;
 use crate::shape::paint::blur_plan::internals::{mirror, reference_tent};
-use glam::UVec2;
+use glam::{IVec2, UVec2};
 use half::f16;
 use std::mem::offset_of;
 use std::ops::Range;
@@ -300,6 +300,11 @@ fn the_shared_textures_expire_after_idle() {
         prepare_on(&gpu, &mut engine, &mut [whole_of(plan, SURFACE)]);
     }
     assert_eq!(capture(&engine), [UVec2::splat(256)], "stepped down");
+    assert_eq!(
+        engine.slots[0].params.source_max,
+        IVec2::splat(255),
+        "the frame that stepped it down bounds its reads by the texture it binds",
+    );
     assert!(engine.levels.is_some() && engine.scratch.is_some());
     let scratch = texel::size(&engine.scratch.as_ref().unwrap().texture);
     assert_eq!(scratch, UVec2::splat(256), "the scratch steps down too");
