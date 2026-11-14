@@ -16,7 +16,7 @@ use crate::theme::color_scheme::ColorScheme;
 use crate::theme::expander::ExpanderTheme;
 use crate::theme::look::slot_defaults::SlotDefaults;
 use crate::ui::Ui;
-use crate::widget_core::configure::{Configure, ThemeDefaults};
+use crate::widget_core::configure::{Configure, ConfigureDefaults};
 use crate::widgets::expander::{Expander, ExpanderState};
 use crate::widgets::text::Text;
 use crate::widgets::text_edit::TextEdit;

@@ -91,6 +91,7 @@ use crate::ui::window_frames::present::{FrameSpec, TargetKey};
 use crate::window::window_commands::WindowCommand;
 use crate::window::window_token::WindowToken;
 use glam::{UVec2, Vec2};
+use std::num::NonZeroU32;
 use std::time::{Duration, Instant};
 
 /// One window with no desktop: its frames, its input and its clock, stepped by the caller. See
@@ -379,7 +380,7 @@ impl Harness {
 
     /// Report the monitor's refresh rate, which repaint wakes coalesce to, from the next frame
     /// on; `None` reports none.
-    pub fn set_refresh_millihertz(&mut self, millihertz: Option<u32>) -> &mut Self {
+    pub fn set_refresh_millihertz(&mut self, millihertz: Option<NonZeroU32>) -> &mut Self {
         self.window.refresh_millihertz = millihertz;
         self.sync_display();
         self
@@ -896,7 +897,7 @@ impl Harness {
                     return Err(PlayError::DeviceLost);
                 }
                 asking += 1;
-                if asking == self.pace.settle_frames {
+                if asking == self.pace.settle_frames.get() {
                     return Err(PlayError::Unsettled {
                         frames_recorded: play::frames_recorded(first, self.ui().record_frame_idx()),
                     });

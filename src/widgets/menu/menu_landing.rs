@@ -1,7 +1,7 @@
 //! Where focus lands in a menu the keyboard opens.
 
-use crate::cascade::rows::tab_stop_row::TabEnd;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::tab_end::TabEnd;
 use crate::ui::Ui;
 use crate::widget_core::overlay_response::OverlayResponse;
 

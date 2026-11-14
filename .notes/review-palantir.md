@@ -383,24 +383,6 @@ Files: as listed per item. No exported signature changes.
   `nearest` all show the start. Not local: fixed by the shared `reveal_pan` of batch 11, which
   carries this item's test of the three oversized cases.
 
-### Batch 7: the root and `palantir::widget` (API)
-
-Files: `src/lib.rs`, `AGENTS.md`, `src/primitives/math/domain`, the showcase's imports.
-
-- [ ] (decided) Write the rule into `AGENTS.md` and the `widget` module doc, then move the items
-  listed under "Surface" above. Paths change, nothing else. A trait that only bounds a root
-  method's parameter (`Animatable`, `Lerp` on `Ui::animate`) stays in `widget`: an app names it
-  only to implement it.
-- [ ] `lib.rs:200`: `pub use …::domain` publishes about 55 items, among them `MAX_FILE_LENGTH`,
-  `is_lane`, `is_refractive_index`, and submodules named `f64` and `vec2`. Export the kinds a
-  public doc names; the rest is `pub(crate)`.
-- [ ] `widget_core/configure.rs:389-395`: `ThemeDefaults` carries `default_id` and `default_size`
-  → `ConfigureDefaults`.
-- [ ] `cascade/rows/tab_stop_row.rs:19-27`: the exported `TabEnd` sits in a cascade row file →
-  `primitives/input/tab_end.rs`.
-- [ ] `animation/easing.rs:56`: `Easing::curve()` returns the type the surface names
-  `widget::PaintCurve`; move the alias left into `animation` and return it.
-
 ### Batch 8: an effect's kind, from paint to pipeline
 
 Files: `src/shape/{effect_paint.rs, paint/closed_paint.rs, record_store/mod.rs}`,

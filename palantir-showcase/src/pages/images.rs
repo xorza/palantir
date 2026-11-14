@@ -10,11 +10,9 @@ use crate::scaffold::api;
 use crate::support;
 use crate::support::{DemoCell, Kit, Section};
 use palantir::glam::{UVec2, Vec2};
-use palantir::widget::ImagePaint;
-use palantir::widget::Shape;
 use palantir::{
-    ComboBox, Configure, Fit, Image, ImageDownsample, ImageFilter, ImageHandle, RgbaF32, Sizing,
-    Switch, Text, Ui, WidgetId,
+    ComboBox, Configure, Fit, Image, ImageDownsample, ImageFilter, ImageHandle, ImagePaint,
+    RgbaF32, Shape, Sizing, Switch, Text, Ui, WidgetId,
 };
 
 fn checker() -> Image {

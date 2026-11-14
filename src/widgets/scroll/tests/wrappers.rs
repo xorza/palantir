@@ -16,10 +16,11 @@ use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::layout::visibility::Visibility;
 use crate::scene::node::Node;
 use crate::scene::node::node_mode::NodeMode;
-use crate::widget_core::configure::{Configure, ThemeDefaults};
+use crate::widget_core::configure::{Configure, ConfigureDefaults};
 use crate::widget_core::widget::Widget;
 use crate::widgets::scroll::{Scroll, ScrollWrappers};
 use glam::Vec2;
+use std::num::NonZeroU16;
 
 #[derive(Clone, Copy, Debug)]
 enum Side {
@@ -75,9 +76,17 @@ fn split_routes_every_setter_to_one_wrapper() {
         ),
         (
             "grid_cell",
-            |s| s.grid_cell(GridCell::at(1, 2).with_span(2, 3)),
+            |s| {
+                s.grid_cell(
+                    GridCell::at(1, 2)
+                        .with_span(NonZeroU16::new(2).unwrap(), NonZeroU16::new(3).unwrap()),
+                )
+            },
             Side::Outer,
-            |n| n.grid = GridCell::at(1, 2).with_span(2, 3),
+            |n| {
+                n.grid = GridCell::at(1, 2)
+                    .with_span(NonZeroU16::new(2).unwrap(), NonZeroU16::new(3).unwrap());
+            },
         ),
         // `adopt_placement` copies the donor's `Tab` order among its placement fields.
         (

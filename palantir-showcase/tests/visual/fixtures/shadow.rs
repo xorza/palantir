@@ -6,10 +6,9 @@
 
 use image::{Rgba, RgbaImage};
 use palantir::glam::{IVec2, UVec2, Vec2};
-use palantir::widget::Shape;
 use palantir::{
-    Border, Chrome, ClipMode, Configure, Corners, Panel, Rect, RgbaF32, Shadow, ShadowKind, Sizing,
-    Ui,
+    Border, Chrome, ClipMode, Configure, Corners, Panel, Rect, RgbaF32, Shadow, ShadowKind, Shape,
+    Sizing, Ui,
 };
 use std::f64::consts::SQRT_2;
 

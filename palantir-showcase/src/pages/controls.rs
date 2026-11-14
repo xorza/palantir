@@ -8,12 +8,11 @@ use crate::scaffold::api;
 use crate::scaffold::tokens::M;
 use crate::support;
 use crate::support::{Col, Kit, Knob, Section};
-use palantir::widget::AnimationRequest;
 use palantir::{
-    Animated, AnimationSpec, Axis, Border, Button, ButtonTheme, Checkbox, Chrome, ComboBox,
-    Configure, Corners, DragValue, Expander, ExpanderTheme, Panel, ProgressBar, RadioGroup,
-    RgbaF32, Separator, SizeSpec, Sizing, Slider, SlotDefaults, Spinner, StatefulLook, Switch,
-    Text, TextEdit, TextStyleOverrides, Tooltip, Ui, WidgetId, WidgetLook, fmt,
+    Animated, AnimationRequest, AnimationSpec, Axis, Border, Button, ButtonTheme, Checkbox, Chrome,
+    ComboBox, Configure, Corners, DragValue, Expander, ExpanderTheme, Panel, ProgressBar,
+    RadioGroup, RgbaF32, Separator, SizeSpec, Sizing, Slider, SlotDefaults, Spinner, StatefulLook,
+    Switch, Text, TextEdit, TextStyleOverrides, Tooltip, Ui, WidgetId, WidgetLook, fmt,
 };
 
 static REGIONS: [&str; 5] = [

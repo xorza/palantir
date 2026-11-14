@@ -1,8 +1,7 @@
 //! Corner radii larger than their box holds.
 
 use palantir::glam::UVec2;
-use palantir::widget::Shape;
-use palantir::{Block, Chrome, Configure, Corners, Panel, Rect, RgbaF32, SizeSpec, Sizing};
+use palantir::{Block, Chrome, Configure, Corners, Panel, Rect, RgbaF32, Shape, SizeSpec, Sizing};
 
 use crate::fixtures;
 use crate::visual_rig::VisualRig;

@@ -19,7 +19,7 @@ use crate::theme::text_edit::TextEditTheme;
 use crate::theme::text_style_overrides::TextStyleOverrides;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
-use crate::widget_core::configure::{Configure, ThemeDefaults};
+use crate::widget_core::configure::{Configure, ConfigureDefaults};
 use crate::widget_core::widget::Widget;
 use crate::widgets::text::Text;
 use crate::widgets::text_edit::TextEdit;

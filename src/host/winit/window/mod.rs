@@ -42,6 +42,7 @@ use crate::window::window_commands::WindowCommands;
 use crate::window::window_frame_state::WindowFacts;
 use crate::window::window_placement::WindowPlacement;
 use std::mem;
+use std::num::NonZeroU32;
 
 /// What only the windowing system can answer, held until an event that can change
 /// it. Each field is an X11 round trip and `current_monitor` allocates, which
@@ -54,7 +55,7 @@ pub(super) struct SystemFacts {
     /// Whether the window fills its screen, as the macOS green button makes it; like
     /// maximized, a size the window does not return to.
     fullscreen: bool,
-    refresh_millihertz: Option<u32>,
+    refresh_millihertz: Option<NonZeroU32>,
 }
 
 impl SystemFacts {
@@ -290,7 +291,8 @@ impl Window {
             refresh_millihertz: self
                 .window
                 .current_monitor()
-                .and_then(|monitor| monitor.refresh_rate_millihertz()),
+                .and_then(|monitor| monitor.refresh_rate_millihertz())
+                .and_then(NonZeroU32::new),
         };
         self.system_facts = Some(facts);
         facts

@@ -5,6 +5,7 @@ use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::primitives::paint::image::error::ImageDataError;
 use crate::primitives::paint::image::{Image, ImagePlacement, fitted_size};
 use glam::{UVec2, Vec2};
+use std::num::NonZeroU32;
 
 /// A 100×50 image in a 200×200 rect, per fit:
 /// - `Fill`: the full rect (stretched).
@@ -208,7 +209,7 @@ fn a_fitted_image_averages_in_linear_light() {
             a: 255,
         }
     });
-    let fitted = image.fitted(2);
+    let fitted = image.fitted(NonZeroU32::new(2).unwrap());
     assert_eq!(fitted.size(), UVec2::new(2, 1));
     let grey = |v: u8| SrgbaU8 {
         r: v,
@@ -217,7 +218,7 @@ fn a_fitted_image_averages_in_linear_light() {
         a: 255,
     };
     assert_eq!(fitted.texels(), [grey(175), grey(199)]);
-    assert_eq!(image.fitted(4), image);
+    assert_eq!(image.fitted(NonZeroU32::new(4).unwrap()), image);
 }
 
 /// Color averages premultiplied: a transparent texel's color weighs nothing, so a 2 × 1 image of
@@ -240,7 +241,7 @@ fn a_fitted_image_weighs_color_by_alpha() {
         },
     ]);
     assert_eq!(
-        image.fitted(1).texels(),
+        image.fitted(NonZeroU32::MIN).texels(),
         [SrgbaU8 {
             r: 255,
             g: 0,
@@ -280,7 +281,7 @@ fn a_fit_row_by_row_matches_the_whole_image_two_pass() {
 
     /// The fit as two passes over whole-image buffers: every row filtered across, then down.
     fn two_pass(image: &Image, max_side: u32) -> Vec<SrgbaU8> {
-        let size = image.fitted(max_side).size();
+        let size = image.fitted(NonZeroU32::new(max_side).unwrap()).size();
         let (from_w, from_h) = (image.size().x as usize, image.size().y as usize);
         let (to_w, to_h) = (size.x as usize, size.y as usize);
         let linear: Vec<[f32; 4]> = image
@@ -324,7 +325,7 @@ fn a_fit_row_by_row_matches_the_whole_image_two_pass() {
             SrgbaU8 { r, g, b, a }
         });
         assert_eq!(
-            image.fitted(max_side).texels(),
+            image.fitted(NonZeroU32::new(max_side).unwrap()).texels(),
             two_pass(&image, max_side),
             "{size}"
         );
@@ -343,7 +344,7 @@ fn a_texel_reads_by_position_and_magnifies_into_a_block() {
     assert_eq!(image.texel(UVec2::new(0, 0)), red);
     assert_eq!(image.texel(UVec2::new(1, 0)), blue);
 
-    let big = image.magnified(3);
+    let big = image.magnified(NonZeroU32::new(3).unwrap());
     assert_eq!(big.size(), UVec2::new(6, 3));
     for y in 0..3 {
         for x in 0..6 {
@@ -351,9 +352,8 @@ fn a_texel_reads_by_position_and_magnifies_into_a_block() {
             assert_eq!(big.texel(UVec2::new(x, y)), want, "({x}, {y})");
         }
     }
-    assert_eq!(image.magnified(1), image);
+    assert_eq!(image.magnified(NonZeroU32::MIN), image);
     panic_probe::assert_panics_with("lies outside", || image.texel(UVec2::new(2, 0)));
-    panic_probe::assert_panics_with("at least one", || image.magnified(0));
 }
 
 /// A PNG round-trips the bytes it was written from, and bytes that are no PNG are refused.

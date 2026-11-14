@@ -2,8 +2,8 @@
 //! overlay closes.
 
 use crate::cascade::Cascade;
-use crate::cascade::rows::tab_stop_row::TabEnd;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::tab_end::TabEnd;
 
 /// What moved focus, which decides whether the focus ring shows.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

@@ -1,14 +1,15 @@
 //! Backdrops over the showcase's first page add no allocation to a steady frame.
 
-use palantir::bench::scene::{BENCH_DPR, BENCH_SURFACE};
-use palantir::widget::Shape;
-use palantir::{App, Harness, HarnessDepth, SizeSpec};
-use palantir::{Configure, FramePaint, Lens, Material, MaterialPaint, Panel, Rect, RgbaF32, Ui};
+use palantir::bench::scene::BENCH_DPR;
+use palantir::bench::scene::BENCH_SURFACE;
+use palantir::{
+    App, Configure, FramePaint, Harness, HarnessDepth, Lens, Material, MaterialPaint, Paint, Panel,
+    Rect, RgbaF32, Shape, SizeSpec, Ui,
+};
 use palantir_showcase::{MAIN_WINDOW, Shell};
 
 use crate::gates::{MEASURE_FRAMES, WARMUP_FRAMES};
 use crate::harness::Audit;
-use palantir::Paint;
 
 /// The look of the backdrops.
 #[derive(Clone, Copy, Debug)]

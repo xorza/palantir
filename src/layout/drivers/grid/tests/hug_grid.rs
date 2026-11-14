@@ -11,6 +11,7 @@ use crate::primitives::layout::track::Track;
 use crate::text::wrap::TextWrap;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::widget::Widget;
+use std::num::NonZeroU16;
 
 #[test]
 fn grid_hug_grid_collapses_empty_fill_tracks() {
@@ -162,7 +163,10 @@ fn hug_grid_fill_columns_each_hold_their_cells() {
                         rec.leaf(
                             &format!("cell{col}"),
                             Widget::leaf()
-                                .grid_cell(GridCell::at(0, col).with_span(1, span))
+                                .grid_cell(
+                                    GridCell::at(0, col)
+                                        .with_span(NonZeroU16::MIN, NonZeroU16::new(span).unwrap()),
+                                )
                                 .size((w, 20.0)),
                         );
                     }

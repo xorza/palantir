@@ -17,7 +17,8 @@ use crate::primitives::layout::layout_mode::LayoutMode;
 use crate::primitives::layout::scroll_axes::ScrollAxes;
 use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::primitives::layout::visibility::Visibility;
-use crate::primitives::math::domain::{self, MAX_GAP};
+use crate::primitives::math::domain;
+use crate::primitives::packed::half_simd::F16x4;
 use crate::primitives::packed::serde::LaneCodec;
 use crate::primitives::paint::border::Border;
 use crate::primitives::paint::chrome::Chrome;
@@ -28,13 +29,14 @@ use crate::scene::node::node_mode::NodeMode;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::configure::ThemeDefaults;
+use crate::widget_core::configure::ConfigureDefaults;
 use crate::widget_core::widget::Ident;
 use crate::widget_core::widget::Widget;
 use crate::widgets::menu::menu_item::MenuItem;
 use crate::widgets::scroll::Scroll;
 use crate::widgets::{block::Block, button::Button, grid::Grid, panel::Panel, text::Text};
 use glam::{UVec2, Vec2};
+use std::num::NonZeroU16;
 
 fn node_of<W: Configure>(widget: &mut W) -> &mut Node {
     let Configurator { widget } = widget.configure();
@@ -111,7 +113,9 @@ fn builder_setters_cover_the_complete_external_node_surface() {
         .padding(padding)
         .margin(margin)
         .at(pos)
-        .grid_cell(GridCell::at(2, 3).with_span(4, 5))
+        .grid_cell(
+            GridCell::at(2, 3).with_span(NonZeroU16::new(4).unwrap(), NonZeroU16::new(5).unwrap()),
+        )
         .gap(6.0)
         .line_gap(7.0)
         .justify(Justify::SpaceBetween)
@@ -134,7 +138,7 @@ fn builder_setters_cover_the_complete_external_node_surface() {
     assert_eq!(widget.authored().pos(), pos);
     assert_eq!(
         widget.authored().grid_cell(),
-        GridCell::at(2, 3).with_span(4, 5)
+        GridCell::at(2, 3).with_span(NonZeroU16::new(4).unwrap(), NonZeroU16::new(5).unwrap())
     );
     assert_eq!(widget.authored().gap(), Some(6.0));
     assert_eq!(widget.authored().line_gap(), Some(7.0));
@@ -268,9 +272,11 @@ fn node_bounds_coerce_their_order_and_validate_their_kinds() {
 fn packed_gaps_accept_f16_boundaries_and_reject_invalid_values() {
     type Case = (&'static str, fn() -> Widget);
 
-    let valid = Widget::hstack().gap(MAX_GAP).line_gap(MAX_GAP);
-    assert_eq!(valid.authored().gap(), Some(MAX_GAP));
-    assert_eq!(valid.authored().line_gap(), Some(MAX_GAP));
+    let valid = Widget::hstack()
+        .gap(F16x4::MAX_LANE)
+        .line_gap(F16x4::MAX_LANE);
+    assert_eq!(valid.authored().gap(), Some(F16x4::MAX_LANE));
+    assert_eq!(valid.authored().line_gap(), Some(F16x4::MAX_LANE));
 
     let cases: &[Case] = &[
         ("negative gap", || Widget::hstack().gap(-1.0)),
@@ -447,7 +453,7 @@ fn a_border_past_an_f16_lane_draws() {
 
 /// A canvas position is an offset per axis and a grid span a count: zero names no cell and panics.
 #[test]
-fn position_and_grid_span_validate_their_kinds() {
+fn position_validates_its_kind_and_a_grid_span_keeps_its_cell() {
     panic_probe::assert_panics_with(domain::OFFSET_RULE, || {
         Widget::leaf().at(Vec2::new(f32::NAN, 0.0))
     });
@@ -456,16 +462,16 @@ fn position_and_grid_span_validate_their_kinds() {
     });
     let at = Widget::leaf().at(Vec2::new(-5.0, 7.0));
     assert_eq!(at.node.pos, Vec2::new(-5.0, 7.0));
-
-    for (rows, cols) in [(0, 1), (1, 0)] {
-        panic_probe::assert_panics_with(domain::COUNT_RULE, || {
-            GridCell::at(0, 0).with_span(rows, cols)
-        });
-    }
-    let cell = GridCell::at(1, 2).with_span(3, 4);
+    let cell =
+        GridCell::at(1, 2).with_span(NonZeroU16::new(3).unwrap(), NonZeroU16::new(4).unwrap());
     assert_eq!(
         (cell.row(), cell.col(), cell.row_span(), cell.col_span()),
-        (1, 2, 3, 4),
+        (
+            1,
+            2,
+            NonZeroU16::new(3).unwrap(),
+            NonZeroU16::new(4).unwrap()
+        ),
     );
 }
 

@@ -2,20 +2,15 @@
 //! arcs and triangles, and the order they paint in.
 
 use palantir::glam::{UVec2, Vec2};
-use palantir::widget::{CubicBezier, QuadraticBezier, Shape};
 use palantir::{
-    Block, Border, Chrome, ColorRamp, Configure, Corners, Gradient, Panel, Rect, RgbaF32, SizeSpec,
-    Sizing, Ui,
+    Block, Border, Chrome, ColorRamp, Configure, Corners, CubicBezier, Gradient, LineCap, LineJoin,
+    Paint, Panel, QuadraticBezier, Rect, RgbaF32, Shape, SizeSpec, Sizing, Stroke, Ui,
 };
 
 use crate::fixtures;
 use crate::golden_name::GoldenName;
 use crate::goldens;
 use crate::visual_rig::VisualRig;
-use palantir::LineCap;
-use palantir::LineJoin;
-use palantir::Paint;
-use palantir::Stroke;
 
 /// Pin the slot mechanism: three sub-rect shapes interleaved with two child Frames, each overlapping the children that paint under it, so pixels tell "right slot" from "all collapsed to slot 0".
 ///
@@ -391,7 +386,7 @@ fn an_unsnapped_rect_covers_the_pixels_across_each_edge() {
 /// thin bars, mixed radii, capsules, circles, triangles, gradients and turned shapes,
 /// all off the pixel grid and translucent, so a pixel shaded twice or missed moves its value.
 fn template_sweep(ui: &mut Ui) {
-    use palantir::widget::{PaintAnimation, PaintRepeat};
+    use palantir::{PaintAnimation, PaintRepeat};
     use std::time::Duration;
     const CELL: f32 = 72.0;
     const COLS: usize = 8;

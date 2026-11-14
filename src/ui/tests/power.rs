@@ -13,6 +13,7 @@ use crate::ui::ui_preferences::UiPreferences;
 use crate::widget_core::configure::Configure;
 use crate::widgets::button::Button;
 use crate::widgets::spinner::Spinner;
+use std::num::NonZeroU32;
 
 fn pick(ui: &mut Ui, power: Preference<Reduction>) {
     ui.set_preferences(UiPreferences {
@@ -68,7 +69,7 @@ fn power_moves_only_between_frames_and_follows_the_system_through_system() {
 fn reduced_at(millihertz: u32) -> Harness {
     Harness::builder(SURFACE)
         .mono()
-        .refresh_millihertz(millihertz)
+        .refresh_millihertz(NonZeroU32::new(millihertz).unwrap())
         .system_power_reduced(true)
         .build()
 }
@@ -110,7 +111,7 @@ fn reduced_power_spaces_frames_by_whole_refresh_periods() {
     }
     let mut h = Harness::builder(SURFACE)
         .mono()
-        .refresh_millihertz(60_000)
+        .refresh_millihertz(NonZeroU32::new(60_000).unwrap())
         .build();
     assert_eq!(frame_times(&mut h, 3), [Duration::ZERO; 3]);
     assert_eq!(h.frame(|_| {}).earliest_repaint_at, None);
@@ -137,7 +138,7 @@ fn the_frame_rate_pick_decides_the_cap_apart_from_the_power() {
 
     let mut h = Harness::builder(SURFACE)
         .mono()
-        .refresh_millihertz(60_000)
+        .refresh_millihertz(NonZeroU32::new(60_000).unwrap())
         .build();
     frame_rate(&mut h, Preference::Fixed(Reduction::Reduced));
     let interval = Duration::from_nanos(33_333_333);

@@ -12,6 +12,7 @@ pub(crate) mod bench;
 mod duration;
 pub(crate) mod easing;
 pub(crate) mod motion_role;
+pub(crate) mod paint_curve;
 pub(crate) mod phase;
 mod spring;
 

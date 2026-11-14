@@ -7,7 +7,7 @@ use crate::theme::popup::PopupTheme;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::configure::ThemeDefaults;
+use crate::widget_core::configure::ConfigureDefaults;
 use crate::widget_core::overlay_response::OverlayResponse;
 use crate::widgets::menu::menu_landing::MenuLanding;
 use crate::widgets::popup::Popup;

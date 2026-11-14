@@ -2,8 +2,8 @@
 
 use crate::common::span::Span;
 use crate::primitives::layout::axis::Axis;
-use crate::primitives::math::domain;
 use std::hash;
+use std::num::{NonZeroU16, NonZeroU32};
 
 /// Per-child placement in a `Grid` parent; inert otherwise. `(row, col)` is the top-left cell, spans default to 1.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -11,8 +11,8 @@ use std::hash;
 pub struct GridCell {
     row: u16,
     col: u16,
-    row_span: u16,
-    col_span: u16,
+    row_span: NonZeroU16,
+    col_span: NonZeroU16,
 }
 
 impl hash::Hash for GridCell {
@@ -23,8 +23,8 @@ impl hash::Hash for GridCell {
         state.write_u64(
             u64::from(self.row)
                 | (u64::from(self.col) << 16)
-                | (u64::from(self.row_span) << 32)
-                | (u64::from(self.col_span) << 48),
+                | (u64::from(self.row_span.get()) << 32)
+                | (u64::from(self.col_span.get()) << 48),
         );
     }
 }
@@ -35,20 +35,13 @@ impl GridCell {
         Self {
             row,
             col,
-            row_span: 1,
-            col_span: 1,
+            row_span: NonZeroU16::MIN,
+            col_span: NonZeroU16::MIN,
         }
     }
 
-    /// This cell widened to `row_span` rows and `col_span` columns, both *counts*.
-    ///
-    /// # Panics
-    ///
-    /// Panics unless both spans are [counts](crate::widget::domain::count).
-    #[track_caller]
-    pub const fn with_span(self, row_span: u16, col_span: u16) -> Self {
-        domain::count(row_span as u32);
-        domain::count(col_span as u32);
+    /// This cell widened to `row_span` rows and `col_span` columns.
+    pub const fn with_span(self, row_span: NonZeroU16, col_span: NonZeroU16) -> Self {
         Self {
             row_span,
             col_span,
@@ -67,27 +60,30 @@ impl GridCell {
     }
 
     /// Rows spanned.
-    pub const fn row_span(self) -> u16 {
+    pub const fn row_span(self) -> NonZeroU16 {
         self.row_span
     }
 
     /// Columns spanned.
-    pub const fn col_span(self) -> u16 {
+    pub const fn col_span(self) -> NonZeroU16 {
         self.col_span
     }
 
-    /// This cell held inside `rows` × `cols` tracks, both at least 1: the row and column at most
-    /// the last track, each span at least 1 and at most the tracks left. Coerced, not checked, as
-    /// the track lists change at run time.
-    pub(crate) fn clamped_to(self, rows: u16, cols: u16) -> Self {
-        debug_assert!(rows >= 1 && cols >= 1, "a grid with cells has tracks");
-        let row = self.row.min(rows - 1);
-        let col = self.col.min(cols - 1);
+    /// This cell held inside `rows` × `cols` tracks: the row and column at most the last track,
+    /// each span at most the tracks left. Coerced, not checked, as the track lists change at run
+    /// time.
+    pub(crate) fn clamped_to(self, rows: NonZeroU16, cols: NonZeroU16) -> Self {
+        // An index at most the last track leaves at least that track.
+        let left = |tracks: NonZeroU16, at: u16| {
+            NonZeroU16::new(tracks.get() - at).expect("the last track is left")
+        };
+        let row = self.row.min(rows.get() - 1);
+        let col = self.col.min(cols.get() - 1);
         Self {
             row,
             col,
-            row_span: self.row_span.clamp(1, rows - row),
-            col_span: self.col_span.clamp(1, cols - col),
+            row_span: self.row_span.min(left(rows, row)),
+            col_span: self.col_span.min(left(cols, col)),
         }
     }
 
@@ -95,8 +91,8 @@ impl GridCell {
     #[inline]
     pub(crate) fn track_span(self, axis: Axis) -> Span {
         match axis {
-            Axis::X => Span::new(u32::from(self.col), u32::from(self.col_span)),
-            Axis::Y => Span::new(u32::from(self.row), u32::from(self.row_span)),
+            Axis::X => Span::new(u32::from(self.col), NonZeroU32::from(self.col_span).get()),
+            Axis::Y => Span::new(u32::from(self.row), NonZeroU32::from(self.row_span).get()),
         }
     }
 

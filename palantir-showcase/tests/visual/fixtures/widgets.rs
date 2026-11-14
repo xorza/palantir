@@ -2,12 +2,12 @@
 
 use image::Rgba;
 use palantir::glam::{UVec2, Vec2};
-use palantir::widget::Shape;
 use palantir::{
     AnimationSpec, Axis, Block, Border, Button, Checkbox, Chrome, ColorCoords, ColorField,
     ColorModel, ColorPicker, ColorScheme, ColorStrip, ComboBox, Configure, Corners, DragValue,
-    InputEvent, Key, KeyText, Modal, Panel, ProgressBar, RadioGroup, RadioLook, Rect, RgbaF32,
-    SizeSpec, Sizing, Slider, Spinner, SrgbaU8, SwatchRow, Switch, Text, TextEdit, Ui,
+    InputEvent, Key, KeyText, Modal, Paint, Panel, ProgressBar, RadioGroup, RadioLook, Rect,
+    RgbaF32, Shape, SizeSpec, Sizing, Slider, Spinner, SrgbaU8, SwatchRow, Switch, Text, TextEdit,
+    Ui,
 };
 
 use crate::fixtures;
@@ -16,7 +16,6 @@ use crate::golden_name::GoldenName;
 
 use crate::theme;
 use crate::visual_rig::VisualRig;
-use palantir::Paint;
 
 /// A well padded by `p` and filling the surface around `body`.
 fn padded(ui: &mut Ui, p: f32, body: impl FnOnce(&mut Ui)) {

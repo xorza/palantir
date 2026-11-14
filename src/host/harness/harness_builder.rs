@@ -18,6 +18,7 @@ use crate::theme::color_scheme::ColorScheme;
 use crate::ui::window_frames::WindowFrames;
 use crate::ui::window_frames::present::PresentStrategy;
 use glam::UVec2;
+use std::num::NonZeroU32;
 use std::time::Duration;
 
 /// The label of the texture a [`HarnessDepth::Gpu`] harness paints into.
@@ -67,7 +68,7 @@ pub(super) struct SettlePace {
     /// The clock's step before each frame.
     pub(super) frame_dt: Duration,
     /// The frames that ask for another before the window reads as unsettled.
-    pub(super) settle_frames: u32,
+    pub(super) settle_frames: NonZeroU32,
     /// The real time a settle waits for a wake while the app is busy.
     pub(super) background_wait: Duration,
 }
@@ -93,7 +94,7 @@ impl HarnessBuilder {
             strategy: PresentStrategy::Retained,
             pace: SettlePace {
                 frame_dt: Duration::from_nanos(16_666_667),
-                settle_frames: 600,
+                settle_frames: NonZeroU32::new(600).unwrap(),
                 background_wait: Duration::from_secs(30),
             },
         }
@@ -111,7 +112,7 @@ impl HarnessBuilder {
 
     /// The monitor's refresh rate, which repaint wakes coalesce to; none by default. The
     /// harness's [`set_refresh_millihertz`](Harness::set_refresh_millihertz) changes it later.
-    pub const fn refresh_millihertz(mut self, millihertz: u32) -> Self {
+    pub const fn refresh_millihertz(mut self, millihertz: NonZeroU32) -> Self {
         self.settings.refresh_millihertz = Some(millihertz);
         self
     }
@@ -197,11 +198,7 @@ impl HarnessBuilder {
     /// The frames that ask for another a session's [settle](crate::AgentWindow::settle) runs before the window reads as
     /// unsettled; 600 by default, ten seconds at 60 frames a second. Frames a busy app's wakes
     /// bring do not count.
-    ///
-    /// # Panics
-    ///
-    /// At [`Self::build`], when `frames` is 0.
-    pub const fn settle_frames(mut self, frames: u32) -> Self {
+    pub const fn settle_frames(mut self, frames: NonZeroU32) -> Self {
         self.pace.settle_frames = frames;
         self
     }
@@ -255,10 +252,6 @@ impl HarnessBuilder {
         assert!(
             self.pace.frame_dt > Duration::ZERO,
             "a frame takes some time"
-        );
-        assert!(
-            self.pace.settle_frames > 0,
-            "a settle runs at least one frame"
         );
         Harness::open(
             HeadlessWindow::open(cpu, frames, &self.settings),

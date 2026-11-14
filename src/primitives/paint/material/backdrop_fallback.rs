@@ -9,7 +9,7 @@ use crate::primitives::paint::color::RgbaF32;
 /// ([`Ui::reductions`](crate::Reductions::transparency)), a property of any
 /// backdrop effect: a [`Material`](crate::Material)'s box draws as a plain one, this its fill, its
 /// border and shadow as they are, with no capture, blur or effect, and a backdrop
-/// [`EffectPaint`](crate::widget::EffectPaint) paints it over its shape alike.
+/// [`EffectPaint`](crate::EffectPaint) paints it over its shape alike.
 #[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub enum BackdropFallback {

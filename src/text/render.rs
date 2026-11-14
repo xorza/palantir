@@ -15,9 +15,9 @@ pub(crate) struct RunPlacement {
 }
 
 /// One glyph's physical-px placement plus its opaque raster key; `physical` positions the image
-/// before its raster bearing ([`RasterImage::bearing`](crate::widget::RasterImage)). Public so
+/// before its raster bearing ([`RasterImage::bearing`](crate::RasterImage)). Public so
 /// callers drawing their own text get the backend's answer; see
-/// [`TextGlyphs`](crate::widget::TextGlyphs).
+/// [`TextGlyphs`](crate::TextGlyphs).
 #[derive(Clone, Copy, Debug)]
 pub struct PlacedGlyph {
     /// Raster identity of the glyph.

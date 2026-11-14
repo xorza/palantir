@@ -50,8 +50,8 @@ use glam::Vec2;
 /// - A rect takes anything `Into<`[`Paint`](crate::Paint)`>`: the paint, or a color, a brush, a
 ///   gradient, a border or a shadow as that part alone; a
 ///   [`MaterialPaint`](crate::MaterialPaint), or a [`Material`](crate::Material) alone; an
-///   [`EffectPaint`](crate::widget::EffectPaint); an [`ImagePaint`](crate::widget::ImagePaint);
-///   an [`IconPaint`](crate::widget::IconPaint). An image's rect clips it by its corners; an icon
+///   [`EffectPaint`](crate::EffectPaint); an [`ImagePaint`](crate::ImagePaint);
+///   an [`IconPaint`](crate::IconPaint). An image's rect clips it by its corners; an icon
 ///   takes a square-cornered rect, as its pipeline clips to no corners.
 /// - A circle takes anything `Into<Paint>`, a `MaterialPaint` or a `Material` as a round box, a
 ///   [`Stroke`](crate::Stroke) as a

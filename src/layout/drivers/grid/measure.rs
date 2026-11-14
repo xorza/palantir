@@ -12,6 +12,7 @@ use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::layout::track::Track;
 use crate::primitives::math::num::F32Px;
+use std::num::NonZeroU16;
 
 /// [`LayoutDriver::measure`](crate::layout::drivers::LayoutDriver::measure) for `grid`.
 pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner_avail: Size) -> ContentMeasure {
@@ -45,7 +46,7 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner_avail: Size) -> C
     if any_content_floor_col {
         for c in tree.active_children(node) {
             let cell = grid.cell(tree, c);
-            if cell.col_span() != 1 {
+            if cell.col_span() != NonZeroU16::MIN {
                 continue;
             }
             let i = cell.col() as usize;
@@ -130,7 +131,7 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner_avail: Size) -> C
         // `d.size.h`: a scrollable child's desired height is not its minimum, and
         // unwritten (0.0) a cramped Hug row would collapse to `Track.min`.
         // Multi-row spans wait for the loop below.
-        if cell.row_span() == 1 {
+        if cell.row_span() == NonZeroU16::MIN {
             let row = cell.row() as usize;
             let sizing = rows.tracks[row].sizing();
             if sizing.is_hug() || sizing.fill_weight().is_some() {

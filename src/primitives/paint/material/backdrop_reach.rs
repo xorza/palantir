@@ -4,7 +4,7 @@ use crate::primitives::paint::material::lens::Lens;
 
 /// How far past its shape a backdrop effect reads, which the effect's source derives from its
 /// parameters ([`EffectSource::reach`](crate::EffectSource::reach)), a
-/// [`Material`](crate::Material)'s and an [`EffectPaint`](crate::widget::EffectPaint)'s alike: a
+/// [`Material`](crate::Material)'s and an [`EffectPaint`](crate::EffectPaint)'s alike: a
 /// read past it reads its edge, and the capture grows by it, so damage under it repaints. The
 /// effect's, as how far a ray bends is its shader's, not each paint's. Refused: a reach each paint
 /// names by hand beside the source's, which two paints of one effect could set apart.

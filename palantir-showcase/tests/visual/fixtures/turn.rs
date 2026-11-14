@@ -1,21 +1,14 @@
 //! A turn paint animation on each shape kind that turns, held at 30°.
 
 use palantir::glam::{UVec2, Vec2};
-
-use palantir::widget::{GlyphFont, Mesh, PaintAnimation, Shape};
 use palantir::{
-    Border, Configure, Corners, Fit, Gradient, Image, Panel, Rect, RgbaF32, Shadow, Sizing, Ui,
-    WidgetId,
+    Border, Configure, Corners, Fit, GlyphFont, Gradient, IconPaint, Image, ImagePaint, LineCap,
+    Mesh, Paint, PaintAnimation, Panel, Rect, RgbaF32, Shadow, Shape, Sizing, Stroke, Ui, WidgetId,
 };
 
 use crate::fixtures::icon;
 use crate::golden_name::GoldenName;
 use crate::visual_rig::VisualRig;
-use palantir::LineCap;
-use palantir::Paint;
-use palantir::Stroke;
-use palantir::widget::IconPaint;
-use palantir::widget::ImagePaint;
 
 /// A twelfth of a turn, 30°, from the first frame on.
 fn thirty_degrees() -> PaintAnimation {

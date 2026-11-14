@@ -34,13 +34,13 @@ pub(crate) enum ClosedPaint {
     /// A baked SVG icon over a square-cornered box, rasterized at the exact physical size into the
     /// icon atlas. The [`IconHandle`] carries the viewBox, so `fit` needs no registry lookup.
     /// `tint` multiplies a tintable icon whole and a color icon's alpha only, see
-    /// [`IconPaint`](crate::widget::IconPaint).
+    /// [`IconPaint`](crate::IconPaint).
     Icon {
         handle: IconHandle,
         fit: Fit,
         tint: RgbaF16,
         /// Draws a color icon as its own luminance, see
-        /// [`IconPaint::desaturate`](crate::widget::IconPaint::desaturate).
+        /// [`IconPaint::desaturate`](crate::IconPaint::desaturate).
         desaturate: bool,
     },
     /// An app-written effect over the shape, which may exceed the owner. `params` indexes the

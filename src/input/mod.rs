@@ -17,7 +17,6 @@ pub(crate) mod scope;
 pub(crate) mod target_scroll_delta;
 pub(crate) mod watches;
 
-use crate::cascade::rows::tab_stop_row::TabEnd;
 use crate::cascade::{TabDirection, TabDomain, WidgetLocation};
 use crate::input::arranged::Arranged;
 use crate::input::capture::{PressDrag, ReleaseKind};
@@ -49,6 +48,7 @@ use crate::primitives::input::keyboard::modifiers::Modifiers;
 use crate::primitives::input::pointer::{PointerButton, PointerEvent};
 use crate::primitives::input::policy::{FocusPolicy, InputPolicy, InputSignal};
 use crate::primitives::input::shortcut::Shortcut;
+use crate::primitives::input::tab_end::TabEnd;
 use crate::primitives::input::watch::{KeyboardWake, PointerWake};
 use crate::primitives::input::zoom_factor::ZoomFactor;
 use crate::primitives::layout::axis::Axis;

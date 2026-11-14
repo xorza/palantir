@@ -13,6 +13,7 @@ use crate::ui::frame_runtime::FramePlan;
 use crate::ui::frame_runtime::FrameRuntime;
 use crate::ui::frame_runtime::RecordBaseline;
 use crate::ui::frame_runtime::wake::WakeReasons;
+use std::num::NonZeroU32;
 
 #[derive(Clone, Copy, Debug)]
 struct Case {
@@ -316,7 +317,7 @@ fn a_frame_takes_its_reduced_frame_rate_slot_within_the_slack() {
     let interval = ns(33_333_333);
     let slack = ns(8_333_333);
     let display = Display {
-        refresh_millihertz: Some(60_000),
+        refresh_millihertz: NonZeroU32::new(60_000),
         ..Display::default()
     };
     let first = Duration::from_millis(10);

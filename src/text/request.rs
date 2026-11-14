@@ -18,8 +18,8 @@ pub(crate) struct TextShapeRequest<'a> {
 
 impl<'a> TextShapeRequest<'a> {
     /// **Where a face is screened.** `font` can arrive straight from a public
-    /// [`TextRun`](crate::widget::TextRun) or
-    /// [`TextGlyphs`](crate::widget::TextGlyphs) call, so the screen sits at the
+    /// [`TextRun`](crate::TextRun) or
+    /// [`TextGlyphs`](crate::TextGlyphs) call, so the screen sits at the
     /// boundary both cross. Hashes `text` itself; a caller holding the hash uses
     /// [`Self::for_key`]. `None` for empty text or an unusable face.
     pub(crate) fn unbounded(text: &'a str, font: ShapingFont) -> Option<Self> {

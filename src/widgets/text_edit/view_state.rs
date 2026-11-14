@@ -2,6 +2,7 @@
 //! blinks.
 
 use crate::animation::motion_role::MotionRole;
+use crate::animation::paint_curve::PaintCurve;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::input::sense::Sense;
@@ -9,10 +10,10 @@ use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::scroll_axes::ScrollAxes;
 use crate::shape::paint_animation::PaintAnimation;
 use crate::shape::paint_animation::PaintRepeat;
-use crate::shape::paint_animation::curves;
 use crate::widgets::scroll::scroll_state::{PanBand, ScrollBounds, ScrollState, WheelPan};
 use crate::widgets::text_edit::text_geometry::TextGeometry;
 use glam::Vec2;
+use std::num::NonZeroU32;
 use std::time::Duration;
 
 const BLINK_HALF: Duration = Duration::from_millis(500);
@@ -143,9 +144,9 @@ impl ViewState {
             PaintAnimation::alpha(0.0, 1.0)
                 .with_started_at(self.last_caret_change)
                 .with_period(BLINK_HALF * 2)
-                .with_steps(2)
+                .with_steps(NonZeroU32::new(2).unwrap())
                 .with_repeat(PaintRepeat::Settle(BLINK_STOP_AFTER_IDLE))
-                .with_curve(curves::square)
+                .with_curve(PaintCurve::SQUARE)
                 .with_motion(MotionRole::Essential),
         )
     }

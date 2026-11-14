@@ -16,6 +16,7 @@ use crate::widget_core::configure::Configure;
 use crate::widgets::switch::{Switch, SwitchTrack};
 
 use glam::UVec2;
+use std::num::NonZeroU32;
 use std::time;
 
 /// The aspect the stock switch ships; expected numbers derive from it.
@@ -87,7 +88,7 @@ fn knob_rests_inset_from_the_end_it_sits_against() {
     let mut h = Harness::builder(UVec2::new(400, 400))
         .mono()
         .frame_dt(time::Duration::from_millis(16))
-        .settle_frames(120)
+        .settle_frames(NonZeroU32::new(120).unwrap())
         .build();
     let id = WidgetId::from_hash("wifi");
     let mut on = false;
@@ -127,7 +128,7 @@ fn the_knob_wears_the_ink_of_its_state() {
     let mut h = Harness::builder(UVec2::new(400, 400))
         .mono()
         .frame_dt(time::Duration::from_millis(16))
-        .settle_frames(120)
+        .settle_frames(NonZeroU32::new(120).unwrap())
         .build();
     let id = WidgetId::from_hash("wifi");
     let mut on = false;

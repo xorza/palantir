@@ -597,7 +597,7 @@ fn a_dialog_in_a_dialog_takes_focus_and_gives_it_back() {
 /// lands: the first stop or the last, at the end of the frame that asks.
 #[test]
 fn focus_within_lands_on_either_end_of_a_subtree() {
-    use crate::cascade::rows::tab_stop_row::TabEnd;
+    use crate::primitives::input::tab_end::TabEnd;
     let mut h = Harness::mono(UVec2::new(200, 200));
     let mut record = |ui: &mut Ui| {
         stop(ui, "outside");

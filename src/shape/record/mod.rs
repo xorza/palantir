@@ -65,7 +65,7 @@ pub(crate) enum ShapeRecord {
         /// Lowered text storage and its content hash; arena-backed input is normalized into the active record store first, so span and hash can't come from different passes.
         text: RecordedText,
         color: RgbaF16,
-        /// The face and metrics to shape in, as [`TextShape`](crate::widget::TextShape) authors them with the family keyed by the store's shaper; [`TextShapeKey`](crate::text::key::TextShapeKey) is minted from it.
+        /// The face and metrics to shape in, as [`TextShape`](crate::TextShape) authors them with the family keyed by the store's shaper; [`TextShapeKey`](crate::text::key::TextShapeKey) is minted from it.
         ///
         /// `line_height` is a resolved px leading fed to `Metrics::new` (authoring sets `size * line_height_factor`); carrying px keeps widget conventions out of the shaper and gives different leading distinct buffers.
         font: ShapingFont,

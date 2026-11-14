@@ -14,6 +14,7 @@ use crate::shell::Shell;
 use crate::shot;
 use crate::shot::script::{Header, ParseError, ParseErrorKind, Region, Script, StepKind};
 use crate::shot::{Folders, Mode, ShotError};
+use std::num::NonZeroU32;
 
 fn steps(text: &str) -> Vec<StepKind> {
     Script::parse(text)
@@ -46,7 +47,7 @@ fn the_header_sets_the_window() {
             size: UVec2::new(800, 600),
             scale: SystemScale::new(1.5).unwrap(),
             page: Some("overlays".to_owned()),
-            max_side: 1024,
+            max_side: NonZeroU32::new(1024).unwrap(),
             scheme: Some(ColorScheme::Light),
         }
     );
@@ -141,17 +142,17 @@ fn each_instruction_reads_its_words() {
             StepKind::Shot {
                 name: "whole".to_owned(),
                 region: None,
-                zoom: 1,
+                zoom: NonZeroU32::MIN,
             },
             StepKind::Shot {
                 name: "part".to_owned(),
                 region: Some(Region::Rect(Rect::new(1.0, 2.0, 30.0, 40.0))),
-                zoom: 4,
+                zoom: NonZeroU32::new(4).unwrap(),
             },
             StepKind::Shot {
                 name: "item".to_owned(),
                 region: Some(Region::At(at())),
-                zoom: 1,
+                zoom: NonZeroU32::MIN,
             },
             StepKind::Probe(Vec2::new(3.0, 4.0)),
             StepKind::Widgets(None),

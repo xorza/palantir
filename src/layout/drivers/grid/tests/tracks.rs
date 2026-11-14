@@ -14,6 +14,7 @@ use crate::scene::tree::Tree;
 use crate::text::wrap::TextWrap;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::widget::Widget;
+use std::num::NonZeroU16;
 
 /// A bare cell: its id, its cell and its size.
 type Cell = (&'static str, (u16, u16), (Sizing, Sizing));
@@ -71,7 +72,9 @@ fn grid_hug_column_takes_max_span1_child_intrinsic() {
             }
             rec.leaf(
                 "body",
-                Widget::leaf().grid_cell(GridCell::at(0, 1).with_span(2, 1)),
+                Widget::leaf().grid_cell(
+                    GridCell::at(0, 1).with_span(NonZeroU16::new(2).unwrap(), NonZeroU16::MIN),
+                ),
             );
         });
     });

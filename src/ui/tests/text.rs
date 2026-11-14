@@ -1,5 +1,6 @@
 //! What a frame reshapes, what it reuses, and what the shared caches keep.
 
+use crate::animation::paint_curve::PaintCurve;
 use crate::clipboard::Clipboard;
 use crate::effect::effect_registry::EffectRegistry;
 use crate::host::harness::Harness;
@@ -17,7 +18,6 @@ use crate::scene::plane::Plane;
 use crate::shape::Shape;
 use crate::shape::paint_animation::PaintAnimation;
 use crate::shape::paint_animation::PaintRepeat;
-use crate::shape::paint_animation::curves;
 use crate::shape::record::ShapeRecord;
 use crate::text::RENDERED_RUN_KEEP_FRAMES;
 use crate::text::font_family::FontFamily;
@@ -38,6 +38,7 @@ use crate::widget_core::widget::Widget;
 use crate::widgets::grid::Grid;
 use crate::widgets::{panel::Panel, text::Text};
 use glam::UVec2;
+use std::num::NonZeroU32;
 use std::time::Duration;
 
 /// An unchanged Text hits the per-`WidgetId` reuse cache and skips shaping
@@ -286,9 +287,9 @@ fn blinking_text(ui: &mut Ui, text: &str) {
                 PaintAnimation::alpha(0.0, 1.0)
                     .with_started_at(HALF)
                     .with_period(HALF * 2)
-                    .with_steps(2)
+                    .with_steps(NonZeroU32::new(2).unwrap())
                     .with_repeat(PaintRepeat::Settle(Duration::MAX))
-                    .with_curve(curves::square),
+                    .with_curve(PaintCurve::SQUARE),
             );
         }
     });

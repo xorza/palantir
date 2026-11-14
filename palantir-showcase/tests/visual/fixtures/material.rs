@@ -1,10 +1,9 @@
 //! Materials over the pixels painted before them.
 
 use palantir::glam::{UVec2, Vec2};
-use palantir::widget::{PaintAnimation, Shape};
 use palantir::{
-    Border, ColorScheme, Configure, Corners, Lens, Material, Panel, PopupTrigger, Rect, RgbaF32,
-    SizeSpec, Text, Ui, WidgetId,
+    Border, ColorScheme, Configure, Corners, Lens, Material, Paint, PaintAnimation, Panel,
+    PopupTrigger, Rect, RgbaF32, Shape, SizeSpec, Text, Ui, WidgetId,
 };
 use palantir_showcase::pages::materials;
 use palantir_showcase::support;
@@ -12,7 +11,6 @@ use palantir_showcase::support::Kits;
 
 use crate::golden_name::GoldenName;
 use crate::visual_rig::FIXTURE_PALETTE;
-use palantir::Paint;
 
 /// Stripes of three colors and widths, and two lines of text over them, filling `size`.
 fn backdrop_scene(ui: &mut Ui, size: UVec2) {

@@ -9,7 +9,7 @@ use crate::shape::Shape;
 use crate::shape::image_paint::ImagePaint;
 use crate::theme::color_picker::ColorPickerTheme;
 use crate::ui::Ui;
-use crate::widget_core::configure::{Configure, ThemeDefaults};
+use crate::widget_core::configure::{Configure, ConfigureDefaults};
 use crate::widget_core::value_response::ValueResponse;
 use crate::widget_core::widget::Widget;
 use crate::widgets::axis_keys::AxisKeys;

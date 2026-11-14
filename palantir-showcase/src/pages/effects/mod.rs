@@ -5,12 +5,10 @@ use crate::scaffold::api;
 use crate::support;
 use crate::support::{CELL_PADDING, DemoCell, Kit, Section};
 use palantir::glam::Vec2;
-use palantir::widget::EffectPaint;
-use palantir::widget::{GlyphFont, PaintAnimation, PaintRepeat, Shape};
 use palantir::{
     BackdropEffect, BackdropReach, Button, ButtonTheme, Configure, Corners, EffectError,
-    EffectName, EffectParams, EffectSource, Panel, PressEffect, PressParams, Rect, ReducedEffect,
-    RgbaF32, SizeSpec, Ui,
+    EffectName, EffectPaint, EffectParams, EffectSource, GlyphFont, PaintAnimation, PaintRepeat,
+    Panel, PressEffect, PressParams, Rect, ReducedEffect, RgbaF32, Shape, SizeSpec, Ui,
 };
 use std::time::Duration;
 
@@ -230,7 +228,7 @@ const RING_LOOP_S: u64 = 6;
 const WATER_LOOP_S: u64 = 4;
 
 /// A clock that loops every `period_s` seconds, for an effect that reads only its time.
-fn looping(period_s: u64) -> PaintAnimation {
+const fn looping(period_s: u64) -> PaintAnimation {
     PaintAnimation::clock()
         .with_period(Duration::from_secs(period_s))
         .with_repeat(PaintRepeat::Forever)

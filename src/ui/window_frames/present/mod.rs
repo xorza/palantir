@@ -33,6 +33,7 @@ use crate::ui::window_frames::present::present_facts::{
 };
 use crate::window::window_token::WindowToken;
 use glam::UVec2;
+use std::num::NonZeroU32;
 use std::time::Duration;
 
 /// What a window opens as: its token, the render owner its frames draw as, and how it presents.
@@ -71,7 +72,7 @@ impl TargetKey {
 pub(crate) struct FrameSpec {
     pub(crate) target: TargetKey,
     pub(crate) system_scale: SystemScale,
-    pub(crate) refresh_millihertz: Option<u32>,
+    pub(crate) refresh_millihertz: Option<NonZeroU32>,
     pub(crate) now: Duration,
 }
 

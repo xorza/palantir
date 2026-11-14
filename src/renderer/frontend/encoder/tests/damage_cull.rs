@@ -14,6 +14,7 @@ use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};
 use glam::{UVec2, Vec2};
+use std::num::NonZeroU32;
 
 /// A filter over the first block keeps it alone; one over both keeps both, in paint order.
 #[test]
@@ -151,10 +152,10 @@ fn damage_filter_paints_leaves_in_any_rect() {
 fn viewport_and_damage_culls_advance_the_sparse_paint_anim_cursor() {
     use crate::display::Display;
 
+    use crate::animation::paint_curve::PaintCurve;
     use crate::shape::Shape;
     use crate::shape::paint_animation::PaintAnimation;
     use crate::shape::paint_animation::PaintRepeat;
-    use crate::shape::paint_animation::curves;
     use std::time::Duration;
 
     const HALF: Duration = Duration::from_millis(500);
@@ -197,9 +198,9 @@ fn viewport_and_damage_culls_advance_the_sparse_paint_anim_cursor() {
                                         PaintAnimation::alpha(0.0, 1.0)
                                             .with_started_at(started_at)
                                             .with_period(HALF * 2)
-                                            .with_steps(2)
+                                            .with_steps(NonZeroU32::new(2).unwrap())
                                             .with_repeat(PaintRepeat::Settle(Duration::MAX))
-                                            .with_curve(curves::square),
+                                            .with_curve(PaintCurve::SQUARE),
                                     );
                                 }
                             });

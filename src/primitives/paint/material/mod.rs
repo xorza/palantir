@@ -110,7 +110,7 @@ use crate::primitives::paint::material::material_effect::MaterialEffect;
 /// the box's fill, as CSS pairs `backdrop-filter` with `background-color`.
 ///
 /// The theme form of a backdrop effect, plain data a theme file saves and a transition blends; an
-/// [`EffectPaint`](crate::widget::EffectPaint) draws any effect at run time, with parameters of its
+/// [`EffectPaint`](crate::EffectPaint) draws any effect at run time, with parameters of its
 /// own type, images and a clock, and a material draws as one does, under palantir's stage.
 ///
 /// A material reads past its edge: what is painted around it glows in as the blur reaches, and
@@ -123,7 +123,7 @@ use crate::primitives::paint::material::material_effect::MaterialEffect;
 /// [factor](crate::widget::domain::factor), each a [lane](crate::widget::domain::lane) as it
 /// packs into one, each parameter finite, and the fallback holds its own checks. The effect must
 /// be loaded where the box records, a backdrop effect that binds no image and takes as many lanes
-/// as the material holds, as an [`EffectPaint`](crate::widget::EffectPaint)'s effect must be
+/// as the material holds, as an [`EffectPaint`](crate::EffectPaint)'s effect must be
 /// loaded.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]

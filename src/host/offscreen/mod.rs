@@ -28,6 +28,7 @@ use crate::ui::frame_report::FrameReport;
 use crate::ui::window_frames::present::PresentStrategy;
 use crate::window::window_commands::WindowCommand;
 use crate::window::window_token::WindowToken;
+use std::num::NonZeroU32;
 use std::time::Duration;
 
 /// The offscreen analog of `WinitHost`, rendering into a texture.
@@ -139,7 +140,7 @@ impl OffscreenHostBuilder {
 
     /// The display's refresh rate, which repaint wakes coalesce to; none by default. The host's
     /// [`set_refresh_millihertz`](OffscreenHost::set_refresh_millihertz) changes it later.
-    pub const fn refresh_millihertz(mut self, millihertz: u32) -> Self {
+    pub const fn refresh_millihertz(mut self, millihertz: NonZeroU32) -> Self {
         self.settings.refresh_millihertz = Some(millihertz);
         self
     }
@@ -365,7 +366,7 @@ impl OffscreenHost {
 
     /// Report the display's refresh rate, which repaint wakes coalesce to, from the next frame
     /// on; `None` reports none.
-    pub const fn set_refresh_millihertz(&mut self, millihertz: Option<u32>) -> &mut Self {
+    pub const fn set_refresh_millihertz(&mut self, millihertz: Option<NonZeroU32>) -> &mut Self {
         self.window.refresh_millihertz = millihertz;
         self
     }

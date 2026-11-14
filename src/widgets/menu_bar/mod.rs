@@ -16,7 +16,7 @@ use crate::theme::selection::Selection;
 use crate::ui::Ui;
 use crate::widget_core::activation::Activation;
 use crate::widget_core::configurator::Configurator;
-use crate::widget_core::configure::{Configure, ThemeDefaults};
+use crate::widget_core::configure::{Configure, ConfigureDefaults};
 use crate::widget_core::overlay_response::OverlayResponse;
 use crate::widget_core::overlay_scope::OverlayScope;
 use crate::widget_core::response::InnerResponse;

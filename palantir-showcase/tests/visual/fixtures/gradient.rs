@@ -3,8 +3,7 @@
 //! radial and conic shader paths on chrome.
 
 use palantir::glam::UVec2;
-use palantir::widget::Shape;
-use palantir::{ColorScheme, Configure, Gradient, Panel, Rect, RgbaF32, SizeSpec, Stop};
+use palantir::{ColorScheme, Configure, Gradient, Panel, Rect, RgbaF32, Shape, SizeSpec, Stop};
 use palantir_showcase::pages::gradients;
 use palantir_showcase::support;
 use palantir_showcase::support::Kits;

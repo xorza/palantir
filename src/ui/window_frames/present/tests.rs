@@ -465,7 +465,7 @@ mod output_validity_tests {
         };
         let rescaled = FrameSpec {
             system_scale: SystemScale::new(2.0).unwrap(),
-            refresh_millihertz: Some(120_000),
+            refresh_millihertz: std::num::NonZeroU32::new(120_000),
             now: Duration::from_secs(1),
             ..uncopyable
         };

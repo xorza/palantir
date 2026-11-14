@@ -90,7 +90,7 @@ impl<A: App> AgentWindow<A> for HarnessSession<'_, A> {
         // after any image an earlier ask is owed, one a frame.
         let first = h.ui().record_frame_idx();
         h.next_frame(self.app);
-        for _ in 0..h.pace.settle_frames {
+        for _ in 0..h.pace.settle_frames.get() {
             device_answered(h.wait_for_gpu())?;
             h.next_frame(self.app);
             if let Some(shot) = h.ui().screenshot_taken(asked) {

@@ -7,6 +7,7 @@ use crate::primitives::input::shortcut::{Shortcut, ShortcutMods};
 use crate::primitives::input::zoom_factor::ZoomFactor;
 use glam::Vec2;
 use std::convert::Infallible;
+use std::num::NonZeroU32;
 use std::time::Duration;
 
 /// One step of input, as a person at the window takes it. A player runs frames until the window
@@ -39,8 +40,8 @@ pub enum Action<X = Infallible> {
         button: PointerButton,
         /// The modifiers held through the drag.
         mods: ShortcutMods,
-        /// The moves from `from` to `to`; 0 moves as 1.
-        steps: u32,
+        /// The moves from `from` to `to`.
+        steps: NonZeroU32,
     },
     /// Scroll there by `delta` logical pixels, as a touchpad does; positive `y` scrolls content
     /// down.
@@ -87,7 +88,7 @@ pub enum Action<X = Infallible> {
 impl Action {
     /// The moves a drag takes when its caller names none: enough to cross any drag threshold in
     /// small steps.
-    pub const DRAG_STEPS: u32 = 8;
+    pub const DRAG_STEPS: NonZeroU32 = NonZeroU32::new(8).unwrap();
 
     /// A left click with no modifiers at `at`.
     pub fn click(at: impl Into<Locator>) -> Self {

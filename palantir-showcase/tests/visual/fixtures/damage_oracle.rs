@@ -5,16 +5,14 @@
 use std::time::Duration;
 
 use palantir::glam::{UVec2, Vec2};
-use palantir::widget::{PaintAnimation, PaintRepeat, Shape};
 use palantir::{
-    Block, Chrome, Configure, Fit, Gradient, Image, ImageHandle, Layer, Panel, Rect, RgbaF32,
-    Shadow, ShadowKind, SizeSpec, Sizing, SrgbaU8, Text, Ui,
+    Block, Chrome, Configure, Fit, Gradient, Image, ImageHandle, ImagePaint, Layer, PaintAnimation,
+    PaintRepeat, Panel, Rect, RgbaF32, Shadow, ShadowKind, Shape, SizeSpec, Sizing, SrgbaU8,
+    Stroke, Text, Ui,
 };
 
 use crate::goldens;
 use crate::visual_rig::VisualRig;
-use palantir::Stroke;
-use palantir::widget::ImagePaint;
 
 const SURFACE: UVec2 = UVec2::new(320, 240);
 

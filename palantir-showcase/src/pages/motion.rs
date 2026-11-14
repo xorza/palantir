@@ -6,21 +6,13 @@ use crate::scaffold::tokens::M;
 use crate::support;
 use crate::support::DemoCell;
 use crate::support::{Kit, Knob, Section, Swatches};
-use palantir::LineCap;
-use palantir::LineJoin;
-use palantir::Paint;
-use palantir::Stroke;
 use palantir::glam::{UVec2, Vec2};
-use palantir::widget::AddedShape;
-use palantir::widget::IconPaint;
-use palantir::widget::ImagePaint;
-use palantir::widget::{
-    AnimationRequest, GlyphFont, Mesh, MotionRole, PaintAnimation, PaintRepeat, Shape,
-};
 use palantir::{
-    Animated, AnimationSpec, Block, Border, Button, Chrome, Configure, Corners, Easing, Fit,
-    IconHandle, IconSet, IconTable, Image, Panel, Rect, RgbaF32, Sense, Shadow, SizeSpec, Sizing,
-    Spinner, Text, TranslateScale, Ui, VAlign, WidgetId,
+    AddedShape, Animated, AnimationRequest, AnimationSpec, Block, Border, Button, Chrome,
+    Configure, Corners, Easing, Fit, GlyphFont, IconHandle, IconPaint, IconSet, IconTable, Image,
+    ImagePaint, LineCap, LineJoin, Mesh, MotionRole, Paint, PaintAnimation, PaintRepeat, Panel,
+    Rect, RgbaF32, Sense, Shadow, Shape, SizeSpec, Sizing, Spinner, Stroke, Text, TranslateScale,
+    Ui, VAlign, WidgetId,
 };
 use std::array;
 use std::time::Duration;

@@ -3,12 +3,11 @@
 use crate::scaffold::api;
 use crate::support;
 use crate::support::{DemoCell, Kit, Knob, Section};
-use palantir::LineCap;
-use palantir::LineJoin;
-use palantir::Stroke;
 use palantir::glam::Vec2;
-use palantir::widget::{CubicBezier, QuadraticBezier, Shape};
-use palantir::{ColorRamp, ComboBox, Configure, Rect, RgbaF32, Sizing, Text, Ui, WidgetId};
+use palantir::{
+    ColorRamp, ComboBox, Configure, CubicBezier, LineCap, LineJoin, QuadraticBezier, Rect, RgbaF32,
+    Shape, Sizing, Stroke, Text, Ui, WidgetId,
+};
 
 pub(crate) fn build(ui: &mut Ui, k: Kit) {
     live(ui, k);

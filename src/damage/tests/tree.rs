@@ -418,7 +418,7 @@ fn rekeying_a_child_damages_only_the_child() {
 /// Removing a middle shape shifts trailing ordinals; damage covers the removed pixels plus shifted shapes' old and new positions.
 #[test]
 fn shape_removed_from_middle_evicts_trailing_ordinals() {
-    use crate::widget::Shape;
+    use crate::shape::Shape;
 
     let mut h = Harness::mono(DISPLAY.physical);
     let build = |include_middle: bool, ui: &mut Ui| {
@@ -481,7 +481,7 @@ fn shape_removed_from_middle_evicts_trailing_ordinals() {
 /// Inserting a shape between two shifts trailing ordinals, but content-keyed matching pairs the existing shapes, so only the new one damages.
 #[test]
 fn shape_added_in_middle_damages_only_new() {
-    use crate::widget::Shape;
+    use crate::shape::Shape;
 
     let mut h = Harness::mono(DISPLAY.physical);
     let red_rect = Rect::new(0.0, 0.0, 20.0, 20.0);

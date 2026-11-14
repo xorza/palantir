@@ -51,8 +51,8 @@ pub struct Reductions {
     pub transparency: Reduction,
     /// Reduced, every [`Ui::animate`](crate::Ui::animate) and theme transition snaps to its
     /// target, as CSS `prefers-reduced-motion` asks of transitions, and a
-    /// [decorative](crate::widget::MotionRole::Decorative) paint animation holds still; an
-    /// [essential](crate::widget::MotionRole::Essential) one, as a spinner's turn or a caret's
+    /// [decorative](crate::MotionRole::Decorative) paint animation holds still; an
+    /// [essential](crate::MotionRole::Essential) one, as a spinner's turn or a caret's
     /// blink, still runs, as WCAG 2.3.3 lets essential motion stay
     /// (<https://www.w3.org/WAI/WCAG22/Understanding/animation-from-interactions>). Under reduced
     /// power with motion that follows the system, the transitions snap too, and paint loops run

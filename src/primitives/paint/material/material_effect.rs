@@ -22,7 +22,7 @@ use crate::primitives::effect::effect_params::EffectParams;
 /// allocation of the bytes, which every material built in a frame would pay; any parameter type,
 /// which a blend could not read and a theme file could not hold; more lanes, which every paint
 /// would carry. A larger or integer parameter struct paints through an
-/// [`EffectPaint`](crate::widget::EffectPaint).
+/// [`EffectPaint`](crate::EffectPaint).
 #[derive(Clone, Copy, PartialEq)]
 #[must_use]
 pub struct MaterialEffect {

@@ -1,5 +1,5 @@
 use super::*;
-use crate::primitives::math::domain;
+use crate::primitives::packed::half_simd::F16x4;
 use crate::text::font_scope::internals::INTER;
 use crate::text::font_source::FontSource;
 use crate::text::probe::Caret;
@@ -782,6 +782,6 @@ fn ink_past_an_f16_lane_saturates() {
     let root = m.root(request, WrapFloor::Skip);
     assert_eq!(
         root.extent.ink.to_array(),
-        [domain::MAX_GAP, 0.0, domain::MAX_GAP, domain::MAX_GAP]
+        [F16x4::MAX_LANE, 0.0, F16x4::MAX_LANE, F16x4::MAX_LANE]
     );
 }

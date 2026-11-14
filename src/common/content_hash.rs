@@ -5,7 +5,7 @@ use std::hash::{self, Hash};
 
 /// A 64-bit hash of content, which tree rollups, shape and chrome records, layout caches, text
 /// shaping, cascade and damage compare across frames, and which
-/// [`Mesh::content_hash`](crate::widget::Mesh::content_hash) returns.
+/// [`Mesh::content_hash`](crate::Mesh::content_hash) returns.
 ///
 /// Equal content gives an equal hash within one process. The value is not for storage: a text
 /// hashes under a seed drawn once per process, and a run of values hashes as one byte write.

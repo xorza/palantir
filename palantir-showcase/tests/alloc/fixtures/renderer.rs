@@ -17,12 +17,10 @@
 use crate::fixtures::parked_icons::ParkedIcons;
 use crate::harness;
 use crate::harness::Audit;
-use palantir::Stroke;
 use palantir::glam::Vec2;
-use palantir::widget::IconPaint;
-use palantir::widget::{Mesh, Shape};
 use palantir::{
-    Block, Chrome, Configure, FramePaint, Grid, Panel, RgbaF32, SizeSpec, Track, TranslateScale, Ui,
+    Block, Chrome, Configure, FramePaint, Grid, IconPaint, Mesh, Panel, RgbaF32, Shape, SizeSpec,
+    Stroke, Track, TranslateScale, Ui,
 };
 
 /// Distinct nudge positions: more than one so damage is full every frame, few

@@ -1,4 +1,4 @@
-//! The circular arc [`Shape::arc`](crate::widget::Shape::arc) and [`Shape::circle`](crate::widget::Shape::circle) stroke and the curve pipeline traces natively (see `gpu::curve_pipeline`), and its bbox.
+//! The circular arc [`Shape::arc`](crate::Shape::arc) and [`Shape::circle`](crate::Shape::circle) stroke and the curve pipeline traces natively (see `gpu::curve_pipeline`), and its bbox.
 
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::math::libm_ext::Libm;

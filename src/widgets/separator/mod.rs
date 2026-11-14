@@ -11,7 +11,7 @@ use crate::theme::separator::SeparatorTheme;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::configure::ThemeDefaults;
+use crate::widget_core::configure::ConfigureDefaults;
 use crate::widget_core::widget::Widget;
 
 /// A thin divider rule: the theme's `thickness` tall across the parent's width, or wide as a

@@ -12,9 +12,9 @@ fn blink() -> PaintAnimation {
     PaintAnimation::alpha(0.0, 1.0)
         .with_started_at(START)
         .with_period(HP * 2)
-        .with_steps(2)
+        .with_steps(NonZeroU32::new(2).unwrap())
         .with_repeat(PaintRepeat::Settle(NO_STOP))
-        .with_curve(curves::square)
+        .with_curve(PaintCurve::SQUARE)
 }
 
 /// A turn at `speed` radians per second that never stops.
@@ -23,7 +23,7 @@ fn spinning(speed: f32) -> PaintAnimation {
         .with_started_at(START)
         .with_period(Duration::from_secs_f32(TAU / speed))
         .with_repeat(PaintRepeat::Forever)
-        .with_curve(Easing::Linear.curve())
+        .with_curve(PaintCurve::LINEAR)
 }
 
 #[test]
@@ -69,7 +69,7 @@ fn next_wake_aligns_with_next_boundary() {
         PaintAnimation::alpha(0.0, 1.0)
             .with_started_at(START)
             .with_period(Duration::from_nanos(period))
-            .with_steps(2)
+            .with_steps(NonZeroU32::new(2).unwrap())
             .with_repeat(PaintRepeat::Forever)
     };
     let late = START + Duration::from_secs(5);
@@ -101,7 +101,7 @@ fn every_wake_samples_the_next_step() {
         let timing = PaintAnimation::alpha(0.0, 1.0)
             .with_started_at(START)
             .with_period(period)
-            .with_steps(n)
+            .with_steps(NonZeroU32::new(n).unwrap())
             .with_repeat(PaintRepeat::Forever)
             .timing;
         let step = |k: u32| f64::from(k % n) / f64::from(n);
@@ -129,7 +129,7 @@ fn every_wake_samples_the_next_step() {
     let timing = PaintAnimation::alpha(0.0, 1.0)
         .with_started_at(START)
         .with_period(Duration::from_nanos(3))
-        .with_steps(5)
+        .with_steps(NonZeroU32::new(5).unwrap())
         .with_repeat(PaintRepeat::Forever)
         .timing;
     let mut now = START;
@@ -176,7 +176,7 @@ fn a_zero_period_settles_to_the_right_value() {
             .with_started_at(START)
             .with_period(Duration::ZERO)
             .with_repeat(repeat)
-            .with_curve(Easing::Linear.curve());
+            .with_curve(PaintCurve::LINEAR);
         for (now, (alpha, wake)) in [before, START, settled].into_iter().zip(expected) {
             assert_eq!(
                 (a.sample(now).alpha, a.next_wake(now)),
@@ -194,7 +194,7 @@ fn spin_angle_is_elapsed_times_speed_wrapped() {
         .with_started_at(START)
         .with_period(Duration::from_secs_f32(TAU / speed))
         .with_repeat(PaintRepeat::Forever)
-        .with_curve(Easing::Linear.curve());
+        .with_curve(PaintCurve::LINEAR);
     // Pre-start clamps to 0 (no negative elapsed).
     assert_eq!(a.sample(START - Duration::from_secs(1)).rotation, 0.0);
     // 0.25 s in → 1.0 rad, alpha untouched.
@@ -275,13 +275,13 @@ fn samples_are_coerced_where_they_are_read() {
             .with_curve(curve)
             .sample(half)
     };
-    let fine = linear((-1.0, 3.0), (0.0, 0.5), Easing::Linear.curve());
+    let fine = linear((-1.0, 3.0), (0.0, 0.5), PaintCurve::LINEAR);
     assert_eq!((fine.alpha, fine.rotation), (1.0, 0.25 * TAU));
-    let nan_end = linear((f32::NAN, 1.0), (f32::NAN, 1.0), Easing::Linear.curve());
+    let nan_end = linear((f32::NAN, 1.0), (f32::NAN, 1.0), PaintCurve::LINEAR);
     assert_eq!((nan_end.alpha, nan_end.rotation), (0.0, 0.0));
-    let nan_curve = linear((0.0, 1.0), (0.0, 1.0), |_| f32::NAN);
+    let nan_curve = linear((0.0, 1.0), (0.0, 1.0), PaintCurve::new(|_| f32::NAN));
     assert_eq!((nan_curve.alpha, nan_curve.rotation), (0.0, 0.0));
-    let huge = linear((0.0, 1.0), (0.0, f32::MAX), Easing::Linear.curve());
+    let huge = linear((0.0, 1.0), (0.0, f32::MAX), PaintCurve::LINEAR);
     assert_eq!(
         huge.rotation, 0.0,
         "a turn whose radians overflow is no turn"
@@ -304,7 +304,7 @@ fn a_custom_curve_drives_both_channels_and_holds_at_the_end() {
         .with_turn(0.0, 0.5)
         .with_started_at(START)
         .with_period(Duration::from_secs(1))
-        .with_curve(squared);
+        .with_curve(PaintCurve::new(squared));
 
     let mid = a.sample(START + Duration::from_millis(500));
     assert_eq!(mid.alpha, 0.4, "alpha {}", mid.alpha);
@@ -339,13 +339,6 @@ fn a_settled_animation_stops_modifying_the_shape() {
     assert_eq!(settled.alpha, 1.0, "a settled animation multiplies by one");
     assert_eq!(settled.rotation, 0.0);
     assert_eq!(a.next_wake(START + Duration::from_millis(250)), None);
-}
-
-/// Zero steps would read as a never-animating shape.
-#[test]
-#[should_panic = "a count must be at least 1"]
-fn zero_steps_is_a_caller_bug() {
-    let _ = PaintAnimation::alpha(0.0, 1.0).with_steps(0);
 }
 
 /// Every part of an animation reaches its hash: the range either channel
@@ -384,8 +377,8 @@ fn hash_static_covers_channel_timing_and_curve() {
         ("period", base.with_period(HP)),
         ("repeat", base.with_repeat(PaintRepeat::Forever)),
         ("held", base.with_repeat(PaintRepeat::Held)),
-        ("steps", base.with_steps(3)),
-        ("curve", base.with_curve(Easing::Linear.curve())),
+        ("steps", base.with_steps(NonZeroU32::new(3).unwrap())),
+        ("curve", base.with_curve(PaintCurve::LINEAR)),
     ] {
         assert_ne!(hash(base), hash(other), "{label}");
     }
@@ -454,7 +447,7 @@ fn an_effect_reads_the_time_into_its_pass() {
     };
     let looping = clock(PaintRepeat::Forever);
     let once = clock(PaintRepeat::Once);
-    let stepped = clock(PaintRepeat::Forever).with_steps(4);
+    let stepped = clock(PaintRepeat::Forever).with_steps(NonZeroU32::new(4).unwrap());
     let settling = clock(PaintRepeat::Settle(Duration::from_secs(3)));
     let cases = [
         (looping, START - ms(200), 0.0),

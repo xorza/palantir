@@ -10,15 +10,13 @@
 
 use palantir::glam::UVec2;
 use palantir::wgpu::TextureFormat;
-use palantir::widget::Shape;
 use palantir::{
-    Block, Border, Button, Chrome, Configure, Corners, Image, ImageHandle, Panel, RgbaF32,
-    SizeSpec, Sizing, TargetFormat, Ui,
+    Block, Border, Button, Chrome, Configure, Corners, Image, ImageHandle, ImagePaint, Panel,
+    RgbaF32, Shape, SizeSpec, Sizing, TargetFormat, Ui,
 };
 
 use crate::goldens;
 use crate::visual_rig::VisualRig;
-use palantir::widget::ImagePaint;
 
 /// A scene touching several format-dependent pipelines: a bordered rounded frame around a labeled button.
 fn scene(ui: &mut Ui) {

@@ -18,8 +18,8 @@ use crate::shape::sealed;
 /// The largest circle centered in the owner's arranged rect, or [`Self::at`] a rect of its own,
 /// as SwiftUI's `Circle` fits the rect it is offered and WPF's `Ellipse` fills its slot. A
 /// [`Paint`] covers it as a round box, its border inside its edge; a [`Stroke`] draws it as a
-/// closed arc, centered on the circle; an [`ImagePaint`](crate::widget::ImagePaint) fits its
-/// square and the circle clips it, as an [`EffectPaint`](crate::widget::EffectPaint) is.
+/// closed arc, centered on the circle; an [`ImagePaint`](crate::ImagePaint) fits its
+/// square and the circle clips it, as an [`EffectPaint`](crate::EffectPaint) is.
 #[derive(Clone, Copy, Debug)]
 #[must_use]
 pub struct CircleShape {

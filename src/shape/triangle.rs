@@ -18,7 +18,7 @@ use glam::Vec2;
 /// A triangle, its corners logical px from its rect's top-left, with optional uniform corner
 /// rounding: the owner's arranged rect or [`Self::at`] a rect of its own, its corners fit into it
 /// by [`Self::fit`]. A [`Paint`] of a fill and a border covers it, or a [`MaterialPaint`]
-/// ([`Ui::add_shape`](crate::Ui::add_shape)), or an [`ImagePaint`](crate::widget::ImagePaint); a
+/// ([`Ui::add_shape`](crate::Ui::add_shape)), or an [`ImagePaint`](crate::ImagePaint); a
 /// gradient fill spans the bounding box of the rounded triangle, as SVG's `objectBoundingBox`
 /// spans a shape's, and an image fits it.
 #[derive(Clone, Debug)]

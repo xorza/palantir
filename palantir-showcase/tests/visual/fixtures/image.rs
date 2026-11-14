@@ -7,15 +7,13 @@
 
 use image::RgbaImage;
 use palantir::glam::{UVec2, Vec2};
-use palantir::widget::Shape;
 use palantir::{
-    Configure, Fit, Image, ImageDownsample, ImageFilter, ImageHandle, Panel, Rect, RgbaF32, Sizing,
-    SrgbaU8, Ui,
+    Configure, Fit, Image, ImageDownsample, ImageFilter, ImageHandle, ImagePaint, Panel, Rect,
+    RgbaF32, Shape, Sizing, SrgbaU8, Ui,
 };
 
 use crate::fixtures;
 use crate::visual_rig::VisualRig;
-use palantir::widget::ImagePaint;
 
 const RED: [u8; 4] = [230, 60, 60, 255];
 const BLUE: [u8; 4] = [60, 120, 230, 255];

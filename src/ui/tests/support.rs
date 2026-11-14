@@ -14,6 +14,7 @@ use crate::ui::resources::UiResources;
 use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
 use glam::UVec2;
+use std::num::NonZeroU32;
 use std::time::Duration;
 
 pub(super) const SURFACE: UVec2 = UVec2::new(200, 200);
@@ -32,10 +33,10 @@ pub(super) fn blue_frame(ui: &mut Ui, salt: &'static str) -> NodeId {
 }
 
 pub(super) fn add_blink_shape(ui: &mut Ui, half: Duration) {
+    use crate::animation::paint_curve::PaintCurve;
     use crate::shape::Shape;
     use crate::shape::paint_animation::PaintAnimation;
     use crate::shape::paint_animation::PaintRepeat;
-    use crate::shape::paint_animation::curves;
 
     if let Some(shape) = ui.add_shape(
         Shape::rect().at(Rect::new(0.0, 0.0, 4.0, 12.0)),
@@ -45,9 +46,9 @@ pub(super) fn add_blink_shape(ui: &mut Ui, half: Duration) {
             PaintAnimation::alpha(0.0, 1.0)
                 .with_started_at(Duration::ZERO)
                 .with_period(half * 2)
-                .with_steps(2)
+                .with_steps(NonZeroU32::new(2).unwrap())
                 .with_repeat(PaintRepeat::Settle(Duration::MAX))
-                .with_curve(curves::square),
+                .with_curve(PaintCurve::SQUARE),
         );
     }
 }

@@ -20,6 +20,7 @@ use crate::primitives::geometry::size::Size;
 use crate::primitives::math::domain::EPS;
 use crate::primitives::math::num::Vec2Ext;
 use glam::{UVec2, Vec2};
+use std::num::NonZeroU32;
 
 #[inline]
 pub(crate) const fn scale_factor_is_valid(scale_factor: f32) -> bool {
@@ -39,7 +40,7 @@ pub struct Display {
     pub(crate) system_scale: SystemScale,
     pub(crate) user_scale: UserScale,
     pub(crate) pixel_snap: bool,
-    pub(crate) refresh_millihertz: Option<u32>,
+    pub(crate) refresh_millihertz: Option<NonZeroU32>,
 }
 
 impl Default for Display {
@@ -88,7 +89,7 @@ impl Display {
     /// VRR). Read only by wake pacing (repaint coalescing, reduced frame rate); it never forces a
     /// relayout.
     #[inline]
-    pub const fn refresh_millihertz(&self) -> Option<u32> {
+    pub const fn refresh_millihertz(&self) -> Option<NonZeroU32> {
         self.refresh_millihertz
     }
 

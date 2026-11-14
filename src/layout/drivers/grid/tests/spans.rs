@@ -8,6 +8,7 @@ use crate::primitives::layout::track::Track;
 use crate::text::wrap::TextWrap;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::widget::Widget;
+use std::num::NonZeroU16;
 
 /// Rows and columns each measure against their own setter's gap (`line_gap` vs `gap`).
 #[test]
@@ -27,8 +28,8 @@ fn grid_span_covers_multiple_tracks_with_gap() {
             },
         };
         let span = match axis {
-            Axis::X => GridCell::at(0, 0).with_span(1, 3),
-            Axis::Y => GridCell::at(0, 0).with_span(3, 1),
+            Axis::X => GridCell::at(0, 0).with_span(NonZeroU16::MIN, NonZeroU16::new(3).unwrap()),
+            Axis::Y => GridCell::at(0, 0).with_span(NonZeroU16::new(3).unwrap(), NonZeroU16::MIN),
         };
         let mut rig = LayoutRig::new();
         rig.run(axis.compose_size(400.0, 200.0), |rec| {
@@ -63,7 +64,10 @@ fn spanned_text_measures_against_track_sizes_plus_internal_column_gaps() {
                 cols: &cols,
             };
             rec.grid("grid", Widget::grid().gap(case.gap), tracks, |rec| {
-                let cell = Widget::leaf().grid_cell(GridCell::at(0, 0).with_span(1, case.span));
+                let cell = Widget::leaf().grid_cell(
+                    GridCell::at(0, 0)
+                        .with_span(NonZeroU16::MIN, NonZeroU16::new(case.span).unwrap()),
+                );
                 rec.text_leaf(
                     "text",
                     cell,
@@ -108,7 +112,8 @@ fn spanned_nested_wrap_measures_against_internal_gaps_on_both_axes() {
                             cols: &primary,
                         },
                         Widget::grid().gap(case.gap),
-                        GridCell::at(0, 0).with_span(1, case.span),
+                        GridCell::at(0, 0)
+                            .with_span(NonZeroU16::MIN, NonZeroU16::new(case.span).unwrap()),
                     ),
                     Axis::Y => (
                         GridTracks {
@@ -116,7 +121,8 @@ fn spanned_nested_wrap_measures_against_internal_gaps_on_both_axes() {
                             cols: &secondary,
                         },
                         Widget::grid().line_gap(case.gap),
-                        GridCell::at(0, 0).with_span(case.span, 1),
+                        GridCell::at(0, 0)
+                            .with_span(NonZeroU16::new(case.span).unwrap(), NonZeroU16::MIN),
                     ),
                 };
                 rec.grid("grid", grid, tracks, |rec| {
@@ -182,7 +188,10 @@ fn grid_cell_with_2d_span_covers_track_union_with_gaps() {
             |rec| {
                 rec.leaf(
                     "big",
-                    Widget::leaf().grid_cell(GridCell::at(0, 0).with_span(2, 2)),
+                    Widget::leaf().grid_cell(
+                        GridCell::at(0, 0)
+                            .with_span(NonZeroU16::new(2).unwrap(), NonZeroU16::new(2).unwrap()),
+                    ),
                 );
                 rec.leaf("corner", Widget::leaf().grid_cell((2, 2)));
             },
@@ -254,7 +263,7 @@ fn a_spanning_cell_grows_the_hug_tracks_it_crosses() {
                 block(
                     rec,
                     "header",
-                    GridCell::at(0, 0).with_span(1, 2),
+                    GridCell::at(0, 0).with_span(NonZeroU16::MIN, NonZeroU16::new(2).unwrap()),
                     (200.0, 10.0),
                 );
                 block(rec, "cell0", (1, 0), (30.0, 10.0));
@@ -264,7 +273,7 @@ fn a_spanning_cell_grows_the_hug_tracks_it_crosses() {
                 block(
                     rec,
                     "side",
-                    GridCell::at(0, 0).with_span(2, 1),
+                    GridCell::at(0, 0).with_span(NonZeroU16::new(2).unwrap(), NonZeroU16::MIN),
                     (10.0, 100.0),
                 );
                 block(rec, "row0", (0, 1), (10.0, 20.0));
@@ -304,7 +313,7 @@ fn a_spanning_share_stops_at_the_track_max() {
                 block(
                     rec,
                     "header",
-                    GridCell::at(0, 0).with_span(1, 2),
+                    GridCell::at(0, 0).with_span(NonZeroU16::MIN, NonZeroU16::new(2).unwrap()),
                     (200.0, 10.0),
                 );
                 block(rec, "cell0", (1, 0), (30.0, 10.0));
@@ -385,7 +394,8 @@ fn a_span_over_a_fill_column_grows_only_its_fill_columns() {
             rec.node("column", Widget::vstack(), |rec| {
                 rec.grid("grid", Widget::grid(), tracks, |rec| {
                     for (i, &(first, count, w)) in case.spans.iter().enumerate() {
-                        let cell = GridCell::at(0, first).with_span(1, count);
+                        let cell = GridCell::at(0, first)
+                            .with_span(NonZeroU16::MIN, NonZeroU16::new(count).unwrap());
                         block(rec, &format!("span{i}"), cell, (w, 10.0));
                     }
                     for (col, w) in (0u16..).zip(case.cells) {

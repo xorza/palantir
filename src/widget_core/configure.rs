@@ -1,5 +1,5 @@
 //! The authoring surface every widget builder forwards to: [`Configure`] and
-//! [`ThemeDefaults`] over a borrowed view of the [`Widget`]. Each setter has a
+//! [`ConfigureDefaults`] over a borrowed view of the [`Widget`]. Each setter has a
 //! consuming form here that forwards to its borrowing form on [`Configurator`].
 
 use crate::primitives::geometry::size::Size;
@@ -394,7 +394,7 @@ pub trait Configure: Sized {
 /// [`widget`](crate::widget), beside [`Widget`], for widget authors: an app sets a field with
 /// [`Configure`], as on a builder an app's `default_*` fills the field before the widget's own
 /// does, and so reads as the plain setter. Blanket-implemented for every `Configure`.
-pub trait ThemeDefaults: Configure {
+pub trait ConfigureDefaults: Configure {
     /// Identity to fall back on when the caller set none; an auto id doesn't count.
     #[inline]
     #[must_use]
@@ -532,4 +532,4 @@ pub trait ThemeDefaults: Configure {
     }
 }
 
-impl<T: Configure> ThemeDefaults for T {}
+impl<T: Configure> ConfigureDefaults for T {}

@@ -19,6 +19,7 @@ use crate::primitives::layout::track::Track;
 use crate::primitives::math::num::F32Px;
 use crate::scene::tree::Tree;
 use crate::scene::tree::node_id::NodeId;
+use std::num::NonZeroU16;
 
 mod arrange;
 pub(crate) mod grid_ctx;
@@ -41,7 +42,10 @@ impl Grid {
     fn cell(self, tree: &Tree, child: NodeId) -> GridCell {
         let def = tree.grid_defs[usize::from(self.def)];
         // A cell addresses at most `u16::MAX` tracks, so a longer list holds it at that.
-        let tracks = |span: Span| u16::try_from(span.len).unwrap_or(u16::MAX);
+        let tracks = |span: Span| {
+            NonZeroU16::new(u16::try_from(span.len).unwrap_or(u16::MAX))
+                .expect("a grid that places cells has tracks")
+        };
         tree.bounds(child)
             .grid
             .clamped_to(tracks(def.rows), tracks(def.cols))

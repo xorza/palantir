@@ -92,7 +92,7 @@ impl<Rows, Cols> Configure for Grid<Rows, Cols> {
 
 #[cfg(test)]
 mod tests {
-    use crate::primitives::math::domain::MAX_GAP;
+    use crate::primitives::packed::half_simd::F16x4;
     use crate::widget_core::configure::Configure;
     use crate::widgets::grid::Grid;
 
@@ -103,8 +103,8 @@ mod tests {
         assert_eq!(configured.widget.authored().line_gap(), Some(3.0));
         assert_eq!(configured.widget.authored().gap(), Some(5.0));
 
-        let edge = Grid::new().line_gap(MAX_GAP).gap(0.0);
-        assert_eq!(edge.widget.authored().line_gap(), Some(MAX_GAP));
+        let edge = Grid::new().line_gap(F16x4::MAX_LANE).gap(0.0);
+        assert_eq!(edge.widget.authored().line_gap(), Some(F16x4::MAX_LANE));
         assert_eq!(edge.widget.authored().gap(), Some(0.0));
     }
 }

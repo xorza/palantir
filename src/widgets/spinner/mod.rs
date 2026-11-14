@@ -17,7 +17,7 @@ use crate::theme::spinner::SpinnerTheme;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::configure::ThemeDefaults;
+use crate::widget_core::configure::ConfigureDefaults;
 use crate::widget_core::widget::Widget;
 use glam::Vec2;
 

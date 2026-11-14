@@ -2,8 +2,7 @@
 
 use image::RgbaImage;
 use palantir::glam::UVec2;
-use palantir::widget::Shape;
-use palantir::{Configure, Panel, Rect, RgbaF32, SizeSpec, Ui};
+use palantir::{Configure, Panel, Rect, RgbaF32, Shape, SizeSpec, Ui};
 
 use crate::fixtures;
 use crate::goldens;

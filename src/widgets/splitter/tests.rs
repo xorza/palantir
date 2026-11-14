@@ -569,7 +569,10 @@ fn a_focused_divider_moves_by_the_keys_within_the_floors() {
         h.key(key);
         let first = frame_with(&mut h, &mut ratio);
         let second = frame_with(&mut h, &mut ratio);
-        assert!(domain::approx_eq(ratio, want), "{key:?}: {ratio} != {want}");
+        assert!(
+            domain::is_approx_zero(ratio - want),
+            "{key:?}: {ratio} != {want}"
+        );
         let commits = [&first, &second]
             .iter()
             .map(|passes| passes.count_where(|edges| edges.committed))

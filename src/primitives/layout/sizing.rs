@@ -304,7 +304,7 @@ mod tests {
     use crate::primitives::geometry::size::Size;
     use crate::primitives::layout::sizing::{SizeSpec, Sizing};
     use crate::primitives::math::domain;
-    use crate::widget_core::configure::{Configure, ThemeDefaults};
+    use crate::widget_core::configure::{Configure, ConfigureDefaults};
     use crate::widget_core::widget::Widget;
 
     /// The two shares always partition 1.0, an out-of-range input clamps, and

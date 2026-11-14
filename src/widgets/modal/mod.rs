@@ -11,7 +11,7 @@ use crate::ui::Ui;
 use crate::widget_core::click_outside::ClickOutside;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::configure::ThemeDefaults;
+use crate::widget_core::configure::ConfigureDefaults;
 use crate::widget_core::overlay_response::OverlayResponse;
 use crate::widget_core::overlay_scope::{Barrier, OverlayScope, OverlaySpec};
 use crate::widget_core::widget::{MaterialBox, Widget};

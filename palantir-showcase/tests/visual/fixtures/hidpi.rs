@@ -8,6 +8,7 @@ use palantir::{
 
 use crate::golden_name::GoldenName;
 use crate::visual_rig::VisualRig;
+use std::num::NonZeroU16;
 
 /// Complex multi-region scene at scale 2.0 (physical 800×600 = logical 400×300): header/sidebar/content/footer grid, nested stacks with mixed sizing, text at several sizes, rounded-rect AA and strokes on physical half-pixels, and the renderer's pixel_snap path.
 #[test]
@@ -28,7 +29,10 @@ fn dashboard_matches_golden() {
                 .show(ui, |ui| {
                     Panel::hstack()
                         .id_salt("header")
-                        .grid_cell(GridCell::at(0, 0).with_span(1, 2))
+                        .grid_cell(
+                            GridCell::at(0, 0)
+                                .with_span(NonZeroU16::MIN, NonZeroU16::new(2).unwrap()),
+                        )
                         .size(SizeSpec::FILL)
                         .max_size((f32::INFINITY, 40.0))
                         .padding((10.0, 14.0, 10.0, 14.0))
@@ -131,7 +135,10 @@ fn dashboard_matches_golden() {
 
                     Panel::hstack()
                         .id_salt("footer")
-                        .grid_cell(GridCell::at(2, 0).with_span(1, 2))
+                        .grid_cell(
+                            GridCell::at(2, 0)
+                                .with_span(NonZeroU16::MIN, NonZeroU16::new(2).unwrap()),
+                        )
                         .max_size((f32::INFINITY, 24.0))
                         .padding((4.0, 10.0, 4.0, 10.0))
                         .chrome(Chrome::rounded(

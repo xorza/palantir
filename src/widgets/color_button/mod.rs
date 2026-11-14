@@ -7,7 +7,7 @@ use crate::theme::color_picker::ColorPickerTheme;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::configure::ThemeDefaults;
+use crate::widget_core::configure::ConfigureDefaults;
 use crate::widget_core::value_response::ValueResponse;
 use crate::widgets::color_picker::ColorPicker;
 use crate::widgets::color_swatch::ColorSwatch;

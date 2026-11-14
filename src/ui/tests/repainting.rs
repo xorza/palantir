@@ -189,7 +189,7 @@ fn coalesce_floor_follows_refresh_rate() {
 
     let mut h = Harness::builder(SURFACE)
         .mono()
-        .refresh_millihertz(60_000)
+        .refresh_millihertz(NonZeroU32::new(60_000).unwrap())
         .build();
     schedule_pair(&mut h);
     assert_eq!(

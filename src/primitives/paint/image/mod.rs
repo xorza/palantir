@@ -17,11 +17,12 @@ use image::ImageEncoder as _;
 use image::codecs::png::PngEncoder;
 #[cfg(feature = "png")]
 use std::io;
+use std::num::NonZeroU32;
 
 /// How an image lies in its paint rect: fit by its intrinsic size, as CSS `object-fit`, or tiled
 /// across it, as CSS `background-repeat` and Flutter's `ImageRepeat` sit beside the fit.
-/// [`ImagePaint::fit`](crate::widget::ImagePaint::fit) and
-/// [`ImagePaint::tile`](crate::widget::ImagePaint::tile) set it.
+/// [`ImagePaint::fit`](crate::ImagePaint::fit) and
+/// [`ImagePaint::tile`](crate::ImagePaint::tile) set it.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum ImagePlacement {
     /// Fit by its intrinsic size; [`Fit::Natural`] centers it, as `object-fit: none` does.
@@ -38,7 +39,7 @@ impl ImagePlacement {
 }
 
 /// How texels are interpolated when an image paints at a size other than its
-/// intrinsic one; [`ImagePaint`](crate::widget::ImagePaint) picks it
+/// intrinsic one; [`ImagePaint`](crate::ImagePaint) picks it
 /// separately for minification and magnification. Implemented as a UV
 /// texel-center snap, so every combination shares one sampler and bind group.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -59,7 +60,7 @@ pub enum ImageFilter {
 /// fine detail scintillate. Spreading taps across the pixel's derivative
 /// footprint stops that.
 ///
-/// Opt in via [`ImagePaint::downsample`](crate::widget::ImagePaint::downsample);
+/// Opt in via [`ImagePaint::downsample`](crate::ImagePaint::downsample);
 /// the taps cost fill rate. Magnified and 1:1 draws take the single tap.
 /// Coverage is exact to 8× minification (the tap grid is capped); past that it
 /// is an evenly spread sample of the footprint.
@@ -152,11 +153,11 @@ impl Image {
     ///
     /// # Panics
     ///
-    /// Panics on a zero `factor`, and when the larger size makes [`Self::blank`] panic.
+    /// Panics when the larger size makes [`Self::blank`] panic.
     #[track_caller]
     #[must_use]
-    pub fn magnified(&self, factor: u32) -> Self {
-        assert!(factor > 0, "an image magnifies by a factor of at least one");
+    pub fn magnified(&self, factor: NonZeroU32) -> Self {
+        let factor = factor.get();
         let mut out = Self::blank(self.size * factor);
         out.fill_with(|at| self.texel(at / factor));
         out
@@ -254,14 +255,9 @@ impl Image {
     /// it averages premultiplied linear light, as the frame blends, since an average of encoded
     /// bytes darkens every edge between light and dark. Rows go through one at a time, decoded and
     /// filtered across as the tent first reads them, so the scratch is a few rows, not the image.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `max_side` is 0.
     #[must_use]
-    pub fn fitted(&self, max_side: u32) -> Self {
-        assert!(max_side > 0, "a fitted image has at least one texel a side");
-        let size = fitted_size(self.size, max_side);
+    pub fn fitted(&self, max_side: NonZeroU32) -> Self {
+        let size = fitted_size(self.size, max_side.get());
         if size == self.size {
             return self.clone();
         }

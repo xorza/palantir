@@ -67,6 +67,12 @@ A subsystem's decisions sit in an `AGENTS.md` beside it; read it before changing
   spelling of the canonical one, obsolete, unidiomatic or ambiguous.
 - **Match its neighbors**: read what new surface will sit beside and match its names, argument
   shapes and order.
+- **`palantir::widget` holds what only a widget's author names**: an item sits there only when no
+  root-exported method takes or returns it, so the shapes and paints `Ui::add_shape` takes are at
+  the root. A trait that only bounds a root method's parameter (`Animatable` on `Ui::animate`)
+  stays in `widget`, as an app names it only to implement it, and so does what only a `widget`
+  type's methods hand out. `widget::domain` exports the kinds a `# Panics` doc links, item by
+  item.
 - **An exported item that breaks a rule below is a bug.** `cargo drive surface` writes the surface
   to `.notes/API_SURFACE.md`, which CI compares with the tree
   (`cargo install --locked --git https://github.com/xorza/drive`).
@@ -158,7 +164,11 @@ Every public input meets two questions, as WPF asks them: *validation* of the va
 2. **Validation follows the source**: per-frame authoring takes a release `assert!` with
    `#[track_caller]`, an exception to `debug_assert!` on hot paths, as a wrong value never draws
    quietly; cold configuration a release `assert!`; data from outside the program an `Option` for
-   one rule, a `Result` with an error enum for several.
+   one rule, a `Result` with an error enum for several. A rule a type can hold needs no assert:
+   a count of at least one is a `NonZeroU16` or `NonZeroU32`, and a rate that may be unknown an
+   `Option<NonZeroU32>`, so zero cannot be passed
+   ([C-VALIDATE](https://rust-lang.github.io/api-guidelines/dependability.html#c-validate):
+   static enforcement first).
 3. **Plain data stays plain**, checked where it enters a widget, a shape or a node.
 4. **A theme file is checked on load** by the same predicates as a call site.
 5. **An index into a list that changes is coerced**; a handle the crate minted that names nothing

@@ -13,15 +13,15 @@
 use palantir::bench::scene::BENCH_DPR;
 use palantir::glam::UVec2;
 use palantir::internals::{TEXT_SCALE_STEP, TestGpu, isolated_headless_test_gpu};
-use palantir::widget::Shape;
-use palantir::{App, Configure, Grid, Panel, SizeSpec, Track, TranslateScale, Ui};
+use palantir::{
+    App, Configure, Grid, IconPaint, Panel, Shape, SizeSpec, Track, TranslateScale, Ui,
+};
 use palantir_showcase::{MAIN_WINDOW, Shell};
 
 use crate::fixtures::parked_icons::ParkedIcons;
 use crate::gates::{MEASURE_FRAMES, WARMUP_FRAMES};
 use crate::harness::offscreen::OffscreenTarget;
 use crate::harness::{Audit, Report};
-use palantir::widget::IconPaint;
 
 /// Surface for both GPU gates, smaller than the CPU one: the first pins the
 /// driver's per-frame floor, which scales with submissions, not node count.

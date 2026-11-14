@@ -39,6 +39,7 @@ use glam::{UVec2, Vec2};
 use half::f16;
 use std::cell::Cell;
 use std::convert::Infallible;
+use std::num::NonZeroU32;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
@@ -396,7 +397,7 @@ fn an_app_that_always_repaints_is_unsettled() {
         })
     );
     let mut h = Harness::builder(UVec2::new(64, 32))
-        .settle_frames(5)
+        .settle_frames(NonZeroU32::new(5).unwrap())
         .build();
     assert_eq!(
         h.session(&mut app).settle(),
@@ -497,7 +498,7 @@ fn a_settle_waits_for_a_busy_apps_wake() {
     // settle: frames 1 to 10 step it, the 10th wake brings frame 11, which finds it done.
     let mut progressing = Harness::builder(UVec2::new(64, 32))
         .mono()
-        .settle_frames(3)
+        .settle_frames(NonZeroU32::new(3).unwrap())
         .build();
     let mut app = Stepping {
         steps_left: 10,

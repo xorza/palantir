@@ -2,12 +2,10 @@
 //! it, which the clip cuts.
 
 use palantir::glam::{UVec2, Vec2};
-use palantir::widget::{
-    CubicBezier, IconPaint, ImagePaint, Mesh, PaintAnimation, PaintedBy, RectShape, Shape,
-};
 use palantir::{
-    Block, Chrome, Configure, Corners, Fit, Image, Paint, Panel, Rect, RgbaF32, Shadow, Sizing,
-    Stroke, Text, Ui,
+    Block, Chrome, Configure, Corners, CubicBezier, Fit, IconPaint, Image, ImagePaint, Mesh, Paint,
+    PaintAnimation, PaintedBy, Panel, Rect, RectShape, RgbaF32, Shadow, Shape, Sizing, Stroke,
+    Text, Ui,
 };
 
 use crate::fixtures::{self, icon};

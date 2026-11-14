@@ -437,7 +437,7 @@ fn the_system_facts_seed_at_build_and_change_by_setter() {
     let mut host = OffscreenHost::builder(gpu.handles())
         .shaper(TextShaper::test_mono())
         .system_scale(SystemScale::new(2.0).unwrap())
-        .refresh_millihertz(60_000)
+        .refresh_millihertz(NonZeroU32::new(60_000).unwrap())
         .system_color_scheme(ColorScheme::Light)
         .system_motion_reduced(true)
         .system_transparency_reduced(true)
@@ -449,7 +449,7 @@ fn the_system_facts_seed_at_build_and_change_by_setter() {
     let display = host.ui().display();
     assert_eq!(
         (display.system_scale, display.refresh_millihertz),
-        (SystemScale::new(2.0).unwrap(), Some(60_000))
+        (SystemScale::new(2.0).unwrap(), NonZeroU32::new(60_000))
     );
     assert_eq!(host.ui().system_color_scheme(), Some(ColorScheme::Light));
     assert!(host.ui().reductions().motion.is_reduced());

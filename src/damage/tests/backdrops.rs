@@ -1,5 +1,6 @@
 //! Which backdrops a frame's damage reaches from below.
 
+use crate::animation::paint_curve::PaintCurve;
 use crate::damage::tests::support::{BLUE, DISPLAY, RED, frame};
 use crate::host::harness::Harness;
 use crate::primitives::geometry::rect::Rect;
@@ -12,11 +13,11 @@ use crate::scene::plane::Plane;
 use crate::shape::Shape;
 use crate::shape::paint::blur_plan::BlurPlan;
 use crate::shape::paint_animation::PaintAnimation;
-use crate::shape::paint_animation::curves;
 use crate::shape::rect::RectShape;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
+use std::num::NonZeroU32;
 use std::time::Duration;
 
 /// σ of every backdrop here: at scale 1 it stays at full resolution, reaching its radius, 16 px.
@@ -86,8 +87,8 @@ fn blink_shape() -> RectShape {
 fn blink() -> PaintAnimation {
     PaintAnimation::alpha(0.0, 1.0)
         .with_period(Duration::from_millis(1000))
-        .with_steps(2)
-        .with_curve(curves::square)
+        .with_steps(NonZeroU32::new(2).unwrap())
+        .with_curve(PaintCurve::SQUARE)
 }
 
 /// The key of backdrop `i`: the first row of its chromeless canvas.

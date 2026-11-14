@@ -176,75 +176,75 @@ macro_rules! fmt {
     };
 }
 
-/// Authoring a widget: the node, paint primitives, and text and animation plumbing
-/// a widget of your own is built from (see `palantir-showcase/src/pages/custom_widget.rs`).
-/// Nothing here is needed to compose shipped widgets.
+/// Authoring a widget: the node, its look and its overlays, which only a widget of your own names
+/// (see `palantir-showcase/src/pages/custom_widget.rs`). Nothing here is needed to compose shipped
+/// widgets. A type sits here only when no root-exported method takes or returns it, so what
+/// [`Ui::add_shape`], [`Ui::animate`] and [`Ui::probe_text`] take is at the root; a trait that
+/// only bounds a root method's parameter ([`Animatable`](widget::Animatable) on
+/// [`Ui::animate`]) sits here, as an app names it only to implement it.
 ///
 /// Shipped widgets also use some crate-private internals. A widget of your own
 /// cannot rebuild two of them from this module, so it composes them instead: the
 /// scroll viewport, through [`Scroll`], and the GPU view, through
 /// [`GpuView`].
 pub mod widget {
-    pub use crate::animation::animation_key::AnimationKey;
-    pub use crate::animation::animation_request::AnimationRequest;
-    pub use crate::animation::animation_slot::AnimationSlot;
-    pub use crate::animation::motion_role::MotionRole;
-    pub use crate::common::content_hash::ContentHash;
     pub use crate::input::capture::{DOUBLE_CLICK_INTERVAL, DOUBLE_CLICK_RADIUS};
-    pub use crate::primitives::geometry::cubic_bezier::CubicBezier;
-    pub use crate::primitives::geometry::mesh::Mesh;
-    pub use crate::primitives::geometry::quadratic_bezier::QuadraticBezier;
     pub use crate::primitives::math::animatable::Animatable;
-    pub use crate::primitives::math::domain;
     pub use crate::primitives::math::lerp::Lerp;
-    pub use crate::primitives::paint::content_type::ContentType;
-    pub use crate::primitives::paint::raster_image::RasterImage;
-    pub use crate::shape::PaintedBy;
-    pub use crate::shape::Shape;
-    pub use crate::shape::arc::ArcShape;
-    pub use crate::shape::circle::CircleShape;
-    pub use crate::shape::curve::CurveShape;
-    pub use crate::shape::effect_paint::EffectPaint;
-    pub use crate::shape::icon_paint::IconPaint;
-    pub use crate::shape::image_paint::ImagePaint;
-    pub use crate::shape::mesh::MeshShape;
-    /// The paint-time animation curves the crate ships; a custom curve is any
-    /// `fn(f32) -> f32`, see [`PaintCurve`].
-    pub use crate::shape::paint_animation::curves;
-    pub use crate::shape::paint_animation::{
-        PaintAnimation, PaintChannels, PaintCurve, PaintRange, PaintRepeat, PaintSteps, PaintTiming,
-    };
-    pub use crate::shape::polyline::PolylineShape;
-    pub use crate::shape::rect::RectShape;
-    pub use crate::shape::text::TextShape;
-    pub use crate::shape::triangle::TriangleShape;
-    pub use crate::text::glyph_font::GlyphFont;
-    pub use crate::text::glyphs::TextGlyphs;
-    pub use crate::text::glyphs::glyph_line::GlyphLine;
-    pub use crate::text::probe::Caret;
-    pub use crate::text::probe::TextProbe;
-    pub use crate::text::render::{GlyphRasterKey, PlacedGlyph};
-    pub use crate::text::run::TextRun;
     pub use crate::theme::check_state::CheckState;
+    pub use crate::theme::look::animated_look::AnimatedLook;
     pub use crate::theme::look::look_plan::LookPlan;
     pub use crate::theme::look::theme_slot::ThemeSlot;
     pub use crate::theme::selection::Selection;
-    pub use crate::ui::added_shape::AddedShape;
     pub use crate::widget_core::activation::Activation;
     pub use crate::widget_core::configurator::Configurator;
-    pub use crate::widget_core::configure::ThemeDefaults;
+    pub use crate::widget_core::configure::ConfigureDefaults;
     pub use crate::widget_core::overlay_scope::{Barrier, OverlayScope, OverlaySpec};
     pub use crate::widget_core::widget::{Authored, Widget};
     pub use crate::widgets::dock::dock_view::{Applying, Emitting};
     pub use crate::widgets::menu::{CallerOwned, TriggerOwned};
     pub use palantir_derive::{Animatable, Lerp};
+
+    /// The kinds a numeric input meets, which a `# Panics` doc names. Each is a predicate `is_*`
+    /// and a same-named checker that returns its argument or panics, in release too, but
+    /// [`fraction`](domain::fraction), which clamps and never panics.
+    ///
+    /// | Kind | Rule |
+    /// |---|---|
+    /// | [`offset`](domain::offset) | finite |
+    /// | [`length`](domain::length) | finite, `>= 0` |
+    /// | [`extent`](domain::extent) | `>= 0`, `+inf` allowed |
+    /// | [`gap`](domain::gap) | a length that rounds to at most `65504` in f16 |
+    /// | [`lane`](domain::lane) | rounds to within `±65504` in f16, on top of its own kind |
+    /// | [`positive`](domain::positive) | finite, `> 0` |
+    /// | [`factor`](domain::factor) | finite, `>= 0` |
+    /// | [`refractive_index`](domain::refractive_index) | finite, `>= 1` |
+    /// | [`angle`](domain::angle) | finite |
+    /// | [`color`](domain::color) | every channel a lane |
+    /// | [`fraction`](domain::fraction) | `0..=1`, clamped; non-finite is `0` |
+    ///
+    /// [`EPS`](domain::EPS) is the one epsilon for "can the eye resolve this",
+    /// [`is_invisible`](domain::is_invisible) a magnitude that paints nothing by it, and
+    /// [`band_fraction`](domain::band_fraction) where a centered knob sits along its track.
+    pub mod domain {
+        pub use crate::primitives::math::domain::{
+            EPS, angle, band_fraction, color, extent, factor, fraction, gap, is_angle, is_color,
+            is_extent, is_factor, is_fraction, is_gap, is_invisible, is_lane, is_length, is_offset,
+            is_positive, is_refractive_index, lane, length, offset, positive, refractive_index,
+        };
+    }
 }
 
 pub use animation::animated::Animated;
+pub use animation::animation_key::AnimationKey;
+pub use animation::animation_request::AnimationRequest;
+pub use animation::animation_slot::AnimationSlot;
 pub use animation::animation_spec::AnimationSpec;
 pub use animation::easing::Easing;
-pub use cascade::rows::tab_stop_row::TabEnd;
+pub use animation::motion_role::MotionRole;
+pub use animation::paint_curve::PaintCurve;
 pub use clipboard::{Clipboard, ClipboardError};
+pub use common::content_hash::ContentHash;
 pub use common::error_chain::ErrorChain;
 pub use common::platform::{PLATFORM, Platform};
 pub use common::span::Span;
@@ -294,7 +294,10 @@ pub use primitives::effect::effect_kind::{BackdropEffect, ColorEffect, EffectKin
 pub use primitives::effect::effect_name::EffectName;
 pub use primitives::effect::effect_params::{EffectParam, EffectParams, ParamType, ParamValue};
 pub use primitives::geometry::corners::Corners;
+pub use primitives::geometry::cubic_bezier::CubicBezier;
 pub use primitives::geometry::fit::Fit;
+pub use primitives::geometry::mesh::Mesh;
+pub use primitives::geometry::quadratic_bezier::QuadraticBezier;
 pub use primitives::geometry::rect::Rect;
 pub use primitives::geometry::size::Size;
 pub use primitives::geometry::spacing::Spacing;
@@ -321,6 +324,7 @@ pub use primitives::input::policy::{FocusPolicy, InputPolicy};
 pub use primitives::input::sense::Sense;
 pub use primitives::input::shortcut::error::ParseShortcutError;
 pub use primitives::input::shortcut::{Shortcut, ShortcutMods};
+pub use primitives::input::tab_end::TabEnd;
 pub use primitives::input::watch::{KeyboardWake, PointerWake};
 pub use primitives::input::zoom_factor::ZoomFactor;
 pub use primitives::layout::align::{Align, HAlign, VAlign};
@@ -348,6 +352,7 @@ pub use primitives::paint::color::color_coords::ColorCoords;
 pub use primitives::paint::color::color_model::ColorModel;
 pub use primitives::paint::color::error::ParseColorError;
 pub use primitives::paint::color::srgba_u8::SrgbaU8;
+pub use primitives::paint::content_type::ContentType;
 pub use primitives::paint::image::error::ImageDataError;
 pub use primitives::paint::image::{Image, ImageDownsample, ImageFilter};
 pub use primitives::paint::line_style::{LineCap, LineJoin};
@@ -360,6 +365,7 @@ pub use primitives::paint::material::lens::Lens;
 pub use primitives::paint::material::material_effect::MaterialEffect;
 pub use primitives::paint::material::material_paint::MaterialPaint;
 pub use primitives::paint::paint::Paint;
+pub use primitives::paint::raster_image::RasterImage;
 pub use primitives::paint::shadow::{Shadow, ShadowKind};
 pub use primitives::paint::stroke::Stroke;
 pub use primitives::preference::Preference;
@@ -367,12 +373,35 @@ pub use primitives::reduction::{Reduction, Reductions};
 pub use primitives::text::interned_str::InternedStr;
 pub use primitives::text::text_input::TextInput;
 pub use scene::layer::Layer;
+pub use shape::PaintedBy;
+pub use shape::Shape;
+pub use shape::arc::ArcShape;
+pub use shape::circle::CircleShape;
+pub use shape::curve::CurveShape;
+pub use shape::effect_paint::EffectPaint;
+pub use shape::icon_paint::IconPaint;
+pub use shape::image_paint::ImagePaint;
+pub use shape::mesh::MeshShape;
+pub use shape::paint_animation::{
+    PaintAnimation, PaintChannels, PaintRange, PaintRepeat, PaintSteps, PaintTiming,
+};
+pub use shape::polyline::PolylineShape;
+pub use shape::rect::RectShape;
+pub use shape::text::TextShape;
+pub use shape::triangle::TriangleShape;
 pub use text::error::FontLoadError;
 pub use text::font_family::FontFamily;
 pub use text::font_scope::FontScope;
 pub use text::font_slant::FontSlant;
 pub use text::font_source::FontSource;
 pub use text::font_weight::FontWeight;
+pub use text::glyph_font::GlyphFont;
+pub use text::glyphs::TextGlyphs;
+pub use text::glyphs::glyph_line::GlyphLine;
+pub use text::probe::Caret;
+pub use text::probe::TextProbe;
+pub use text::render::{GlyphRasterKey, PlacedGlyph};
+pub use text::run::TextRun;
 pub use text::shaper::TextShaper;
 pub use text::wrap::TextWrap;
 pub use theme::Theme;
@@ -387,7 +416,6 @@ pub use theme::error::ThemeEffectError;
 pub use theme::expander::ExpanderTheme;
 pub use theme::focus_ring::FocusRingTheme;
 pub use theme::look::WidgetLook;
-pub use theme::look::animated_look::AnimatedLook;
 pub use theme::look::engagement::Engagement;
 pub use theme::look::press_effect::PressEffect;
 pub use theme::look::slot_defaults::SlotDefaults;
@@ -419,6 +447,7 @@ pub use theme::text_style_overrides::TextStyleOverrides;
 pub use theme::toggle::ToggleTheme;
 pub use theme::tooltip::TooltipTheme;
 pub use ui::Ui;
+pub use ui::added_shape::AddedShape;
 pub use ui::app::{App, RecordPass};
 pub use ui::frame_report::{FramePaint, FrameReport};
 pub use ui::inspected_widget::InspectedWidget;

@@ -16,7 +16,7 @@ use crate::renderer::render_plan::RenderPlan;
 use crate::scene::layer::Layer;
 use crate::shape::paint::image_source::ImageSource;
 use crate::shape::record::ShapeRecord;
-use crate::widget_core::configure::ThemeDefaults;
+use crate::widget_core::configure::ConfigureDefaults;
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};
 use std::num::NonZeroU32;

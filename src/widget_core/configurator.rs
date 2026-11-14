@@ -71,7 +71,7 @@ impl Configurator<'_> {
         self
     }
 
-    /// See [`ThemeDefaults::default_size`](crate::widget_core::configure::ThemeDefaults::default_size).
+    /// See [`ConfigureDefaults::default_size`](crate::widget_core::configure::ConfigureDefaults::default_size).
     #[inline]
     #[track_caller]
     pub fn default_size(&mut self, s: impl Into<SizeSpec>) -> &mut Self {
@@ -290,14 +290,14 @@ impl Configurator<'_> {
         self
     }
 
-    /// See [`ThemeDefaults::default_id`](crate::widget_core::configure::ThemeDefaults::default_id).
+    /// See [`ConfigureDefaults::default_id`](crate::widget_core::configure::ConfigureDefaults::default_id).
     #[inline]
     pub const fn default_id(&mut self, id: WidgetId) -> &mut Self {
         self.widget.fill_id(id);
         self
     }
 
-    /// See [`ThemeDefaults::default_padding`](crate::widget_core::configure::ThemeDefaults::default_padding).
+    /// See [`ConfigureDefaults::default_padding`](crate::widget_core::configure::ConfigureDefaults::default_padding).
     #[inline]
     #[track_caller]
     pub fn default_padding(&mut self, p: impl Into<Spacing>) -> &mut Self {
@@ -305,7 +305,7 @@ impl Configurator<'_> {
         self
     }
 
-    /// See [`ThemeDefaults::default_margin`](crate::widget_core::configure::ThemeDefaults::default_margin).
+    /// See [`ConfigureDefaults::default_margin`](crate::widget_core::configure::ConfigureDefaults::default_margin).
     #[inline]
     #[track_caller]
     pub fn default_margin(&mut self, m: impl Into<Spacing>) -> &mut Self {
@@ -313,21 +313,21 @@ impl Configurator<'_> {
         self
     }
 
-    /// See [`ThemeDefaults::default_align`](crate::widget_core::configure::ThemeDefaults::default_align).
+    /// See [`ConfigureDefaults::default_align`](crate::widget_core::configure::ConfigureDefaults::default_align).
     #[inline]
     pub fn default_align(&mut self, a: impl Into<Align>) -> &mut Self {
         self.widget.node.fill_align(a.into());
         self
     }
 
-    /// See [`ThemeDefaults::default_child_align`](crate::widget_core::configure::ThemeDefaults::default_child_align).
+    /// See [`ConfigureDefaults::default_child_align`](crate::widget_core::configure::ConfigureDefaults::default_child_align).
     #[inline]
     pub fn default_child_align(&mut self, a: impl Into<Align>) -> &mut Self {
         self.widget.node.fill_child_align(a.into());
         self
     }
 
-    /// See [`ThemeDefaults::default_justify`](crate::widget_core::configure::ThemeDefaults::default_justify).
+    /// See [`ConfigureDefaults::default_justify`](crate::widget_core::configure::ConfigureDefaults::default_justify).
     #[inline]
     pub const fn default_justify(&mut self, j: Justify) -> &mut Self {
         if self.widget.node.justify.is_none() {
@@ -336,7 +336,7 @@ impl Configurator<'_> {
         self
     }
 
-    /// See [`ThemeDefaults::default_gap`](crate::widget_core::configure::ThemeDefaults::default_gap).
+    /// See [`ConfigureDefaults::default_gap`](crate::widget_core::configure::ConfigureDefaults::default_gap).
     #[inline]
     #[track_caller]
     pub fn default_gap(&mut self, g: f32) -> &mut Self {
@@ -344,7 +344,7 @@ impl Configurator<'_> {
         self
     }
 
-    /// See [`ThemeDefaults::default_line_gap`](crate::widget_core::configure::ThemeDefaults::default_line_gap).
+    /// See [`ConfigureDefaults::default_line_gap`](crate::widget_core::configure::ConfigureDefaults::default_line_gap).
     #[inline]
     #[track_caller]
     pub fn default_line_gap(&mut self, g: f32) -> &mut Self {
@@ -352,7 +352,7 @@ impl Configurator<'_> {
         self
     }
 
-    /// See [`ThemeDefaults::default_min_size`](crate::widget_core::configure::ThemeDefaults::default_min_size).
+    /// See [`ConfigureDefaults::default_min_size`](crate::widget_core::configure::ConfigureDefaults::default_min_size).
     #[inline]
     #[track_caller]
     pub fn default_min_size(&mut self, s: impl Into<Size>) -> &mut Self {
@@ -360,7 +360,7 @@ impl Configurator<'_> {
         self
     }
 
-    /// See [`ThemeDefaults::default_max_size`](crate::widget_core::configure::ThemeDefaults::default_max_size).
+    /// See [`ConfigureDefaults::default_max_size`](crate::widget_core::configure::ConfigureDefaults::default_max_size).
     #[inline]
     #[track_caller]
     pub fn default_max_size(&mut self, s: impl Into<Size>) -> &mut Self {
@@ -368,7 +368,7 @@ impl Configurator<'_> {
         self
     }
 
-    /// See [`ThemeDefaults::default_clip`](crate::widget_core::configure::ThemeDefaults::default_clip).
+    /// See [`ConfigureDefaults::default_clip`](crate::widget_core::configure::ConfigureDefaults::default_clip).
     #[inline]
     pub fn default_clip(&mut self, mode: ClipMode) -> &mut Self {
         self.widget.node.clip.get_or_insert(mode);

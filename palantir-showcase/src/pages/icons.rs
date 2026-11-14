@@ -9,11 +9,9 @@
 use crate::scaffold::api;
 use crate::support;
 use crate::support::{DemoCell, Kit, Knob, Section};
-use palantir::widget::IconPaint;
-use palantir::widget::Shape;
 use palantir::{
-    Align, ColorButton, ColorPicker, Configure, CursorIcon, IconHandle, IconSet, IconTable, Panel,
-    RgbaF32, Sense, Sizing, Text, Ui, WidgetId,
+    Align, ColorButton, ColorPicker, Configure, CursorIcon, IconHandle, IconPaint, IconSet,
+    IconTable, Panel, RgbaF32, Sense, Shape, Sizing, Text, Ui, WidgetId,
 };
 
 /// A diskette: several flat fills over a vertical gradient, inside a clip

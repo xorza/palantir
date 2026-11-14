@@ -19,6 +19,7 @@ use crate::ui::frame_report::FrameReport;
 use crate::ui::window_frames::WindowFrames;
 use crate::ui::window_frames::present::{CpuFrame, FrameSpec, TargetKey};
 use crate::window::window_commands::{WindowCommand, WindowCommands};
+use std::num::NonZeroU32;
 use std::sync::Arc;
 use std::time::Duration;
 use std::vec::Drain;
@@ -34,7 +35,7 @@ pub(super) struct HeadlessWindow {
     pub(super) frames: WindowFrames,
     wake: Arc<WakeSignal>,
     pub(super) system_scale: SystemScale,
-    pub(super) refresh_millihertz: Option<u32>,
+    pub(super) refresh_millihertz: Option<NonZeroU32>,
     /// What the host reports of the system's settings, which [`Self::set_preferences`] writes.
     preferences: SystemPreferences,
     /// The window commands the last frame recorded.
@@ -47,7 +48,7 @@ pub(super) struct HeadlessWindow {
 pub(super) struct HeadlessSettings {
     pub(super) options: HostOptions,
     pub(super) system_scale: SystemScale,
-    pub(super) refresh_millihertz: Option<u32>,
+    pub(super) refresh_millihertz: Option<NonZeroU32>,
     pub(super) preferences: SystemPreferences,
 }
 

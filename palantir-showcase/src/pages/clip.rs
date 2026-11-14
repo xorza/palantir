@@ -4,10 +4,10 @@ use crate::scaffold::api;
 use crate::support;
 use crate::support::{DemoCell, Kit, Knob, Section, Surface};
 use palantir::glam::Vec2;
-use palantir::widget::{CubicBezier, QuadraticBezier, Shape};
 use palantir::{
-    Align, Block, Border, Chrome, ComboBox, Configure, Corners, Gradient, LineCap, Paint, Panel,
-    Rect, RgbaF32, SizeSpec, Sizing, Stroke, Text, TranslateScale, Ui, WidgetId,
+    Align, Block, Border, Chrome, ComboBox, Configure, Corners, CubicBezier, Gradient, LineCap,
+    Paint, Panel, QuadraticBezier, Rect, RgbaF32, Shape, SizeSpec, Sizing, Stroke, Text,
+    TranslateScale, Ui, WidgetId,
 };
 
 const CARD: f32 = 200.0;

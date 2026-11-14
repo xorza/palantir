@@ -270,13 +270,13 @@ pub(crate) fn play(
                     Some(Region::At(at)) => Some(window.find(at).map_err(failed(line))?.rect),
                 };
                 let shot = window.shot(region).map_err(failed(line))?;
-                let picture = if *zoom > 1 {
-                    let side = u64::from(shot.image().size().max_element()) * u64::from(*zoom);
-                    if side > u64::from(header.max_side) {
+                let picture = if zoom.get() > 1 {
+                    let side = u64::from(shot.image().size().max_element()) * u64::from(zoom.get());
+                    if side > u64::from(header.max_side.get()) {
                         return Err(ShotError::TooLarge {
                             line,
                             side,
-                            max_side: header.max_side,
+                            max_side: header.max_side.get(),
                         });
                     }
                     shot.image().magnified(*zoom)

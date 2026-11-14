@@ -11,7 +11,7 @@ Action
         Hover(Locator<X>)
         Click { at: Locator<X>, button: PointerButton, mods: ShortcutMods }
         DoubleClick(Locator<X>)
-        Drag { from: Locator<X>, to: Locator<X>, button: PointerButton, mods: ShortcutMods, steps: u32 }
+        Drag { from: Locator<X>, to: Locator<X>, button: PointerButton, mods: ShortcutMods, steps: NonZeroU32 }
         ScrollPixels { at: Locator<X>, delta: Vec2 }
         ScrollLines { at: Locator<X>, delta: Vec2 }
         Pinch { at: Locator<X>, factor: ZoomFactor }
@@ -22,11 +22,15 @@ Action
         InsertText(String)
         Wait(Duration)
         impl Action
-            pub const DRAG_STEPS: u32
+            pub const DRAG_STEPS: NonZeroU32
             pub fn click(at: impl Into<Locator>) -> Self
         impl<X: Clone> Clone for Action<X>
         impl<X: Debug> Debug for Action<X>
         impl<X: PartialEq> PartialEq for Action<X>
+
+AddedShape
+    struct AddedShape<'u>: Debug
+        pub fn animate(self, animation: PaintAnimation)
 
 AgentWindow
     trait AgentWindow<A>
@@ -96,10 +100,26 @@ Animated
         impl<T: Eq + Animatable> Eq for Animated<T>
         impl<T: PartialEq + Animatable> PartialEq for Animated<T>
 
-AnimatedLook
-    struct AnimatedLook: Animatable, Clone, Debug, Lerp, PartialEq
-        pub chrome: Chrome
-        pub text: TextStyle
+AnimationKey
+    struct AnimationKey: Clone, Copy, Debug, DockTab (blanket), Eq, Hash, PartialEq
+        pub fn of(cause: impl Hash) -> Self
+
+AnimationRequest
+    struct AnimationRequest<T: Animatable>
+        pub id: WidgetId
+        pub slot: AnimationSlot
+        pub target: T
+        pub key: Option<AnimationKey>
+        pub motion: MotionRole
+        pub fn new(id: WidgetId, slot: impl Into<AnimationSlot>, target: T) -> Self
+        pub const fn with_key(self, key: AnimationKey) -> Self
+        pub const fn with_motion(self, motion: MotionRole) -> Self
+        impl<T: Clone + Animatable> Clone for AnimationRequest<T>
+        impl<T: Debug + Animatable> Debug for AnimationRequest<T>
+
+AnimationSlot
+    struct AnimationSlot: Clone, Copy, Debug, DockTab (blanket), Eq, From<&'static str>, Hash, PartialEq
+        pub const fn new(name: &'static str) -> Self
 
 AnimationSpec
     struct AnimationSpec: Clone, Copy, Debug, Default, Deserialize<'de>, PartialEq, Serialize
@@ -117,6 +137,10 @@ App
         fn record(&mut self, window: WindowToken, ui: &mut Ui)
         fn is_busy(&self) -> bool { .. }
         impl<F: FnMut(&mut Ui)> App for F
+
+ArcShape
+    struct ArcShape: Clone, Copy, Debug, PaintedBy<Stroke>
+        pub const fn at(self, rect: Rect) -> Self
 
 Axis
     enum Axis: Clone, Copy, Debug, Deserialize<'de>, DockTab (blanket), Eq, Hash, PartialEq, Serialize
@@ -159,7 +183,7 @@ BatchKind
         pub const fn label(self) -> &'static str
 
 Block
-    struct Block: Configure, Debug, ThemeDefaults (blanket)
+    struct Block: Configure, ConfigureDefaults (blanket), Debug
         pub fn new() -> Self
         pub fn show(self, ui: &mut Ui) -> Response
         pub const fn chrome(self, chrome: Chrome) -> Self
@@ -188,7 +212,7 @@ Brush
         impl From<Brush> for Paint
 
 Button
-    struct Button<'a>: Configure, Debug, ThemeDefaults (blanket)
+    struct Button<'a>: Configure, ConfigureDefaults (blanket), Debug
         pub fn new() -> Self
         pub fn style(self, s: impl Into<Option<&'a ButtonTheme>>) -> Self
         pub fn label(self, label: impl Into<TextInput<'a>>) -> Self
@@ -207,8 +231,14 @@ ButtonTheme
         pub fn accent(p: &Palette, m: &Metrics) -> Self
         pub fn subtle(p: &Palette, m: &Metrics) -> Self
 
+Caret
+    struct Caret: Clone, Copy, Debug, PartialEq
+        pub x: f32
+        pub y_top: f32
+        pub line_height: f32
+
 Checkbox
-    struct Checkbox<'a>: Configure, Debug, ThemeDefaults (blanket)
+    struct Checkbox<'a>: Configure, ConfigureDefaults (blanket), Debug
         pub fn new(value: &'a mut bool) -> Self
         pub fn label(self, label: impl Into<TextInput<'a>>) -> Self
         pub fn style(self, s: impl Into<Option<&'a ToggleTheme>>) -> Self
@@ -228,6 +258,12 @@ Chrome
         pub const fn with_border(self, border: Border) -> Self
         pub const fn with_shadow(self, shadow: Shadow) -> Self
         impl From<Chrome> for WidgetLook
+
+CircleShape
+    struct CircleShape: Clone, Copy, Debug, PaintedBy<ImagePaint>, PaintedBy<Material>, PaintedBy<MaterialPaint>, PaintedBy<Stroke>
+        pub const fn at(self, rect: Rect) -> Self
+        impl<P: Into<Paint>> PaintedBy<P> for CircleShape
+        impl<U: EffectParams, K: EffectKind> PaintedBy<EffectPaint<U, K>> for CircleShape
 
 ClickOutside
     enum ClickOutside: Clone, Copy, Debug, Eq, PartialEq
@@ -257,7 +293,7 @@ CloseShown
         SelectedOrHovered
 
 ColorButton
-    struct ColorButton<'a>: Configure, Debug, ThemeDefaults (blanket)
+    struct ColorButton<'a>: Configure, ConfigureDefaults (blanket), Debug
         pub fn new(picker: ColorPicker<'a>) -> Self
         pub fn style(self, s: impl Into<Option<&'a ColorPickerTheme>>) -> Self
         pub fn show(self, ui: &mut Ui) -> ValueResponse
@@ -283,7 +319,7 @@ ColorEffect
     struct ColorEffect: Clone, Copy, Debug, DockTab (blanket), EffectKind, Eq, Hash, PartialEq
 
 ColorField
-    struct ColorField<'a>: Configure, Debug, ThemeDefaults (blanket)
+    struct ColorField<'a>: Configure, ConfigureDefaults (blanket), Debug
         pub fn new(coords: &'a mut ColorCoords) -> Self
         pub const fn texel_size(self, n: u32) -> Self
         pub fn style(self, s: impl Into<Option<&'a ColorPickerTheme>>) -> Self
@@ -296,7 +332,7 @@ ColorModel
         pub const ALL: [Self; 2]
 
 ColorPicker
-    struct ColorPicker<'a>: Configure, Debug, ThemeDefaults (blanket)
+    struct ColorPicker<'a>: Configure, ConfigureDefaults (blanket), Debug
         pub fn new(color: &'a mut RgbaF32) -> Self
         pub const fn alpha(self, alpha: bool) -> Self
         pub const fn model(self, model: ColorModel) -> Self
@@ -348,7 +384,7 @@ ColorScheme
         pub const ALL: [Self; 2]
 
 ColorStrip
-    struct ColorStrip<'a>: Configure, Debug, ThemeDefaults (blanket)
+    struct ColorStrip<'a>: Configure, ConfigureDefaults (blanket), Debug
         pub fn hue(coords: &'a mut ColorCoords) -> Self
         pub fn alpha(color: &'a mut RgbaF32) -> Self
         pub const fn texel_size(self, n: u32) -> Self
@@ -356,13 +392,13 @@ ColorStrip
         pub fn show(self, ui: &mut Ui) -> ValueResponse
 
 ColorSwatch
-    struct ColorSwatch<'a>: Configure, Debug, ThemeDefaults (blanket)
+    struct ColorSwatch<'a>: Configure, ConfigureDefaults (blanket), Debug
         pub fn new(color: RgbaF32) -> Self
         pub fn style(self, s: impl Into<Option<&'a ColorPickerTheme>>) -> Self
         pub fn show(self, ui: &mut Ui) -> Response
 
 ComboBox
-    struct ComboBox<'a, T, I, L>: Configure, ThemeDefaults (blanket)
+    struct ComboBox<'a, T, I, L>: Configure, ConfigureDefaults (blanket)
         impl<'a, T, I> ComboBox<'a, T, I, fn(&T) -> &str> where T: PartialEq + AsRef<str>, I: IntoIterator<Item = T> + Clone
             pub fn new(selected: &'a mut T, options: I) -> Self
         impl<'a, T, I, L> ComboBox<'a, T, I, L> where T: PartialEq, I: IntoIterator<Item = T> + Clone, L: Fn(&T) -> &str
@@ -427,6 +463,14 @@ ConicGeometry
         pub center: Vec2
         pub start_angle: f32
 
+ContentHash
+    struct ContentHash: Clone, Copy, Debug, Default, DockTab (blanket), Eq, Hash, NoUninit, Ord, PartialEq, PartialOrd
+
+ContentType
+    enum ContentType: Clone, Copy, Debug, Eq, PartialEq
+        Mask = 0
+        Color = 1
+
 Corners
     struct Corners: Animatable, Clone, Copy, Debug, Default, Deserialize<'de>, DockTab (blanket), Eq, Hash, Lerp, PartialEq, Pod, Serialize, Zeroable
         pub const ZERO: Self
@@ -446,6 +490,13 @@ Corners
         impl<T: Number> From<T> for Corners
         impl<TL: Number, TR: Number, BR: Number, BL: Number> From<(TL, TR, BR, BL)> for Corners
 
+CubicBezier
+    struct CubicBezier: Clone, Copy, Debug, From<QuadraticBezier>, PartialEq
+        pub p0: Vec2
+        pub p1: Vec2
+        pub p2: Vec2
+        pub p3: Vec2
+
 CursorIcon
     enum CursorIcon: Clone, Copy, Debug, Default, Eq, PartialEq
         Default
@@ -458,6 +509,11 @@ CursorIcon
         EwResize
         NsResize
         NotAllowed
+
+CurveShape
+    struct CurveShape: Clone, Copy, Debug, PaintedBy<Stroke>
+        pub const fn at(self, rect: Rect) -> Self
+        pub const fn fit(self, fit: Fit) -> Self
 
 DebugOverlayConfig
     struct DebugOverlayConfig: Clone, Copy, Debug, Default, Eq, PartialEq
@@ -488,7 +544,7 @@ Display
         pub const fn system_scale(&self) -> SystemScale
         pub const fn user_scale(&self) -> UserScale
         pub const fn pixel_snap(&self) -> bool
-        pub const fn refresh_millihertz(&self) -> Option<u32>
+        pub const fn refresh_millihertz(&self) -> Option<NonZeroU32>
         pub fn land_translation(&self, translation: Vec2) -> Vec2
         pub const fn scale_factor(&self) -> f32
         pub fn logical_size(&self) -> Size
@@ -604,7 +660,7 @@ DockTheme
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
 
 DockView
-    struct DockView<'a, T, M = Applying<'a, T>>: ThemeDefaults (blanket)
+    struct DockView<'a, T, M = Applying<'a, T>>: ConfigureDefaults (blanket)
         impl<'a, T: DockTab> DockView<'a, T, Applying<'a, T>>
             pub fn new(dock: WidgetId, state: &'a mut DockState<T>) -> Self
             pub fn show<D: DockTabs<Tab = T>>(self, ui: &mut Ui, tabs: &mut D) -> Response
@@ -635,7 +691,7 @@ Drag
         pub const fn stopped(self) -> bool
 
 DragValue
-    struct DragValue<'a>: Configure, Debug, ThemeDefaults (blanket)
+    struct DragValue<'a>: Configure, ConfigureDefaults (blanket), Debug
         pub fn new(value: impl Into<BoundNum<'a>>) -> Self
         pub fn text_align(self, a: impl Into<Align>) -> Self
         pub const fn speed(self, speed: f64) -> Self
@@ -669,7 +725,7 @@ Easing
         OutQuart
         OutBack
         pub const fn apply(self, t: f32) -> f32
-        pub const fn curve(self) -> fn(f32) -> f32
+        impl From<Easing> for PaintCurve
 
 EditEnd
     enum EditEnd: Clone, Copy, Debug, Eq, PartialEq
@@ -677,7 +733,7 @@ EditEnd
         Canceled
 
 EditableLabel
-    struct EditableLabel<'a>: Configure, Debug, ThemeDefaults (blanket)
+    struct EditableLabel<'a>: Configure, ConfigureDefaults (blanket), Debug
         pub fn new(text: impl Into<TextInput<'a>>) -> Self
         pub fn style(self, s: impl Into<Option<&'a TextEditTheme>>) -> Self
         pub const fn color(self, color: RgbaF32) -> Self
@@ -740,6 +796,21 @@ EffectName
         impl<U: EffectParams, K: EffectKind> PartialEq for EffectName<U, K>
         impl<U: EffectParams, K: EffectKind> Serialize for EffectName<U, K>
 
+EffectPaint
+    struct EffectPaint<U: EffectParams, K: EffectKind = ColorEffect>
+        impl<U: EffectParams, K: EffectKind> EffectPaint<U, K>
+            pub const fn new(name: EffectName<U, K>, params: U) -> Self
+            pub fn images<const N: usize>(self, images: [ImageHandle; N]) -> Self
+        impl<U: EffectParams> EffectPaint<U, ColorEffect>
+            pub const fn outside(self, reach: f32) -> Self
+        impl<U: EffectParams> EffectPaint<U, BackdropEffect>
+            pub const fn backdrop_blur(self, sigma: f32) -> Self
+            pub fn fallback(self, fallback: impl Into<Brush>) -> Self
+        impl<U: EffectParams, K: EffectKind> Debug for EffectPaint<U, K>
+        impl<U: EffectParams, K: EffectKind> PaintedBy<EffectPaint<U, K>> for CircleShape
+        impl<U: EffectParams, K: EffectKind> PaintedBy<EffectPaint<U, K>> for RectShape
+        impl<U: EffectParams, K: EffectKind> PaintedBy<EffectPaint<U, K>> for TriangleShape
+
 EffectParam
     struct EffectParam: Clone, Copy, Debug, Eq, PartialEq
         pub name: &'static str
@@ -781,7 +852,7 @@ ErrorChain
         pub const MAX_DEPTH: usize
 
 Expander
-    struct Expander<'a>: Configure, Debug, ThemeDefaults (blanket)
+    struct Expander<'a>: Configure, ConfigureDefaults (blanket), Debug
         pub fn new(label: impl Into<TextInput<'a>>) -> Self
         pub const fn start_open(self, start_open: bool) -> Self
         pub const fn keep_body(self, keep_body: bool) -> Self
@@ -911,6 +982,28 @@ GlassParams
         pub lens: Lens
         pub const fn new(lens: Lens) -> Self
 
+GlyphFont
+    struct GlyphFont: Clone, Copy, Debug, PartialEq
+        pub font_size: f32
+        pub line_height: f32
+        pub family: FontFamily
+        pub weight: FontWeight
+        pub slant: FontSlant
+        pub const fn new(font_size: f32) -> Self
+        pub const fn with_line_height(self, line_height: f32) -> Self
+        pub const fn with_family(self, family: FontFamily) -> Self
+        pub const fn with_weight(self, weight: FontWeight) -> Self
+        pub const fn with_slant(self, slant: FontSlant) -> Self
+
+GlyphLine
+    struct GlyphLine<'a>: Clone, Copy, Debug
+        pub text: &'a str
+        pub font: GlyphFont
+        pub raster_factor: f32
+
+GlyphRasterKey
+    struct GlyphRasterKey: Clone, Copy, Debug, DockTab (blanket), Eq, Hash, PartialEq
+
 Gpu
     struct Gpu: Clone, Debug
         pub fn new(device: Device, queue: Queue) -> Self
@@ -962,7 +1055,7 @@ GpuRequestError
         RequestDevice { source: RequestDeviceError }
 
 GpuView
-    struct GpuView: Configure, Debug, ThemeDefaults (blanket)
+    struct GpuView: Configure, ConfigureDefaults (blanket), Debug
         pub fn new<T: GpuPaint + 'static>(paint: &Rc<RefCell<T>>) -> Self
         pub const fn repaint(self, repaint: bool) -> Self
         pub fn show(self, ui: &mut Ui) -> Response
@@ -1005,7 +1098,7 @@ GradientStops
         impl<'a> IntoIterator for &'a GradientStops
 
 Grid
-    struct Grid<Rows = [Track; 0], Cols = [Track; 0]>: ThemeDefaults (blanket)
+    struct Grid<Rows = [Track; 0], Cols = [Track; 0]>: ConfigureDefaults (blanket)
         impl Grid
             pub fn new() -> Self
         impl<Rows, Cols> Grid<Rows, Cols>
@@ -1019,11 +1112,11 @@ Grid
 GridCell
     struct GridCell: Clone, Copy, Debug, Default, DockTab (blanket), Eq, From<(u16, u16)>, Hash, PartialEq
         pub const fn at(row: u16, col: u16) -> Self
-        pub const fn with_span(self, row_span: u16, col_span: u16) -> Self
+        pub const fn with_span(self, row_span: NonZeroU16, col_span: NonZeroU16) -> Self
         pub const fn row(self) -> u16
         pub const fn col(self) -> u16
-        pub const fn row_span(self) -> u16
-        pub const fn col_span(self) -> u16
+        pub const fn row_span(self) -> NonZeroU16
+        pub const fn col_span(self) -> NonZeroU16
         pub const fn along(axis: Axis, main: u16) -> Self
 
 HAlign
@@ -1052,7 +1145,7 @@ Harness
         pub fn advance_past_double_click(&mut self) -> &mut Self
         pub fn resize(&mut self, size: UVec2) -> &mut Self
         pub fn set_system_scale(&mut self, scale: SystemScale) -> &mut Self
-        pub fn set_refresh_millihertz(&mut self, millihertz: Option<u32>) -> &mut Self
+        pub fn set_refresh_millihertz(&mut self, millihertz: Option<NonZeroU32>) -> &mut Self
         pub fn set_system_color_scheme(&mut self, scheme: Option<ColorScheme>) -> &mut Self
         pub fn set_system_motion_reduced(&mut self, reduced: bool) -> &mut Self
         pub fn set_system_transparency_reduced(&mut self, reduced: bool) -> &mut Self
@@ -1096,7 +1189,7 @@ Harness
 HarnessBuilder
     struct HarnessBuilder: Debug
         pub const fn system_scale(self, scale: SystemScale) -> Self
-        pub const fn refresh_millihertz(self, millihertz: u32) -> Self
+        pub const fn refresh_millihertz(self, millihertz: NonZeroU32) -> Self
         pub const fn system_color_scheme(self, scheme: ColorScheme) -> Self
         pub const fn system_motion_reduced(self, reduced: bool) -> Self
         pub const fn system_transparency_reduced(self, reduced: bool) -> Self
@@ -1107,7 +1200,7 @@ HarnessBuilder
         pub fn shaper(self, shaper: TextShaper) -> Self
         pub fn depth(self, depth: HarnessDepth) -> Self
         pub const fn frame_dt(self, dt: Duration) -> Self
-        pub const fn settle_frames(self, frames: u32) -> Self
+        pub const fn settle_frames(self, frames: NonZeroU32) -> Self
         pub const fn background_wait(self, wait: Duration) -> Self
         pub fn build(self) -> Harness
 
@@ -1146,6 +1239,14 @@ IconHandle
     struct IconHandle: Clone, Copy, Debug, PartialEq
         pub const fn view_box(self) -> Size
 
+IconPaint
+    struct IconPaint: Clone, Copy, Debug
+        pub const fn new(handle: IconHandle) -> Self
+        pub const fn fit(self, fit: Fit) -> Self
+        pub const fn tint(self, tint: RgbaF32) -> Self
+        pub const fn desaturate(self, desaturate: bool) -> Self
+        impl PaintedBy<IconPaint> for RectShape
+
 IconSet
     struct IconSet: Clone, Debug
         pub fn by_name(&self, name: &str) -> Option<IconHandle>
@@ -1169,7 +1270,7 @@ Image
         pub const fn size(&self) -> UVec2
         pub fn texels(&self) -> &[SrgbaU8]
         pub fn texel(&self, at: UVec2) -> SrgbaU8
-        pub fn magnified(&self, factor: u32) -> Self
+        pub fn magnified(&self, factor: NonZeroU32) -> Self
         pub fn as_srgba8(&self) -> &[u8]
         pub fn texels_mut(&mut self) -> &mut [SrgbaU8]
         pub fn from_png(bytes: &[u8]) -> Result<Self>  [features: golden or png]
@@ -1177,7 +1278,7 @@ Image
         pub fn fill_with(&mut self, texel: impl FnMut(UVec2) -> SrgbaU8)
         pub fn row_mut(&mut self, row: u32) -> &mut [SrgbaU8]
         pub fn repeat_row(&mut self, row: u32)
-        pub fn fitted(&self, max_side: u32) -> Self
+        pub fn fitted(&self, max_side: NonZeroU32) -> Self
 
 ImageDataError
     enum ImageDataError: Clone, Copy, Debug, Display, Eq, Error, PartialEq
@@ -1201,6 +1302,19 @@ ImageHandle
         pub fn size(&self) -> UVec2
         pub fn update(&self, image: &Image) -> Result<(), ImageSizeError>
         pub fn is_resident(&self) -> bool
+
+ImagePaint
+    struct ImagePaint: Clone, Debug
+        pub fn new(handle: ImageHandle) -> Self
+        pub const fn fit(self, fit: Fit) -> Self
+        pub const fn tile(self, offset: Vec2, scale: Vec2) -> Self
+        pub const fn min_filter(self, min_filter: ImageFilter) -> Self
+        pub const fn mag_filter(self, mag_filter: ImageFilter) -> Self
+        pub const fn downsample(self, downsample: ImageDownsample) -> Self
+        pub const fn tint(self, tint: RgbaF32) -> Self
+        impl PaintedBy<ImagePaint> for CircleShape
+        impl PaintedBy<ImagePaint> for RectShape
+        impl PaintedBy<ImagePaint> for TriangleShape
 
 ImageSizeError
     struct ImageSizeError: Clone, Copy, Debug, Display, Eq, Error, PartialEq
@@ -1494,7 +1608,7 @@ MaterialPaint
         impl PaintedBy<MaterialPaint> for TriangleShape
 
 Menu
-    struct Menu<'a, O = TriggerOwned>: ThemeDefaults (blanket)
+    struct Menu<'a, O = TriggerOwned>: ConfigureDefaults (blanket)
         impl Menu<'_, TriggerOwned>
             pub fn for_id(trigger: WidgetId) -> Self
             pub fn context(trigger: &Response) -> Self
@@ -1516,7 +1630,7 @@ Menu
         impl<O> Configure for Menu<'_, O>
 
 MenuBar
-    struct MenuBar<'a>: Configure, Debug, ThemeDefaults (blanket)
+    struct MenuBar<'a>: Configure, ConfigureDefaults (blanket), Debug
         pub fn new() -> Self
         pub fn style(self, s: impl Into<Option<&'a MenuBarTheme>>) -> Self
         pub fn menu_style(self, s: impl Into<Option<&'a MenuTheme>>) -> Self
@@ -1539,7 +1653,7 @@ MenuBarTheme
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
 
 MenuItem
-    struct MenuItem<'a>: Configure, Debug, ThemeDefaults (blanket)
+    struct MenuItem<'a>: Configure, ConfigureDefaults (blanket), Debug
         pub fn new(label: impl Into<TextInput<'a>>) -> Self
         pub fn style(self, s: impl Into<Option<&'a MenuItemTheme>>) -> Self
         pub const fn selected(self, selected: bool) -> Self
@@ -1563,7 +1677,7 @@ MenuLanding
         Row(WidgetId)
 
 MenuSeparator
-    struct MenuSeparator<'a>: Configure, Debug, ThemeDefaults (blanket)
+    struct MenuSeparator<'a>: Configure, ConfigureDefaults (blanket), Debug
         pub fn new() -> Self
         pub fn style(self, s: impl Into<Option<&'a SeparatorTheme>>) -> Self
         pub fn show(self, ui: &mut Ui) -> Response
@@ -1579,6 +1693,24 @@ MenuTheme
         pub separator: SeparatorTheme
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
 
+Mesh
+    struct Mesh: Clone, Debug, Default
+        pub const fn new() -> Self
+        pub fn with_capacity(vertices: usize, idxs: usize) -> Self
+        pub fn clear(&mut self)
+        pub const fn is_noop(&self) -> bool
+        pub fn content_hash(&self) -> ContentHash
+        pub fn add_vertex(&mut self, pos: Vec2, color: impl Into<RgbaF32>) -> u32
+        pub fn add_triangle(&mut self, a: u32, b: u32, c: u32)
+        pub fn append(&mut self, other: &Self)
+        pub const fn bbox(&self) -> Rect
+        pub fn filled_polygon(points: &[Vec2], color: impl Into<RgbaF32>) -> Self
+
+MeshShape
+    struct MeshShape<'a>: Clone, Debug, PaintedBy<RgbaF32>
+        pub const fn at(self, rect: Rect) -> Self
+        pub const fn fit(self, fit: Fit) -> Self
+
 Metrics
     struct Metrics: Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize
         pub text: TextSteps
@@ -1591,7 +1723,7 @@ Metrics
         pub const DEFAULT: Self
 
 Modal
-    struct Modal<'a>: Configure, Debug, ThemeDefaults (blanket)
+    struct Modal<'a>: Configure, ConfigureDefaults (blanket), Debug
         pub fn new() -> Self
         pub fn style(self, s: impl Into<Option<&'a ModalTheme>>) -> Self
         pub const fn scrim(self, scrim: Chrome) -> Self
@@ -1628,6 +1760,11 @@ Modifiers
         pub const fn set(&mut self, other: Self, on: bool)
         pub const fn has_command(self) -> bool
 
+MotionRole
+    enum MotionRole: Clone, Copy, Debug, Default, Eq, PartialEq
+        Decorative
+        Essential
+
 Number
     trait Number: Scalar
         impl<T: Scalar> Number for T
@@ -1652,7 +1789,7 @@ OffscreenHost
         pub fn is_device_lost(&self) -> bool
         pub fn recover(&mut self, gpu: Gpu)
         pub const fn set_system_scale(&mut self, scale: SystemScale) -> &mut Self
-        pub const fn set_refresh_millihertz(&mut self, millihertz: Option<u32>) -> &mut Self
+        pub const fn set_refresh_millihertz(&mut self, millihertz: Option<NonZeroU32>) -> &mut Self
         pub fn frame(&mut self, target: RenderTarget<'_>, app: &mut impl App) -> FrameReport
 
 OffscreenHostBuilder
@@ -1663,7 +1800,7 @@ OffscreenHostBuilder
         pub const fn time(self, time: OffscreenTime) -> Self
         pub const fn retained_target(self, retained_target: bool) -> Self
         pub const fn system_scale(self, scale: SystemScale) -> Self
-        pub const fn refresh_millihertz(self, millihertz: u32) -> Self
+        pub const fn refresh_millihertz(self, millihertz: NonZeroU32) -> Self
         pub const fn system_color_scheme(self, scheme: ColorScheme) -> Self
         pub const fn system_motion_reduced(self, reduced: bool) -> Self
         pub const fn system_transparency_reduced(self, reduced: bool) -> Self
@@ -1709,6 +1846,64 @@ Paint
         pub const fn is_noop(&self) -> bool
         impl From<Paint> for Chrome
 
+PaintAnimation
+    struct PaintAnimation: Clone, Copy, Debug
+        pub channels: PaintChannels
+        pub timing: PaintTiming
+        pub curve: PaintCurve
+        pub motion: MotionRole
+        pub const fn alpha(from: f32, to: f32) -> Self
+        pub const fn turn(from: f32, to: f32) -> Self
+        pub const fn clock() -> Self
+        pub const fn with_alpha(self, from: f32, to: f32) -> Self
+        pub const fn with_turn(self, from: f32, to: f32) -> Self
+        pub const fn with_period(self, period: Duration) -> Self
+        pub const fn with_started_at(self, at: Duration) -> Self
+        pub const fn with_repeat(self, repeat: PaintRepeat) -> Self
+        pub const fn with_steps(self, n: NonZeroU32) -> Self
+        pub fn with_curve(self, curve: impl Into<PaintCurve>) -> Self
+        pub const fn with_motion(self, motion: MotionRole) -> Self
+
+PaintChannels
+    struct PaintChannels: Clone, Copy, Debug, PartialEq
+        pub alpha: Option<PaintRange>
+        pub turn: Option<PaintRange>
+
+PaintCurve
+    struct PaintCurve: Clone, Copy, Debug, From<Easing>, Hash
+        pub const LINEAR: Self
+        pub const SINE: Self
+        pub const SQUARE: Self
+        pub const fn new(curve: fn(f32) -> f32) -> Self
+        pub fn apply(self, phase: f32) -> f32
+
+PaintRange
+    struct PaintRange: Clone, Copy, Debug, PartialEq
+        pub from: f32
+        pub to: f32
+
+PaintRepeat
+    enum PaintRepeat: Clone, Copy, Debug, Eq, PartialEq
+        Once
+        Forever
+        Settle(Duration)
+        Held
+
+PaintSteps
+    enum PaintSteps: Clone, Copy, Debug, Eq, PartialEq
+        Continuous
+        Steps(NonZeroU32)
+
+PaintTiming
+    struct PaintTiming: Clone, Copy, Debug, Eq, PartialEq
+        pub started_at: Duration
+        pub period: Duration
+        pub repeat: PaintRepeat
+        pub steps: PaintSteps
+
+PaintedBy
+    trait PaintedBy<P>: DrawWith<P>
+
 Palette
     struct Palette: Clone, Debug, Deserialize<'de>, PartialEq, Serialize
         pub text: RgbaF32
@@ -1733,7 +1928,7 @@ Palette
         pub fn popup_panel(&self, m: &Metrics) -> Chrome
 
 Panel
-    struct Panel: Configure, Debug, ThemeDefaults (blanket)
+    struct Panel: Configure, ConfigureDefaults (blanket), Debug
         pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> InnerResponse<R>
         pub fn hstack() -> Self
         pub fn vstack() -> Self
@@ -1792,6 +1987,11 @@ PipelineStats
         pub clipper_invocations: u64
         pub clipper_primitives_out: u64
         pub fragment_shader_invocations: u64
+
+PlacedGlyph
+    struct PlacedGlyph: Clone, Copy, Debug
+        pub raster_key: GlyphRasterKey
+        pub physical_pos: IVec2
 
 Platform
     enum Platform: Clone, Copy, Debug, DockTab (blanket), Eq, Hash, PartialEq
@@ -1883,8 +2083,15 @@ PointerWake
         pub const fn remove(&mut self, other: Self)
         pub const fn set(&mut self, other: Self, on: bool)
 
+PolylineShape
+    struct PolylineShape<'a>: Clone, Debug, PaintedBy<Stroke>
+        pub const fn at(self, rect: Rect) -> Self
+        pub const fn fit(self, fit: Fit) -> Self
+        pub const fn point_colors(self, colors: &'a [RgbaF32]) -> Self
+        pub const fn segment_colors(self, colors: &'a [RgbaF32]) -> Self
+
 Popup
-    struct Popup<'a>: Configure, Debug, ThemeDefaults (blanket)
+    struct Popup<'a>: Configure, ConfigureDefaults (blanket), Debug
         pub fn new() -> Self
         pub fn style(self, s: impl Into<Option<&'a PopupTheme>>) -> Self
         pub const fn layer(self, layer: Layer) -> Self
@@ -1901,7 +2108,7 @@ PopupTheme
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
 
 PopupTrigger
-    struct PopupTrigger<'a>: Configure, Debug, ThemeDefaults (blanket)
+    struct PopupTrigger<'a>: Configure, ConfigureDefaults (blanket), Debug
         pub fn on(trigger: &Response) -> Self
         pub fn style(self, s: impl Into<Option<&'a PopupTheme>>) -> Self
         pub const fn chrome(self, chrome: Chrome) -> Self
@@ -1949,7 +2156,7 @@ PressParams
         pub seed: f32
 
 ProgressBar
-    struct ProgressBar<'a>: Configure, Debug, ThemeDefaults (blanket)
+    struct ProgressBar<'a>: Configure, ConfigureDefaults (blanket), Debug
         pub fn new(fraction: f32) -> Self
         pub fn style(self, s: impl Into<Option<&'a ProgressBarTheme>>) -> Self
         pub fn show(self, ui: &mut Ui) -> Response
@@ -1961,13 +2168,20 @@ ProgressBarTheme
         pub thickness: f32
         pub const fn from_parts(p: &Palette, _m: &Metrics) -> Self
 
+QuadraticBezier
+    struct QuadraticBezier: Clone, Copy, Debug, PartialEq
+        pub p0: Vec2
+        pub p1: Vec2
+        pub p2: Vec2
+        impl From<QuadraticBezier> for CubicBezier
+
 RadialGeometry
     struct RadialGeometry: Clone, Copy, Debug, Deserialize<'de>, PartialEq, Serialize
         pub center: Vec2
         pub radius: Vec2
 
 RadioGroup
-    struct RadioGroup<'a, T>: Configure, ThemeDefaults (blanket)
+    struct RadioGroup<'a, T>: Configure, ConfigureDefaults (blanket)
         pub fn new(selected: &'a mut T) -> Self
         pub const fn axis(self, axis: Axis) -> Self
         pub const fn look(self, look: RadioLook<'a>) -> Self
@@ -1981,7 +2195,7 @@ RadioLook
         Segment(Option<&'a SegmentedTheme>)
 
 RadioOption
-    struct RadioOption<'o, 'g, T>: Configure, ThemeDefaults (blanket)
+    struct RadioOption<'o, 'g, T>: Configure, ConfigureDefaults (blanket)
         impl<'o, T: PartialEq> RadioOption<'o, '_, T>
             pub fn label(self, label: impl Into<TextInput<'o>>) -> Self
             pub fn show(self, ui: &mut Ui) -> ValueResponse
@@ -1999,6 +2213,13 @@ RadiusSteps
         pub control: f32
         pub card: f32
         pub float: f32
+
+RasterImage
+    struct RasterImage<'a>: Clone, Copy, Debug
+        pub content: ContentType
+        pub size: UVec2
+        pub bearing: IVec2
+        pub data: &'a [u8]
 
 RecordPass
     enum RecordPass: Clone, Copy, Debug, Default, Eq, PartialEq
@@ -2028,6 +2249,13 @@ Rect
         pub const fn intersect(self, other: Self) -> Option<Self>
         pub const fn clamp_to(self, bounds: Self) -> Self
         pub const fn union(self, other: Self) -> Self
+
+RectShape
+    struct RectShape: Clone, Copy, Debug, PaintedBy<IconPaint>, PaintedBy<ImagePaint>, PaintedBy<Material>, PaintedBy<MaterialPaint>
+        pub const fn at(self, rect: Rect) -> Self
+        pub fn corners(self, corners: impl Into<Corners>) -> Self
+        impl<P: Into<Paint>> PaintedBy<P> for RectShape
+        impl<U: EffectParams, K: EffectKind> PaintedBy<EffectPaint<U, K>> for RectShape
 
 ReducedEffect
     enum ReducedEffect<U: EffectParams, K: EffectKind = ColorEffect>
@@ -2128,7 +2356,7 @@ ScreenshotId
     struct ScreenshotId: Clone, Copy, Debug, DockTab (blanket), Eq, Hash, PartialEq
 
 Scroll
-    struct Scroll<'a>: Configure, Debug, ThemeDefaults (blanket)
+    struct Scroll<'a>: Configure, ConfigureDefaults (blanket), Debug
         pub fn vertical() -> Self
         pub fn horizontal() -> Self
         pub fn both() -> Self
@@ -2199,7 +2427,7 @@ Sense
         pub const ABSORB_POINTER: Self
 
 Separator
-    struct Separator<'a>: Configure, Debug, ThemeDefaults (blanket)
+    struct Separator<'a>: Configure, ConfigureDefaults (blanket), Debug
         pub fn horizontal() -> Self
         pub fn vertical() -> Self
         pub fn along(axis: Axis) -> Self
@@ -2239,6 +2467,19 @@ ShadowKind
     enum ShadowKind: Clone, Copy, Debug, Default, Deserialize<'de>, DockTab (blanket), Eq, Hash, PartialEq, Serialize
         Drop
         Inset
+
+Shape
+    struct Shape: Clone, Copy, Debug
+        pub const fn rect() -> RectShape
+        pub const fn circle() -> CircleShape
+        pub const fn arc(start_angle: f32, sweep: f32) -> ArcShape
+        pub const fn triangle(a: Vec2, b: Vec2, c: Vec2) -> TriangleShape
+        pub const fn line(a: Vec2, b: Vec2) -> CurveShape
+        pub fn polyline(points: &[Vec2]) -> PolylineShape<'_>
+        pub const fn cubic_bezier(bezier: CubicBezier) -> CurveShape
+        pub const fn quadratic_bezier(bezier: QuadraticBezier) -> CurveShape
+        pub const fn text(text: InternedStr, font: GlyphFont) -> TextShape
+        pub const fn mesh(mesh: &Mesh) -> MeshShape<'_>
 
 Shortcut
     struct Shortcut: Clone, Copy, Debug, Display, DockTab (blanket), Eq, From<Key>, FromStr, Hash, PartialEq
@@ -2310,7 +2551,7 @@ Sizing
         impl<T: Number> From<T> for Sizing
 
 Slider
-    struct Slider<'a>: Configure, Debug, ThemeDefaults (blanket)
+    struct Slider<'a>: Configure, ConfigureDefaults (blanket), Debug
         pub fn new(value: impl Into<BoundNum<'a>>, range: RangeInclusive<f64>) -> Self
         pub const fn step(self, step: f64) -> Self
         pub const fn decimals(self, n: usize) -> Self
@@ -2376,7 +2617,7 @@ SpanRangeError
         PastU32 { end: usize }
 
 Spinner
-    struct Spinner<'a>: Configure, Debug, ThemeDefaults (blanket)
+    struct Spinner<'a>: Configure, ConfigureDefaults (blanket), Debug
         pub fn new() -> Self
         pub fn style(self, s: impl Into<Option<&'a SpinnerTheme>>) -> Self
         pub const fn color(self, color: RgbaF32) -> Self
@@ -2408,7 +2649,7 @@ SplitSide
         pub const fn half(self) -> SplitHalf
 
 Splitter
-    struct Splitter<'a>: Configure, Debug, ThemeDefaults (blanket)
+    struct Splitter<'a>: Configure, ConfigureDefaults (blanket), Debug
         pub fn row(ratio: &'a mut f32) -> Self
         pub fn col(ratio: &'a mut f32) -> Self
         pub fn along(axis: Axis, ratio: &'a mut f32) -> Self
@@ -2508,7 +2749,7 @@ SwatchRow
         Fixed(&'a [RgbaF32])
 
 Switch
-    struct Switch<'a>: Configure, Debug, ThemeDefaults (blanket)
+    struct Switch<'a>: Configure, ConfigureDefaults (blanket), Debug
         pub fn new(value: &'a mut bool) -> Self
         pub fn label(self, label: impl Into<TextInput<'a>>) -> Self
         pub fn style(self, s: impl Into<Option<&'a ToggleTheme>>) -> Self
@@ -2586,7 +2827,7 @@ TabOverflow
         Menu
 
 TabStrip
-    struct TabStrip<'a>: Configure, Debug, ThemeDefaults (blanket)
+    struct TabStrip<'a>: Configure, ConfigureDefaults (blanket), Debug
         pub fn new(items: &'a [TabItem]) -> Self
         pub fn selected_idx(self, idx: impl Into<Option<usize>>) -> Self
         pub const fn focused(self, focused: bool) -> Self
@@ -2606,7 +2847,7 @@ TabStripResponse
         pub dragging: Option<usize>
 
 TabbedView
-    struct TabbedView<'a, S, L, K = fn(usize, &S) -> TabKey>: ThemeDefaults (blanket)
+    struct TabbedView<'a, S, L, K = fn(usize, &S) -> TabKey>: ConfigureDefaults (blanket)
         impl<'a, S: AsRef<str>> TabbedView<'a, S, fn(&S) -> &str>
             pub fn new(selected: &'a mut usize, options: &'a [S]) -> Self
         impl<'a, S, L: Fn(&S) -> &str> TabbedView<'a, S, L>
@@ -2670,7 +2911,7 @@ TargetFormat
         pub const fn get(self) -> TextureFormat
 
 Text
-    struct Text<'a>: Configure, Debug, ThemeDefaults (blanket)
+    struct Text<'a>: Configure, ConfigureDefaults (blanket), Debug
         pub fn new(text: impl Into<TextInput<'a>>) -> Self
         pub fn style(self, s: impl Into<Option<&'a TextStyle>>) -> Self
         pub const fn color(self, color: RgbaF32) -> Self
@@ -2686,7 +2927,7 @@ Text
         pub fn show(self, ui: &mut Ui) -> Response
 
 TextEdit
-    struct TextEdit<'a>: Configure, Debug, ThemeDefaults (blanket)
+    struct TextEdit<'a>: Configure, ConfigureDefaults (blanket), Debug
         pub fn new(text: &'a mut String) -> Self
         pub fn buffered(current: impl Into<TextInput<'a>>) -> Self
         pub fn style(self, s: impl Into<Option<&'a TextEditTheme>>) -> Self
@@ -2728,12 +2969,39 @@ TextEditTheme
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
         pub fn flat(&self) -> Self
 
+TextGlyphs
+    struct TextGlyphs<'a>: Debug
+        pub fn line(&mut self, line: GlyphLine<'_>, out: &mut Vec<PlacedGlyph>)
+        pub fn measure(&mut self, text: &str, font: GlyphFont) -> Size
+        pub fn rasterize(&mut self, glyph: GlyphRasterKey) -> Option<RasterImage<'_>>
+
 TextInput
     enum TextInput<'a>: Debug, Default, From<Cow<'a, str>>, From<InternedStr>, From<String>
         Borrowed(&'a str)
         Owned(String)
         Interned(InternedStr)
         impl<'a, T: AsRef<str> + ?Sized> From<&'a T> for TextInput<'a>
+
+TextProbe
+    struct TextProbe<'a>: Debug
+        pub const fn size(&self) -> Size
+        pub fn caret_at(&self, byte_offset: usize) -> Caret
+        pub fn byte_at(&self, pos: Vec2) -> usize
+        pub fn selection_rects(&self, range: Range<usize>, out: &mut Vec<Rect>)
+
+TextRun
+    struct TextRun<'a>: Clone, Copy, Debug
+        pub text: &'a str
+        pub font: GlyphFont
+        pub wrap: TextWrap
+        pub align: Align
+        pub max_width: Option<f32>
+
+TextShape
+    struct TextShape: Clone, Debug, PaintedBy<RgbaF32>
+        pub const fn at_origin(self, origin: Vec2) -> Self
+        pub const fn wrap(self, wrap: TextWrap) -> Self
+        pub fn align(self, a: impl Into<Align>) -> Self
 
 TextShaper
     struct TextShaper: Clone, Debug, Default
@@ -2862,7 +3130,7 @@ ToggleTheme
         pub fn switch(p: &Palette, m: &Metrics) -> Self
 
 Tooltip
-    struct Tooltip<'a>: Configure, Debug, ThemeDefaults (blanket)
+    struct Tooltip<'a>: Configure, ConfigureDefaults (blanket), Debug
         pub fn on(trigger: &Response, text: impl Into<TextInput<'a>>) -> Self
         pub fn style(self, s: impl Into<Option<&'a TooltipTheme>>) -> Self
         pub const fn delay(self, delay: Duration) -> Self
@@ -2916,6 +3184,14 @@ TranslateScale
         pub const fn apply_vector(self, v: Vec2) -> Vec2
         pub const fn inverse_vector(self, v: Vec2) -> Vec2
         pub const fn apply_rect(self, r: Rect) -> Rect
+
+TriangleShape
+    struct TriangleShape: Clone, Debug, PaintedBy<ImagePaint>, PaintedBy<Material>, PaintedBy<MaterialPaint>
+        pub const fn at(self, rect: Rect) -> Self
+        pub const fn fit(self, fit: Fit) -> Self
+        pub const fn radius(self, radius: f32) -> Self
+        impl<P: Into<Paint>> PaintedBy<P> for TriangleShape
+        impl<U: EffectParams, K: EffectKind> PaintedBy<EffectPaint<U, K>> for TriangleShape
 
 Ui
     struct Ui: Debug
@@ -3229,10 +3505,6 @@ widget::Activation
         Button
         Toggle
 
-widget::AddedShape
-    struct AddedShape<'u>: Debug
-        pub fn animate(self, animation: PaintAnimation)
-
 widget::Animatable
     trait Animatable: Lerp + Clone + PartialEq + 'static
         fn sub(&self, other: &Self) -> Self
@@ -3245,34 +3517,14 @@ widget::Animatable
         fn from_motion(motion: Self) -> Self { .. }
         fn normalize_for_spring(&mut self, _target: &Self, _velocity: &mut Self) { .. }
 
-widget::AnimationKey
-    struct AnimationKey: Clone, Copy, Debug, DockTab (blanket), Eq, Hash, PartialEq
-        pub fn of(cause: impl Hash) -> Self
-
-widget::AnimationRequest
-    struct AnimationRequest<T: Animatable>
-        pub id: WidgetId
-        pub slot: AnimationSlot
-        pub target: T
-        pub key: Option<AnimationKey>
-        pub motion: MotionRole
-        pub fn new(id: WidgetId, slot: impl Into<AnimationSlot>, target: T) -> Self
-        pub const fn with_key(self, key: AnimationKey) -> Self
-        pub const fn with_motion(self, motion: MotionRole) -> Self
-        impl<T: Clone + Animatable> Clone for AnimationRequest<T>
-        impl<T: Debug + Animatable> Debug for AnimationRequest<T>
-
-widget::AnimationSlot
-    struct AnimationSlot: Clone, Copy, Debug, DockTab (blanket), Eq, From<&'static str>, Hash, PartialEq
-        pub const fn new(name: &'static str) -> Self
+widget::AnimatedLook
+    struct AnimatedLook: Animatable, Clone, Debug, Lerp, PartialEq
+        pub chrome: Chrome
+        pub text: TextStyle
 
 widget::Applying
     struct Applying<'a, T>
         impl<'a, T: Debug> Debug for Applying<'a, T>
-
-widget::ArcShape
-    struct ArcShape: Clone, Copy, Debug, PaintedBy<Stroke>
-        pub const fn at(self, rect: Rect) -> Self
 
 widget::Authored
     struct Authored<'a>: Clone, Copy, Debug
@@ -3308,22 +3560,10 @@ widget::Barrier
 widget::CallerOwned
     struct CallerOwned: Clone, Copy, Debug
 
-widget::Caret
-    struct Caret: Clone, Copy, Debug, PartialEq
-        pub x: f32
-        pub y_top: f32
-        pub line_height: f32
-
 widget::CheckState
     enum CheckState: Clone, Copy, Debug, Default, DockTab (blanket), Eq, From<bool>, Hash, PartialEq
         Unchecked
         Checked
-
-widget::CircleShape
-    struct CircleShape: Clone, Copy, Debug, PaintedBy<ImagePaint>, PaintedBy<Material>, PaintedBy<MaterialPaint>, PaintedBy<Stroke>
-        pub const fn at(self, rect: Rect) -> Self
-        impl<P: Into<Paint>> PaintedBy<P> for CircleShape
-        impl<U: EffectParams, K: EffectKind> PaintedBy<EffectPaint<U, K>> for CircleShape
 
 widget::Configurator
     struct Configurator<'a>: Debug
@@ -3371,269 +3611,8 @@ widget::Configurator
         pub fn default_max_size(&mut self, s: impl Into<Size>) -> &mut Self
         pub fn default_clip(&mut self, mode: ClipMode) -> &mut Self
 
-widget::ContentHash
-    struct ContentHash: Clone, Copy, Debug, Default, DockTab (blanket), Eq, Hash, NoUninit, Ord, PartialEq, PartialOrd
-
-widget::ContentType
-    enum ContentType: Clone, Copy, Debug, Eq, PartialEq
-        Mask = 0
-        Color = 1
-
-widget::CubicBezier
-    struct CubicBezier: Clone, Copy, Debug, From<QuadraticBezier>, PartialEq
-        pub p0: Vec2
-        pub p1: Vec2
-        pub p2: Vec2
-        pub p3: Vec2
-
-widget::CurveShape
-    struct CurveShape: Clone, Copy, Debug, PaintedBy<Stroke>
-        pub const fn at(self, rect: Rect) -> Self
-        pub const fn fit(self, fit: Fit) -> Self
-
-widget::DOUBLE_CLICK_INTERVAL
-    const DOUBLE_CLICK_INTERVAL: Duration
-
-widget::DOUBLE_CLICK_RADIUS
-    const DOUBLE_CLICK_RADIUS: f32
-
-widget::EffectPaint
-    struct EffectPaint<U: EffectParams, K: EffectKind = ColorEffect>
-        impl<U: EffectParams, K: EffectKind> EffectPaint<U, K>
-            pub const fn new(name: EffectName<U, K>, params: U) -> Self
-            pub fn images<const N: usize>(self, images: [ImageHandle; N]) -> Self
-        impl<U: EffectParams> EffectPaint<U, ColorEffect>
-            pub const fn outside(self, reach: f32) -> Self
-        impl<U: EffectParams> EffectPaint<U, BackdropEffect>
-            pub const fn backdrop_blur(self, sigma: f32) -> Self
-            pub fn fallback(self, fallback: impl Into<Brush>) -> Self
-        impl<U: EffectParams, K: EffectKind> Debug for EffectPaint<U, K>
-        impl<U: EffectParams, K: EffectKind> PaintedBy<EffectPaint<U, K>> for CircleShape
-        impl<U: EffectParams, K: EffectKind> PaintedBy<EffectPaint<U, K>> for RectShape
-        impl<U: EffectParams, K: EffectKind> PaintedBy<EffectPaint<U, K>> for TriangleShape
-
-widget::Emitting
-    struct Emitting<'a, T>
-        impl<'a, T: Debug> Debug for Emitting<'a, T>
-
-widget::GlyphFont
-    struct GlyphFont: Clone, Copy, Debug, PartialEq
-        pub font_size: f32
-        pub line_height: f32
-        pub family: FontFamily
-        pub weight: FontWeight
-        pub slant: FontSlant
-        pub const fn new(font_size: f32) -> Self
-        pub const fn with_line_height(self, line_height: f32) -> Self
-        pub const fn with_family(self, family: FontFamily) -> Self
-        pub const fn with_weight(self, weight: FontWeight) -> Self
-        pub const fn with_slant(self, slant: FontSlant) -> Self
-
-widget::GlyphLine
-    struct GlyphLine<'a>: Clone, Copy, Debug
-        pub text: &'a str
-        pub font: GlyphFont
-        pub raster_factor: f32
-
-widget::GlyphRasterKey
-    struct GlyphRasterKey: Clone, Copy, Debug, DockTab (blanket), Eq, Hash, PartialEq
-
-widget::IconPaint
-    struct IconPaint: Clone, Copy, Debug
-        pub const fn new(handle: IconHandle) -> Self
-        pub const fn fit(self, fit: Fit) -> Self
-        pub const fn tint(self, tint: RgbaF32) -> Self
-        pub const fn desaturate(self, desaturate: bool) -> Self
-        impl PaintedBy<IconPaint> for RectShape
-
-widget::ImagePaint
-    struct ImagePaint: Clone, Debug
-        pub fn new(handle: ImageHandle) -> Self
-        pub const fn fit(self, fit: Fit) -> Self
-        pub const fn tile(self, offset: Vec2, scale: Vec2) -> Self
-        pub const fn min_filter(self, min_filter: ImageFilter) -> Self
-        pub const fn mag_filter(self, mag_filter: ImageFilter) -> Self
-        pub const fn downsample(self, downsample: ImageDownsample) -> Self
-        pub const fn tint(self, tint: RgbaF32) -> Self
-        impl PaintedBy<ImagePaint> for CircleShape
-        impl PaintedBy<ImagePaint> for RectShape
-        impl PaintedBy<ImagePaint> for TriangleShape
-
-widget::Lerp
-    trait Lerp: Sized
-        fn lerp(a: &Self, b: &Self, t: f32) -> Self
-        fn lerp_into(a: &Self, b: &Self, t: f32, out: &mut Self) { .. }
-
-widget::LookPlan
-    struct LookPlan: Debug
-
-widget::Mesh
-    struct Mesh: Clone, Debug, Default
-        pub const fn new() -> Self
-        pub fn with_capacity(vertices: usize, idxs: usize) -> Self
-        pub fn clear(&mut self)
-        pub const fn is_noop(&self) -> bool
-        pub fn content_hash(&self) -> ContentHash
-        pub fn add_vertex(&mut self, pos: Vec2, color: impl Into<RgbaF32>) -> u32
-        pub fn add_triangle(&mut self, a: u32, b: u32, c: u32)
-        pub fn append(&mut self, other: &Self)
-        pub const fn bbox(&self) -> Rect
-        pub fn filled_polygon(points: &[Vec2], color: impl Into<RgbaF32>) -> Self
-
-widget::MeshShape
-    struct MeshShape<'a>: Clone, Debug, PaintedBy<RgbaF32>
-        pub const fn at(self, rect: Rect) -> Self
-        pub const fn fit(self, fit: Fit) -> Self
-
-widget::MotionRole
-    enum MotionRole: Clone, Copy, Debug, Default, Eq, PartialEq
-        Decorative
-        Essential
-
-widget::OverlayScope
-    struct OverlayScope: Debug
-        pub fn claim(ui: &mut Ui, spec: OverlaySpec, root: &mut Widget) -> Self
-        pub fn record<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> OverlayResponse<R>
-
-widget::OverlaySpec
-    struct OverlaySpec: Clone, Copy, Debug
-        pub layer: Layer
-        pub anchor: Option<Anchor>
-        pub barrier: Barrier
-
-widget::PaintAnimation
-    struct PaintAnimation: Clone, Copy, Debug
-        pub channels: PaintChannels
-        pub timing: PaintTiming
-        pub curve: PaintCurve
-        pub motion: MotionRole
-        pub fn alpha(from: f32, to: f32) -> Self
-        pub fn turn(from: f32, to: f32) -> Self
-        pub fn clock() -> Self
-        pub const fn with_alpha(self, from: f32, to: f32) -> Self
-        pub const fn with_turn(self, from: f32, to: f32) -> Self
-        pub const fn with_period(self, period: Duration) -> Self
-        pub const fn with_started_at(self, at: Duration) -> Self
-        pub const fn with_repeat(self, repeat: PaintRepeat) -> Self
-        pub const fn with_steps(self, n: u32) -> Self
-        pub const fn with_curve(self, curve: PaintCurve) -> Self
-        pub const fn with_motion(self, motion: MotionRole) -> Self
-
-widget::PaintChannels
-    struct PaintChannels: Clone, Copy, Debug, PartialEq
-        pub alpha: Option<PaintRange>
-        pub turn: Option<PaintRange>
-
-widget::PaintCurve
-    type PaintCurve = fn(f32) -> f32
-
-widget::PaintRange
-    struct PaintRange: Clone, Copy, Debug, PartialEq
-        pub from: f32
-        pub to: f32
-
-widget::PaintRepeat
-    enum PaintRepeat: Clone, Copy, Debug, Eq, PartialEq
-        Once
-        Forever
-        Settle(Duration)
-        Held
-
-widget::PaintSteps
-    enum PaintSteps: Clone, Copy, Debug, Eq, PartialEq
-        Continuous
-        Steps(NonZeroU32)
-
-widget::PaintTiming
-    struct PaintTiming: Clone, Copy, Debug, Eq, PartialEq
-        pub started_at: Duration
-        pub period: Duration
-        pub repeat: PaintRepeat
-        pub steps: PaintSteps
-
-widget::PaintedBy
-    trait PaintedBy<P>: DrawWith<P>
-
-widget::PlacedGlyph
-    struct PlacedGlyph: Clone, Copy, Debug
-        pub raster_key: GlyphRasterKey
-        pub physical_pos: IVec2
-
-widget::PolylineShape
-    struct PolylineShape<'a>: Clone, Debug, PaintedBy<Stroke>
-        pub const fn at(self, rect: Rect) -> Self
-        pub const fn fit(self, fit: Fit) -> Self
-        pub const fn point_colors(self, colors: &'a [RgbaF32]) -> Self
-        pub const fn segment_colors(self, colors: &'a [RgbaF32]) -> Self
-
-widget::QuadraticBezier
-    struct QuadraticBezier: Clone, Copy, Debug, PartialEq
-        pub p0: Vec2
-        pub p1: Vec2
-        pub p2: Vec2
-        impl From<QuadraticBezier> for CubicBezier
-
-widget::RasterImage
-    struct RasterImage<'a>: Clone, Copy, Debug
-        pub content: ContentType
-        pub size: UVec2
-        pub bearing: IVec2
-        pub data: &'a [u8]
-
-widget::RectShape
-    struct RectShape: Clone, Copy, Debug, PaintedBy<IconPaint>, PaintedBy<ImagePaint>, PaintedBy<Material>, PaintedBy<MaterialPaint>
-        pub const fn at(self, rect: Rect) -> Self
-        pub fn corners(self, corners: impl Into<Corners>) -> Self
-        impl<P: Into<Paint>> PaintedBy<P> for RectShape
-        impl<U: EffectParams, K: EffectKind> PaintedBy<EffectPaint<U, K>> for RectShape
-
-widget::Selection
-    enum Selection: Clone, Copy, Debug, Default, DockTab (blanket), Eq, From<bool>, Hash, PartialEq
-        Unselected
-        Selected
-
-widget::Shape
-    struct Shape: Clone, Copy, Debug
-        pub const fn rect() -> RectShape
-        pub const fn circle() -> CircleShape
-        pub const fn arc(start_angle: f32, sweep: f32) -> ArcShape
-        pub const fn triangle(a: Vec2, b: Vec2, c: Vec2) -> TriangleShape
-        pub const fn line(a: Vec2, b: Vec2) -> CurveShape
-        pub fn polyline(points: &[Vec2]) -> PolylineShape<'_>
-        pub const fn cubic_bezier(bezier: CubicBezier) -> CurveShape
-        pub const fn quadratic_bezier(bezier: QuadraticBezier) -> CurveShape
-        pub const fn text(text: InternedStr, font: GlyphFont) -> TextShape
-        pub const fn mesh(mesh: &Mesh) -> MeshShape<'_>
-
-widget::TextGlyphs
-    struct TextGlyphs<'a>: Debug
-        pub fn line(&mut self, line: GlyphLine<'_>, out: &mut Vec<PlacedGlyph>)
-        pub fn measure(&mut self, text: &str, font: GlyphFont) -> Size
-        pub fn rasterize(&mut self, glyph: GlyphRasterKey) -> Option<RasterImage<'_>>
-
-widget::TextProbe
-    struct TextProbe<'a>: Debug
-        pub const fn size(&self) -> Size
-        pub fn caret_at(&self, byte_offset: usize) -> Caret
-        pub fn byte_at(&self, pos: Vec2) -> usize
-        pub fn selection_rects(&self, range: Range<usize>, out: &mut Vec<Rect>)
-
-widget::TextRun
-    struct TextRun<'a>: Clone, Copy, Debug
-        pub text: &'a str
-        pub font: GlyphFont
-        pub wrap: TextWrap
-        pub align: Align
-        pub max_width: Option<f32>
-
-widget::TextShape
-    struct TextShape: Clone, Debug, PaintedBy<RgbaF32>
-        pub const fn at_origin(self, origin: Vec2) -> Self
-        pub const fn wrap(self, wrap: TextWrap) -> Self
-        pub fn align(self, a: impl Into<Align>) -> Self
-
-widget::ThemeDefaults
-    trait ThemeDefaults: Configure
+widget::ConfigureDefaults
+    trait ConfigureDefaults: Configure
         fn default_id(self, id: WidgetId) -> Self { .. }
         fn default_size(self, s: impl Into<SizeSpec>) -> Self { .. }
         fn default_padding(self, p: impl Into<Spacing>) -> Self { .. }
@@ -3646,7 +3625,41 @@ widget::ThemeDefaults
         fn default_min_size(self, s: impl Into<Size>) -> Self { .. }
         fn default_max_size(self, s: impl Into<Size>) -> Self { .. }
         fn default_clip(self, mode: ClipMode) -> Self { .. }
-        impl<T: Configure> ThemeDefaults for T
+        impl<T: Configure> ConfigureDefaults for T
+
+widget::DOUBLE_CLICK_INTERVAL
+    const DOUBLE_CLICK_INTERVAL: Duration
+
+widget::DOUBLE_CLICK_RADIUS
+    const DOUBLE_CLICK_RADIUS: f32
+
+widget::Emitting
+    struct Emitting<'a, T>
+        impl<'a, T: Debug> Debug for Emitting<'a, T>
+
+widget::Lerp
+    trait Lerp: Sized
+        fn lerp(a: &Self, b: &Self, t: f32) -> Self
+        fn lerp_into(a: &Self, b: &Self, t: f32, out: &mut Self) { .. }
+
+widget::LookPlan
+    struct LookPlan: Debug
+
+widget::OverlayScope
+    struct OverlayScope: Debug
+        pub fn claim(ui: &mut Ui, spec: OverlaySpec, root: &mut Widget) -> Self
+        pub fn record<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> OverlayResponse<R>
+
+widget::OverlaySpec
+    struct OverlaySpec: Clone, Copy, Debug
+        pub layer: Layer
+        pub anchor: Option<Anchor>
+        pub barrier: Barrier
+
+widget::Selection
+    enum Selection: Clone, Copy, Debug, Default, DockTab (blanket), Eq, From<bool>, Hash, PartialEq
+        Unselected
+        Selected
 
 widget::ThemeSlot
     trait ThemeSlot
@@ -3655,19 +3668,11 @@ widget::ThemeSlot
         fn defaults(&self) -> SlotDefaults
         fn plan(&self, response: &Response, pick: Self::Pick, text: TextStyle) -> LookPlan { .. }
 
-widget::TriangleShape
-    struct TriangleShape: Clone, Debug, PaintedBy<ImagePaint>, PaintedBy<Material>, PaintedBy<MaterialPaint>
-        pub const fn at(self, rect: Rect) -> Self
-        pub const fn fit(self, fit: Fit) -> Self
-        pub const fn radius(self, radius: f32) -> Self
-        impl<P: Into<Paint>> PaintedBy<P> for TriangleShape
-        impl<U: EffectParams, K: EffectKind> PaintedBy<EffectPaint<U, K>> for TriangleShape
-
 widget::TriggerOwned
     struct TriggerOwned: Clone, Copy, Debug
 
 widget::Widget
-    struct Widget: Configure, Debug, ThemeDefaults (blanket)
+    struct Widget: Configure, ConfigureDefaults (blanket), Debug
         pub fn leaf() -> Self
         pub fn hstack() -> Self
         pub fn vstack() -> Self
@@ -3689,32 +3694,14 @@ widget::Widget
         pub const fn authored(&self) -> Authored<'_>
         pub fn grid_tracks(&mut self, ui: &mut Ui, rows: &[Track], cols: &[Track])
 
-widget::curves
-    mod
-
-widget::curves::sine
-    fn sine(t: f32) -> f32
-
-widget::curves::square
-    const fn square(t: f32) -> f32
-
 widget::domain
     mod
 
 widget::domain::EPS
     const EPS: f32
 
-widget::domain::MAX_FILE_LENGTH
-    const MAX_FILE_LENGTH: f32
-
-widget::domain::MAX_GAP
-    const MAX_GAP: f32
-
 widget::domain::angle
     const fn angle(v: f32) -> f32
-
-widget::domain::approx_eq
-    const fn approx_eq(a: f32, b: f32) -> bool
 
 widget::domain::band_fraction
     const fn band_fraction(pos: f32, extent: f32, band: f32) -> f32
@@ -3722,32 +3709,8 @@ widget::domain::band_fraction
 widget::domain::color
     const fn color(c: RgbaF32) -> RgbaF32
 
-widget::domain::count
-    const fn count(n: u32) -> u32
-
 widget::domain::extent
     const fn extent(v: f32) -> f32
-
-widget::domain::f64
-    mod
-
-widget::domain::f64::bounds
-    const fn bounds(r: RangeInclusive<f64>) -> RangeInclusive<f64>
-
-widget::domain::f64::is_bounds
-    const fn is_bounds(r: &RangeInclusive<f64>) -> bool
-
-widget::domain::f64::is_positive
-    const fn is_positive(v: f64) -> bool
-
-widget::domain::f64::is_range
-    const fn is_range(r: &RangeInclusive<f64>) -> bool
-
-widget::domain::f64::positive
-    const fn positive(v: f64) -> f64
-
-widget::domain::f64::range
-    const fn range(r: RangeInclusive<f64>) -> RangeInclusive<f64>
 
 widget::domain::factor
     const fn factor(v: f32) -> f32
@@ -3755,26 +3718,14 @@ widget::domain::factor
 widget::domain::fraction
     const fn fraction(v: f32) -> f32
 
-widget::domain::fraction_or
-    const fn fraction_or(v: f32, fallback: f32) -> f32
-
 widget::domain::gap
     const fn gap(v: f32) -> f32
-
-widget::domain::idx
-    const fn idx(i: usize, len: usize) -> Option<usize>
 
 widget::domain::is_angle
     const fn is_angle(v: f32) -> bool
 
-widget::domain::is_approx_zero
-    const fn is_approx_zero(v: f32) -> bool
-
 widget::domain::is_color
     const fn is_color(c: RgbaF32) -> bool
-
-widget::domain::is_count
-    const fn is_count(n: u32) -> bool
 
 widget::domain::is_extent
     const fn is_extent(v: f32) -> bool
@@ -3803,9 +3754,6 @@ widget::domain::is_offset
 widget::domain::is_positive
     const fn is_positive(v: f32) -> bool
 
-widget::domain::is_power_of_two_in
-    const fn is_power_of_two_in(n: u32, max: u32) -> bool
-
 widget::domain::is_refractive_index
     const fn is_refractive_index(n: f32) -> bool
 
@@ -3815,59 +3763,14 @@ widget::domain::lane
 widget::domain::length
     const fn length(v: f32) -> f32
 
-widget::domain::length_at_least
-    const fn length_at_least(v: f32, min: f32) -> f32
-
 widget::domain::offset
     const fn offset(v: f32) -> f32
 
 widget::domain::positive
     const fn positive(v: f32) -> f32
 
-widget::domain::power_of_two_in
-    const fn power_of_two_in(n: u32, max: u32) -> u32
-
 widget::domain::refractive_index
     const fn refractive_index(n: f32) -> f32
-
-widget::domain::share_of
-    const fn share_of(n: f32, d: f32) -> f32
-
-widget::domain::turn
-    const fn turn(v: f32) -> f32
-
-widget::domain::vec2
-    mod
-
-widget::domain::vec2::approx_eq
-    const fn approx_eq(a: Vec2, b: Vec2) -> bool
-
-widget::domain::vec2::band_fraction
-    const fn band_fraction(pos: Vec2, extent: Size, band: Size) -> Vec2
-
-widget::domain::vec2::fraction_or
-    const fn fraction_or(v: Vec2, fallback: Vec2) -> Vec2
-
-widget::domain::vec2::is_lane
-    const fn is_lane(v: Vec2) -> bool
-
-widget::domain::vec2::is_length
-    const fn is_length(v: Vec2) -> bool
-
-widget::domain::vec2::is_offset
-    const fn is_offset(v: Vec2) -> bool
-
-widget::domain::vec2::lane
-    const fn lane(v: Vec2) -> Vec2
-
-widget::domain::vec2::length
-    const fn length(v: Vec2) -> Vec2
-
-widget::domain::vec2::length_at_least
-    const fn length_at_least(v: Vec2, min: Vec2) -> Vec2
-
-widget::domain::vec2::offset
-    const fn offset(v: Vec2) -> Vec2
 
 ```
 

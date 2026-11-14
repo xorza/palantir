@@ -1,5 +1,5 @@
 //! Describing a run to probe: the input half of the public text-geometry
-//! surface. Layout already measures and paints [`Shape::Text`](crate::widget::Shape);
+//! surface. Layout already measures and paints [`Shape::Text`](crate::Shape);
 //! this and [`probe`](crate::text::probe) add the other direction, mapping byte
 //! offsets to positions inside a run, for carets, clicks and selections.
 
@@ -11,7 +11,7 @@ use crate::text::request::TextShapeRequest;
 use crate::text::shaping_font::ShapingFont;
 use crate::text::wrap::TextWrap;
 
-/// One text run, described as [`Shape::Text`](crate::widget::Shape) describes one.
+/// One text run, described as [`Shape::Text`](crate::Shape) describes one.
 ///
 /// **The spelling mirrors `Shape::Text` on purpose:** a probe describing a
 /// different run than the paint misplaces the caret invisibly, so the fields

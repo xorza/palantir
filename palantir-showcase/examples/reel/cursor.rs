@@ -1,9 +1,7 @@
 //! The reel's cursor: an arrow drawn in the pointer layer, white with a dark rim.
 
-use palantir::Stroke;
 use palantir::glam::Vec2;
-use palantir::widget::Shape;
-use palantir::{RgbaF32, Ui};
+use palantir::{RgbaF32, Shape, Stroke, Ui};
 
 /// The arrow's outline from its tip, in logical px: a 12 × 19 px pointer, the size of a
 /// desktop's.

@@ -7,7 +7,7 @@ use std::cell::Cell;
 use std::rc::Rc;
 
 /// RAII owner of a registered image's GPU texture, from [`Ui::load_image`](crate::Ui::load_image); the
-/// texture lives until the last clone drops. Reference it from [`ImagePaint`](crate::widget::ImagePaint)
+/// texture lives until the last clone drops. Reference it from [`ImagePaint`](crate::ImagePaint)
 /// each frame; "no image" is `Option<ImageHandle>`. Not `Copy`: sharing is an explicit `clone`.
 #[must_use = "hold the ImageHandle to keep its GPU texture alive — \
               discarding it (e.g. ignoring load_image's return) frees \

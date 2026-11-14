@@ -1,12 +1,10 @@
 //! Colors that fade to transparent, interpolated premultiplied.
 
 use palantir::glam::{UVec2, Vec2};
-use palantir::widget::{Mesh, Shape};
-use palantir::{Gradient, Rect, RgbaF32};
+use palantir::{Gradient, Mesh, Rect, RgbaF32, Shape, Stroke};
 
 use crate::fixtures;
 use crate::visual_rig::VisualRig;
-use palantir::Stroke;
 
 /// White fading to transparent black across 200 px over black, on every color-interpolating path (mesh vertices, polyline points, gradient stops). Premultiplied, the midpoint is white at half alpha (0.5 linear, sRGB 188); straight, it was half-gray (0.25 linear, sRGB 137). Pixel 99 sits at t = 99.5 / 200.
 #[test]

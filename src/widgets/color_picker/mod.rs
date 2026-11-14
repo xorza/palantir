@@ -17,7 +17,7 @@ use crate::theme::color_picker::ColorPickerTheme;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::configure::ThemeDefaults;
+use crate::widget_core::configure::ConfigureDefaults;
 use crate::widget_core::value_response::ValueResponse;
 use crate::widget_core::widget::Widget;
 use crate::widgets::color_field::ColorField;
@@ -32,6 +32,7 @@ use crate::widgets::panel::Panel;
 use crate::widgets::radio_group::RadioGroup;
 use crate::widgets::text::Text;
 use crate::widgets::text_edit::TextEdit;
+use std::num::NonZeroU16;
 use std::rc::Rc;
 
 mod history;
@@ -464,7 +465,9 @@ impl Rows<'_> {
                 Panel::vstack()
                     .id(id.with("hex-cell"))
                     .gap(LABEL_GAP)
-                    .grid_cell(GridCell::at(0, 0).with_span(1, 2))
+                    .grid_cell(
+                        GridCell::at(0, 0).with_span(NonZeroU16::MIN, NonZeroU16::new(2).unwrap()),
+                    )
                     .size(SizeSpec::FILL_W)
                     .show(ui, |ui| {
                         Text::new("HEX")

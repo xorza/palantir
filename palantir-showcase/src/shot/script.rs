@@ -9,6 +9,7 @@ use palantir::{
     Action, ColorScheme, Locator, PointerButton, Rect, Shortcut, ShortcutMods, SystemScale,
     ZoomFactor,
 };
+use std::num::NonZeroU32;
 
 /// What a script sets before its first step; each has the default [`Header::default`] names.
 #[derive(Clone, Debug, PartialEq)]
@@ -20,7 +21,7 @@ pub(crate) struct Header {
     /// The page the shell opens on, by its label; the first page for none.
     pub(crate) page: Option<String>,
     /// The longest side a picture is written at.
-    pub(crate) max_side: u32,
+    pub(crate) max_side: NonZeroU32,
     /// The scheme the window reports as the system's; `None` reports nothing, so a page that
     /// follows the system shows the fallback.
     pub(crate) scheme: Option<ColorScheme>,
@@ -33,7 +34,7 @@ impl Default for Header {
             size: UVec2::new(1600, 1000),
             scale: SystemScale::ONE,
             page: None,
-            max_side: 2576,
+            max_side: NonZeroU32::new(2576).unwrap(),
             scheme: None,
         }
     }
@@ -57,7 +58,7 @@ pub(crate) enum StepKind {
         name: String,
         region: Option<Region>,
         /// The magnification of the region, nearest; 1 fits the picture to the largest side.
-        zoom: u32,
+        zoom: NonZeroU32,
     },
     /// Print the sRGB bytes under one logical pixel.
     Probe(Vec2),
@@ -245,7 +246,7 @@ fn step(head: &str, words: &mut Words) -> Result<StepKind, ParseErrorKind> {
         "shot" => {
             let name = words.next_word("a shot name")?;
             let mut region = None;
-            let mut zoom = 1;
+            let mut zoom = NonZeroU32::MIN;
             while let Some(option) = words.peek() {
                 match option {
                     "region" => {
@@ -397,15 +398,12 @@ impl Words {
             })
     }
 
-    fn count(&mut self, expected: &'static str) -> Result<u32, ParseErrorKind> {
+    fn count(&mut self, expected: &'static str) -> Result<NonZeroU32, ParseErrorKind> {
         let word = self.next_word(expected)?;
-        word.parse::<u32>()
-            .ok()
-            .filter(|count| *count > 0)
-            .ok_or(ParseErrorKind::Bad {
-                expected,
-                found: word,
-            })
+        word.parse::<NonZeroU32>().ok().ok_or(ParseErrorKind::Bad {
+            expected,
+            found: word,
+        })
     }
 
     fn pair(&mut self, expected: &'static str) -> Result<Vec2, ParseErrorKind> {

@@ -6,9 +6,9 @@ use crate::scaffold::api;
 use crate::support;
 use crate::support::{CELL_PADDING, DemoCell, Kit, Knob, Section, Surface};
 use palantir::glam::Vec2;
-use palantir::widget::Shape;
 use palantir::{
-    Block, Chrome, Configure, Corners, Panel, Rect, RgbaF32, Shadow, SizeSpec, Sizing, Ui, WidgetId,
+    Block, Chrome, Configure, Corners, Panel, Rect, RgbaF32, Shadow, Shape, SizeSpec, Sizing, Ui,
+    WidgetId,
 };
 
 const CARD: Rect = Rect::new(22.0, 28.0, 124.0, 86.0);

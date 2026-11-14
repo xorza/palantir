@@ -9,7 +9,7 @@ use crate::theme::progress_bar::ProgressBarTheme;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::configure::ThemeDefaults;
+use crate::widget_core::configure::ConfigureDefaults;
 use crate::widget_core::widget::Widget;
 
 /// Determinate progress bar: a rounded `track` with an accent fill spanning `fraction` (clamped to `0..=1`) of its width.

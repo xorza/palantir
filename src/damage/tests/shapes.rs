@@ -376,7 +376,7 @@ fn a_turning_shape_is_damaged_against_the_square_it_sweeps() {
 /// `NodeSnapshot.paint_span` covers one entry per Paint row (chrome at row 0, then direct shapes), mirroring the plane's `paint_arena`.
 #[test]
 fn node_snapshot_decomposition_matches_cascade() {
-    use crate::widget::Shape;
+    use crate::shape::Shape;
     let mut h = Harness::cold(DISPLAY.physical);
     frame(&mut h, |ui| {
         Panel::hstack()
@@ -469,7 +469,7 @@ fn node_snapshot_decomposition_matches_cascade() {
 /// A multi-shape owner with disjoint shapes pushes only the moved shape's rect pair (the darkroom graph pattern).
 #[test]
 fn per_shape_damage_only_pushes_changed_shapes() {
-    use crate::widget::Shape;
+    use crate::shape::Shape;
 
     let mut h = Harness::mono(DISPLAY.physical);
     let build = |moving_y: f32, ui: &mut Ui| {

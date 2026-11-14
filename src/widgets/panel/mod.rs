@@ -5,7 +5,7 @@ use crate::primitives::paint::chrome::Chrome;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::configure::ThemeDefaults;
+use crate::widget_core::configure::ConfigureDefaults;
 use crate::widget_core::response::InnerResponse;
 use crate::widget_core::widget::Widget;
 use std::rc::Rc;

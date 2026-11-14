@@ -9,6 +9,7 @@ use palantir::{
     SizeSpec, Sizing, Text, Track, Ui, WidgetId,
 };
 use std::hash::Hash;
+use std::num::NonZeroU16;
 
 pub(crate) fn build(ui: &mut Ui, k: Kit) {
     Section::new("Stacks")
@@ -166,7 +167,8 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
                             .show(ui, |ui| {
                                 GridTile::new(
                                     "header",
-                                    GridCell::at(0, 0).with_span(1, 3),
+                                    GridCell::at(0, 0)
+                                        .with_span(NonZeroU16::MIN, NonZeroU16::new(3).unwrap()),
                                     k.swatch.orange,
                                 )
                                 .show(ui);

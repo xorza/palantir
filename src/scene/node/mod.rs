@@ -128,7 +128,7 @@ impl Node {
         self.margin = Some(value);
     }
 
-    /// Fills a field only where the caller stayed silent, through the checked writer above. Named `fill_`, not `default_`, which [`ThemeDefaults`](crate::widget_core::configure::ThemeDefaults) owns. A default also yields to the *other* bound the caller set: a themed minimum above an authored maximum is clamped down.
+    /// Fills a field only where the caller stayed silent, through the checked writer above. Named `fill_`, not `default_`, which [`ConfigureDefaults`](crate::widget_core::configure::ConfigureDefaults) owns. A default also yields to the *other* bound the caller set: a themed minimum above an authored maximum is clamped down.
     ///
     /// Every `fill_` checks its value first, so a bad default panics at its call site whether
     /// or not the caller set the field.

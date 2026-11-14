@@ -4,13 +4,12 @@
 use crate::scaffold::api;
 use crate::support;
 use crate::support::{DemoCell, Kit, Knob, Section};
-use palantir::Paint;
 use palantir::glam::Vec2;
-use palantir::widget::{EffectPaint, GlyphFont, MotionRole, PaintAnimation, PaintRepeat, Shape};
 use palantir::{
     Align, BackdropEffect, BackdropFallback, Border, Button, Chrome, Configure, Corners,
-    EffectName, Gradient, Lens, Material, Menu, MenuItem, MenuTheme, Panel, PopupTheme,
-    PopupTrigger, Rect, RgbaF32, SizeSpec, Sizing, Switch, Text, Theme, Ui, WidgetId, fmt,
+    EffectName, EffectPaint, GlyphFont, Gradient, Lens, Material, Menu, MenuItem, MenuTheme,
+    MotionRole, Paint, PaintAnimation, PaintRepeat, Panel, PopupTheme, PopupTrigger, Rect, RgbaF32,
+    Shape, SizeSpec, Sizing, Switch, Text, Theme, Ui, WidgetId, fmt,
 };
 use std::time::Duration;
 

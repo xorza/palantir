@@ -33,15 +33,15 @@ use crate::shape::triangle::TriangleShape;
 /// something under its reads changes, as a material's is; how far past its shape it reads is its
 /// source's [reach](crate::EffectSource::reach) over these parameters.
 ///
-/// Its time comes from a [`PaintAnimation`](crate::widget::PaintAnimation) through
-/// [`AddedShape::animate`](crate::widget::AddedShape::animate), [`PaintAnimation::clock`] when only
+/// Its time comes from a [`PaintAnimation`](crate::PaintAnimation) through
+/// [`AddedShape::animate`](crate::AddedShape::animate), [`PaintAnimation::clock`] when only
 /// the time moves; a turn turns it about its owner's center, as a quad turns. While motion or
 /// power use is reduced it paints the alternative its source names for it
 /// ([`ReducedEffect`](crate::ReducedEffect)); while transparency is reduced, a backdrop effect paints
 /// its [fallback](Self::fallback) over its shape in its place, the theme's by default, as a
 /// [`Material`](crate::Material) does.
 ///
-/// [`PaintAnimation::clock`]: crate::widget::PaintAnimation::clock
+/// [`PaintAnimation::clock`]: crate::PaintAnimation::clock
 #[must_use]
 pub struct EffectPaint<U: EffectParams, K: EffectKind = ColorEffect> {
     name: EffectName<U, K>,
@@ -76,7 +76,7 @@ impl<U: EffectParams, K: EffectKind> EffectPaint<U, K> {
     /// ([`EffectSource::image_slots`](crate::EffectSource::image_slots)), at most
     /// [`EffectSource::MAX_IMAGE_SLOTS`](crate::EffectSource::MAX_IMAGE_SLOTS), which the build
     /// holds. The effect reads them as `effect_image0` and on. An image not on the device, as
-    /// after a loss before the app uploads it again, paints nothing, as an [`ImagePaint`](crate::widget::ImagePaint) does.
+    /// after a loss before the app uploads it again, paints nothing, as an [`ImagePaint`](crate::ImagePaint) does.
     pub fn images<const N: usize>(mut self, images: [ImageHandle; N]) -> Self {
         const {
             assert!(

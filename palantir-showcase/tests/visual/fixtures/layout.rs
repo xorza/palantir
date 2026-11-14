@@ -9,6 +9,7 @@ use palantir::{
 use crate::golden_name::GoldenName;
 
 use crate::visual_rig::FIXTURE_PALETTE;
+use std::num::NonZeroU16;
 
 /// `Fill(1)`/`Fill(2)`/`Fill(1)` rows split the height 25/50/25.
 #[test]
@@ -54,7 +55,9 @@ fn grid_mixed_tracks_matches_golden() {
             .show(ui, |ui| {
                 Block::new()
                     .id_salt("header")
-                    .grid_cell(GridCell::at(0, 0).with_span(1, 3))
+                    .grid_cell(
+                        GridCell::at(0, 0).with_span(NonZeroU16::MIN, NonZeroU16::new(3).unwrap()),
+                    )
                     .chrome(Chrome::rounded(
                         RgbaF32::srgb(0.25, 0.30, 0.45),
                         Corners::all(4.0),

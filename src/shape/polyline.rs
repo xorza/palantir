@@ -22,7 +22,7 @@ use glam::Vec2;
 pub struct PolylineShape<'a> {
     pub(crate) points: &'a [Vec2],
     pub(crate) colors: PolylineColors<'a>,
-    /// The points' AABB, folded once at construction so [`Shape::polyline`](crate::widget::Shape::polyline) checks every point in one test.
+    /// The points' AABB, folded once at construction so [`Shape::polyline`](crate::Shape::polyline) checks every point in one test.
     pub(crate) bbox: Rect,
     pub(crate) placement: PointPlacement,
 }

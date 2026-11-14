@@ -7,10 +7,8 @@
 use crate::scaffold::api;
 use crate::support;
 use crate::support::{DemoCell, Kit, Knob, Section};
-use palantir::Paint;
 use palantir::glam::Vec2;
-use palantir::widget::{Mesh, Shape};
-use palantir::{Border, RgbaF32, Ui, WidgetId};
+use palantir::{Border, Mesh, Paint, RgbaF32, Shape, Ui, WidgetId};
 use std::f32::consts::{FRAC_PI_2, PI};
 
 pub(crate) fn build(ui: &mut Ui, k: Kit) {

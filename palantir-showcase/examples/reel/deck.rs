@@ -4,21 +4,16 @@
     reason = "a demo of the crate, whose frames owe no two systems the same bits"
 )]
 
-use palantir::Paint;
-use std::rc::Rc;
-use std::time::Duration;
-
-use palantir::Rect;
-use palantir::Stroke;
 use palantir::glam::Vec2;
-use palantir::widget::Shape;
 use palantir::{
     Align, App, Block, Border, Button, Checkbox, Chrome, ClipMode, ColorScheme, ComboBox,
     Configure, Corners, DockOperation, DockState, DockView, FontFamily, GpuView, Gradient, Justify,
-    Layer, Lens, Material, Metrics, Palette, Panel, Preference, RgbaF32, Scroll, ScrollbarTheme,
-    Shadow, SizeSpec, Sizing, Slider, Switch, Text, TextEdit, TextSteps, Theme, Ui, UiPreferences,
-    WidgetId, WindowToken, ZoomConfig, fmt,
+    Layer, Lens, Material, Metrics, Paint, Palette, Panel, Preference, Rect, RgbaF32, Scroll,
+    ScrollbarTheme, Shadow, Shape, SizeSpec, Sizing, Slider, Stroke, Switch, Text, TextEdit,
+    TextSteps, Theme, Ui, UiPreferences, WidgetId, WindowToken, ZoomConfig, fmt,
 };
+use std::rc::Rc;
+use std::time::Duration;
 
 use crate::cube::{Cube, CubeHandle};
 use crate::dock::{self, Panes, Tab};

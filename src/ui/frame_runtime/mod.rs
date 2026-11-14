@@ -16,6 +16,7 @@ use crate::ui::app::RecordPass;
 use crate::ui::frame_report::FrameProcessing;
 use crate::ui::frame_runtime::wake::{Wake, WakeReasons};
 use std::mem;
+use std::num::NonZeroU32;
 use std::time::Duration;
 
 /// The frames in a row a last pass may ask for a relayout before it counts as a loop. A real ask
@@ -349,7 +350,7 @@ impl FrameRuntime {
         &mut self,
         deadline: Duration,
         reasons: WakeReasons,
-        refresh_millihertz: Option<u32>,
+        refresh_millihertz: Option<NonZeroU32>,
     ) {
         let coalesce = time::coalesce_dt_for_refresh(refresh_millihertz);
         let near = |existing: Duration| existing.abs_diff(deadline) < coalesce;

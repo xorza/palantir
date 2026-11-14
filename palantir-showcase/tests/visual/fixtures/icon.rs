@@ -10,16 +10,14 @@
 
 use image::RgbaImage;
 use palantir::glam::{UVec2, Vec2};
-use palantir::widget::Shape;
 use palantir::{
-    ColorScheme, Configure, Fit, IconSet, IconTable, Panel, Rect, RgbaF32, Sizing, SystemScale,
-    Text, TextStyle, Ui,
+    ColorScheme, Configure, Fit, IconPaint, IconSet, IconTable, Panel, Rect, RgbaF32, Shape,
+    Sizing, SystemScale, Text, TextStyle, Ui,
 };
 use std::ops;
 
 use crate::fixtures;
 use crate::visual_rig::VisualRig;
-use palantir::widget::IconPaint;
 
 /// Fills its 8x8 viewBox with one color, so every covered pixel is opaque. Marked
 /// tintable, so the expected value is the tint alone.

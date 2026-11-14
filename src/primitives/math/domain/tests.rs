@@ -318,9 +318,6 @@ fn compound_kinds_check_every_part() {
         }
     }
 
-    assert_eq!(domain::count(1), 1);
-    assert_eq!(domain::count(u32::MAX), u32::MAX);
-    panic_probe::assert_panics_with("a count must be at least 1", || domain::count(0));
     panic_probe::assert_panics_with("a fraction's fallback must itself be in 0..=1", || {
         domain::fraction_or(0.5, 2.0)
     });
@@ -471,17 +468,8 @@ fn fraction_or_clamps_in_range_and_falls_back_outside_the_finite() {
 
 /// A themed length floors at the widget's minimum and keeps anything above it.
 #[test]
-fn length_at_least_floors_and_approx_eq_is_inclusive() {
+fn length_at_least_floors() {
     assert_eq!(domain::length_at_least(0.5, 1.0), 1.0);
     assert_eq!(domain::length_at_least(3.0, 1.0), 3.0);
     assert_eq!(domain::length_at_least(0.0, 0.0), 0.0);
-    assert_eq!(
-        vec2::length_at_least(Vec2::new(0.5, 3.0), Vec2::ONE),
-        Vec2::new(1.0, 3.0),
-    );
-
-    assert!(domain::approx_eq(0.0, EPS));
-    assert!(domain::approx_eq(-EPS * 0.5, EPS * 0.5));
-    assert!(!domain::approx_eq(0.0, EPS * 2.0));
-    assert!(!domain::approx_eq(f32::NAN, f32::NAN));
 }

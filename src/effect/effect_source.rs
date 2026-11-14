@@ -25,19 +25,19 @@ use crate::primitives::paint::material::backdrop_reach::BackdropReach;
 ///
 /// - `EffectInput { pos, size, corners, time, scale }`: the pixel's center from the rect's
 ///   top-left, the rect's size and its corner radii in logical px, the seconds into the pass of
-///   the shape's [`PaintAnimation`](crate::widget::PaintAnimation), 0 without one, and physical px
+///   the shape's [`PaintAnimation`](crate::PaintAnimation), 0 without one, and physical px
 ///   per logical px;
 /// - `EffectOutput { color, under }`: `color + under · dst` per channel, linear and
 ///   premultiplied, with the shape's coverage applied exactly, as the blend is linear in it;
 /// - `effect_over`, `effect_add`, `effect_multiply` and `effect_screen`, each an
 ///   `EffectOutput` from a premultiplied color;
 /// - with [image slots](Self::image_slots), `effect_image0` and on, each a `texture_2d<f32>` of
-///   the image its paint binds in that slot ([`EffectPaint::images`](crate::widget::EffectPaint::images)),
+///   the image its paint binds in that slot ([`EffectPaint::images`](crate::EffectPaint::images)),
 ///   whose sample is linear and premultiplied, and `effect_sampler`, linear and clamped to the
 ///   edge, as `textureSample(effect_image0, effect_sampler, uv)` reads them;
 /// - for a [`BackdropEffect`](crate::BackdropEffect), `effect_backdrop(pos)`: what is painted
 ///   under the shape at `pos`, logical px from its rect's top-left, linear and opaque, blurred by
-///   its paint's [σ](crate::widget::EffectPaint::backdrop_blur), and read within the
+///   its paint's [σ](crate::EffectPaint::backdrop_blur), and read within the
 ///   [reach](Self::reach) its parameters give, a read past it reading its edge. A sample that needs no uniform control flow, so a loop or a branch may
 ///   read it.
 ///
@@ -83,7 +83,7 @@ impl<U: EffectParams, K: EffectKind> EffectSource<U, K> {
 
     /// How far past its shape a backdrop effect reads, from its parameters:
     /// [`BackdropReach::NONE`] by default, its shape alone. How far a ray bends is the effect's, so
-    /// each [`Material`](crate::Material) and [`EffectPaint`](crate::widget::EffectPaint) over it
+    /// each [`Material`](crate::Material) and [`EffectPaint`](crate::EffectPaint) over it
     /// reads as far as its parameters bend, as the stock glass reads as far as its lens. A color
     /// effect reads nothing under it, so its reach goes unread.
     pub const fn reach(mut self, reach: fn(&U) -> BackdropReach) -> Self {
@@ -113,7 +113,7 @@ impl<U: EffectParams, K: EffectKind> EffectSource<U, K> {
     /// What paints in place of the effect while motion is reduced
     /// ([`Ui::reductions`](crate::Reductions::motion)); [`ReducedEffect::Same`] by
     /// default, where the effect's paint animation alone holds still, as
-    /// [`MotionRole`](crate::widget::MotionRole) says. It wins over [`Self::power_saver`], as what
+    /// [`MotionRole`](crate::MotionRole) says. It wins over [`Self::power_saver`], as what
     /// a person needs to bear comes before what a device saves.
     pub const fn reduced_motion(mut self, paint: ReducedEffect<U, K>) -> Self {
         self.reduced_motion = paint;

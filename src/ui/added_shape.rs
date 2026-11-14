@@ -27,7 +27,7 @@ impl<'u> AddedShape<'u> {
     /// Animate the shape at paint time. The recorded shape is identical every frame, so the widget
     /// never records it again. With motion reduced ([`Ui::reductions`]), a decorative
     /// animation lands at once, as
-    /// [`MotionRole::Decorative`](crate::widget::MotionRole::Decorative) says. An [`EffectPaint`](crate::widget::EffectPaint) reads the animation's time. A shape
+    /// [`MotionRole::Decorative`](crate::MotionRole::Decorative) says. An [`EffectPaint`](crate::EffectPaint) reads the animation's time. A shape
     /// that paints nothing takes no animation.
     ///
     /// # Panics

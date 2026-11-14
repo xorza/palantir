@@ -1,4 +1,4 @@
-//! The cubic Bézier [`Shape::cubic_bezier`](crate::widget::Shape::cubic_bezier) strokes and lowering reduces lines and quadratics to, and the tight bbox that sizes its arena payload.
+//! The cubic Bézier [`Shape::cubic_bezier`](crate::Shape::cubic_bezier) strokes and lowering reduces lines and quadratics to, and the tight bbox that sizes its arena payload.
 
 use crate::primitives::geometry::quadratic_bezier::QuadraticBezier;
 use crate::primitives::geometry::rect::Rect;

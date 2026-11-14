@@ -4,6 +4,7 @@ use crate::animation::animation_map_typed::AnimationMapTyped;
 use crate::animation::animation_request::AnimationRequest;
 use crate::animation::animation_spec::AnimationSpec;
 use crate::animation::easing::Easing;
+use crate::animation::paint_curve::PaintCurve;
 use crate::animation::tests::support::{self, AnimationUi, SLOT};
 use crate::common::time::MAX_ANIMATION_DT;
 use crate::internals::panic_probe;
@@ -382,9 +383,26 @@ fn a_new_length_or_ease_waits_for_the_next_change() {
 
 /// Each easing's paint curve is its tween curve: `1 − 0.75³ = 0.578125` for `OutCubic` at a
 /// quarter, `4 · 0.25³ = 0.0625` for `InOutCubic`, `1 − 0.75⁴ = 0.68359375` for `OutQuart`, and
-/// `OutBack` past 1 at three quarters, `1 + 2.70158 · (−0.25)³ + 1.70158 · 0.25² ≈ 1.0641`.
+/// `OutBack` past 1 at three quarters, `1 + 2.70158 · (−0.25)³ + 1.70158 · 0.25² ≈ 1.0641`. The
+/// shipped curves: `SQUARE` is 1 before the half and 0 from it; `SINE` is `(1 − cos 2πt) / 2`, so
+/// 0, ½, 1, ½ at the quarters; `LINEAR` the phase.
 #[test]
 fn an_easing_curve_is_its_tween() {
+    let at = |curve: PaintCurve, phases: [f32; 4]| phases.map(|t| curve.apply(t));
+    assert_eq!(
+        at(PaintCurve::SQUARE, [0.0, 0.49, 0.5, 0.99]),
+        [1.0, 1.0, 0.0, 0.0]
+    );
+    assert_eq!(
+        at(PaintCurve::SINE, [0.0, 0.25, 0.5, 0.75]),
+        [0.0, 0.5, 1.0, 0.5]
+    );
+    assert_eq!(
+        at(PaintCurve::LINEAR, [0.0, 0.3, 0.5, 0.99]),
+        [0.0, 0.3, 0.5, 0.99]
+    );
+    assert_eq!(PaintCurve::new(|t| t * t).apply(0.5), 0.25);
+
     let all = [
         Easing::Linear,
         Easing::OutCubic,
@@ -395,13 +413,17 @@ fn an_easing_curve_is_its_tween() {
     for easing in all {
         for i in 0..=16 {
             let t = i as f32 / 16.0;
-            assert_eq!(easing.curve()(t), easing.apply(t), "{easing:?} at {t}");
+            assert_eq!(
+                PaintCurve::from(easing).apply(t),
+                easing.apply(t),
+                "{easing:?} at {t}"
+            );
         }
     }
-    let quarter = all.map(|easing| easing.curve()(0.25));
+    let quarter = all.map(|easing| PaintCurve::from(easing).apply(0.25));
     assert_eq!(quarter[..4], [0.25, 0.578125, 0.0625, 0.68359375]);
     assert!(
-        Easing::OutBack.curve()(0.75) > 1.0,
+        PaintCurve::from(Easing::OutBack).apply(0.75) > 1.0,
         "the overshoot survives"
     );
 }

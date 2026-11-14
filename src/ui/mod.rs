@@ -31,7 +31,6 @@ use crate::animation::animation_spec::AnimationSpec;
 use crate::animation::motion_role::MotionRole;
 use crate::cascade::Cascade;
 use crate::cascade::WidgetLocation;
-use crate::cascade::rows::tab_stop_row::TabEnd;
 use crate::clipboard::Clipboard;
 use crate::diagnostics::DebugOverlayConfig;
 use crate::diagnostics::frame_stats::FrameStats;
@@ -66,6 +65,7 @@ use crate::primitives::input::pointer::PointerEvent;
 use crate::primitives::input::policy::FocusPolicy;
 use crate::primitives::input::policy::InputPolicy;
 use crate::primitives::input::shortcut::Shortcut;
+use crate::primitives::input::tab_end::TabEnd;
 use crate::primitives::input::watch::{KeyboardWake, PointerWake};
 use crate::primitives::layout::layout_mode::{GridDefId, ScrollbarsDefId};
 use crate::primitives::layout::track::Track;
@@ -787,12 +787,12 @@ impl Ui {
     ///
     /// When `paint` holds a value outside its kind, as [`Paint`](crate::Paint) lists, or draws
     /// what the shape's pipeline cannot, as [`PaintedBy`] lists; when it is an
-    /// [`EffectPaint`](crate::widget::EffectPaint) whose effect is not loaded, or loaded with
+    /// [`EffectPaint`](crate::EffectPaint) whose effect is not loaded, or loaded with
     /// other parameters or kind; while power is reduced, the same for the alternative it paints
     /// in place of it.
     ///
     /// ```
-    /// # use palantir::widget::{PaintAnimation, PaintRepeat, Shape, curves};
+    /// # use palantir::{PaintAnimation, PaintCurve, PaintRepeat, Shape};
     /// # use palantir::{Rect, RgbaF32, Ui};
     /// # use std::time::Duration;
     /// # fn demo(ui: &mut Ui) {
@@ -802,7 +802,7 @@ impl Ui {
     ///         PaintAnimation::alpha(0.4, 1.0)
     ///             .with_period(Duration::from_secs(2))
     ///             .with_repeat(PaintRepeat::Forever)
-    ///             .with_curve(curves::sine),
+    ///             .with_curve(PaintCurve::SINE),
     ///     );
     /// }
     /// # }
@@ -1250,7 +1250,7 @@ impl Ui {
     /// value, and whether the motion is at rest there. [`AnimationSpec::SNAP`] lands on the
     /// target now, settled, and requests no repaint, as every spec of a decorative request does
     /// with motion reduced and under reduced power where motion follows the system
-    /// ([`AnimationRequest::with_motion`](crate::widget::AnimationRequest::with_motion)), and every
+    /// ([`AnimationRequest::with_motion`](crate::AnimationRequest::with_motion)), and every
     /// spec on the first frame after the window was hidden; a row it leaves goes at the end of the
     /// frame.
     ///

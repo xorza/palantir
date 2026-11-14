@@ -8,14 +8,14 @@
 )]
 
 use palantir::glam::{UVec2, Vec2};
-use palantir::widget::{Mesh, Shape};
-use palantir::{Block, Chrome, Configure, Fit, FontFamily, Panel, RgbaF32, Sizing, Text, Ui};
+use palantir::{
+    Block, Chrome, Configure, Fit, FontFamily, IconPaint, Mesh, Panel, RgbaF32, Shape, Sizing,
+    Stroke, Text, Ui,
+};
 
 use crate::fixtures;
 use crate::fixtures::icon;
 use crate::visual_rig::VisualRig;
-use palantir::Stroke;
-use palantir::widget::IconPaint;
 
 const RAMP: [u8; 7] = [5, 8, 10, 16, 26, 32, 48];
 const COL: f32 = 20.0;

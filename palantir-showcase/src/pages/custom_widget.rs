@@ -6,14 +6,12 @@ use crate::scaffold::api;
 use crate::scaffold::tokens::M;
 use crate::support;
 use crate::support::{Col, Kit, RADIUS, ROW_GAP, Section};
-use palantir::LineCap;
-use palantir::LineJoin;
-use palantir::Stroke;
 use palantir::glam::Vec2;
-use palantir::widget::{AddedShape, Configurator, PolylineShape, Shape, Widget};
+use palantir::widget::{Configurator, Widget};
 use palantir::{
-    Align, Chrome, Configure, Corners, DragValue, Key, Panel, Response, RgbaF32, Sense, SizeSpec,
-    Sizing, Text, Ui, VAlign, WidgetId, fmt,
+    AddedShape, Align, Chrome, Configure, Corners, DragValue, Key, LineCap, LineJoin, Panel,
+    PolylineShape, Response, RgbaF32, Sense, Shape, SizeSpec, Sizing, Stroke, Text, Ui, VAlign,
+    WidgetId, fmt,
 };
 
 const BUTTON: f32 = 28.0;

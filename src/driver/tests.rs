@@ -19,6 +19,7 @@ use crate::widgets::panel::Panel;
 use crate::widgets::text::Text;
 use glam::{UVec2, Vec2};
 use std::convert::Infallible;
+use std::num::NonZeroU32;
 use std::time::Duration;
 
 /// Buttons 60 × 20 on a canvas: "One" at (10, 10), "Two" at (10, 40), two "Twin" at (10, 70) and
@@ -407,14 +408,14 @@ fn a_failed_frame_releases_what_the_step_holds() {
         to: Locator::Point(Vec2::new(30.0, 0.0)),
         button: PointerButton::Left,
         mods,
-        steps: 2,
+        steps: NonZeroU32::new(2).unwrap(),
     };
     let plain_drag = Action::Drag {
         from: at.clone(),
         to: Locator::Point(Vec2::new(30.0, 0.0)),
         button: PointerButton::Left,
         mods: ShortcutMods::NONE,
-        steps: 1,
+        steps: NonZeroU32::MIN,
     };
     let click = Action::Click {
         at: at.clone(),

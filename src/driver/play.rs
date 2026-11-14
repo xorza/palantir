@@ -12,6 +12,7 @@ use crate::primitives::input::pointer::PointerButton;
 use crate::primitives::input::shortcut::{Shortcut, ShortcutMods};
 use glam::Vec2;
 use std::fmt::Debug;
+use std::num::NonZeroU32;
 use std::time::Duration;
 
 /// How many of its waits for a wake a settle gives a busy app that keeps waking the window, past
@@ -203,10 +204,10 @@ fn drag_moves<X>(
     stage: &mut impl Stage<X>,
     start: Vec2,
     end: Vec2,
-    steps: u32,
+    steps: NonZeroU32,
 ) -> Result<(), PlayError> {
     stage.frame()?;
-    let steps = steps.max(1);
+    let steps = steps.get();
     for step in 1..=steps {
         let point = start.lerp(end, step as f32 / steps as f32);
         stage.input(InputEvent::PointerMoved(point));
