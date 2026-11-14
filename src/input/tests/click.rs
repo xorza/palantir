@@ -455,13 +455,13 @@ fn left_and_right_click_are_independent() {
 /// pass sees `take_action_flag() == true` with empty queues and runs a spurious
 /// second layout pass.
 #[test]
-fn drain_per_frame_queues_clears_action_latch() {
+fn clearing_edges_clears_the_action_latch() {
     use crate::input::Input;
     let mut input = Input {
         frame_had_action: true,
         ..Input::new()
     };
-    input.drain_per_frame_queues();
+    input.clear_edges();
     assert!(!input.take_action_flag());
 }
 

@@ -10,6 +10,7 @@ use crate::host::winit::input::{
     wheel_lines,
 };
 use crate::primitives::input::input_event::InputEvent;
+use crate::primitives::input::interaction::wheel_delta::WheelDelta;
 use crate::primitives::input::keyboard::key::Key;
 use crate::primitives::input::keyboard::key_text::KeyText;
 use crate::primitives::input::keyboard::modifiers::Modifiers;
@@ -318,11 +319,12 @@ fn a_wheel_event_carries_each_lane() {
         ),
     ];
     for (steps, modifiers, platform, want_notches, want_lines, want_pages) in rows {
-        let InputEvent::ScrollLines {
+        let InputEvent::Scroll(WheelDelta {
             notches,
             lines,
             pages,
-        } = wheel_lines(down, steps, modifiers, platform)
+            pixels: _,
+        }) = wheel_lines(down, steps, modifiers, platform)
         else {
             panic!("a wheel turn is a line event");
         };

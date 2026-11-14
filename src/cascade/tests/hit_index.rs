@@ -196,12 +196,13 @@ fn hit_rows_carry_the_entry_rect() {
     let cascade = h.ui().cascade();
     assert!(!cascade.hits.is_empty(), "expected interactive rows");
     for row in &cascade.hits {
-        let entry_idx = cascade
-            .locate(row.widget_id)
-            .expect("hit row's widget must be locatable")
-            .entry_idx as usize;
+        let entry = cascade.entry(
+            cascade
+                .endpoint(row.widget_id)
+                .expect("hit row's widget must be locatable"),
+        );
         assert_eq!(
-            row.rect, cascade.entries[entry_idx].rect,
+            row.rect, entry.rect,
             "HitRow::rect must equal the node's EntryRow::rect for {:?}",
             row.widget_id,
         );

@@ -23,13 +23,13 @@ use crate::host::host_core::HostCore;
 use crate::host::host_device::HostDevice;
 use crate::host::winit::frame_summary::FrameSummary;
 use crate::host::winit::input::translator::{PointerTrace, Translator};
-use crate::host::winit::native;
 use crate::host::winit::remote::remote_end::RemoteEnd;
 use crate::host::winit::remote::{LoseTask, QueryTask, ShotAsk};
 use crate::host::winit::window::applied_levels::{AppliedLevels, ImeChange};
 use crate::host::winit::window::present_schedule::{AcquireOutcome, PresentSchedule, Wake};
 use crate::host::winit::window::visibility::Visibility;
 use crate::host::winit::window_set::Paced;
+use crate::host::winit::{native, platform};
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::input::input_event::InputEvent;
@@ -177,7 +177,7 @@ impl Window {
             levels: AppliedLevels::new(decorations),
             visibility: Visibility::default(),
             schedule: PresentSchedule::default(),
-            translator: Translator::new(PLATFORM),
+            translator: Translator::new(PLATFORM, platform::wheel_steps),
             clock: RealtimeClock::new(),
             input_epoch: Instant::now(),
             maximized_stale: false,

@@ -122,15 +122,10 @@ pub(crate) fn play<X: Debug>(
             stage.note_press();
             released?;
         }
-        Action::ScrollPixels { at, delta } => {
+        Action::Scroll { at, delta } => {
             let point = stage.point(at, Reach::Hover)?;
             hover(stage, point)?;
-            stage.input(InputEvent::ScrollPixels(*delta));
-        }
-        Action::ScrollLines { at, delta } => {
-            let point = stage.point(at, Reach::Hover)?;
-            hover(stage, point)?;
-            stage.input(InputEvent::scroll_lines(*delta));
+            stage.input(InputEvent::Scroll(*delta));
         }
         Action::Pinch { at, factor } => {
             let point = stage.point(at, Reach::Hover)?;

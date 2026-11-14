@@ -75,6 +75,7 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::input_event::InputEvent;
 use crate::primitives::input::interaction::input_delta::InputDelta;
 use crate::primitives::input::interaction::response::Response;
+use crate::primitives::input::interaction::wheel_delta::WheelDelta;
 use crate::primitives::input::keyboard::modifiers::Modifiers;
 use crate::primitives::input::pointer::PointerButton;
 use crate::primitives::input::sense::Sense;
@@ -538,7 +539,7 @@ impl Harness {
     #[track_caller]
     pub fn scroll_pixels(&mut self, at: impl Into<Locator>, delta: Vec2) -> InputDelta {
         self.hover(at);
-        self.on_input(InputEvent::ScrollPixels(delta))
+        self.on_input(InputEvent::Scroll(WheelDelta::pixels(delta)))
     }
 
     /// Move the pointer to `at` and scroll by `delta` lines, as a notched wheel does; positive
@@ -550,7 +551,7 @@ impl Harness {
     #[track_caller]
     pub fn scroll_lines(&mut self, at: impl Into<Locator>, delta: Vec2) -> InputDelta {
         self.hover(at);
-        self.on_input(InputEvent::scroll_lines(delta))
+        self.on_input(InputEvent::Scroll(WheelDelta::notches(delta)))
     }
 
     /// Move the pointer to `at` and pinch by `factor`: above 1 zooms in.

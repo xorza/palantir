@@ -12,8 +12,7 @@ Action
         Click { at: Locator<X>, button: PointerButton, mods: ShortcutMods }
         DoubleClick(Locator<X>)
         Drag { from: Locator<X>, to: Locator<X>, button: PointerButton, mods: ShortcutMods, steps: NonZeroU32 }
-        ScrollPixels { at: Locator<X>, delta: Vec2 }
-        ScrollLines { at: Locator<X>, delta: Vec2 }
+        Scroll { at: Locator<X>, delta: WheelDelta }
         Pinch { at: Locator<X>, factor: ZoomFactor }
         Key(Shortcut)
         KeyDown(Shortcut)
@@ -1344,8 +1343,7 @@ InputEvent
         PointerLeft
         PointerPressed(PointerButton)
         PointerReleased(PointerButton)
-        ScrollPixels(Vec2)
-        ScrollLines { notches: Vec2, lines: Vec2, pages: Vec2 }
+        Scroll(WheelDelta)
         Pinch(ZoomFactor)
         KeyDown { key: Key, repeat: bool, physical: Key, text: KeyText }
         KeyUp { key: Key }
@@ -1353,7 +1351,6 @@ InputEvent
         ImePreedit(ImePreedit<'a>)
         ImeCommit(&'a str)
         SurfaceFocusLost
-        pub const fn scroll_lines(notches: Vec2) -> Self
 
 InputPolicy
     enum InputPolicy: Clone, Copy, Debug, Default, Eq, PartialEq
@@ -2062,7 +2059,7 @@ PointerEvent
         Moved(Vec2)
         Pressed { pos: Vec2, button: PointerButton }
         Released { pos: Vec2, button: PointerButton }
-        Scroll { pos: Vec2, pixels: Vec2, lines: Vec2, notches: Vec2, pages: Vec2 }
+        Scroll { pos: Vec2, delta: WheelDelta }
         Pinch { pos: Vec2, factor: ZoomFactor }
         Left
 
@@ -2379,10 +2376,7 @@ Scroll
 
 ScrollDelta
     struct ScrollDelta: Clone, Copy, Debug, Default, PartialEq
-        pub pixels: Vec2
-        pub lines: Vec2
-        pub notches: Vec2
-        pub pages: Vec2
+        pub wheel: WheelDelta
         pub zoom: ZoomFactor
         pub const NONE: Self
         pub const fn pan(self, line_height: f32, viewport: Size) -> Vec2
@@ -3344,6 +3338,16 @@ WgslError
     struct WgslError: Debug, Display, Error
         pub fn diagnostic(&self) -> String
         pub fn span(&self) -> Option<Range<usize>>
+
+WheelDelta
+    struct WheelDelta: Add, AddAssign, Clone, Copy, Debug, Default, PartialEq
+        pub pixels: Vec2
+        pub lines: Vec2
+        pub notches: Vec2
+        pub pages: Vec2
+        pub const ZERO: Self
+        pub const fn pixels(pixels: Vec2) -> Self
+        pub const fn notches(notches: Vec2) -> Self
 
 WidgetId
     struct WidgetId: Clone, Copy, Debug, DockTab (blanket), Eq, Hash, NoUninit, PartialEq

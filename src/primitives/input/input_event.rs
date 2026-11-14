@@ -1,6 +1,7 @@
 //! The crate's host-facing input vocabulary.
 
 use crate::primitives::input::ime_preedit::ImePreedit;
+use crate::primitives::input::interaction::wheel_delta::WheelDelta;
 use crate::primitives::input::keyboard::key::Key;
 use crate::primitives::input::keyboard::key_text::KeyText;
 use crate::primitives::input::keyboard::modifiers::Modifiers;
@@ -23,21 +24,10 @@ pub enum InputEvent<'a> {
     PointerPressed(PointerButton),
     /// A button came back up.
     PointerReleased(PointerButton),
-    /// Pixel-precise scroll delta (touchpad, `MouseScrollDelta::PixelDelta`);
-    /// positive `y` scrolls content *down*.
-    ScrollPixels(Vec2),
-    /// Notched scroll delta (`MouseScrollDelta::LineDelta`), each lane sign-flipped to match
-    /// `ScrollPixels`; the consuming widget applies its line and page steps.
-    /// [`Self::scroll_lines`] builds the plain case, one line per notch.
-    ScrollLines {
-        /// How far the wheel turned, which a wheel zoom reads, so a person's scroll setting
-        /// leaves its step alone.
-        notches: Vec2,
-        /// The lines this turn scrolls under the system's setting.
-        lines: Vec2,
-        /// The pages this turn scrolls, where the system's setting is a page per notch.
-        pages: Vec2,
-    },
+    /// A wheel or touchpad turn: pixel-precise (`MouseScrollDelta::PixelDelta`) or notched
+    /// (`MouseScrollDelta::LineDelta`), negated so positive `y` scrolls content *down*; the
+    /// consuming widget applies its line and page steps.
+    Scroll(WheelDelta),
     /// A pinch gesture's multiplicative step: [`ZoomFactor::ONE`] is none, `1.05` zooms in 5%.
     /// Wheel zoom is not translated into `Pinch`.
     Pinch(ZoomFactor),
@@ -78,16 +68,6 @@ pub enum InputEvent<'a> {
 }
 
 impl<'a> InputEvent<'a> {
-    /// A wheel turn of `notches` at one line per notch: [`Self::ScrollLines`] where no system's
-    /// setting applies.
-    pub const fn scroll_lines(notches: Vec2) -> Self {
-        Self::ScrollLines {
-            notches,
-            lines: notches,
-            pages: Vec2::ZERO,
-        }
-    }
-
     pub(crate) const fn text(&self) -> Option<&'a str> {
         match *self {
             Self::ImePreedit(ImePreedit { text, .. }) | Self::ImeCommit(text) => Some(text),
@@ -105,16 +85,7 @@ impl<'a> InputEvent<'a> {
             Self::PointerLeft => InputEvent::PointerLeft,
             Self::PointerPressed(button) => InputEvent::PointerPressed(button),
             Self::PointerReleased(button) => InputEvent::PointerReleased(button),
-            Self::ScrollPixels(delta) => InputEvent::ScrollPixels(delta),
-            Self::ScrollLines {
-                notches,
-                lines,
-                pages,
-            } => InputEvent::ScrollLines {
-                notches,
-                lines,
-                pages,
-            },
+            Self::Scroll(delta) => InputEvent::Scroll(delta),
             Self::Pinch(factor) => InputEvent::Pinch(factor),
             Self::KeyDown {
                 key,
@@ -141,12 +112,8 @@ impl<'a> InputEvent<'a> {
     /// finite check later). A pinch's [`ZoomFactor`] is valid by construction.
     pub(crate) fn is_valid(&self) -> bool {
         match self {
-            Self::PointerMoved(p) | Self::ScrollPixels(p) => p.is_finite(),
-            Self::ScrollLines {
-                notches,
-                lines,
-                pages,
-            } => notches.is_finite() && lines.is_finite() && pages.is_finite(),
+            Self::PointerMoved(p) => p.is_finite(),
+            Self::Scroll(delta) => delta.is_finite(),
             Self::Pinch(_)
             | Self::PointerLeft
             | Self::PointerPressed(_)
@@ -189,6 +156,7 @@ mod tests {
     use crate::common::span::Span;
     use crate::primitives::input::ime_preedit::ImePreedit;
     use crate::primitives::input::input_event::InputEvent;
+    use crate::primitives::input::interaction::wheel_delta::WheelDelta;
     use crate::primitives::input::keyboard::key::Key;
     use crate::primitives::input::keyboard::key_text::KeyText;
     use crate::primitives::input::keyboard::modifiers::Modifiers;
@@ -205,18 +173,16 @@ mod tests {
             for axis in [Vec2::new(value, 0.0), Vec2::new(0.0, value)] {
                 for event in [
                     InputEvent::PointerMoved(axis),
-                    InputEvent::ScrollPixels(axis),
-                    InputEvent::scroll_lines(axis),
-                    InputEvent::ScrollLines {
-                        notches: Vec2::ZERO,
+                    InputEvent::Scroll(WheelDelta::pixels(axis)),
+                    InputEvent::Scroll(WheelDelta::notches(axis)),
+                    InputEvent::Scroll(WheelDelta {
                         lines: axis,
-                        pages: Vec2::ZERO,
-                    },
-                    InputEvent::ScrollLines {
-                        notches: Vec2::ZERO,
-                        lines: Vec2::ZERO,
+                        ..WheelDelta::ZERO
+                    }),
+                    InputEvent::Scroll(WheelDelta {
                         pages: axis,
-                    },
+                        ..WheelDelta::ZERO
+                    }),
                 ] {
                     assert!(!event.is_valid(), "{event:?}");
                 }
@@ -225,8 +191,8 @@ mod tests {
 
         let ok: &[InputEvent<'_>] = &[
             InputEvent::PointerMoved(Vec2::new(-3.5, 12.0)),
-            InputEvent::ScrollPixels(Vec2::new(0.0, -40.0)),
-            InputEvent::scroll_lines(Vec2::ZERO),
+            InputEvent::Scroll(WheelDelta::pixels(Vec2::new(0.0, -40.0))),
+            InputEvent::Scroll(WheelDelta::notches(Vec2::ZERO)),
             InputEvent::Pinch(ZoomFactor::new(f32::MIN_POSITIVE).unwrap()),
             InputEvent::Pinch(ZoomFactor::new(1.05).unwrap()),
             InputEvent::PointerLeft,
@@ -258,7 +224,7 @@ mod tests {
         }
         // No `_` arm: a new variant fails to compile until indexed, and the count
         // fails until it has a case.
-        let mut covered = [false; 13];
+        let mut covered = [false; 12];
         for event in ok {
             assert!(event.is_valid(), "{event:?}");
             let idx = match event {
@@ -266,15 +232,14 @@ mod tests {
                 InputEvent::PointerLeft => 1,
                 InputEvent::PointerPressed(_) => 2,
                 InputEvent::PointerReleased(_) => 3,
-                InputEvent::ScrollPixels(_) => 4,
-                InputEvent::ScrollLines { .. } => 5,
-                InputEvent::Pinch(_) => 6,
-                InputEvent::KeyDown { .. } => 7,
-                InputEvent::ModifiersChanged(_) => 8,
-                InputEvent::SurfaceFocusLost => 9,
-                InputEvent::ImePreedit(_) => 10,
-                InputEvent::ImeCommit(_) => 11,
-                InputEvent::KeyUp { .. } => 12,
+                InputEvent::Scroll(_) => 4,
+                InputEvent::Pinch(_) => 5,
+                InputEvent::KeyDown { .. } => 6,
+                InputEvent::ModifiersChanged(_) => 7,
+                InputEvent::SurfaceFocusLost => 8,
+                InputEvent::ImePreedit(_) => 9,
+                InputEvent::ImeCommit(_) => 10,
+                InputEvent::KeyUp { .. } => 11,
             };
             covered[idx] = true;
         }

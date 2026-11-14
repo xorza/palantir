@@ -134,10 +134,10 @@ fn disabled_ancestor_propagates_disabled_flag_to_descendants() {
             .inner
     });
     let cascade = h.ui().cascade();
-    let child = cascade.location(Endpoint {
+    let child = Endpoint {
         plane: Plane::MAIN,
         node: child,
-    });
+    };
     assert!(
         cascade.entry(child).disabled,
         "a disabled ancestor must flatten into the descendant's effective disabled",

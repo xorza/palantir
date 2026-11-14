@@ -9,6 +9,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::input_event::InputEvent;
 use crate::primitives::input::interaction::response::Response;
+use crate::primitives::input::interaction::wheel_delta::WheelDelta;
 use crate::primitives::input::keyboard::key::Key;
 use crate::primitives::input::pointer::PointerButton;
 use crate::primitives::input::sense::Sense;
@@ -170,7 +171,7 @@ fn frame_pass_count_matches_action_trigger() {
         (
             "scroll",
             |h| {
-                h.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 10.0)));
+                h.on_input(InputEvent::Scroll(WheelDelta::pixels(Vec2::new(0.0, 10.0))));
             },
             1,
         ),

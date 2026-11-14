@@ -74,7 +74,7 @@ struct Sample<R> {
     value: R,
 }
 
-/// Per-layer event counts of `stream`, read inside pass A's record, the only place they are live (`end_frame` drains the queues).
+/// Per-layer event counts of `stream`, read inside pass A's record, the only place they are live (`Input::settle` clears the edges).
 fn sample_layers<R>(
     h: &mut Harness,
     stream: Stream,

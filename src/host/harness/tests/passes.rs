@@ -47,7 +47,7 @@ fn warm_constructors_run_one_pass_and_cold_runs_two() {
 
 #[test]
 fn frame_value_returns_pass_a_not_the_drained_second_pass() {
-    // Rules 4 and 5. A click double-records; pass B runs after `drain_per_frame_queues` and sees `clicked() == false`, so reading the last pass loses the edge.
+    // Rules 4 and 5. A click double-records; pass B runs after `Input::clear_edges` and sees `clicked() == false`, so reading the last pass loses the edge.
     let mut harness = Harness::mono(SURFACE);
     harness.prime(2, support::button);
     harness.click(INSIDE);

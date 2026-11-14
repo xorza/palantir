@@ -21,7 +21,7 @@ pub(super) fn emit(scene: &FrameScene<'_>, out: &mut impl PaintSink) {
     for record in &scene.forest.collisions {
         for ep in [record.first, record.second] {
             let rect = scene.layout[ep.plane].rect[ep.node.idx()];
-            let entry = scene.cascade.entry(scene.cascade.location(ep));
+            let entry = scene.cascade.entry(ep);
             let screen = entry.transform.apply_rect(rect);
             out.draw(
                 DrawClosedPayload::new(

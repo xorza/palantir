@@ -3,6 +3,7 @@
 use crate::host::harness::Harness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::input_event::InputEvent;
+use crate::primitives::input::interaction::wheel_delta::WheelDelta;
 use crate::primitives::input::keyboard::key::Key;
 use crate::primitives::input::pointer::PointerButton;
 use crate::primitives::input::sense::Sense;
@@ -49,19 +50,19 @@ fn outside_pointer_gestures_do_not_leak_to_main() {
 
         let outside = Vec2::new(300.0, 300.0);
         h.scroll_pixels(outside, Vec2::new(0.0, 25.0));
-        h.on_input(InputEvent::scroll_lines(Vec2::new(0.0, 3.0)));
+        h.on_input(InputEvent::Scroll(WheelDelta::notches(Vec2::new(0.0, 3.0))));
         h.on_input(InputEvent::Pinch(ZoomFactor::new(1.4).unwrap()));
         h.on_input(InputEvent::PointerPressed(PointerButton::Middle));
         h.hover(outside + Vec2::new(40.0, 0.0));
 
         let bg = h.response_in(bg_id, scene);
         assert_eq!(
-            bg.scroll.pixels != Vec2::ZERO,
+            bg.scroll.wheel.pixels != Vec2::ZERO,
             leaks,
             "{mode:?}: scroll pixels"
         );
         assert_eq!(
-            bg.scroll.lines != Vec2::ZERO,
+            bg.scroll.wheel.lines != Vec2::ZERO,
             leaks,
             "{mode:?}: scroll lines"
         );

@@ -385,44 +385,12 @@ Files: as listed per item. No exported signature changes.
 
 ### Batch 9: input
 
-Files: `src/input`, `src/cascade/mod.rs`, `src/ui/mod.rs:1152-1167`,
-`src/primitives/input/{input_event.rs, pointer.rs, interaction/scroll_delta.rs, scroll_targets}`,
-`src/host/winit/input`.
+Files: `src/host/winit/input/wheel_steps.rs`, `src/host/winit/platform/windows.rs`.
 
-- [ ] `input/capture.rs:34-43,116-138` with 22 outside field writes in `input/mod.rs` and
-  `input/pointer.rs`: private fields on `Capture` and `Press`, and methods `break_run`,
-  `travel_to`, `end_frame`, `is_pressed`, `pressed_on`, `has_edge`, `button_state(id, transform)`,
-  `edges(button)`; `Input::pointer_actions` and `response_state` loop over `PointerButton::ALL`.
-  `input/tests/response_state.rs:144-201` drives `begin_press`/`end_press` or feeds events.
-- [ ] `input/mod.rs:971-980`, `ui/mod.rs:1152-1167`, `cascade/mod.rs:72-78,148-191`: `Ui` computes
-  a `WidgetLocation` from `Input`'s cascade and hands it back. Target: delete `WidgetLocation`,
-  `Cascade::locate` and `location`; `Cascade::entry(at: Endpoint)`, `endpoint_at(id, resolved_at)`;
-  `Input::response_state(id, resolved_at)`.
-- [ ] `input/mod.rs:596,880,896`: `next_frame` ("End the frame for input"),
-  `drain_per_frame_queues` (touches no queue) and `end_frame`. Target: `admit_held`,
-  `clear_edges`, `settle`.
-- [ ] `input/mod.rs:555-592,861-866`: `ready(&mut self) -> bool` abandons a capture inside a
-  predicate, and the lost-release cut is written twice more. Target: a pure `lost_release(&event)
-  -> Option<PointerButton>` and `cut_gesture(button)`.
-- [ ] `cascade/mod.rs:270-310,354-366`: `tab_stop_within` is `next_tab_stop`'s entry case again.
-  Target: `TabDomain::Group` → `Within`; a private `stops_in(domain)`;
-  `tab_stop_at(domain, end)`.
-- [ ] One wheel turn's four lanes are spelled in `ScrollDelta`, `PointerEvent::Scroll` and
-  `InputEvent::ScrollLines`, and enumerated by hand at four more sites. Target (API), as W3C's
-  `deltaMode` and winit's `MouseScrollDelta`: an event carries one delta and its unit,
-  `InputEvent::Scroll { delta: Vec2, unit: WheelUnit }` with `WheelUnit::{Pixels, Lines, Notches,
-  Pages}`, replacing `ScrollPixels` and `ScrollLines`; the frame's sum is
-  `WheelDelta { pixels, lines, notches, pages }` with `add(delta, unit)`, held by
-  `PointerEvent::Scroll { pos, delta: WheelDelta }` and `ScrollDelta { wheel, zoom }`. The queue
-  merges two events of one unit and keeps two units apart, as it does today.
-- [ ] `host/winit/input/wheel_steps.rs:8-45`, `translator/mod.rs:52-53,155`: `vertical_lines:
-  Option<f32>` uses `None` for "a page", and `Translator` reads the real platform for it. Target:
-  `enum NotchStep { Lines(f32), Page }`, passed into `translate`.
-- [ ] `input/input_queue/mod.rs:39-40,178-183`: `text` is reclaimed only when `pending` empties,
-  with no stated bound. Compact past half the length, or state the bound.
-- [ ] Names: `subs` and `*_subbed` → `watches`, `*_watched` (`input/mod.rs:96,496,690-801`);
-  `Pointer::hovered` (the raw hit) → `under_pointer` and `hover_target()` → `hovered()`;
-  `input::Arranged` beside `layout::cache::Arranged` → the latter `ArrangedRows`.
+- [ ] `host/winit/input/wheel_steps.rs:8-12`: `vertical_lines: Option<f32>` uses `None` for "a page".
+  An `enum NotchStep { Lines(f32), Page }` has its `Page` built only in `platform/windows.rs`, so
+  every other build reads it as a dead variant, which only a `target_os` attribute outside the
+  platform module silences.
 
 ### Batch 10: value widgets
 

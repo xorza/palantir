@@ -1,6 +1,7 @@
 use crate::input::Input;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::input_event::InputEvent;
+use crate::primitives::input::interaction::wheel_delta::WheelDelta;
 use crate::primitives::input::policy::InputSignal;
 use crate::primitives::input::scroll_targets::ScrollTargets;
 use crate::primitives::input::zoom_factor::ZoomFactor;
@@ -11,17 +12,18 @@ fn scroll_delta_for_preserves_raw_pixels_and_lines() {
     let mut state = Input::new();
     let id = WidgetId::from_hash("scroll");
     state.pointer.scroll_targets = ScrollTargets::both(id);
-    state.feed(InputEvent::ScrollPixels(Vec2::new(0.0, 5.0)));
-    state.feed(InputEvent::ScrollLines {
+    state.feed(InputEvent::Scroll(WheelDelta::pixels(Vec2::new(0.0, 5.0))));
+    state.feed(InputEvent::Scroll(WheelDelta {
         notches: Vec2::new(0.0, 2.0),
         lines: Vec2::new(0.0, 6.0),
         pages: Vec2::new(0.0, 1.0),
-    });
+        ..WheelDelta::ZERO
+    }));
     let delta = state.scroll_delta_for(id);
-    assert_eq!(delta.pixels, Vec2::new(0.0, 5.0));
-    assert_eq!(delta.lines, Vec2::new(0.0, 6.0));
-    assert_eq!(delta.notches, Vec2::new(0.0, 2.0));
-    assert_eq!(delta.pages, Vec2::new(0.0, 1.0));
+    assert_eq!(delta.wheel.pixels, Vec2::new(0.0, 5.0));
+    assert_eq!(delta.wheel.lines, Vec2::new(0.0, 6.0));
+    assert_eq!(delta.wheel.notches, Vec2::new(0.0, 2.0));
+    assert_eq!(delta.wheel.pages, Vec2::new(0.0, 1.0));
     assert_eq!(delta.zoom, ZoomFactor::ONE);
 }
 
@@ -30,9 +32,14 @@ fn on_input_accumulates_scroll_delta() {
     let mut state = Input::new();
     let id = WidgetId::from_hash("scroll");
     state.pointer.scroll_targets = ScrollTargets::both(id);
-    state.feed(InputEvent::ScrollPixels(Vec2::new(0.0, 40.0)));
-    state.feed(InputEvent::ScrollPixels(Vec2::new(5.0, -10.0)));
-    assert_eq!(state.scroll_delta_for(id).pixels, Vec2::new(5.0, 30.0));
+    state.feed(InputEvent::Scroll(WheelDelta::pixels(Vec2::new(0.0, 40.0))));
+    state.feed(InputEvent::Scroll(WheelDelta::pixels(Vec2::new(
+        5.0, -10.0,
+    ))));
+    assert_eq!(
+        state.scroll_delta_for(id).wheel.pixels,
+        Vec2::new(5.0, 30.0)
+    );
 }
 
 #[test]
@@ -40,18 +47,18 @@ fn end_frame_clears_target_deltas_without_releasing_capacity() {
     let mut state = Input::new();
     for idx in 0..8 {
         state.pointer.scroll_targets = ScrollTargets::both(WidgetId::from_hash(("scroll", idx)));
-        state.feed(InputEvent::ScrollPixels(Vec2::ONE));
+        state.feed(InputEvent::Scroll(WheelDelta::pixels(Vec2::ONE)));
     }
     assert_eq!(state.pointer.target_deltas.len(), 8);
     let capacity = state.pointer.target_deltas.capacity();
 
-    state.end_frame();
+    state.settle();
     assert!(state.pointer.target_deltas.is_empty());
     assert_eq!(state.pointer.target_deltas.capacity(), capacity);
 
     for idx in 0..8 {
         state.pointer.scroll_targets = ScrollTargets::both(WidgetId::from_hash(("next", idx)));
-        state.feed(InputEvent::scroll_lines(Vec2::new(0.0, 1.0)));
+        state.feed(InputEvent::Scroll(WheelDelta::notches(Vec2::new(0.0, 1.0))));
     }
     assert_eq!(state.pointer.target_deltas.len(), 8);
     assert_eq!(state.pointer.target_deltas.capacity(), capacity);
@@ -65,8 +72,8 @@ fn an_invalid_payload_is_refused_and_mutates_nothing() {
     state.feed(InputEvent::PointerMoved(Vec2::new(7.0, 11.0)));
     state.pointer.scroll_targets = ScrollTargets::both(id);
     state.pointer.pinch_target = Some(id);
-    state.feed(InputEvent::ScrollPixels(Vec2::new(0.0, 5.0)));
-    state.feed(InputEvent::scroll_lines(Vec2::new(1.0, 0.0)));
+    state.feed(InputEvent::Scroll(WheelDelta::pixels(Vec2::new(0.0, 5.0))));
+    state.feed(InputEvent::Scroll(WheelDelta::notches(Vec2::new(1.0, 0.0))));
     state.feed(InputEvent::Pinch(ZoomFactor::new(1.5).unwrap()));
     state.signal_since_last_frame = InputSignal::None;
 
@@ -74,8 +81,8 @@ fn an_invalid_payload_is_refused_and_mutates_nothing() {
     for bad in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
         for axis in [Vec2::new(bad, 0.0), Vec2::new(0.0, bad)] {
             refused.extend([
-                InputEvent::ScrollPixels(axis),
-                InputEvent::scroll_lines(axis),
+                InputEvent::Scroll(WheelDelta::pixels(axis)),
+                InputEvent::Scroll(WheelDelta::notches(axis)),
                 InputEvent::PointerMoved(axis),
             ]);
         }
@@ -90,8 +97,8 @@ fn an_invalid_payload_is_refused_and_mutates_nothing() {
     }
 
     let delta = state.scroll_delta_for(id);
-    assert_eq!(delta.pixels, Vec2::new(0.0, 5.0), "good pixels stand");
-    assert_eq!(delta.lines, Vec2::new(1.0, 0.0), "good lines stand");
+    assert_eq!(delta.wheel.pixels, Vec2::new(0.0, 5.0), "good pixels stand");
+    assert_eq!(delta.wheel.lines, Vec2::new(1.0, 0.0), "good lines stand");
     assert_eq!(delta.zoom.get(), 1.5, "the good factor stands");
     assert_eq!(state.pointer.pos, Some(Vec2::new(7.0, 11.0)));
     assert_eq!(state.pointer.scroll_targets, ScrollTargets::both(id));

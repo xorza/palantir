@@ -225,7 +225,7 @@ impl WindowFrames {
             FramePlan::PaintOnly => {
                 tracy::zone!("WindowFrames::frame.paint_only");
                 // Record payloads are not cleared: the live `tree.shapes` still index into them. PaintOnly skips `post_record`'s input cleanup, so under `OnDelta` an unrouted event can land here with the sticky arrival flag set.
-                self.ui.input.drain_per_frame_queues();
+                self.ui.input.clear_edges();
                 FrameProcessing::PaintOnly
             }
             FramePlan::FullRecord { .. } => self.record_frame(app),
@@ -317,7 +317,7 @@ impl WindowFrames {
                     "action"
                 }
             );
-            self.ui.input.drain_per_frame_queues();
+            self.ui.input.clear_edges();
             let _ = self.record_pass(app, RecordPass::Second);
             // A modal that first recorded in pass B cancelled an overlay past the frame's last
             // pass: the next frame applies it.
@@ -383,7 +383,7 @@ impl WindowFrames {
         // Held events apply against this frame's cascade; what input owes the frame asks for it
         // here, since no host event will.
         let double_click = self.ui.double_click_interval();
-        if self.ui.input.next_frame(double_click) {
+        if self.ui.input.admit_held(double_click) {
             self.ui.frame_runtime.request_repaint();
         }
 
@@ -403,7 +403,7 @@ impl WindowFrames {
     ///
     /// It runs against a **scratch [`Input`]** so that:
     ///
-    /// - nothing consumes the real queues (pass B's `drain_per_frame_queues` would discard a pre-frame click),
+    /// - nothing consumes the real queues (pass B's `Input::clear_edges` would discard a pre-frame click),
     /// - no watcher fires (`watch_*` bypasses hit-testing and would see pre-frame events twice),
     /// - no press resolves focus against an empty hit index ([`FocusPolicy`](crate::primitives::input::policy::FocusPolicy) would read it as a press on nothing).
     ///
@@ -503,7 +503,7 @@ impl WindowFrames {
             .memory
             .sweep(removed, self.ui.frame_runtime.render_frame_idx);
 
-        self.ui.input.end_frame();
+        self.ui.input.settle();
     }
 }
 

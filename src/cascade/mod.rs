@@ -56,7 +56,7 @@ pub(crate) struct Cascade {
     pub(crate) arrow_groups: Vec<ArrowGroupRow>,
     /// The key of every plane's backdrops, listed after each run.
     pub(crate) backdrop_keys: BackdropKeys,
-    /// The ids of the pass this cascade was built from, in resolve order: [`Self::locate_at`]
+    /// The ids of the pass this cascade was built from, in resolve order: [`Self::endpoint_at`]
     /// reads a reading pass's id at its own position here first, as passes mostly resolve
     /// alike. A snapshot because `response_for` runs mid-record, after `SeenIds::pre_record`
     /// cleared `cur`, and a relayout's second pass must still see pass A's entries;
@@ -68,14 +68,6 @@ pub(crate) struct Cascade {
     by_id: WidgetIdMap<Endpoint>,
     /// The inputs this cascade was built from; `None` before the first run.
     pub(crate) key: Option<CascadeKey>,
-}
-
-/// Where one widget's per-frame rows live: the flat [`Cascade::entries`] index plus the
-/// `(plane, node)` [`Endpoint`] the layout columns are keyed by. From [`Cascade::locate`].
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct WidgetLocation {
-    pub(crate) entry_idx: u32,
-    pub(crate) endpoint: Endpoint,
 }
 
 /// Which way a Tab press moves focus: Tab forward, Shift+Tab back.
@@ -93,8 +85,8 @@ pub(crate) enum TabDomain {
     Root(WidgetId),
     /// Every stop of ordinary content.
     Main,
-    /// The stops recorded under one arrow group.
-    Group(WidgetId),
+    /// The stops recorded under one widget: an arrow group, or an overlay focus enters.
+    Within(WidgetId),
 }
 
 /// What a press lands on: the topmost clickable row under the point and the
@@ -158,36 +150,20 @@ impl Cascade {
         self.by_id.contains_key(&id)
     }
 
-    /// The entry row at `loc`, from [`Self::locate`] or [`Self::location`].
+    /// The entry row of the widget recorded at `at`, an endpoint of the latest run.
     #[inline]
-    pub(crate) fn entry(&self, loc: WidgetLocation) -> &EntryRow {
-        &self.entries[loc.entry_idx as usize]
+    pub(crate) fn entry(&self, at: Endpoint) -> &EntryRow {
+        &self.entries[(self.planes[at.plane].entries_base + at.node.0) as usize]
     }
 
-    /// Both the entry index and the endpoint, from one `by_id` probe.
+    /// [`Self::endpoint`], answered with no probe when this cascade's pass resolved `id` at
+    /// `resolved_at`, the position the reading pass resolved it at. An id names one entry of a
+    /// pass, so a match there is the answer, an endpoint or none.
     #[inline]
-    pub(crate) fn locate(&self, id: WidgetId) -> Option<WidgetLocation> {
-        Some(self.location(*self.by_id.get(&id)?))
-    }
-
-    /// [`Self::locate`], answered with no probe when this cascade's pass resolved `id` at `at`,
-    /// the position the reading pass resolved it at. An id names one entry of a pass, so a match
-    /// there is the answer, an endpoint or none.
-    #[inline]
-    pub(crate) fn locate_at(&self, id: WidgetId, at: usize) -> Option<WidgetLocation> {
-        let endpoint = match self.resolved.get(at) {
+    pub(crate) fn endpoint_at(&self, id: WidgetId, resolved_at: usize) -> Option<Endpoint> {
+        match self.resolved.get(resolved_at) {
             Some(row) if row.id == id => row.endpoint,
-            _ => self.by_id.get(&id).copied(),
-        };
-        endpoint.map(|endpoint| self.location(endpoint))
-    }
-
-    /// [`Self::locate`] for an endpoint already known, with no probe.
-    #[inline]
-    pub(crate) fn location(&self, endpoint: Endpoint) -> WidgetLocation {
-        WidgetLocation {
-            entry_idx: self.planes[endpoint.plane].entries_base + endpoint.node.0,
-            endpoint,
+            _ => self.endpoint(id),
         }
     }
 
@@ -274,31 +250,48 @@ impl Cascade {
         focused: Option<WidgetId>,
         direction: TabDirection,
     ) -> Option<WidgetId> {
-        let stops = || {
-            self.tab_stops
-                .iter()
-                .enumerate()
-                .filter(move |(_, row)| self.in_domain(domain, row))
-                .map(|(pos, row)| ((row.idx, pos), row.id))
-        };
-        let cur = focused.and_then(|id| stops().find(|&(_, stop)| stop == id).map(|(key, _)| key));
-        match direction {
-            TabDirection::Next => cur
-                .and_then(|from| {
-                    stops()
-                        .filter(|&(key, _)| key > from)
-                        .min_by_key(|&(key, _)| key)
-                })
-                .or_else(|| stops().min_by_key(|&(key, _)| key)),
-            TabDirection::Prev => cur
-                .and_then(|from| {
-                    stops()
-                        .filter(|&(key, _)| key < from)
-                        .max_by_key(|&(key, _)| key)
-                })
-                .or_else(|| stops().max_by_key(|&(key, _)| key)),
+        let cur = focused.and_then(|id| {
+            self.stops_in(domain)
+                .find(|&(_, stop)| stop == id)
+                .map(|(key, _)| key)
+        });
+        let step = cur.and_then(|from| match direction {
+            TabDirection::Next => self
+                .stops_in(domain)
+                .filter(|&(key, _)| key > from)
+                .min_by_key(|&(key, _)| key),
+            TabDirection::Prev => self
+                .stops_in(domain)
+                .filter(|&(key, _)| key < from)
+                .max_by_key(|&(key, _)| key),
+        });
+        step.map(|(_, id)| id).or_else(|| {
+            let wrap = match direction {
+                TabDirection::Next => TabEnd::First,
+                TabDirection::Prev => TabEnd::Last,
+            };
+            self.tab_stop_at(domain, wrap)
+        })
+    }
+
+    /// The stop at `end` of `domain`'s Tab order, or `None` when it holds no stop.
+    pub(crate) fn tab_stop_at(&self, domain: TabDomain, end: TabEnd) -> Option<WidgetId> {
+        let stops = self.stops_in(domain);
+        match end {
+            TabEnd::First => stops.min_by_key(|&(key, _)| key),
+            TabEnd::Last => stops.max_by_key(|&(key, _)| key),
         }
         .map(|(_, id)| id)
+    }
+
+    /// `domain`'s stops, each keyed by its place in Tab order: ascending `idx`, ties in record
+    /// order.
+    fn stops_in(&self, domain: TabDomain) -> impl Iterator<Item = ((i16, usize), WidgetId)> + '_ {
+        self.tab_stops
+            .iter()
+            .enumerate()
+            .filter(move |(_, row)| self.in_domain(domain, row))
+            .map(|(pos, row)| ((row.idx, pos), row.id))
     }
 
     /// Whether `row` is one of `domain`'s stops.
@@ -306,7 +299,7 @@ impl Cascade {
         match domain {
             TabDomain::Root(root) => row.root == root,
             TabDomain::Main => row.plane == Plane::MAIN,
-            TabDomain::Group(group) => self.is_within(row.id, group),
+            TabDomain::Within(ancestor) => self.is_within(row.id, ancestor),
         }
     }
 
@@ -349,21 +342,6 @@ impl Cascade {
             .rev()
             .find(|row| self.is_within(focused, row.id))
             .copied()
-    }
-
-    /// The stop at `end` of Tab order under `ancestor`, or `None`.
-    pub(crate) fn tab_stop_within(&self, ancestor: WidgetId, end: TabEnd) -> Option<WidgetId> {
-        let stops = self
-            .tab_stops
-            .iter()
-            .enumerate()
-            .filter(|(_, row)| self.is_within(row.id, ancestor));
-        let key = |&(pos, row): &(usize, &TabStopRow)| (row.idx, pos);
-        match end {
-            TabEnd::First => stops.min_by_key(key),
-            TabEnd::Last => stops.max_by_key(key),
-        }
-        .map(|(_, row)| row.id)
     }
 
     /// The stops a Tab press from `focused` may reach, by priority:

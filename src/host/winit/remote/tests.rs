@@ -26,6 +26,7 @@ use crate::host::winit::remote::remote_end::RemoteEnd;
 use crate::host::winit::remote::{Remote, Until, WAIT};
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::interaction::wheel_delta::WheelDelta;
 use crate::primitives::input::keyboard::modifiers::Modifiers;
 use crate::primitives::input::pointer::PointerButton;
 use crate::primitives::input::sense::Sense;
@@ -104,7 +105,7 @@ impl App for Counter {
                 gestures.travel = delta;
             }
             gestures.drags += u32::from(pad.left.drag.stopped());
-            gestures.scroll += pad.scroll.pixels;
+            gestures.scroll += pad.scroll.wheel.pixels;
             if pad.scroll.zoom.get() != 1.0 {
                 gestures.pinches.push(pad.scroll.zoom.get());
             }
@@ -657,9 +658,9 @@ fn both_players_play_each_gesture_alike() {
             }),
         ),
         (
-            Action::ScrollPixels {
+            Action::Scroll {
                 at: pad(),
-                delta: Vec2::new(0.0, 30.0),
+                delta: WheelDelta::pixels(Vec2::new(0.0, 30.0)),
             },
             Ok(Gestures {
                 drags: 1,

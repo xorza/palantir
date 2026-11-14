@@ -28,7 +28,7 @@ fn post_record_resets_zoom_delta_to_identity() {
     let mut state = pinch_state();
     state.feed(InputEvent::Pinch(ZoomFactor::new(1.2).unwrap()));
     assert_eq!(state.scroll_delta_for(pinch_id()).zoom.get(), 1.2);
-    state.end_frame();
+    state.settle();
     assert_eq!(state.scroll_delta_for(pinch_id()).zoom.get(), 1.0);
     assert!(state.pointer.target_deltas.is_empty());
 }

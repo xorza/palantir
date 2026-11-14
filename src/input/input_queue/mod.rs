@@ -36,7 +36,9 @@ pub(crate) struct InputQueue {
     /// The frame holds a pointer edge or a scroll or pinch delta, read under the modifiers held
     /// at record: a modifier change waits.
     pointer_edge: bool,
-    /// Text of every held IME event, end to end; each holds its span.
+    /// Text of every held IME event, end to end; each holds its span. The text before the oldest
+    /// held span was read and is reclaimed once it is half the buffer, so the buffer holds at
+    /// most about twice the held text, however long a stream keeps the queue from emptying.
     text: String,
 }
 
@@ -97,8 +99,7 @@ impl InputQueue {
             InputEvent::KeyUp { .. }
             | InputEvent::PointerMoved(_)
             | InputEvent::PointerLeft
-            | InputEvent::ScrollPixels(_)
-            | InputEvent::ScrollLines { .. }
+            | InputEvent::Scroll(_)
             | InputEvent::Pinch(_)
             | InputEvent::ImePreedit(_) => true,
         }
@@ -148,25 +149,9 @@ impl InputQueue {
                 (InputEvent::PointerMoved(_), &InputEvent::PointerMoved(pos)) => {
                     Some(InputEvent::PointerMoved(pos))
                 }
-                (InputEvent::ScrollPixels(held), &InputEvent::ScrollPixels(delta)) => {
-                    Some(InputEvent::ScrollPixels(held + delta))
+                (InputEvent::Scroll(held), &InputEvent::Scroll(delta)) => {
+                    Some(InputEvent::Scroll(held + delta))
                 }
-                (
-                    InputEvent::ScrollLines {
-                        notches,
-                        lines,
-                        pages,
-                    },
-                    &InputEvent::ScrollLines {
-                        notches: more_notches,
-                        lines: more_lines,
-                        pages: more_pages,
-                    },
-                ) => Some(InputEvent::ScrollLines {
-                    notches: notches + more_notches,
-                    lines: lines + more_lines,
-                    pages: pages + more_pages,
-                }),
                 _ => None,
             };
             if let Some(merged) = merged {
@@ -175,9 +160,7 @@ impl InputQueue {
                 return;
             }
         }
-        if self.pending.is_empty() {
-            self.text.clear();
-        }
+        self.reclaim_read_text();
         let start = self.text.len();
         if let Some(text) = event.text() {
             self.text.push_str(text);
@@ -187,6 +170,23 @@ impl InputQueue {
             text: Span::try_from(start..self.text.len()).unwrap(),
             at: now,
         });
+    }
+
+    /// Drop the text before the oldest held span once it is half the buffer, every span rebased.
+    /// Here rather than at a pop, as the popped event's text is read right after it.
+    fn reclaim_read_text(&mut self) {
+        let read = self
+            .pending
+            .front()
+            .map_or(self.text.len(), |held| held.text.start as usize);
+        if read == 0 || read * 2 < self.text.len() {
+            return;
+        }
+        self.text.drain(..read);
+        let read = u32::try_from(read).expect("a span's start fits its u32");
+        for held in &mut self.pending {
+            held.text.start -= read;
+        }
     }
 
     pub(super) fn text(&self, span: Span) -> &str {

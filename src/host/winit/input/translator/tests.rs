@@ -7,7 +7,9 @@ use winit::keyboard::{KeyCode, ModifiersState, PhysicalKey};
 
 use crate::common::platform::{PLATFORM, Platform};
 use crate::host::winit::input::translator::{PointerTrace, Translator};
+use crate::host::winit::input::wheel_steps::WheelSteps;
 use crate::primitives::input::input_event::InputEvent;
+use crate::primitives::input::interaction::wheel_delta::WheelDelta;
 use crate::primitives::input::keyboard::key::Key;
 use crate::primitives::input::pointer::PointerButton;
 
@@ -41,23 +43,23 @@ fn wheel_deltas_are_logical_and_point_in_scroll_direction() {
         60.0, -120.0,
     )));
     let mut got = Vec::new();
-    Translator::new(PLATFORM).translate(&lines, 1.0, |event| got.push(event));
+    Translator::new(PLATFORM, WheelSteps::default).translate(&lines, 1.0, |event| got.push(event));
     assert!(matches!(
         got.as_slice(),
-        [InputEvent::ScrollLines { notches, .. }] if *notches == Vec2::new(-2.0, -1.0)
+        [InputEvent::Scroll(WheelDelta { notches, .. })] if *notches == Vec2::new(-2.0, -1.0)
     ));
     got.clear();
 
-    Translator::new(PLATFORM).translate(&pixels, 2.0, |event| got.push(event));
+    Translator::new(PLATFORM, WheelSteps::default).translate(&pixels, 2.0, |event| got.push(event));
     assert!(matches!(
         got.as_slice(),
-        [InputEvent::ScrollPixels(delta)] if *delta == Vec2::new(-30.0, 60.0)
+        [InputEvent::Scroll(delta)] if *delta == WheelDelta::pixels(Vec2::new(-30.0, 60.0))
     ));
 
     // A wheel event carries no modifiers: the translator keeps the last ones
     // reported, so Shift turns a later (0, -3) wheel, (0, 3) as a scroll,
     // into (3, 0) until its release arrives.
-    let mut translator = Translator::new(Platform::Linux);
+    let mut translator = Translator::new(Platform::Linux, WheelSteps::default);
     let down = wheel(MouseScrollDelta::LineDelta(0.0, -3.0));
     for (modifiers, want) in [
         (ModifiersState::SHIFT, Vec2::new(3.0, 0.0)),
@@ -71,7 +73,7 @@ fn wheel_deltas_are_logical_and_point_in_scroll_direction() {
         got.clear();
         translator.translate(&down, 1.0, |event| got.push(event));
         assert!(
-            matches!(got.as_slice(), [InputEvent::ScrollLines { notches, .. }] if *notches == want),
+            matches!(got.as_slice(), [InputEvent::Scroll(WheelDelta { notches, .. })] if *notches == want),
             "{modifiers:?}: {got:?}",
         );
     }
@@ -83,7 +85,8 @@ fn wheel_deltas_are_logical_and_point_in_scroll_direction() {
 fn pinch_translation_converts_and_drops_a_factor_no_zoom_can_be() {
     let half = pinch(0.5);
     let mut emitted = Vec::new();
-    Translator::new(PLATFORM).translate(&half, 1.0, |event| emitted.push(event));
+    Translator::new(PLATFORM, WheelSteps::default)
+        .translate(&half, 1.0, |event| emitted.push(event));
     assert!(
         matches!(emitted.as_slice(), [InputEvent::Pinch(factor)] if factor.get() == 1.5),
         "{emitted:?}"
@@ -92,7 +95,8 @@ fn pinch_translation_converts_and_drops_a_factor_no_zoom_can_be() {
     for delta in [-1.0, -2.0, f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
         let event = pinch(delta);
         let mut emitted = Vec::new();
-        Translator::new(PLATFORM).translate(&event, 1.0, |event| emitted.push(event));
+        Translator::new(PLATFORM, WheelSteps::default)
+            .translate(&event, 1.0, |event| emitted.push(event));
         assert!(emitted.is_empty(), "pinch delta {delta:?}: {emitted:?}");
     }
 }
@@ -103,7 +107,7 @@ fn pinch_translation_converts_and_drops_a_factor_no_zoom_can_be() {
 fn a_move_emits_logical_and_traces_physical() {
     let moved = cursor_moved(300.0, 120.0);
     let mut emitted = Vec::new();
-    let trace = Translator::new(PLATFORM).translate(&moved, 2.5, |event| {
+    let trace = Translator::new(PLATFORM, WheelSteps::default).translate(&moved, 2.5, |event| {
         emitted.push(event);
     });
 
@@ -128,7 +132,8 @@ fn a_departure_traces_gone_and_other_events_trace_nothing() {
     };
     let mut emitted = Vec::new();
     assert_eq!(
-        Translator::new(PLATFORM).translate(&left, 1.0, |event| emitted.push(event)),
+        Translator::new(PLATFORM, WheelSteps::default)
+            .translate(&left, 1.0, |event| emitted.push(event)),
         PointerTrace::Gone,
     );
     assert!(matches!(emitted.as_slice(), [InputEvent::PointerLeft]));
@@ -142,12 +147,12 @@ fn a_departure_traces_gone_and_other_events_trace_nothing() {
     );
 
     assert_eq!(
-        Translator::new(PLATFORM).translate(&pinch(0.5), 1.0, |_| {}),
+        Translator::new(PLATFORM, WheelSteps::default).translate(&pinch(0.5), 1.0, |_| {}),
         PointerTrace::Unchanged,
         "a gesture says nothing about where the pointer is",
     );
     assert_eq!(
-        Translator::new(PLATFORM).translate(
+        Translator::new(PLATFORM, WheelSteps::default).translate(
             &wheel(MouseScrollDelta::LineDelta(1.0, 1.0)),
             1.0,
             |_| {}
@@ -182,7 +187,7 @@ fn ime_events_translate_and_a_disable_ends_the_composition() {
     for (ime, want) in rows {
         let event = WindowEvent::Ime(ime);
         let mut emitted = Vec::new();
-        Translator::new(PLATFORM)
+        Translator::new(PLATFORM, WheelSteps::default)
             .translate(&event, 1.0, |event| emitted.push(format!("{event:?}")));
         assert_eq!(emitted, want.into_iter().collect::<Vec<_>>(), "{event:?}");
     }
@@ -238,7 +243,7 @@ fn one_finger_drives_the_pointer_and_holds_it() {
     let moved = touch(7, TouchPhase::Moved, 210.0, 100.0);
     let up = touch(7, TouchPhase::Ended, 210.0, 104.0);
     let mouse_back = cursor_moved(40.0, 40.0);
-    let mut translator = Translator::new(PLATFORM);
+    let mut translator = Translator::new(PLATFORM, WheelSteps::default);
     let mut emitted = Vec::new();
 
     // Physical (200, 100) at scale 2 is logical (100, 50).
@@ -310,7 +315,7 @@ fn a_cancelled_touch_leaves_before_it_releases() {
     let down = touch(1, TouchPhase::Started, 6.0, 4.0);
     let cancel = touch(1, TouchPhase::Cancelled, 6.0, 4.0);
     let next = touch(2, TouchPhase::Started, 8.0, 8.0);
-    let mut translator = Translator::new(PLATFORM);
+    let mut translator = Translator::new(PLATFORM, WheelSteps::default);
     let mut emitted = Vec::new();
 
     feed(&mut translator, &down, &mut emitted);
@@ -342,7 +347,7 @@ fn a_lost_touch_end_does_not_hold_the_pointer() {
     let restart = touch(3, TouchPhase::Started, 30.0, 30.0);
     let late_up = touch(3, TouchPhase::Ended, 30.0, 30.0);
     let other = touch(4, TouchPhase::Started, 50.0, 50.0);
-    let mut translator = Translator::new(PLATFORM);
+    let mut translator = Translator::new(PLATFORM, WheelSteps::default);
     let mut emitted = Vec::new();
 
     assert_eq!(
@@ -398,7 +403,7 @@ fn a_lost_touch_end_does_not_hold_the_pointer() {
 fn a_release_names_its_press_by_the_physical_key() {
     let a = PhysicalKey::Code(KeyCode::KeyA);
     let b = PhysicalKey::Code(KeyCode::KeyB);
-    let mut translator = Translator::new(PLATFORM);
+    let mut translator = Translator::new(PLATFORM, WheelSteps::default);
     let mut emitted = Vec::new();
 
     assert!(translator.hold(a, Key::Char('a')).is_none());

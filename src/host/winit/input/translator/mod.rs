@@ -8,11 +8,12 @@ use winit::keyboard::{ModifiersState, PhysicalKey};
 
 use crate::common::platform::Platform;
 use crate::display;
+use crate::host::winit::input::wheel_steps::WheelSteps;
 use crate::host::winit::input::{
     KeyDownFacts, Press, ime_event, key_down, normalize_modifiers, shift_wheel, wheel_lines,
 };
-use crate::host::winit::platform;
 use crate::primitives::input::input_event::InputEvent;
+use crate::primitives::input::interaction::wheel_delta::WheelDelta;
 use crate::primitives::input::keyboard::key::Key;
 use crate::primitives::input::pointer::PointerButton;
 use crate::primitives::input::zoom_factor::ZoomFactor;
@@ -60,15 +61,19 @@ pub(crate) struct Translator {
     /// reported: a release's own logical key can differ, as Shift pressed in between turns `a`
     /// into `A`, and `KeyUp` names its press's. A few at a time, so a scan.
     held: Vec<(PhysicalKey, Key)>,
+    /// Reads the system's scroll settings at each wheel event: the platform's in a build, fixed
+    /// ones in a test.
+    wheel_steps: fn() -> WheelSteps,
 }
 
 impl Translator {
-    pub(crate) const fn new(platform: Platform) -> Self {
+    pub(crate) const fn new(platform: Platform, wheel_steps: fn() -> WheelSteps) -> Self {
         Self {
             platform,
             modifiers: ModifiersState::empty(),
             finger: None,
             held: Vec::new(),
+            wheel_steps,
         }
     }
 
@@ -152,15 +157,17 @@ impl Translator {
                 emit(match *delta {
                     MouseScrollDelta::LineDelta(x, y) => wheel_lines(
                         Vec2::new(-x, -y),
-                        platform::wheel_steps(),
+                        (self.wheel_steps)(),
                         self.modifiers,
                         self.platform,
                     ),
-                    MouseScrollDelta::PixelDelta(pos) => InputEvent::ScrollPixels(shift_wheel(
-                        Vec2::new(-pos.x as f32, -pos.y as f32) / scale_factor,
-                        self.modifiers,
-                        self.platform,
-                    )),
+                    MouseScrollDelta::PixelDelta(pos) => {
+                        InputEvent::Scroll(WheelDelta::pixels(shift_wheel(
+                            Vec2::new(-pos.x as f32, -pos.y as f32) / scale_factor,
+                            self.modifiers,
+                            self.platform,
+                        )))
+                    }
                 });
             }
             WindowEvent::KeyboardInput {

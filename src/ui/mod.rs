@@ -30,7 +30,6 @@ use crate::animation::animation_request::AnimationRequest;
 use crate::animation::animation_spec::AnimationSpec;
 use crate::animation::motion_role::MotionRole;
 use crate::cascade::Cascade;
-use crate::cascade::WidgetLocation;
 use crate::clipboard::Clipboard;
 use crate::diagnostics::DebugOverlayConfig;
 use crate::diagnostics::frame_stats::FrameStats;
@@ -1091,20 +1090,13 @@ impl Ui {
     /// during record. The widget's own `NodeFlags::is_disabled` is folded in by
     /// `Widget::response`.
     pub fn response_for(&self, id: WidgetId) -> Response {
-        let loc = self.last_frame_location(id);
-        let mut response = self.input.response(id, loc);
+        // The newest id of this pass, so its position is the last one.
+        let resolved_at = self.forest.ids.resolved_count().wrapping_sub(1);
+        let mut response = self.input.response(id, resolved_at);
         // Cascade lags a frame; fold in this frame's ancestor-disabled so a newly
         // disabled subtree paints disabled at once.
         response.merge_disabled(self.forest.ancestor_disabled());
         response
-    }
-
-    /// Where the most recent cascade run put `id`, which a widget reads as it resolves: the
-    /// newest id of this pass, so its position is the last one.
-    #[inline]
-    fn last_frame_location(&self, id: WidgetId) -> Option<WidgetLocation> {
-        let newest = self.forest.ids.resolved_count().wrapping_sub(1);
-        self.input.arranged.cascade.locate_at(id, newest)
     }
 
     /// The cross-frame state row for `id`, or `None` if `(id, S)` was never stored. Creates
@@ -1589,8 +1581,8 @@ pub(crate) mod internals {
         /// held events) and return whether input owes another. For a caller streaming input with
         /// no frame recorded between.
         pub(crate) fn end_input_frame(&mut self) -> bool {
-            self.input.end_frame();
-            self.input.next_frame(self.double_click_interval())
+            self.input.settle();
+            self.input.admit_held(self.double_click_interval())
         }
     }
 

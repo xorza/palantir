@@ -7,7 +7,7 @@ use std::time::Duration;
 use palantir::glam::{UVec2, Vec2};
 use palantir::{
     Action, ColorScheme, Locator, PointerButton, Rect, Shortcut, ShortcutMods, SystemScale,
-    ZoomFactor,
+    WheelDelta, ZoomFactor,
 };
 use std::num::NonZeroU32;
 
@@ -220,13 +220,13 @@ fn step(head: &str, words: &mut Words) -> Result<StepKind, ParseErrorKind> {
         }
         "scroll-pixels" => {
             let at = words.locator()?;
-            let delta = words.pair("a scroll dx,dy in pixels")?;
-            act(Action::ScrollPixels { at, delta })
+            let delta = WheelDelta::pixels(words.pair("a scroll dx,dy in pixels")?);
+            act(Action::Scroll { at, delta })
         }
         "scroll-lines" => {
             let at = words.locator()?;
-            let delta = words.pair("a scroll dx,dy in notches")?;
-            act(Action::ScrollLines { at, delta })
+            let delta = WheelDelta::notches(words.pair("a scroll dx,dy in notches")?);
+            act(Action::Scroll { at, delta })
         }
         "pinch" => {
             let at = words.locator()?;

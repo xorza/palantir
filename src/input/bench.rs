@@ -5,7 +5,7 @@
 //! Cases, each under `atomic/input/cpu/`:
 //! - `pointer_move_stream`: one `PointerMoved` along the cursor path.
 //! - `click_stream`: press, input frame, release, input frame.
-//! - `scroll_stream`: `ScrollPixels` against a scroll target.
+//! - `scroll_stream`: pixel scrolls against a scroll target.
 //! - `mixed_stream`: interleaved moves, scroll and an occasional click, one input frame per burst.
 
 use crate::bench::backends::Backend;
@@ -13,6 +13,7 @@ use crate::bench::kind::{Kind, Scale};
 use crate::display::system_scale::SystemScale;
 use crate::host::harness::Harness;
 use crate::primitives::input::input_event::InputEvent;
+use crate::primitives::input::interaction::wheel_delta::WheelDelta;
 use crate::primitives::input::pointer::PointerButton;
 use crate::primitives::input::sense::Sense;
 use crate::primitives::layout::sizing::{SizeSpec, Sizing};
@@ -156,10 +157,10 @@ pub(crate) fn atomic(c: &mut Criterion) {
         let mut i: u32 = 0;
         b.iter(|| {
             let t = i as f32 * 0.05;
-            let d = ui.on_input(InputEvent::ScrollPixels(Vec2::new(
+            let d = ui.on_input(InputEvent::Scroll(WheelDelta::pixels(Vec2::new(
                 t.libm_cos() * 5.0,
                 (t * 0.7).libm_cos() * 5.0,
-            )));
+            ))));
             i = i.wrapping_add(1);
             black_box(d);
         });

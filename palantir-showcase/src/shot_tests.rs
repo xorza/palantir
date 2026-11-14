@@ -6,7 +6,7 @@ use palantir::glam::{UVec2, Vec2};
 use palantir::internals::{headless_test_gpu, main_pass_counts};
 use palantir::{
     Action, AgentWindow, ColorScheme, ErrorChain, Harness, HarnessDepth, Key, Locator, Palette,
-    PointerButton, Rect, Shortcut, ShortcutMods, SystemScale, ZoomFactor,
+    PointerButton, Rect, Shortcut, ShortcutMods, SystemScale, WheelDelta, ZoomFactor,
 };
 
 use crate::error::RunError;
@@ -127,9 +127,9 @@ fn each_instruction_reads_its_words() {
                 mods: ShortcutMods::ALT,
                 steps: Action::DRAG_STEPS,
             }),
-            StepKind::Act(Action::ScrollPixels {
+            StepKind::Act(Action::Scroll {
                 at: at(),
-                delta: Vec2::new(0.0, -40.0),
+                delta: WheelDelta::pixels(Vec2::new(0.0, -40.0)),
             }),
             StepKind::Act(Action::Pinch {
                 at: at(),

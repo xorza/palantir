@@ -313,6 +313,7 @@ pub use primitives::input::interaction::pointer_button_state::PointerButtonState
 pub use primitives::input::interaction::pointer_edge::PointerEdge;
 pub use primitives::input::interaction::response::Response;
 pub use primitives::input::interaction::scroll_delta::ScrollDelta;
+pub use primitives::input::interaction::wheel_delta::WheelDelta;
 pub use primitives::input::key_class::{KeyClass, KeyFilter};
 pub use primitives::input::keyboard::key::Key;
 pub use primitives::input::keyboard::key_press::KeyPress;

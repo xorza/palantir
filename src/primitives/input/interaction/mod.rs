@@ -10,3 +10,4 @@ pub(crate) mod pointer_button_state;
 pub(crate) mod pointer_edge;
 pub(crate) mod response;
 pub(crate) mod scroll_delta;
+pub(crate) mod wheel_delta;

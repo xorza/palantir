@@ -1,6 +1,5 @@
 //! The per-node rows the walk fills, and what each covers.
 
-use crate::cascade::WidgetLocation;
 use crate::host::harness::Harness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -61,12 +60,9 @@ fn node_spans_rows_mirror_chrome_and_children() {
         [1.0, 50.0 * 50.0],
         "the chromed panel paints one chrome row over its whole 50×50 rect",
     );
-    let chrome_entry = cascade
-        .locate(WidgetId::from_hash("chrome"))
-        .unwrap()
-        .entry_idx as usize;
+    let chrome_entry = cascade.entry(cascade.endpoint(WidgetId::from_hash("chrome")).unwrap());
     assert_eq!(
-        arena.rows[chrome_span.start as usize].screen, cascade.entries[chrome_entry].rect,
+        arena.rows[chrome_span.start as usize].screen, chrome_entry.rect,
         "no-shadow chrome must reuse the node's transformed and clipped visible rect",
     );
     assert_eq!(
@@ -212,11 +208,11 @@ fn rect_hash_tracks_geometry_and_ignores_paint() {
     );
 }
 
-/// `locate_at` answers as `locate` at every position it is given: at the id's own position from
-/// the pass's table, elsewhere and past the end through the index. An id the pass never
+/// `endpoint_at` answers as `endpoint` at every position it is given: at the id's own position
+/// from the pass's table, elsewhere and past the end through the index. An id the pass never
 /// resolved answers none at every position.
 #[test]
-fn locate_at_answers_as_locate_at_every_position() {
+fn endpoint_at_answers_as_endpoint_at_every_position() {
     let mut h = Harness::mono(UVec2::new(200, 200));
     h.frame(|ui| {
         Panel::vstack().auto_id().show(ui, |ui| {
@@ -229,7 +225,6 @@ fn locate_at_answers_as_locate_at_every_position() {
         });
     });
     let cascade = h.ui().cascade();
-    let found = |loc: Option<WidgetLocation>| loc.map(|loc| (loc.entry_idx, loc.endpoint));
     // The viewport, the stack, then the three panels, each at the node it opened.
     let ids: Vec<WidgetId> = cascade.resolved.iter().map(|row| row.id).collect();
     assert_eq!(ids.len(), 5);
@@ -237,11 +232,11 @@ fn locate_at_answers_as_locate_at_every_position() {
     assert_eq!(ids[2..], ["a", "b", "c"].map(WidgetId::from_hash));
     let count = ids.len();
     for row in &cascade.resolved {
-        let want = found(cascade.locate(row.id));
+        let want = cascade.endpoint(row.id);
         assert!(want.is_some(), "{:?} recorded", row.id);
         for at in 0..=count {
             assert_eq!(
-                found(cascade.locate_at(row.id, at)),
+                cascade.endpoint_at(row.id, at),
                 want,
                 "{:?} at {at}",
                 row.id
@@ -250,6 +245,6 @@ fn locate_at_answers_as_locate_at_every_position() {
     }
     let missing = WidgetId::from_hash("missing");
     for at in 0..=count {
-        assert_eq!(found(cascade.locate_at(missing, at)), None, "at {at}");
+        assert_eq!(cascade.endpoint_at(missing, at), None, "at {at}");
     }
 }

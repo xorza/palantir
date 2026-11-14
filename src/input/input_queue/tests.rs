@@ -1,6 +1,7 @@
 use crate::input::input_queue::InputQueue;
 use crate::primitives::input::ime_preedit::ImePreedit;
 use crate::primitives::input::input_event::InputEvent;
+use crate::primitives::input::interaction::wheel_delta::WheelDelta;
 use crate::primitives::input::keyboard::key::Key;
 use crate::primitives::input::keyboard::key_text::KeyText;
 use crate::primitives::input::keyboard::modifiers::Modifiers;
@@ -41,7 +42,7 @@ fn admit(queue: &mut InputQueue, event: &InputEvent<'_>) -> bool {
         InputEvent::PointerPressed(button) | InputEvent::PointerReleased(button) => {
             queue.note_capture(button);
         }
-        InputEvent::ScrollPixels(_) | InputEvent::ScrollLines { .. } | InputEvent::Pinch(_) => {
+        InputEvent::Scroll(_) | InputEvent::Pinch(_) => {
             queue.note_delta();
         }
         InputEvent::KeyDown { key, text, .. } => queue.note_key(key, text),
@@ -159,7 +160,7 @@ fn a_frame_admits_only_events_that_keep_its_levels() {
         ),
         (
             "a modifier change after a scroll or pinch delta waits",
-            &[InputEvent::scroll_lines(Vec2::Y), shift_up],
+            &[InputEvent::Scroll(WheelDelta::notches(Vec2::Y)), shift_up],
             &[true, false],
         ),
         (
@@ -274,11 +275,28 @@ fn a_held_ime_event_keeps_its_own_text() {
     let held = queue.front().expect("held");
     assert_eq!(queue.text(held.text), "z");
     assert_eq!(queue.text.len(), 1, "the buffer restarted rather than grew");
+
+    // A stream that never empties the queue: each pop leaves the read text behind until it is
+    // half the buffer. "z" read with "ab" held: 1 read byte of 3 stays as "cd" joins; "ab" read
+    // too: 3 read bytes of 5 go as "ef" joins, "cd" rebased to the start.
+    queue.defer(InputEvent::ImeCommit("ab"), Duration::ZERO);
+    queue.pop_front();
+    queue.defer(InputEvent::ImeCommit("cd"), Duration::ZERO);
+    assert_eq!(queue.text, "zabcd", "1 read byte of 3 stays");
+    queue.pop_front();
+    queue.defer(InputEvent::ImeCommit("ef"), Duration::ZERO);
+    assert_eq!(queue.text, "cdef");
+    let held: Vec<_> = queue
+        .pending
+        .iter()
+        .map(|held| queue.text(held.text))
+        .collect();
+    assert_eq!(held, ["cd", "ef"]);
 }
 
-/// A move right behind a held move replaces it and a scroll delta right behind one of its kind
-/// adds to it, each taking the newer arrival time; any other pair holds both, so a move past a
-/// held press, or a line scroll after a pixel scroll, keeps its own place.
+/// A move right behind a held move replaces it and a scroll right behind a held scroll adds to it
+/// lane by lane, a pixel turn and a notched one alike, each taking the newer arrival time; any
+/// other pair holds both, so a move past a held press keeps its own place.
 #[test]
 fn held_moves_and_scroll_deltas_merge_into_their_neighbor() {
     let ms = Duration::from_millis;
@@ -290,22 +308,30 @@ fn held_moves_and_scroll_deltas_merge_into_their_neighbor() {
             ms(2 + i as u64),
         );
     }
-    queue.defer(InputEvent::ScrollPixels(Vec2::new(0.0, 3.0)), ms(5));
-    queue.defer(InputEvent::ScrollPixels(Vec2::new(1.0, 4.0)), ms(6));
     queue.defer(
-        InputEvent::ScrollLines {
+        InputEvent::Scroll(WheelDelta::pixels(Vec2::new(0.0, 3.0))),
+        ms(5),
+    );
+    queue.defer(
+        InputEvent::Scroll(WheelDelta::pixels(Vec2::new(1.0, 4.0))),
+        ms(6),
+    );
+    queue.defer(
+        InputEvent::Scroll(WheelDelta {
             notches: Vec2::new(0.0, 1.0),
             lines: Vec2::new(0.0, 3.0),
             pages: Vec2::ZERO,
-        },
+            ..WheelDelta::ZERO
+        }),
         ms(7),
     );
     queue.defer(
-        InputEvent::ScrollLines {
+        InputEvent::Scroll(WheelDelta {
             notches: Vec2::new(0.0, 2.0),
             lines: Vec2::new(0.0, 6.0),
             pages: Vec2::new(0.0, 1.0),
-        },
+            ..WheelDelta::ZERO
+        }),
         ms(7),
     );
     queue.defer(InputEvent::PointerMoved(Vec2::new(40.0, 5.0)), ms(8));
@@ -319,15 +345,15 @@ fn held_moves_and_scroll_deltas_merge_into_their_neighbor() {
             [
                 (InputEvent::PointerPressed(PointerButton::Left), ms(1)),
                 (InputEvent::PointerMoved(Vec2::new(30.0, 5.0)), ms(4)),
-                // 0 + 1 = 1 and 3 + 4 = 7.
-                (InputEvent::ScrollPixels(Vec2::new(1.0, 7.0)), ms(6)),
-                // Each lane adds on its own: 1 + 2, 3 + 6 and 0 + 1.
+                // Each lane adds on its own: pixels 0 + 1 = 1 and 3 + 4 = 7, notches 1 + 2,
+                // lines 3 + 6 and pages 0 + 1.
                 (
-                    InputEvent::ScrollLines {
+                    InputEvent::Scroll(WheelDelta {
+                        pixels: Vec2::new(1.0, 7.0),
                         notches: Vec2::new(0.0, 3.0),
                         lines: Vec2::new(0.0, 9.0),
                         pages: Vec2::new(0.0, 1.0),
-                    },
+                    }),
                     ms(7)
                 ),
                 (InputEvent::PointerMoved(Vec2::new(40.0, 5.0)), ms(8)),

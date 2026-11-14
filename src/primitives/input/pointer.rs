@@ -1,5 +1,6 @@
 //! Raw pointer vocabulary: [`PointerButton`] and the [`PointerEvent`] stream watchers read.
 
+use crate::primitives::input::interaction::wheel_delta::WheelDelta;
 use crate::primitives::input::zoom_factor::ZoomFactor;
 use glam::Vec2;
 
@@ -66,14 +67,8 @@ pub enum PointerEvent {
     Scroll {
         /// Cursor position, logical px.
         pos: Vec2,
-        /// Pixel-precise delta, as touchpads report it.
-        pixels: Vec2,
-        /// Notched delta in lines, under the system's scroll setting.
-        lines: Vec2,
-        /// How far a notched wheel turned, whatever that setting makes of it.
-        notches: Vec2,
-        /// Notched delta in pages, where that setting is a page per notch.
-        pages: Vec2,
+        /// The turn.
+        delta: WheelDelta,
     },
     /// Pinch-zoom; gated on [`PointerWake::PINCH`](crate::primitives::input::watch::PointerWake::PINCH).
     Pinch {

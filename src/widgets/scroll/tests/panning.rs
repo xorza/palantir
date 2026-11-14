@@ -6,6 +6,7 @@ use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::input_event::InputEvent;
+use crate::primitives::input::interaction::wheel_delta::WheelDelta;
 use crate::primitives::input::keyboard::key::Key;
 use crate::primitives::input::pointer::PointerButton;
 use crate::primitives::input::scroll_targets::ScrollTargets;
@@ -56,7 +57,9 @@ fn wheel_delta_advances_offset_with_clamp() {
         // Checked aim: a missed wheel would also leave the non-overflowing rows at zero.
         h.hover(WidgetId::from_hash("scroll"));
         for wheel_y in *pushes {
-            h.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, *wheel_y)));
+            h.on_input(InputEvent::Scroll(WheelDelta::pixels(Vec2::new(
+                0.0, *wheel_y,
+            ))));
             h.frame(|ui| build(ui, *viewport_h, *content_h));
         }
 
@@ -84,11 +87,15 @@ fn content_margin_allows_negative_pan_into_left_top_band() {
     h.frame(build_m);
     h.hover(Vec2::new(50.0, 50.0));
     // Pan left/up: a large negative delta clamps at `-m` on both axes.
-    h.on_input(InputEvent::ScrollPixels(Vec2::new(-9_999.0, -9_999.0)));
+    h.on_input(InputEvent::Scroll(WheelDelta::pixels(Vec2::new(
+        -9_999.0, -9_999.0,
+    ))));
     h.frame(build_m);
     assert_eq!(read_state(&h).offset(), Vec2::new(-m, -m));
     // Pan back: clamp at `raw_slack + m` = (400 - 200) + 100 = 300.
-    h.on_input(InputEvent::ScrollPixels(Vec2::new(9_999.0, 9_999.0)));
+    h.on_input(InputEvent::Scroll(WheelDelta::pixels(Vec2::new(
+        9_999.0, 9_999.0,
+    ))));
     h.frame(build_m);
     let raw_slack = 400.0 - 200.0;
     assert_eq!(
@@ -368,14 +375,18 @@ fn content_margin_does_not_shift_content_that_fits() {
     // The margin still opens its band: the user can pan into it and back out to
     // rest.
     h.hover(Vec2::new(50.0, 50.0));
-    h.on_input(InputEvent::ScrollPixels(Vec2::new(-9_999.0, -9_999.0)));
+    h.on_input(InputEvent::Scroll(WheelDelta::pixels(Vec2::new(
+        -9_999.0, -9_999.0,
+    ))));
     h.frame(build);
     assert_eq!(
         read_state(&h).offset(),
         Vec2::new(-m, -m),
         "the leading band is still reachable for content that fits",
     );
-    h.on_input(InputEvent::ScrollPixels(Vec2::new(9_999.0, 9_999.0)));
+    h.on_input(InputEvent::Scroll(WheelDelta::pixels(Vec2::new(
+        9_999.0, 9_999.0,
+    ))));
     h.frame(build);
     assert_eq!(
         read_state(&h).offset(),
@@ -424,7 +435,7 @@ fn pan_by_composes_with_a_wheel_and_with_itself() {
     h.frame(|ui| driven(ui, 200.0, 800.0, Vec2::ZERO));
     h.hover(Vec2::new(50.0, 50.0));
 
-    h.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 30.0)));
+    h.on_input(InputEvent::Scroll(WheelDelta::pixels(Vec2::new(0.0, 30.0))));
     h.frame(|ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))

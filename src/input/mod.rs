@@ -17,9 +17,9 @@ pub(crate) mod scope;
 pub(crate) mod target_scroll_delta;
 pub(crate) mod watches;
 
-use crate::cascade::{TabDirection, TabDomain, WidgetLocation};
+use crate::cascade::{TabDirection, TabDomain};
 use crate::input::arranged::Arranged;
-use crate::input::capture::{PressDrag, ReleaseKind};
+use crate::input::capture::ReleaseKind;
 use crate::input::event_outcome::EventOutcome;
 use crate::input::focus::{Focus, FocusCause, FocusEntry};
 use crate::input::ime::Ime;
@@ -33,14 +33,11 @@ use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::ime_preedit::ImePreedit;
 use crate::primitives::input::input_event::InputEvent;
-use crate::primitives::input::interaction::drag::Drag;
 use crate::primitives::input::interaction::input_delta::InputDelta;
 use crate::primitives::input::interaction::pointer_action::PointerAction;
-use crate::primitives::input::interaction::pointer_button_phase::PointerButtonPhase;
-use crate::primitives::input::interaction::pointer_button_state::PointerButtonState;
-use crate::primitives::input::interaction::pointer_edge::PointerEdge;
 use crate::primitives::input::interaction::response::Response;
 use crate::primitives::input::interaction::scroll_delta::ScrollDelta;
+use crate::primitives::input::interaction::wheel_delta::WheelDelta;
 use crate::primitives::input::key_class::KeyClass;
 use crate::primitives::input::keyboard::key::Key;
 use crate::primitives::input::keyboard::key_press::KeyPress;
@@ -93,7 +90,7 @@ pub(crate) struct Input {
     signal_since_last_frame: InputSignal,
     /// Wake-gate watches, cleared as a frame's first pass opens. The masks persist across silent
     /// frames so a dormant popup is paged in by the next click.
-    subs: Watches,
+    watches: Watches,
     queue: InputQueue,
 }
 
@@ -119,14 +116,14 @@ impl Input {
             input_policy: InputPolicy::default(),
             frame_had_action: false,
             signal_since_last_frame: InputSignal::default(),
-            subs: Watches::default(),
+            watches: Watches::default(),
             queue: InputQueue::default(),
         }
     }
 
     /// Drop last frame's watches.
     pub(crate) fn clear_watches(&mut self) {
-        self.subs.clear();
+        self.watches.clear();
     }
 
     /// Start a record pass: resolve this pass's scope path once, take focus keys, and note whether
@@ -190,7 +187,7 @@ impl Input {
                     .scopes
                     .path_takes_within(KeyClass::Caret, group.id, cascade);
                 (!claimed).then_some(Traversal {
-                    domain: TabDomain::Group(group.id),
+                    domain: TabDomain::Within(group.id),
                     direction,
                 })
             }
@@ -214,7 +211,7 @@ impl Input {
     }
 
     /// The composition, while the widget it arrived for still holds focus; a move this frame hides
-    /// it, and [`Self::end_frame`] retires it.
+    /// it, and [`Self::settle`] retires it.
     pub(crate) fn ime_preedit(&self) -> Option<ImePreedit<'_>> {
         self.ime.shown_to(self.focus.focused())
     }
@@ -253,10 +250,10 @@ impl Input {
         self.pointer.pos
     }
 
-    /// The widget the pointer hovers, under every button's capture ([`Pointer::hover_target`]).
+    /// The widget the pointer hovers, under every button's capture ([`Pointer::hovered`]).
     #[inline]
     pub(crate) fn hovered(&self) -> Option<WidgetId> {
-        self.pointer.hover_target()
+        self.pointer.hovered()
     }
 
     #[inline]
@@ -324,18 +321,18 @@ impl Input {
     }
 
     pub(crate) const fn watch_pointer(&mut self, flags: PointerWake) {
-        self.subs.pointer_mask.insert(flags);
+        self.watches.pointer_mask.insert(flags);
     }
 
     /// Declare interest in off-focus keyboard categories, as
     /// [`Ui::keyboard_events`](crate::Ui::keyboard_events) does.
     #[inline]
     pub(crate) const fn watch_keyboard(&mut self, flags: KeyboardWake) {
-        self.subs.keyboard_mask.insert(flags);
+        self.watches.keyboard_mask.insert(flags);
     }
 
     pub(crate) fn watch_shortcut(&mut self, shortcut: Shortcut) {
-        self.subs.watch_shortcut(shortcut);
+        self.watches.watch_shortcut(shortcut);
     }
 
     /// The raw keyboard stream as seen from `reader`'s plane; plane-gated only, to keep arrival
@@ -365,14 +362,14 @@ impl Input {
 
     /// Whether `shortcut` was pressed and granted to the scope `reader`'s parent sits in.
     pub(crate) fn shortcut_pressed_at(&mut self, reader: KeyReader, shortcut: Shortcut) -> bool {
-        self.subs.watch_shortcut(shortcut);
+        self.watches.watch_shortcut(shortcut);
         self.granted_press(reader, |press| shortcut.matches(press))
     }
 
     /// Whether `key` was pressed, whatever the modifiers, and granted to the scope `reader`'s
     /// parent sits in.
     pub(crate) fn key_pressed_at(&mut self, reader: KeyReader, key: Key) -> bool {
-        self.subs.watch_key(key);
+        self.watches.watch_key(key);
         self.granted_press(reader, |press| press.key.same_key(key))
     }
 
@@ -398,13 +395,13 @@ impl Input {
     /// Whether `key` is down now, whatever the modifiers. A fact of the keyboard, as the
     /// modifiers are, so not routed.
     pub(crate) fn key_held(&mut self, key: Key) -> bool {
-        self.subs.watch_key(key);
+        self.watches.watch_key(key);
         self.keyboard.is_held(key)
     }
 
     /// Whether `key` came up this frame, or was held when the surface lost the keyboard.
     pub(crate) fn key_released(&mut self, key: Key) -> bool {
-        self.subs.watch_key(key);
+        self.watches.watch_key(key);
         self.keyboard.was_released(key)
     }
 
@@ -418,32 +415,13 @@ impl Input {
         let cascade = &self.arranged.cascade;
         let disabled = move |id| {
             cascade
-                .locate(id)
-                .is_some_and(|loc| cascade.entry(loc).disabled)
+                .endpoint(id)
+                .is_some_and(|at| cascade.entry(at).disabled)
         };
         PointerButton::ALL.into_iter().flat_map(move |button| {
-            let cap = self.pointer.capture(button);
-            let of = move |id, edge| PointerAction { id, button, edge };
-            let press = cap.press.as_ref();
-            let pressed = press
-                .filter(|press| press.fresh)
-                .map(|press| of(press.target, PointerEdge::Pressed { count: press.count }));
-            let dragging = press
-                .filter(|press| press.drag == PressDrag::Started)
-                .map(|press| of(press.target, PointerEdge::DragStarted));
-            // A release destroys the press and `InputQueue` holds a new press for the next frame,
-            // so never both.
-            let ended = cap.release.as_ref().and_then(|release| {
-                let edge = match release.kind.click() {
-                    Some(count) => PointerEdge::Clicked { count },
-                    None if release.kind.ended_drag() => PointerEdge::DragStopped,
-                    None => return None,
-                };
-                Some(of(release.target, edge))
-            });
-            [pressed, dragging, ended]
-                .into_iter()
-                .flatten()
+            self.pointer
+                .capture(button)
+                .edges(button)
                 .filter(move |action| !disabled(action.id))
         })
     }
@@ -457,7 +435,7 @@ impl Input {
         pos: Option<Vec2>,
         make: impl FnOnce(Vec2) -> PointerEvent,
     ) -> bool {
-        if !self.subs.pointer_mask.contains(sense) {
+        if !self.watches.pointer_mask.contains(sense) {
             return false;
         }
         if let Some(pos) = pos {
@@ -468,7 +446,7 @@ impl Input {
 
     /// Push `Leave`, which belongs to no single watch class and carries no position.
     fn push_unclassed(&mut self, event: PointerEvent) -> bool {
-        if self.subs.pointer_mask.is_empty() {
+        if self.watches.pointer_mask.is_empty() {
             return false;
         }
         self.pointer.events.push(event);
@@ -477,33 +455,27 @@ impl Input {
 
     /// Accumulate one scroll delta on the current targets and wake watchers. Each unit
     /// travels in its own lane (see [`ScrollDelta`]).
-    fn on_scroll(&mut self, lanes: ScrollDelta) -> EventOutcome {
+    fn on_scroll(&mut self, wheel: WheelDelta) -> EventOutcome {
         let mut delivered = false;
         for share in self
             .pointer
             .scroll_targets
-            .route(lanes)
+            .route(wheel)
             .into_iter()
             .flatten()
         {
             let delta = self.pointer.delta_mut(share.target);
-            delta.pixels += share.delta.pixels;
-            delta.lines += share.delta.lines;
-            delta.notches += share.delta.notches;
-            delta.pages += share.delta.pages;
+            delta.wheel += share.delta;
             delivered = true;
         }
-        let subbed = self.push_positioned(PointerWake::SCROLL, |pos| PointerEvent::Scroll {
+        let watched = self.push_positioned(PointerWake::SCROLL, |pos| PointerEvent::Scroll {
             pos,
-            pixels: lanes.pixels,
-            lines: lanes.lines,
-            notches: lanes.notches,
-            pages: lanes.pages,
+            delta: wheel,
         });
-        if delivered || subbed {
+        if delivered || watched {
             self.queue.note_delta();
         }
-        EventOutcome::repaint(delivered || subbed)
+        EventOutcome::repaint(delivered || watched)
     }
 
     /// Push for position-routed events (scroll, pinch); they wake only with a pointer on the
@@ -530,8 +502,11 @@ impl Input {
         if !event.is_valid() {
             return InputDelta::default();
         }
-        if self.queue.is_empty() && self.ready(&event) {
-            return self.apply(event, double_click, now);
+        if self.queue.is_empty() {
+            if self.ready(&event) {
+                return self.apply(event, double_click, now);
+            }
+            self.wait_out_lost_release(&event);
         }
         if self.queue.is_full() {
             while let Some(held) = self.queue.front() {
@@ -549,14 +524,40 @@ impl Input {
         }
     }
 
-    /// Before a flush applies `event` unready ([`InputQueue::is_full`]): a press of a button still
-    /// held cuts its gesture off, as [`Self::ready`] does, though the cut and the press then share
-    /// a frame.
+    /// Before a flush applies `event` unready ([`InputQueue::is_full`]): a press after a lost
+    /// release cuts its gesture off, as [`Self::wait_out_lost_release`] does, though the cut and
+    /// the press then share a frame, so the cut notes no edge of its own.
     fn cut_held_press(&mut self, event: &InputEvent<'_>) {
-        if let InputEvent::PointerPressed(button) = *event
-            && self.pointer.capture(button).press.is_some()
-        {
+        if let Some(button) = self.lost_release(event) {
             self.pointer.capture_mut(button).abandon_press();
+        }
+    }
+
+    /// The button whose release `event` shows was lost: a press of a button still held.
+    const fn lost_release(&self, event: &InputEvent<'_>) -> Option<PointerButton> {
+        match *event {
+            InputEvent::PointerPressed(button) if self.pointer.capture(button).is_pressed() => {
+                Some(button)
+            }
+            _ => None,
+        }
+    }
+
+    /// End `button`'s held press as a cut-off gesture, not as a release that hit-tests a click
+    /// nobody made; its end is an edge of the frame it lands in.
+    fn cut_gesture(&mut self, button: PointerButton) {
+        self.pointer.capture_mut(button).abandon_press();
+        self.queue.note_capture(button);
+    }
+
+    /// Where `event`, which [`Self::ready`] refused, shows a lost release: cut that gesture now,
+    /// so the frame the press waits for sees its end first.
+    fn wait_out_lost_release(&mut self, event: &InputEvent<'_>) {
+        if self.queue.admits(event)
+            && let Some(button) = self.lost_release(event)
+        {
+            self.cut_gesture(button);
+            self.signal_since_last_frame.raise(InputSignal::Repaint);
         }
     }
 
@@ -573,37 +574,26 @@ impl Input {
         self.held_text = text;
     }
 
-    /// Whether `event` applies this frame (see [`InputQueue`]). A press of a button still held
-    /// means its release was lost: the capture ends as a cut-off gesture, not as a release that
-    /// hit-tests a click nobody made, and the press waits a frame so that end is seen.
-    fn ready(&mut self, event: &InputEvent<'_>) -> bool {
-        if !self.queue.admits(event) {
-            return false;
-        }
-        if let InputEvent::PointerPressed(button) = *event
-            && self.pointer.capture(button).press.is_some()
-        {
-            self.pointer.capture_mut(button).abandon_press();
-            self.queue.note_capture(button);
-            self.signal_since_last_frame.raise(InputSignal::Repaint);
-            return false;
-        }
-        true
+    /// Whether `event` applies this frame (see [`InputQueue`]): the queue admits it, and it is no
+    /// press after a lost release, which waits a frame so its gesture's end is seen.
+    fn ready(&self, event: &InputEvent<'_>) -> bool {
+        self.queue.admits(event) && self.lost_release(event).is_none()
     }
 
-    /// End the frame for input: forget what it changed and apply held events. Returns whether input
-    /// owes the next frame.
-    pub(crate) fn next_frame(&mut self, double_click: Duration) -> bool {
+    /// Admit the events the queue held for the frame starting now, a frame's worth, in order.
+    /// Returns whether input owes the next frame.
+    pub(crate) fn admit_held(&mut self, double_click: Duration) -> bool {
         self.queue.next_frame();
-        // An eviction's release edge (see `end_frame`) belongs to the frame starting now, so that
+        // An eviction's release edge (see `settle`) belongs to the frame starting now, so that
         // button's next change waits a frame, as after any release.
         for button in PointerButton::ALL {
-            if self.pointer.capture(button).release.is_some() {
+            if self.pointer.capture(button).has_edge() {
                 self.queue.note_capture(button);
             }
         }
         while let Some(held) = self.queue.front() {
             if !self.ready(&held.event) {
+                self.wait_out_lost_release(&held.event);
                 break;
             }
             self.queue.pop_front();
@@ -628,20 +618,7 @@ impl Input {
             InputEvent::PointerLeft => self.on_pointer_left(),
             InputEvent::PointerPressed(btn) => self.on_pointer_pressed(btn, double_click, now),
             InputEvent::PointerReleased(btn) => self.on_pointer_released(btn),
-            InputEvent::ScrollPixels(pixels) => self.on_scroll(ScrollDelta {
-                pixels,
-                ..ScrollDelta::NONE
-            }),
-            InputEvent::ScrollLines {
-                notches,
-                lines,
-                pages,
-            } => self.on_scroll(ScrollDelta {
-                lines,
-                notches,
-                pages,
-                ..ScrollDelta::NONE
-            }),
+            InputEvent::Scroll(wheel) => self.on_scroll(wheel),
             InputEvent::Pinch(factor) => self.on_pinch(factor),
             InputEvent::KeyDown {
                 key,
@@ -664,12 +641,12 @@ impl Input {
                 if !self.keyboard.release(key) {
                     return InputDelta::default();
                 }
-                EventOutcome::repaint(self.subs.watches_key(key))
+                EventOutcome::repaint(self.watches.watches_key(key))
             }
             InputEvent::SurfaceFocusLost => self.on_surface_focus_lost(),
             InputEvent::ModifiersChanged(m) => {
                 self.keyboard.modifiers = m;
-                EventOutcome::repaint(self.subs.keyboard_mask.contains(KeyboardWake::MODIFIER))
+                EventOutcome::repaint(self.watches.keyboard_mask.contains(KeyboardWake::MODIFIER))
             }
         };
         if outcome.repaint {
@@ -682,31 +659,31 @@ impl Input {
     }
 
     fn on_pointer_moved(&mut self, p: Vec2) -> EventOutcome {
-        let prev_hover = self.pointer.hovered;
+        let prev_hover = self.pointer.under_pointer;
         let prev_scroll = self.pointer.scroll_targets;
         let prev_pinch = self.pointer.pinch_target;
         let latched = self.pointer.move_to(p);
         self.refresh_pointer_targets();
-        let move_subbed = self.push_pointer_event(PointerWake::MOVE, Some(p), PointerEvent::Moved);
+        let move_watched = self.push_pointer_event(PointerWake::MOVE, Some(p), PointerEvent::Moved);
         EventOutcome {
-            repaint: self.pointer.hovered != prev_hover
+            repaint: self.pointer.under_pointer != prev_hover
                 || self.pointer.scroll_targets != prev_scroll
                 || self.pointer.pinch_target != prev_pinch
                 || self.pointer.any_press()
-                || move_subbed,
+                || move_watched,
             settles: latched,
         }
     }
 
     fn on_pointer_left(&mut self) -> EventOutcome {
-        let observable = self.pointer.hovered.is_some()
+        let observable = self.pointer.under_pointer.is_some()
             || self.pointer.scroll_targets.any()
             || self.pointer.pinch_target.is_some()
             || self.pointer.any_press();
         self.pointer.pos = None;
         self.refresh_pointer_targets();
-        let pointer_subbed = self.push_unclassed(PointerEvent::Left);
-        EventOutcome::repaint(observable || pointer_subbed)
+        let pointer_watched = self.push_unclassed(PointerEvent::Left);
+        EventOutcome::repaint(observable || pointer_watched)
     }
 
     fn on_pointer_pressed(
@@ -718,18 +695,18 @@ impl Input {
         let pointer_pos = self.pointer.pos;
         let targets = pointer_pos.map(|p| self.arranged.cascade.hit_test_press(p));
         let hit = targets.and_then(|t| t.click);
-        let buttons_subbed = self.push_pointer_event(PointerWake::BUTTONS, pointer_pos, |pos| {
+        let buttons_watched = self.push_pointer_event(PointerWake::BUTTONS, pointer_pos, |pos| {
             PointerEvent::Pressed { pos, button: btn }
         });
         // Any press breaks every other button's multi-click run.
         for (idx, cap) in self.pointer.captures.iter_mut().enumerate() {
             if idx != btn.idx() {
-                cap.run = None;
+                cap.break_run();
             }
         }
         let cap = self.pointer.capture_mut(btn);
         debug_assert!(
-            cap.press.is_none(),
+            !cap.is_pressed(),
             "a press of a held button ends the lost capture before it applies",
         );
         match hit.zip(pointer_pos) {
@@ -737,7 +714,7 @@ impl Input {
                 cap.begin_press(target, pos, now, double_click);
                 self.queue.note_capture(btn);
             }
-            None => cap.run = None,
+            None => cap.break_run(),
         }
         // Focus updates on the left button only, via a separate hit test (focusability is
         // independent of clickability).
@@ -752,43 +729,31 @@ impl Input {
         }
         // A press on inert surface is a no-op, so `OnDelta` stays on the paint-anim path.
         EventOutcome {
-            repaint: hit.is_some() || self.focus.focused() != prev_focus || buttons_subbed,
-            settles: buttons_subbed,
+            repaint: hit.is_some() || self.focus.focused() != prev_focus || buttons_watched,
+            settles: buttons_watched,
         }
     }
 
     fn on_pointer_released(&mut self, btn: PointerButton) -> EventOutcome {
         let pointer_pos = self.pointer.pos;
-        let was_captured = self.pointer.capture(btn).press.is_some();
+        let was_captured = self.pointer.capture(btn).is_pressed();
         if was_captured {
             self.queue.note_capture(btn);
         }
-        let cap = self.pointer.capture_mut(btn);
+        let cascade = &self.arranged.cascade;
+        let kind = self
+            .pointer
+            .capture_mut(btn)
+            .release_on(|| cascade.hit_test_press(pointer_pos?).click);
         // A `Miss` tears down a capture only one widget reads, which the settle rule
         // excludes; `Click` and `DragStopped` are edges apps act on, so they settle.
-        let mut settles = false;
-        cap.end_press(|press| {
-            // A latched drag ending is its own edge; otherwise a release back on the widget
-            // is a click carrying its press's run number.
-            let kind = if press.drag == PressDrag::None {
-                let hit = pointer_pos.and_then(|p| self.arranged.cascade.hit_test_press(p).click);
-                if hit == Some(press.target) {
-                    ReleaseKind::Click { count: press.count }
-                } else {
-                    ReleaseKind::Miss
-                }
-            } else {
-                ReleaseKind::DragStopped
-            };
-            settles = !matches!(kind, ReleaseKind::Miss);
-            kind
-        });
-        let buttons_subbed = self.push_pointer_event(PointerWake::BUTTONS, pointer_pos, |pos| {
+        let settles = kind.is_some_and(|kind| kind != ReleaseKind::Miss);
+        let buttons_watched = self.push_pointer_event(PointerWake::BUTTONS, pointer_pos, |pos| {
             PointerEvent::Released { pos, button: btn }
         });
         EventOutcome {
-            repaint: was_captured || buttons_subbed,
-            settles: settles || buttons_subbed,
+            repaint: was_captured || buttons_watched,
+            settles: settles || buttons_watched,
         }
     }
 
@@ -798,14 +763,14 @@ impl Input {
             let delta = self.pointer.delta_mut(target);
             delta.zoom = delta.zoom.combine(factor);
         }
-        let subbed = self.push_positioned(PointerWake::PINCH, |pos| PointerEvent::Pinch {
+        let watched = self.push_positioned(PointerWake::PINCH, |pos| PointerEvent::Pinch {
             pos,
             factor,
         });
-        if target.is_some() || subbed {
+        if target.is_some() || watched {
             self.queue.note_delta();
         }
-        EventOutcome::repaint(target.is_some() || subbed)
+        EventOutcome::repaint(target.is_some() || watched)
     }
 
     fn on_key_down(&mut self, kp: KeyPress) -> EventOutcome {
@@ -826,8 +791,8 @@ impl Input {
             kp.class() == KeyClass::Focus && !self.arranged.cascade.tab_stops.is_empty();
         let observable = (self.focus.focused().is_some() && !bare_modifier)
             || traverses
-            || self.subs.matches_press(kp)
-            || self.subs.keyboard_mask.contains(KeyboardWake::KEY);
+            || self.watches.matches_press(kp)
+            || self.watches.keyboard_mask.contains(KeyboardWake::KEY);
         if observable {
             self.keyboard.presses.push(kp);
             self.queue.note_key(key, text);
@@ -856,12 +821,11 @@ impl Input {
                 .keyboard
                 .held
                 .iter()
-                .any(|held| self.subs.watches_key(held.key));
+                .any(|held| self.watches.watches_key(held.key));
         self.keyboard.lose_surface();
         for button in PointerButton::ALL {
-            if self.pointer.capture(button).press.is_some() {
-                self.pointer.capture_mut(button).abandon_press();
-                self.queue.note_capture(button);
+            if self.pointer.capture(button).is_pressed() {
+                self.cut_gesture(button);
             }
         }
         // The input method's composition belongs to the surface that had the keyboard.
@@ -875,9 +839,9 @@ impl Input {
         mem::take(&mut self.frame_had_action)
     }
 
-    /// Drain the per-frame input queues without touching cascade-dependent state.
-    /// A second pass needs empty queues so clicks do not double-fire.
-    pub(crate) fn drain_per_frame_queues(&mut self) {
+    /// Clear this frame's edges and signals without touching cascade-dependent state, so a
+    /// second pass sees no click fire twice.
+    pub(crate) fn clear_edges(&mut self) {
         self.pointer.end_frame();
         self.keyboard.end_frame();
         self.signal_since_last_frame = InputSignal::None;
@@ -893,8 +857,8 @@ impl Input {
 
     /// Once-per-frame close-out after the final record pass: recompute hover, drop transient flags,
     /// evict captured widgets that left the tree.
-    pub(crate) fn end_frame(&mut self) {
-        self.drain_per_frame_queues();
+    pub(crate) fn settle(&mut self) {
+        self.clear_edges();
         self.scopes.end_frame();
         // `modifiers` persists: a held shift must stay `true` across frames.
         //
@@ -903,8 +867,8 @@ impl Input {
         // `DragValue`.
         for cap in &mut self.pointer.captures {
             let vanished = cap
-                .press
-                .is_some_and(|press| !self.arranged.cascade.contains(press.target));
+                .pressed_on()
+                .is_some_and(|target| !self.arranged.cascade.contains(target));
             if vanished {
                 cap.abandon_press();
                 // The release edge belongs to the next frame; raise the signal so it records
@@ -952,7 +916,7 @@ impl Input {
     fn snapshot_frame_quiescent(&mut self) {
         debug_assert!(
             self.pointer.pos.is_some()
-                || (self.pointer.hovered.is_none()
+                || (self.pointer.under_pointer.is_none()
                     && !self.pointer.scroll_targets.any()
                     && self.pointer.pinch_target.is_none()),
             "a routed target outlived the pointer, so `pointer_pos.is_none()` \
@@ -964,15 +928,17 @@ impl Input {
                 .pointer
                 .captures
                 .iter()
-                .all(|c| c.press.is_none() && c.release.is_none());
+                .all(|c| !c.is_pressed() && !c.has_edge());
     }
 
-    /// `id`'s response, at `loc`, where the arranged frame holds it.
-    pub(crate) fn response(&self, id: WidgetId, loc: Option<WidgetLocation>) -> Response {
+    /// `id`'s response, where the arranged frame holds it, which the reading pass resolved at
+    /// `resolved_at` ([`Cascade::endpoint_at`](crate::cascade::Cascade::endpoint_at)).
+    pub(crate) fn response(&self, id: WidgetId, resolved_at: usize) -> Response {
+        let at = self.arranged.cascade.endpoint_at(id, resolved_at);
         // Geometry half, needed every frame. `entries` is AoS so the fields share a cache line.
-        let entry = loc.map(|l| *self.arranged.cascade.entry(l));
+        let entry = at.map(|at| *self.arranged.cascade.entry(at));
         let rect = entry.map(|e| e.rect);
-        let layout_rect = loc.map(|l| self.arranged.layout.arranged_rect(l.endpoint));
+        let layout_rect = at.map(|at| self.arranged.layout.arranged_rect(at));
         let transform = entry.map_or(TranslateScale::IDENTITY, |e| e.transform);
         // Cascade flattens parent-disabled into each entry: effective ancestor-or-self disabled,
         // one frame stale.
@@ -995,47 +961,11 @@ impl Input {
             return state;
         }
 
-        state.pointer_over = self.pointer.hover_target() == Some(id);
+        state.pointer_over = self.pointer.hovered() == Some(id);
 
-        // One slice per button, each with its own drag. A live press is `Down` (fresh) or
-        // `Held`; otherwise a release edge is `Up`.
+        // One slice per button, each with its own drag.
         for btn in PointerButton::ALL {
-            let cap = self.pointer.capture(btn);
-            let phase = match &cap.press {
-                Some(press) if press.target == id => {
-                    if press.fresh {
-                        PointerButtonPhase::Down { count: press.count }
-                    } else {
-                        PointerButtonPhase::Held
-                    }
-                }
-                _ => match &cap.release {
-                    Some(release) if release.target == id => PointerButtonPhase::Up {
-                        click: release.kind.click(),
-                    },
-                    _ => PointerButtonPhase::Idle,
-                },
-            };
-            // A threshold-crossed press overrides the stale stop edge. Read off the press,
-            // not the live pointer, so it agrees with `pointer_actions`: leaving the window
-            // mid-drag does not end the gesture.
-            let drag = match &cap.press {
-                Some(press) if press.target == id && press.drag != PressDrag::None => {
-                    let delta = transform.inverse_vector(press.travel);
-                    if press.drag == PressDrag::Started {
-                        Drag::Started { delta }
-                    } else {
-                        Drag::Active { delta }
-                    }
-                }
-                _ => match &cap.release {
-                    Some(release) if release.target == id && release.kind.ended_drag() => {
-                        Drag::Stopped
-                    }
-                    _ => Drag::None,
-                },
-            };
-            *state.button_mut(btn) = PointerButtonState::new(phase, drag);
+            *state.button_mut(btn) = self.pointer.capture(btn).button_state(id, transform);
         }
 
         state.scroll = self.scroll_delta_for(id);

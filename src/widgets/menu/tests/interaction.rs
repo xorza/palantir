@@ -153,8 +153,8 @@ fn menu_body_width_does_not_span_surface() {
     let rect = h
         .ui()
         .cascade()
-        .locate(body_id)
-        .map(|l| h.ui().cascade().entry(l).rect)
+        .endpoint(body_id)
+        .map(|at| h.ui().cascade().entry(at).rect)
         .expect("menu body recorded");
     // The rows are narrower than the theme's floor, so the body sits at
     // it: hugging, not spanning the 400 px surface.

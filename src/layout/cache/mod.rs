@@ -66,7 +66,7 @@ pub(super) struct CachedContainerText<'a> {
 /// A subtree's arrange as last frame captured it: each node's rect and its
 /// slot origin in its parent's inner box.
 #[derive(Debug)]
-pub(super) struct Arranged<'a> {
+pub(super) struct ArrangedRows<'a> {
     pub(super) rects: &'a [Rect],
     pub(super) locals: &'a [Vec2],
 }
@@ -119,9 +119,9 @@ impl MeasureCache {
 
     /// Last frame's arrange of a subtree of `len` nodes whose capture starts
     /// at `base`.
-    pub(super) fn arranged(&self, base: usize, len: usize) -> Arranged<'_> {
+    pub(super) fn arranged(&self, base: usize, len: usize) -> ArrangedRows<'_> {
         let nodes = base..base + len;
-        Arranged {
+        ArrangedRows {
             rects: &self.prev.nodes.rect[nodes.clone()],
             locals: &self.prev.nodes.local[nodes],
         }

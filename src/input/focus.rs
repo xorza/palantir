@@ -1,7 +1,7 @@
 //! Keyboard focus: who holds it, whether the keyboard put it there, and where it returns as an
 //! overlay closes.
 
-use crate::cascade::Cascade;
+use crate::cascade::{Cascade, TabDomain};
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::tab_end::TabEnd;
 
@@ -114,7 +114,7 @@ impl Focus {
         }
         self.modal_root = modal_root;
         if let Some(FocusEntry { within, end }) = self.entry.take()
-            && let Some(stop) = cascade.tab_stop_within(within, end)
+            && let Some(stop) = cascade.tab_stop_at(TabDomain::Within(within), end)
         {
             self.enter(within, self.focused, cascade);
             self.focused = Some(stop);

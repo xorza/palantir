@@ -164,27 +164,30 @@ fn scroll_routes_to_whatever_the_pointer_moved_over() {
 
     harness.scroll_lines(INSIDE, Vec2::new(0.0, 3.0));
     let hit = harness.response_in(scroller, build);
-    assert_eq!(hit.scroll.lines.y, 3.0, "the hovered widget got the delta");
+    assert_eq!(
+        hit.scroll.wheel.lines.y, 3.0,
+        "the hovered widget got the delta"
+    );
 
     harness.scroll_lines(OUTSIDE, Vec2::new(0.0, 3.0));
     let missed = harness.response_in(scroller, build);
     assert_eq!(
-        missed.scroll.lines.y, 0.0,
+        missed.scroll.wheel.lines.y, 0.0,
         "a scroll over bare surface reaches nobody",
     );
 
     // The raw event aims at wherever the pointer was left, still OUTSIDE; only a hover re-aims it.
-    harness.on_input(InputEvent::scroll_lines(Vec2::new(0.0, 3.0)));
+    harness.on_input(InputEvent::Scroll(WheelDelta::notches(Vec2::new(0.0, 3.0))));
     assert_eq!(
-        harness.response_in(scroller, build).scroll.lines.y,
+        harness.response_in(scroller, build).scroll.wheel.lines.y,
         0.0,
         "a bare scroll inherits the last position, it does not re-aim",
     );
 
     harness.hover(INSIDE);
-    harness.on_input(InputEvent::scroll_lines(Vec2::new(0.0, 3.0)));
+    harness.on_input(InputEvent::Scroll(WheelDelta::notches(Vec2::new(0.0, 3.0))));
     assert_eq!(
-        harness.response_in(scroller, build).scroll.lines.y,
+        harness.response_in(scroller, build).scroll.wheel.lines.y,
         3.0,
         "…and lands once the pointer is moved onto the target",
     );

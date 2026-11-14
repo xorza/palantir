@@ -9,7 +9,7 @@
 
 use crate::common::span::Span;
 use crate::layout::axis_slot::NodeSlot;
-use crate::layout::cache::Arranged;
+use crate::layout::cache::ArrangedRows;
 use crate::layout::cache::measure_snapshot::SubtreeKey;
 use crate::layout::drivers::grid::grid_ctx::GridCtx;
 use crate::layout::drivers::stack::stack_scratch::StackScratch;
@@ -343,7 +343,7 @@ impl LayoutPass<'_> {
         let start = node.idx();
         let end = tree.subtree_end_of(start);
         let engine = &mut *self.engine;
-        let Arranged { rects, locals } = engine.cache.arranged(base.idx(), end - start);
+        let ArrangedRows { rects, locals } = engine.cache.arranged(base.idx(), end - start);
         if rects[0].size != rendered.size {
             return false;
         }

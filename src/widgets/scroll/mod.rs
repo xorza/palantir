@@ -374,7 +374,7 @@ impl<'a> Scroll<'a> {
         let pan_raw = scroll.pan(line_px, viewport);
         // A theme with no line metric contributes no notches.
         let notches_per_px = domain::share_of(1.0, line_px);
-        let notches = scroll.notches + scroll.pixels * notches_per_px;
+        let notches = scroll.wheel.notches + scroll.wheel.pixels * notches_per_px;
         // `CTRL` is the primary command modifier: Cmd on macOS, Ctrl elsewhere.
         let mods = ui.peek_modifiers();
         let wheel_zooms = self.zoom.is_some_and(|cfg| match cfg.modifier() {

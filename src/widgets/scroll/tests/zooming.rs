@@ -4,6 +4,7 @@ use crate::host::harness::Harness;
 use crate::internals::panic_probe;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::input_event::InputEvent;
+use crate::primitives::input::interaction::wheel_delta::WheelDelta;
 use crate::primitives::input::keyboard::modifiers::Modifiers;
 use crate::primitives::input::zoom_factor::ZoomFactor;
 use crate::primitives::layout::sizing::Sizing;
@@ -146,7 +147,7 @@ fn pinch_zoom_keeps_point_under_cursor_fixed() {
 
         h.hover(Vec2::new(pointer.0, pointer.1));
         for &(px, py) in pans {
-            h.on_input(InputEvent::ScrollPixels(Vec2::new(px, py)));
+            h.on_input(InputEvent::Scroll(WheelDelta::pixels(Vec2::new(px, py))));
             h.frame(build);
         }
 
@@ -248,7 +249,7 @@ fn pan_after_pivot_zoom_does_not_snap_out_of_range_offset() {
         after.offset().y
     );
 
-    h.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, -5.0)));
+    h.on_input(InputEvent::Scroll(WheelDelta::pixels(Vec2::new(0.0, -5.0))));
     h.frame(build);
     let after2 = *h.state::<ScrollState>(id).unwrap();
     assert_eq!(
@@ -282,7 +283,9 @@ fn pivot_zoom_preserves_underflow_pan_range() {
     assert_eq!(zoomed.zoom(), 0.5);
     assert_eq!(zoomed.offset().y, expected_zoomed_offset);
 
-    h.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, -10.0)));
+    h.on_input(InputEvent::Scroll(WheelDelta::pixels(Vec2::new(
+        0.0, -10.0,
+    ))));
     h.frame(build);
     let panned = *h.state::<ScrollState>(id).unwrap();
     assert_eq!(panned.offset().y, expected_zoomed_offset - 10.0);
@@ -319,7 +322,10 @@ fn ctrl_touchpad_pixel_scroll_zooms_at_same_rate_as_wheel_lines() {
     let line_px = TextStyle::stock(ColorScheme::Dark)
         .with_font_size(16.0)
         .line_height();
-    h.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 2.0 * line_px)));
+    h.on_input(InputEvent::Scroll(WheelDelta::pixels(Vec2::new(
+        0.0,
+        2.0 * line_px,
+    ))));
     h.frame(build_zoom);
 
     let after_zoom = h.state::<ScrollState>(scroll_id).unwrap().zoom();
@@ -356,7 +362,7 @@ fn wheel_zoom_step_is_font_independent() {
 
         h.hover(WidgetId::from_hash("fz"));
         h.hold_modifiers(Modifiers::CTRL);
-        h.on_input(InputEvent::scroll_lines(Vec2::new(0.0, 1.0)));
+        h.on_input(InputEvent::Scroll(WheelDelta::notches(Vec2::new(0.0, 1.0))));
         h.frame(build_zoom);
 
         let scroll_id = WidgetId::from_hash("fz");
@@ -372,10 +378,13 @@ fn wheel_zoom_step_is_font_independent() {
 /// zoom at one step, and a page per notch pans a page of the viewport.
 #[test]
 fn a_scroll_setting_moves_the_pan_and_not_the_zoom() {
-    let turn = |lines: f32, pages: f32| InputEvent::ScrollLines {
-        notches: Vec2::new(0.0, 1.0),
-        lines: Vec2::new(0.0, lines),
-        pages: Vec2::new(0.0, pages),
+    let turn = |lines: f32, pages: f32| {
+        InputEvent::Scroll(WheelDelta {
+            notches: Vec2::new(0.0, 1.0),
+            lines: Vec2::new(0.0, lines),
+            pages: Vec2::new(0.0, pages),
+            ..WheelDelta::ZERO
+        })
     };
     let id = WidgetId::from_hash("fz");
     let build_zoom = |ui: &mut Ui| {
@@ -596,7 +605,7 @@ fn zoom_modifier_picks_which_wheel_zooms() {
             h.frame(build);
             h.hover(id);
             h.hold_modifiers(held);
-            h.on_input(InputEvent::scroll_lines(Vec2::new(0.0, 1.0)));
+            h.on_input(InputEvent::Scroll(WheelDelta::notches(Vec2::new(0.0, 1.0))));
             h.frame(build);
             assert_eq!(
                 h.state::<ScrollState>(id).unwrap().zoom(),

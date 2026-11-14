@@ -7,6 +7,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::input_event::InputEvent;
+use crate::primitives::input::interaction::wheel_delta::WheelDelta;
 use crate::primitives::input::keyboard::key::Key;
 use crate::primitives::input::keyboard::modifiers::Modifiers;
 use crate::primitives::input::pointer::PointerButton;
@@ -600,7 +601,7 @@ fn an_overflowing_strip_pans_sideways_and_chains_a_vertical_wheel() {
         h.prime(2, build);
         h.hover(Vec2::new(40.0, 10.0));
 
-        h.on_input(InputEvent::ScrollPixels(Vec2::new(20.0, 0.0)));
+        h.on_input(InputEvent::Scroll(WheelDelta::pixels(Vec2::new(20.0, 0.0))));
         h.frame(build);
         assert_eq!(
             h.state::<ScrollState>(band).unwrap().offset().x,
@@ -608,7 +609,7 @@ fn an_overflowing_strip_pans_sideways_and_chains_a_vertical_wheel() {
             "{label}: wheel x"
         );
         // What a Linux host makes of Shift+wheel y.
-        h.on_input(InputEvent::ScrollPixels(Vec2::new(10.0, 0.0)));
+        h.on_input(InputEvent::Scroll(WheelDelta::pixels(Vec2::new(10.0, 0.0))));
         h.frame(build);
         assert_eq!(
             h.state::<ScrollState>(band).unwrap().offset().x,
@@ -616,7 +617,7 @@ fn an_overflowing_strip_pans_sideways_and_chains_a_vertical_wheel() {
             "{label}: Shift+wheel"
         );
 
-        h.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 25.0)));
+        h.on_input(InputEvent::Scroll(WheelDelta::pixels(Vec2::new(0.0, 25.0))));
         h.frame(build);
         assert_eq!(
             h.state::<ScrollState>(page).unwrap().offset().y,
@@ -771,7 +772,7 @@ fn a_drop_slot_and_its_caret_read_uncut_chip_extents() {
     );
 
     h.hover(Vec2::new(40.0, 10.0));
-    h.on_input(InputEvent::ScrollPixels(Vec2::new(30.0, 0.0)));
+    h.on_input(InputEvent::Scroll(WheelDelta::pixels(Vec2::new(30.0, 0.0))));
     h.prime(2, build(0));
     let uncut = extent(&h, 10);
     let seen = h

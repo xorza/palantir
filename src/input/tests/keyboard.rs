@@ -5,6 +5,7 @@ use crate::input::tests::{
 };
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::input_event::InputEvent;
+use crate::primitives::input::interaction::wheel_delta::WheelDelta;
 use crate::primitives::input::key_class::KeyFilter;
 use crate::primitives::input::keyboard::key::Key;
 use crate::primitives::input::keyboard::key_text::KeyText;
@@ -27,7 +28,9 @@ fn keyboard_events_do_not_perturb_scroll_state() {
     let mut state = Input::new();
     let target = WidgetId::from_hash("scroll");
     state.pointer.scroll_targets = ScrollTargets::both(target);
-    state.feed(InputEvent::ScrollPixels(glam::Vec2::new(3.0, 5.0)));
+    state.feed(InputEvent::Scroll(WheelDelta::pixels(glam::Vec2::new(
+        3.0, 5.0,
+    ))));
     let before_scroll = state.pointer.target_deltas.clone();
     state.feed(InputEvent::key_down(Key::ArrowLeft));
     state.feed(InputEvent::ModifiersChanged(Modifiers::NONE));
@@ -387,7 +390,7 @@ fn scopes_resolve_again_only_when_their_inputs_change() {
 
 /// Feed an Escape the keyboard wake-gate will deliver, focused on the fixture's
 /// `editor` block: the gate drops an unsubscribed chord with nothing focused and
-/// `end_frame` evicts focus on unrecorded widgets.
+/// `settle` evicts focus on unrecorded widgets.
 fn press_escape(h: &mut Harness) {
     h.ui_mut().set_focus(WidgetId::from_hash("editor"));
     h.key(Key::Escape);
@@ -604,7 +607,7 @@ fn post_record_clears_keys_but_preserves_modifiers() {
     state.feed(InputEvent::key_down(Key::ArrowLeft));
     let buf_cap_before = state.keyboard.presses.capacity();
 
-    state.end_frame();
+    state.settle();
 
     assert!(state.keyboard.presses.is_empty());
     assert_eq!(state.keyboard.presses.capacity(), buf_cap_before);
