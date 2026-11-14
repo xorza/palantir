@@ -30,7 +30,7 @@ impl SizeTrio {
         let nodes = h.frame_value(|ui| {
             Panel::vstack()
                 .auto_id()
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| {
                     [
                         Some(explicit),

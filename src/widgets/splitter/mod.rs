@@ -10,7 +10,7 @@ use crate::primitives::input::sense::Sense;
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::clip_mode::ClipMode;
 use crate::primitives::layout::grid_cell::GridCell;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::SizeSpec;
 use crate::primitives::layout::track::Track;
 use crate::primitives::math::domain;
 use crate::primitives::paint::chrome::Chrome;
@@ -134,7 +134,7 @@ impl<'a> Splitter<'a> {
     pub fn show(mut self, ui: &mut Ui, mut body: impl FnMut(&mut Ui, SplitHalf)) -> ValueResponse {
         self.widget
             .configure()
-            .default_size((Sizing::FILL, Sizing::FILL))
+            .default_size(SizeSpec::FILL)
             .default_clip(ClipMode::Rect);
         let response = self.widget.response(ui);
         let id = response.id;
@@ -280,7 +280,7 @@ impl<'a> Splitter<'a> {
 
             Widget::leaf()
                 .id(id.with("rule"))
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .grid_cell(GridCell::along(axis, 1))
                 .record(ui, Some(&rule_chrome), |_| {});
 
@@ -288,7 +288,7 @@ impl<'a> Splitter<'a> {
 
             let inset = (rule_thickness - grab_thickness) * 0.5;
             divider_widget
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .margin(axis.compose_spacing(inset, 0.0))
                 .grid_cell(GridCell::along(axis, 1))
                 .record(ui, Some(&bar_chrome), |_| {});
@@ -326,7 +326,7 @@ impl Panes {
         };
         Widget::zstack()
             .id(id)
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .clip_rect()
             .grid_cell(GridCell::along(self.axis, main_cell))
             .record(ui, None, body);

@@ -193,6 +193,7 @@ pub mod widget {
     pub use crate::animation::animation_slot::AnimationSlot;
     pub use crate::animation::motion_role::MotionRole;
     pub use crate::common::content_hash::ContentHash;
+    pub use crate::input::capture::{DOUBLE_CLICK_INTERVAL, DOUBLE_CLICK_RADIUS};
     pub use crate::primitives::geometry::cubic_bezier::CubicBezier;
     pub use crate::primitives::geometry::mesh::Mesh;
     pub use crate::primitives::geometry::quadratic_bezier::QuadraticBezier;

@@ -156,7 +156,7 @@ impl TranslateScale {
     }
 
     /// Map a point through this transform. For a direction or offset, which
-    /// translation does not apply to, use [`Self::inverse_vector`].
+    /// translation does not apply to, use [`Self::apply_vector`].
     pub const fn apply_point(self, p: Vec2) -> Vec2 {
         Vec2::new(
             p.x * self.scale + self.translation.x,
@@ -172,7 +172,13 @@ impl TranslateScale {
         )
     }
 
-    /// Undo this transform for a direction or offset (no translation).
+    /// Map a direction or offset through this transform: scaled, not translated.
+    pub const fn apply_vector(self, v: Vec2) -> Vec2 {
+        Vec2::new(v.x * self.scale, v.y * self.scale)
+    }
+
+    /// Undo this transform for a direction or offset (no translation): the `w` that
+    /// [`Self::apply_vector`] maps to `v`.
     pub const fn inverse_vector(self, v: Vec2) -> Vec2 {
         Vec2::new(v.x / self.scale, v.y / self.scale)
     }

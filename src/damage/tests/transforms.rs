@@ -7,7 +7,7 @@ use crate::host::harness::Harness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
@@ -187,12 +187,12 @@ fn transform_shifted_direct_shape_with_invariant_clipped_paint_rect_contributes_
             Panel::hstack()
                 .id(WidgetId::from_hash("clip"))
                 .clip_rect()
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| {
                     Panel::hstack()
                         .id(WidgetId::from_hash("xform"))
                         .transform(TranslateScale::from_translation(Vec2::new(dx, 0.0)))
-                        .size((Sizing::FILL, Sizing::FILL))
+                        .size(SizeSpec::FILL)
                         .show(ui, |ui| {
                             Panel::hstack()
                                 .id(WidgetId::from_hash("inner"))
@@ -238,12 +238,12 @@ fn pan_with_invariant_clipped_paint_rect_stays_partial() {
             Panel::hstack()
                 .id(WidgetId::from_hash("clip"))
                 .clip_rect()
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| {
                     Panel::hstack()
                         .id(WidgetId::from_hash("xform"))
                         .transform(TranslateScale::from_translation(Vec2::new(dx, 0.0)))
-                        .size((Sizing::FILL, Sizing::FILL))
+                        .size(SizeSpec::FILL)
                         .show(ui, |ui| {
                             Panel::hstack()
                                 .id(WidgetId::from_hash("inner"))
@@ -284,11 +284,11 @@ fn self_transform_shift_damages_direct_shapes() {
         h.frame(|ui| {
             Panel::hstack()
                 .id(WidgetId::from_hash("root"))
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| {
                     Panel::canvas()
                         .id(WidgetId::from_hash("xpanel"))
-                        .size((Sizing::FILL, Sizing::FILL))
+                        .size(SizeSpec::FILL)
                         .transform(TranslateScale::from_translation(Vec2::new(dx, 0.0)))
                         .show(ui, |ui| {
                             // Direct shape on the transformed panel, as darkroom's beziers.
@@ -331,12 +331,12 @@ fn self_transform_shift_with_invariant_clipped_paint_rect_contributes_damage() {
                 Panel::hstack()
                     .id(WidgetId::from_hash("clip"))
                     .clip_rect()
-                    .size((Sizing::FILL, Sizing::FILL))
+                    .size(SizeSpec::FILL)
                     .show(ui, |ui| {
                         Panel::canvas()
                             .id(WidgetId::from_hash("xform"))
                             .transform(transform)
-                            .size((Sizing::FILL, Sizing::FILL))
+                            .size(SizeSpec::FILL)
                             .show(ui, |ui| {
                                 ui.add_shape(
                                     Shape::rect().at(Rect::new(-200.0, -200.0, 500.0, 500.0)),
@@ -371,7 +371,7 @@ fn self_transform_shift_leaves_the_panels_own_chrome_alone() {
             Panel::canvas()
                 .id(WidgetId::from_hash("xform"))
                 .transform(TranslateScale::from_translation(Vec2::new(dx, 0.0)))
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .chrome(Chrome::new(RgbaF32::srgb(0.0, 0.0, 1.0)))
                 .show(ui, |ui| {
                     ui.add_shape(

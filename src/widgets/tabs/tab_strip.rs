@@ -10,7 +10,7 @@ use crate::primitives::input::keyboard::key::Key;
 use crate::primitives::input::sense::Sense;
 use crate::primitives::input::shortcut::{Shortcut, ShortcutMods};
 use crate::primitives::layout::align::{Align, VAlign};
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::primitives::math::domain;
 use crate::primitives::math::domain::EPS;
 use crate::primitives::paint::chrome::Chrome;
@@ -239,7 +239,7 @@ impl<'a> TabStrip<'a> {
             menu_style,
         } = self;
         let selected = selected.and_then(|i| domain::idx(i, items.len()));
-        widget.configure().default_size((Sizing::FILL, Sizing::HUG));
+        widget.configure().default_size(SizeSpec::FILL_W);
         let response = widget.response(ui);
         let id = response.id;
         let was_carried = match drag {
@@ -278,14 +278,14 @@ impl<'a> TabStrip<'a> {
         widget.record(ui, Some(&strip_chrome), |ui| {
             let row = Widget::hstack()
                 .id(id.with("row"))
-                .size((Sizing::FILL, Sizing::HUG))
+                .size(SizeSpec::FILL_W)
                 .gap(t.gap)
                 .child_align(VAlign::Bottom);
             let reveal = pass.reveal_delta(ui);
             row.record(ui, None, |ui| {
                 Scroll::horizontal()
                     .id(Self::band_id(id))
-                    .size((Sizing::FILL, Sizing::HUG))
+                    .size(SizeSpec::FILL_W)
                     .hidden_bars()
                     .pan_by(reveal)
                     .padding(t.strip_padding)
@@ -507,7 +507,7 @@ impl StripPass<'_> {
         let cap = if selected { t.cap_thickness } else { 0.0 };
         let mut widget = Widget::vstack()
             .id(chip_id)
-            .size((Sizing::HUG, Sizing::HUG))
+            .size(SizeSpec::HUG)
             .min_size(Size::new(t.min_width, 0.0))
             .max_size(Size::new(t.max_width, f32::INFINITY))
             .sense(sense);
@@ -552,7 +552,7 @@ impl StripPass<'_> {
         // its height as a closable tab comes and goes beside a pinned one.
         let inner = Widget::hstack()
             .id(chip_id.with("content"))
-            .size((Sizing::HUG, Sizing::HUG))
+            .size(SizeSpec::HUG)
             .min_size(Size::new(0.0, t.close_size + padding.sums().h))
             .padding(padding)
             .gap(t.label_gap)
@@ -621,7 +621,7 @@ impl StripPass<'_> {
             .show(|ui| {
                 Widget::leaf()
                     .id(strip.with("caret"))
-                    .size((Sizing::FILL, Sizing::FILL))
+                    .size(SizeSpec::FILL)
                     .record(ui, Some(&fill), |_| {});
             });
     }
@@ -665,7 +665,7 @@ impl StripPass<'_> {
         let picked = Menu::below(&chevron.response)
             .style(self.menu_style)
             .landing(landing)
-            .size((Sizing::HUG, Sizing::HUG))
+            .size(SizeSpec::HUG)
             .show(ui, |ui| {
                 let mut picked = None;
                 for (i, item) in items.iter().enumerate() {

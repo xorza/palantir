@@ -454,8 +454,8 @@ fn compose_rounded_clip_change_keeps_the_text_batch() {
     let chain = |t: usize| &buf.rounded_clips[buf.texts[t].clip.span().range()];
     assert_eq!(chain(0).len(), 1);
     assert_eq!(chain(1).len(), 1);
-    assert_eq!(chain(0)[0].corners.to_array()[0], 4.0);
-    assert_eq!(chain(1)[0].corners.to_array()[0], 8.0);
+    assert_eq!(chain(0)[0].corners.top_left(), 4.0);
+    assert_eq!(chain(1)[0].corners.top_left(), 8.0);
 }
 
 /// A culled higher-kind draw does not split the text batch: the cull runs before the overlap test.

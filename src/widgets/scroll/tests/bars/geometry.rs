@@ -8,7 +8,7 @@ use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::scroll_axes::ScrollAxes;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::scene::scrollbars_def::ScrollbarsDef;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
@@ -207,7 +207,7 @@ fn a_traveling_thumb_keeps_its_snapped_length() {
             .show(ui, |ui| {
                 Scroll::vertical()
                     .id(WidgetId::from_hash("scroll"))
-                    .size((Sizing::FILL, Sizing::FILL))
+                    .size(SizeSpec::FILL)
                     .overlay_bars()
                     .gap(12.0)
                     .show(ui, |ui| {

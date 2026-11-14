@@ -8,7 +8,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::align::Align;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::primitives::paint::border::Border;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::paint::Paint;
@@ -166,7 +166,7 @@ fn chat_message(ui: &mut Ui, avatar_w: f32) -> NodeId {
         .show(ui, |ui| {
             Panel::hstack()
                 .auto_id()
-                .size((Sizing::FILL, Sizing::HUG))
+                .size(SizeSpec::FILL_W)
                 .show(ui, |ui| {
                     Block::new()
                         .id(WidgetId::from_hash("avatar"))
@@ -175,7 +175,7 @@ fn chat_message(ui: &mut Ui, avatar_w: f32) -> NodeId {
                     Text::new(PARAGRAPH)
                         .auto_id()
                         .font_size(14.0)
-                        .size((Sizing::FILL, Sizing::HUG))
+                        .size(SizeSpec::FILL_W)
                         .text_wrap(TextWrap::WrapWithOverflow)
                         .show(ui)
                         .node(ui)

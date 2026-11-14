@@ -4,7 +4,7 @@ use crate::gpu::backdrop::tests::{CLEAR, Reference, SIZE, assert_within_a_step, 
 use crate::gpu::test_gpu::headless_test_gpu;
 use crate::primitives::effect::effect_name::EffectName;
 use crate::primitives::geometry::rect::Rect;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::SizeSpec;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
 use crate::primitives::paint::material::frosted_params::FrostedParams;
@@ -42,7 +42,7 @@ fn scene(
     move |ui: &mut Ui| {
         Panel::canvas()
             .id_salt("backdrop-clear")
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 if let Some(background) = background {
                     ui.add_shape(

@@ -11,6 +11,12 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::primitives::paint::image::error::ImageDataError;
 use glam::{UVec2, Vec2};
+#[cfg(feature = "png")]
+use image::ImageEncoder as _;
+#[cfg(feature = "png")]
+use image::codecs::png::PngEncoder;
+#[cfg(feature = "png")]
+use std::io;
 
 /// How an image lies in its paint rect: fit by its intrinsic size, as CSS `object-fit`, or tiled
 /// across it, as CSS `background-repeat` and Flutter's `ImageRepeat` sit beside the fit.
@@ -126,6 +132,36 @@ impl Image {
         bytemuck::cast_slice(&self.pixels)
     }
 
+    /// The texel at `at`, column then row.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `at` lies inside [`Self::size`].
+    #[track_caller]
+    pub fn texel(&self, at: UVec2) -> SrgbaU8 {
+        assert!(
+            at.x < self.size.x && at.y < self.size.y,
+            "texel {at} lies outside an image of {}",
+            self.size
+        );
+        self.texels()[(at.y * self.size.x + at.x) as usize]
+    }
+
+    /// This image `factor` times as large on each axis, each texel a `factor` × `factor` block,
+    /// as a nearest filter shows it.
+    ///
+    /// # Panics
+    ///
+    /// Panics on a zero `factor`, and when the larger size makes [`Self::blank`] panic.
+    #[track_caller]
+    #[must_use]
+    pub fn magnified(&self, factor: u32) -> Self {
+        assert!(factor > 0, "an image magnifies by a factor of at least one");
+        let mut out = Self::blank(self.size * factor);
+        out.fill_with(|at| self.texel(at / factor));
+        out
+    }
+
     /// The texels' bytes, row-major, four a texel in `r, g, b, a` order: the layout
     /// [`Self::from_srgba8`] takes, for a codec or a clipboard that wants bytes.
     pub fn as_srgba8(&self) -> &[u8] {
@@ -135,6 +171,43 @@ impl Image {
     /// The texels, for writing.
     pub fn texels_mut(&mut self) -> &mut [SrgbaU8] {
         bytemuck::cast_slice_mut(&mut self.pixels)
+    }
+
+    /// The PNG in `bytes`, its texels converted to 8-bit sRGB RGBA.
+    ///
+    /// # Errors
+    ///
+    /// The decoder's error, or the image's when it has no texel, as an [`io::Error`].
+    #[cfg(feature = "png")]
+    pub fn from_png(bytes: &[u8]) -> io::Result<Self> {
+        let decoded = image::load_from_memory_with_format(bytes, image::ImageFormat::Png)
+            .map_err(|error| match error {
+                image::ImageError::IoError(error) => error,
+                error => io::Error::other(error),
+            })?
+            .into_rgba8();
+        let size = UVec2::new(decoded.width(), decoded.height());
+        Self::from_srgba8(size, decoded.into_raw()).map_err(io::Error::other)
+    }
+
+    /// Write this image to `out` as an 8-bit RGBA PNG, its bytes as they are.
+    ///
+    /// # Errors
+    ///
+    /// The encoder's or the writer's error, as an [`io::Error`].
+    #[cfg(feature = "png")]
+    pub fn write_png(&self, out: impl io::Write) -> io::Result<()> {
+        PngEncoder::new(out)
+            .write_image(
+                &self.pixels,
+                self.size.x,
+                self.size.y,
+                image::ExtendedColorType::Rgba8,
+            )
+            .map_err(|error| match error {
+                image::ImageError::IoError(error) => error,
+                error => io::Error::other(error),
+            })
     }
 
     /// Every texel from its position, column then row, row by row.

@@ -223,7 +223,7 @@ fn compose_scales_radius_and_border_under_transform() {
     );
     let q = &buf.quads.instance()[0];
     assert_eq!(q.header.rect.size, Size::new(100.0, 100.0));
-    assert_eq!(q.header.corners.to_array()[0], 16.0);
+    assert_eq!(q.header.corners.top_left(), 16.0);
     assert_eq!(q.border_width, 3.0);
 }
 

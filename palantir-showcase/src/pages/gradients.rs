@@ -6,7 +6,7 @@ use crate::support::{DemoCell, Kit, Knob, Section, TILE};
 use palantir::glam::Vec2;
 use palantir::{
     Block, Brush, Chrome, ColorButton, ColorPicker, ComboBox, Configure, Corners, Gradient,
-    Interpolation, RgbaF32, Sizing, Spread, Stop, Ui, WidgetId,
+    Interpolation, RgbaF32, SizeSpec, Sizing, Spread, Stop, Ui, WidgetId,
 };
 use std::f32::consts::{FRAC_PI_2, FRAC_PI_4};
 
@@ -157,10 +157,7 @@ fn filled(brush: impl Into<Brush>) -> Chrome {
 }
 
 fn gradient_frame(ui: &mut Ui, chrome: Chrome) {
-    Block::new()
-        .size((Sizing::FILL, Sizing::FILL))
-        .chrome(chrome)
-        .show(ui);
+    Block::new().size(SizeSpec::FILL).chrome(chrome).show(ui);
 }
 
 fn horizontal(ui: &mut Ui) {

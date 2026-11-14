@@ -3,7 +3,7 @@
 use crate::primitives::geometry::size::Size;
 use crate::primitives::input::sense::Sense;
 use crate::primitives::layout::align::Align;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::SizeSpec;
 use crate::primitives::paint::chrome::Chrome;
 use crate::scene::layer::Layer;
 use crate::theme::modal::ModalTheme;
@@ -113,7 +113,7 @@ impl<'a> Modal<'a> {
         // The root dims the surface; the panel re-senses `Sense::ABSORB_POINTER`.
         let mut root = Widget::zstack()
             .id(root_id)
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .child_align(Align::CENTER)
             .sense(Sense::ABSORB_POINTER);
         let spec = OverlaySpec {

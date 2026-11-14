@@ -11,7 +11,7 @@ use crate::shell;
 use crate::support;
 use crate::support::{Dialog, Kit, Section};
 use palantir::{
-    Align, App, Button, Checkbox, ColorButton, ColorPicker, Configure, ProgressBar, Sizing, Text,
+    Align, App, Button, Checkbox, ColorButton, ColorPicker, Configure, ProgressBar, SizeSpec, Text,
     TextEdit, Ui, Waker, WidgetId, fmt,
 };
 
@@ -172,7 +172,7 @@ pub(crate) fn shared(ui: &mut Ui, k: Kit, app: &mut AppState) {
     counter(ui, k, app);
     support::row(ui, |ui| {
         TextEdit::new(&mut app.note)
-            .size((Sizing::FILL, Sizing::HUG))
+            .size(SizeSpec::FILL_W)
             .max_size((320.0, f32::INFINITY))
             .show(ui);
         ColorButton::new(ColorPicker::new(&mut app.color)).show(ui);

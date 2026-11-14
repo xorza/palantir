@@ -7,7 +7,7 @@ use crate::fmt;
 use crate::host::harness::Harness;
 use crate::host::harness::harness_builder::HarnessDepth;
 use crate::primitives::geometry::translate_scale::TranslateScale;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::SizeSpec;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::button::Button;
@@ -32,7 +32,7 @@ impl Screen {
     fn render(&mut self, scale: usize, ui: &mut Ui) {
         Panel::vstack()
             .id_salt("scratch-screen")
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .transform(TranslateScale::from_translation(self.scroll_offset))
             .show(ui, |ui| {
                 Text::new(fmt!(ui, "Frame {:08}", self.tick))

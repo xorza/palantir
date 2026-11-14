@@ -7,7 +7,7 @@ use crate::display::system_scale::SystemScale;
 use crate::fmt;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
@@ -54,16 +54,16 @@ impl<S: Scene> SceneFrame<S> {
     pub(crate) fn record(&mut self, ui: &mut Ui) {
         Panel::zstack()
             .id_salt("bench-frame")
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 Panel::zstack()
                     .id_salt("bench-scene")
-                    .size((Sizing::FILL, Sizing::FILL))
+                    .size(SizeSpec::FILL)
                     .transform(TranslateScale::from_translation(self.scroll))
                     .show(ui, |ui| self.scene.record(ui));
                 Panel::canvas()
                     .id_salt("bench-counter")
-                    .size((Sizing::FILL, Sizing::FILL))
+                    .size(SizeSpec::FILL)
                     .show(ui, |ui| {
                         // Fixed width, so a digit that changes moves nothing else.
                         Text::new(fmt!(ui, "Frame {:08}", self.tick))

@@ -12,8 +12,8 @@ use palantir::widget::AnimationRequest;
 use palantir::{
     Animated, AnimationSpec, Axis, Border, Button, ButtonTheme, Checkbox, Chrome, ComboBox,
     Configure, Corners, DragValue, Expander, ExpanderTheme, Panel, ProgressBar, RadioGroup,
-    RgbaF32, Separator, Sizing, Slider, SlotDefaults, Spinner, StatefulLook, Switch, Text,
-    TextEdit, TextStyleOverrides, Tooltip, Ui, WidgetId, WidgetLook, fmt,
+    RgbaF32, Separator, SizeSpec, Sizing, Slider, SlotDefaults, Spinner, StatefulLook, Switch,
+    Text, TextEdit, TextStyleOverrides, Tooltip, Ui, WidgetId, WidgetLook, fmt,
 };
 
 static REGIONS: [&str; 5] = [
@@ -150,7 +150,7 @@ fn disclosure(ui: &mut Ui, k: Kit, s: &mut State) {
                 .start_open(true)
                 .show(ui, |ui| {
                     TextEdit::new(&mut s.skipped_note)
-                        .size((Sizing::FILL, Sizing::HUG))
+                        .size(SizeSpec::FILL_W)
                         .show(ui);
                 });
             Expander::new("Keeps its body")
@@ -158,7 +158,7 @@ fn disclosure(ui: &mut Ui, k: Kit, s: &mut State) {
                 .keep_body(true)
                 .show(ui, |ui| {
                     TextEdit::new(&mut s.kept_note)
-                        .size((Sizing::FILL, Sizing::HUG))
+                        .size(SizeSpec::FILL_W)
                         .show(ui);
                 });
             support::note(
@@ -200,14 +200,14 @@ fn form(ui: &mut Ui, k: Kit, s: &mut State, themes: &Themes) {
             group(ui, k, "DEVICE");
             TextEdit::new(&mut s.device_name)
                 .id(device_name_id())
-                .size((Sizing::FILL, Sizing::HUG))
+                .size(SizeSpec::FILL_W)
                 .show(ui);
 
             Separator::horizontal().show(ui);
             group(ui, k, "NETWORK");
             Switch::new(&mut s.airplane).label("Airplane mode").show(ui);
             Panel::vstack()
-                .size((Sizing::FILL, Sizing::HUG))
+                .size(SizeSpec::FILL_W)
                 .gap(M.space.md)
                 .disabled(s.airplane)
                 .show(ui, |ui| {
@@ -404,18 +404,9 @@ fn outlined_style(k: Kit, base: &ButtonTheme) -> ButtonTheme {
     };
     ButtonTheme {
         unselected: StatefulLook {
-            normal: WidgetLook {
-                chrome: chrome(RgbaF32::TRANSPARENT, border),
-                text: TextStyleOverrides::NONE,
-            },
-            hovered: WidgetLook {
-                chrome: chrome(accent.with_alpha(0.18), border),
-                text: TextStyleOverrides::NONE,
-            },
-            active: WidgetLook {
-                chrome: chrome(accent.with_alpha(0.35), border),
-                text: TextStyleOverrides::NONE,
-            },
+            normal: WidgetLook::new(chrome(RgbaF32::TRANSPARENT, border)),
+            hovered: WidgetLook::new(chrome(accent.with_alpha(0.18), border)),
+            active: WidgetLook::new(chrome(accent.with_alpha(0.35), border)),
             disabled: WidgetLook {
                 chrome: chrome(
                     RgbaF32::TRANSPARENT,

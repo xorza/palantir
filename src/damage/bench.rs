@@ -19,7 +19,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::backdrop_key::BackdropKey;
 use crate::primitives::identity::backdrop_keys::BackdropKeys;
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::primitives::math::libm_ext::Libm;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
@@ -45,7 +45,7 @@ fn build_grid(ui: &mut Ui, row_bg: Option<RgbaF32>, fill: impl Fn(usize) -> Rgba
         .id_salt("root")
         .gap(2.0)
         .padding(4.0)
-        .size((Sizing::FILL, Sizing::FILL))
+        .size(SizeSpec::FILL)
         .show(ui, |ui| {
             for r in 0..ROWS {
                 let mut row = Panel::hstack()
@@ -277,7 +277,7 @@ fn bench_workloads(group: &mut CaseGroup<'_>) {
         const CANVAS_ROWS: usize = 16;
         Panel::vstack()
             .id_salt("root")
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 for r in 0..CANVAS_ROWS {
                     Panel::hstack()
@@ -432,7 +432,7 @@ const ORDER_FANOUT: [usize; 2] = [128, 512];
 fn build_ordered_siblings(ui: &mut Ui, order: &[usize]) {
     Panel::zstack()
         .id_salt("order-root")
-        .size((Sizing::FILL, Sizing::FILL))
+        .size(SizeSpec::FILL)
         .show(ui, |ui| {
             for &i in order {
                 Block::new()

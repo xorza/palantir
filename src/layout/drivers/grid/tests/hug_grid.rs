@@ -6,7 +6,7 @@ use crate::layout::intrinsic::len_req::LenReq;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::grid_cell::GridCell;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::primitives::layout::track::Track;
 use crate::text::wrap::TextWrap;
 use crate::widget_core::configure::Configure;
@@ -16,20 +16,16 @@ use crate::widget_core::widget::Widget;
 fn grid_hug_grid_collapses_empty_fill_tracks() {
     let mut rig = LayoutRig::new();
     rig.run(Size::new(400.0, 200.0), |rec| {
-        rec.node(
-            "row",
-            Widget::hstack().size((Sizing::FILL, Sizing::FILL)),
-            |rec| {
-                let tracks = GridTracks {
-                    rows: &[Track::fixed(40.0)],
-                    cols: &[Track::fixed(80.0), Track::FILL],
-                };
-                rec.grid("hug-grid", Widget::grid(), tracks, |rec| {
-                    rec.leaf("a", Widget::leaf().grid_cell((0, 0)));
-                    rec.leaf("b", Widget::leaf().grid_cell((0, 1)));
-                });
-            },
-        );
+        rec.node("row", Widget::hstack().size(SizeSpec::FILL), |rec| {
+            let tracks = GridTracks {
+                rows: &[Track::fixed(40.0)],
+                cols: &[Track::fixed(80.0), Track::FILL],
+            };
+            rec.grid("hug-grid", Widget::grid(), tracks, |rec| {
+                rec.leaf("a", Widget::leaf().grid_cell((0, 0)));
+                rec.leaf("b", Widget::leaf().grid_cell((0, 1)));
+            });
+        });
     });
     assert_eq!(
         rig.rect("hug-grid").size,
@@ -47,9 +43,7 @@ fn hug_grid_fill_track_contributes_nested_rigid_floor() {
             cols: &[Track::FILL],
         };
         rec.grid("grid", Widget::grid(), tracks, |rec| {
-            let cell = Widget::hstack()
-                .grid_cell((0, 0))
-                .size((Sizing::FILL, Sizing::FILL));
+            let cell = Widget::hstack().grid_cell((0, 0)).size(SizeSpec::FILL);
             rec.node("cell", cell, |rec| {
                 rec.leaf("rigid", Widget::leaf().size((120.0, 20.0)));
             });
@@ -64,32 +58,23 @@ fn hug_grid_fill_track_contributes_nested_rigid_floor() {
 fn stack_fill_sibling_yields_to_grid_fill_track_rigid_floor() {
     let mut rig = LayoutRig::new();
     rig.run(Size::new(300.0, 40.0), |rec| {
-        rec.node(
-            "row",
-            Widget::hstack().size((Sizing::FILL, Sizing::FILL)),
-            |rec| {
-                let tracks = GridTracks {
-                    rows: &[Track::FILL],
-                    cols: &[Track::FILL],
-                };
-                let grid = Widget::grid().size((Sizing::FILL, Sizing::FILL));
-                rec.grid("grid", grid, tracks, |rec| {
-                    let cell = Widget::hstack()
-                        .grid_cell((0, 0))
-                        .size((Sizing::FILL, Sizing::FILL));
-                    rec.node("cell", cell, |rec| {
-                        rec.leaf(
-                            "rigid",
-                            Widget::leaf().size((Sizing::fixed(200.0), Sizing::FILL)),
-                        );
-                    });
+        rec.node("row", Widget::hstack().size(SizeSpec::FILL), |rec| {
+            let tracks = GridTracks {
+                rows: &[Track::FILL],
+                cols: &[Track::FILL],
+            };
+            let grid = Widget::grid().size(SizeSpec::FILL);
+            rec.grid("grid", grid, tracks, |rec| {
+                let cell = Widget::hstack().grid_cell((0, 0)).size(SizeSpec::FILL);
+                rec.node("cell", cell, |rec| {
+                    rec.leaf(
+                        "rigid",
+                        Widget::leaf().size((Sizing::fixed(200.0), Sizing::FILL)),
+                    );
                 });
-                rec.leaf(
-                    "shrinkable",
-                    Widget::leaf().size((Sizing::FILL, Sizing::FILL)),
-                );
-            },
-        );
+            });
+            rec.leaf("shrinkable", Widget::leaf().size(SizeSpec::FILL));
+        });
     });
     assert_eq!(rig.rect("grid").size.w, 200.0);
     let shrinkable = rig.rect("shrinkable");
@@ -218,13 +203,11 @@ fn a_fill_grid_under_a_hugging_parent_holds_the_cells_it_shaped() {
                 rows: &[Track::HUG],
                 cols: &[Track::FILL],
             };
-            let grid = Widget::grid().size((Sizing::FILL, Sizing::HUG));
+            let grid = Widget::grid().size(SizeSpec::FILL_W);
             rec.grid("grid", grid, tracks, |rec| {
                 rec.text_leaf(
                     "label",
-                    Widget::leaf()
-                        .grid_cell((0, 0))
-                        .size((Sizing::FILL, Sizing::HUG)),
+                    Widget::leaf().grid_cell((0, 0)).size(SizeSpec::FILL_W),
                     TextRun::new(
                         "aaaa bbbb cccc dddd eeee ffff gggg hhhh",
                         20.0,
@@ -252,7 +235,7 @@ fn a_fill_grid_height_capped_by_a_shorter_offer_is_measured_again() {
                 rows: &[Track::FILL, Track::FILL],
                 cols: &[Track::fixed(40.0)],
             };
-            let grid = Widget::grid().size((Sizing::HUG, Sizing::FILL));
+            let grid = Widget::grid().size(SizeSpec::FILL_H);
             rec.grid("grid", grid, tracks, |rec| {
                 rec.leaf(
                     "tall",

@@ -2,7 +2,7 @@ use crate::internals::layout_rig::{LayoutRig, TextRun};
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::align::{HAlign, VAlign};
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::text::wrap::TextWrap;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::widget::Widget;
@@ -41,16 +41,12 @@ fn canvas_hugs_to_bounding_box_of_placed_children() {
 fn canvas_fill_canvas_positioned_overflow_does_not_grow_bbox() {
     let mut rig = LayoutRig::new();
     rig.run(Size::new(200.0, 200.0), |rec| {
-        rec.node(
-            "panel",
-            Widget::canvas().size((Sizing::FILL, Sizing::FILL)),
-            |rec| {
-                rec.leaf(
-                    "overhang",
-                    Widget::leaf().at((700.0, 100.0)).size((160.0, 80.0)),
-                );
-            },
-        );
+        rec.node("panel", Widget::canvas().size(SizeSpec::FILL), |rec| {
+            rec.leaf(
+                "overhang",
+                Widget::leaf().at((700.0, 100.0)).size((160.0, 80.0)),
+            );
+        });
     });
     // Fill canvas on a 200×200 surface stays 200×200 regardless of the child's position.
     assert_eq!(
@@ -69,23 +65,15 @@ fn canvas_fill_canvas_positioned_overflow_does_not_grow_bbox() {
 fn canvas_fill_axis_has_no_floor() {
     let mut rig = LayoutRig::new();
     rig.run(Size::new(200.0, 200.0), |rec| {
-        rec.node(
-            "column",
-            Widget::vstack().size((Sizing::FILL, Sizing::FILL)),
-            |rec| {
-                rec.leaf(
-                    "header",
-                    Widget::leaf().size((Sizing::FILL, Sizing::fixed(50.0))),
-                );
-                rec.node(
-                    "canvas",
-                    Widget::canvas().size((Sizing::FILL, Sizing::FILL)),
-                    |rec| {
-                        rec.leaf("tall", Widget::leaf().at((10.0, 20.0)).size((50.0, 300.0)));
-                    },
-                );
-            },
-        );
+        rec.node("column", Widget::vstack().size(SizeSpec::FILL), |rec| {
+            rec.leaf(
+                "header",
+                Widget::leaf().size((Sizing::FILL, Sizing::fixed(50.0))),
+            );
+            rec.node("canvas", Widget::canvas().size(SizeSpec::FILL), |rec| {
+                rec.leaf("tall", Widget::leaf().at((10.0, 20.0)).size((50.0, 300.0)));
+            });
+        });
     });
     assert_eq!(rig.rect("column").size.h, 200.0);
     let canvas = rig.rect("canvas");
@@ -124,9 +112,7 @@ fn canvas_fill_child_fills_the_room_past_its_position() {
             rec.node("panel", canvas, |rec| {
                 rec.leaf(
                     "filler",
-                    Widget::leaf()
-                        .at((10.0, 10.0))
-                        .size((Sizing::FILL, Sizing::FILL)),
+                    Widget::leaf().at((10.0, 10.0)).size(SizeSpec::FILL),
                 );
             });
         });

@@ -5,7 +5,7 @@ use crate::host::harness::Harness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::backdrop_key::BackdropKey;
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
 use crate::scene::plane::Plane;
@@ -47,11 +47,11 @@ impl Scene {
     fn record(self, ui: &mut Ui) {
         Panel::zstack()
             .id(WidgetId::from_hash("scene"))
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 Panel::canvas()
                     .id(WidgetId::from_hash("under"))
-                    .size((Sizing::FILL, Sizing::FILL))
+                    .size(SizeSpec::FILL)
                     .show(ui, |ui| {
                         if let Some((rect, color)) = self.under {
                             ui.add_shape(Shape::rect().at(rect), color);
@@ -60,7 +60,7 @@ impl Scene {
                 for (i, &rect) in self.backdrops.iter().enumerate() {
                     Panel::canvas()
                         .id(WidgetId::from_hash(("backdrop", i)))
-                        .size((Sizing::FILL, Sizing::FILL))
+                        .size(SizeSpec::FILL)
                         .show(ui, |ui| {
                             ui.add_shape(Shape::rect().at(rect), Material::blur(SIGMA));
                             if i == 0 {
@@ -204,7 +204,7 @@ fn a_clipped_blink_before_a_backdrop_leaves_it() {
     let record = |ui: &mut Ui| {
         Panel::zstack()
             .id(WidgetId::from_hash("scene"))
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 Panel::canvas()
                     .id(WidgetId::from_hash("clip"))
@@ -217,7 +217,7 @@ fn a_clipped_blink_before_a_backdrop_leaves_it() {
                     });
                 Panel::canvas()
                     .id(WidgetId::from_hash(("backdrop", 0)))
-                    .size((Sizing::FILL, Sizing::FILL))
+                    .size(SizeSpec::FILL)
                     .show(ui, |ui| {
                         ui.add_shape(Shape::rect().at(BACKDROP), Material::blur(SIGMA));
                     });
@@ -244,7 +244,7 @@ fn a_backdrop_whose_row_moves_is_stale() {
         move |ui: &mut Ui| {
             Panel::canvas()
                 .id(WidgetId::from_hash("moved"))
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| {
                     if lead {
                         ui.add_shape(Shape::rect().at(far), BLUE);
@@ -285,11 +285,11 @@ fn a_child_canvas_change_under_a_later_ancestor_backdrop_stales_it() {
         move |ui: &mut Ui| {
             Panel::canvas()
                 .id(WidgetId::from_hash("outer"))
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| {
                     Panel::canvas()
                         .id(WidgetId::from_hash("inner"))
-                        .size((Sizing::FILL, Sizing::FILL))
+                        .size(SizeSpec::FILL)
                         .show(ui, |ui| {
                             ui.add_shape(Shape::rect().at(INNER), Material::blur(SIGMA));
                             ui.add_shape(Shape::rect().at(SQUARE), fill);
@@ -326,11 +326,11 @@ fn backdrops_out_of_row_order_walk_quietly() {
     let record = |ui: &mut Ui| {
         Panel::canvas()
             .id(WidgetId::from_hash("outer"))
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 Panel::canvas()
                     .id(WidgetId::from_hash("inner"))
-                    .size((Sizing::FILL, Sizing::FILL))
+                    .size(SizeSpec::FILL)
                     .show(ui, |ui| {
                         ui.add_shape(Shape::rect().at(INNER), Material::blur(SIGMA));
                         ui.add_shape(Shape::rect().at(SQUARE), BLUE);

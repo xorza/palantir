@@ -2,7 +2,9 @@
 
 use image::{Rgba, RgbaImage};
 use palantir::glam::UVec2;
-use palantir::{Block, Chrome, Configure, Panel, RgbaF32, Sizing, SystemScale, Ui, UserScale};
+use palantir::{
+    Block, Chrome, Configure, Panel, RgbaF32, SizeSpec, Sizing, SystemScale, Ui, UserScale,
+};
 
 use crate::goldens;
 use crate::visual_rig::VisualRig;
@@ -13,7 +15,7 @@ const SURFACE: UVec2 = UVec2::new(200, 160);
 fn block(ui: &mut Ui) {
     Panel::vstack()
         .id_salt("root")
-        .size((Sizing::FILL, Sizing::FILL))
+        .size(SizeSpec::FILL)
         .show(ui, |ui| {
             Block::new()
                 .id_salt("block")

@@ -6,8 +6,15 @@ use crate::primitives::packed::serde::internals::{from_ron, ron_text};
 
 #[test]
 fn to_array_reads_clockwise_from_the_top_left() {
+    let corners = Corners::new(1.0, 2.0, 3.0, 4.0);
+    assert_eq!(corners.to_array(), [1.0, 2.0, 3.0, 4.0]);
     assert_eq!(
-        Corners::new(1.0, 2.0, 3.0, 4.0).to_array(),
+        [
+            corners.top_left(),
+            corners.top_right(),
+            corners.bottom_right(),
+            corners.bottom_left()
+        ],
         [1.0, 2.0, 3.0, 4.0]
     );
 }

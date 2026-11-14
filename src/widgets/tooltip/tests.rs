@@ -12,7 +12,7 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::interaction::response::Response;
 use crate::primitives::input::keyboard::key::Key;
 use crate::primitives::input::pointer::PointerButton;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::SizeSpec;
 use crate::primitives::paint::chrome::Chrome;
 use crate::scene::layer::Layer;
 use crate::ui::Ui;
@@ -353,7 +353,7 @@ fn delay_gates_visibility() {
         h.at(Duration::from_secs_f32(secs)).frame(|ui| {
             Panel::vstack()
                 .id(WidgetId::from_hash("root"))
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| {
                     let r = Button::new()
                         .id(WidgetId::from_hash("trig"))
@@ -445,7 +445,7 @@ fn hover_clears_after_tooltip_visible() {
         h.at(Duration::from_secs_f32(secs)).frame(|ui| {
             Panel::vstack()
                 .id(WidgetId::from_hash("root"))
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| {
                     let r = Button::new()
                         .id(WidgetId::from_hash("trig"))
@@ -503,7 +503,7 @@ fn tooltip_inside_popup_records_without_panic() {
         h.at(Duration::from_secs_f32(secs)).frame(|ui| {
             Panel::vstack()
                 .id(WidgetId::from_hash("root"))
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| {
                     Popup::new()
                         .anchor(Anchor::at_point(popup_anchor))
@@ -563,7 +563,7 @@ fn when_disabled_reaches_a_disabled_trigger() {
             h.at(Duration::from_secs_f32(secs)).frame_value(|ui| {
                 Panel::vstack()
                     .id(WidgetId::from_hash("root"))
-                    .size((Sizing::FILL, Sizing::FILL))
+                    .size(SizeSpec::FILL)
                     .show(ui, |ui| {
                         let r = Button::new()
                             .id(trigger_id)

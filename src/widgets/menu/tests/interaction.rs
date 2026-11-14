@@ -9,7 +9,7 @@ use crate::primitives::input::keyboard::modifiers::Modifiers;
 use crate::primitives::input::sense::Sense;
 use crate::primitives::input::shortcut::Shortcut;
 use crate::primitives::layout::anchor::Anchor;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::scene::layer::Layer;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
@@ -182,7 +182,7 @@ fn build_copy(ui: &mut Ui, hint: bool) -> CopyRow {
     };
     Panel::vstack()
         .id(WidgetId::from_hash("root"))
-        .size((Sizing::FILL, Sizing::FILL))
+        .size(SizeSpec::FILL)
         .sense(Sense::CLICK)
         .show(ui, |ui| {
             let trigger = Button::new()
@@ -242,7 +242,7 @@ fn a_menu_raised_inside_a_popup_lands_above_it() {
 fn nested(ui: &mut Ui) {
     Panel::vstack()
         .id(WidgetId::from_hash("root"))
-        .size((Sizing::FILL, Sizing::FILL))
+        .size(SizeSpec::FILL)
         .show(ui, |ui| {
             Popup::new()
                 .anchor(Anchor::below(Rect::new(10.0, 10.0, 100.0, 20.0)))
@@ -332,7 +332,7 @@ fn below_scene(top: f32) -> impl FnMut(&mut Ui) -> bool {
         let mut open = false;
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .padding(Spacing::new(20.0, top, 0.0, 0.0))
             .show(ui, |ui| {
                 let trigger = Button::new()

@@ -1,7 +1,7 @@
 //! The two trees the measure-cache benches and tests walk: a deep chain of panels and a broad
 //! fan-out, one leaf of which a variant changes.
 
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
@@ -29,7 +29,7 @@ fn build_deep_level(ui: &mut Ui, depth: usize) {
 
     Panel::vstack()
         .id_salt(("deep", depth))
-        .size((Sizing::FILL, Sizing::HUG))
+        .size(SizeSpec::FILL_W)
         .show(ui, |ui| build_deep_level(ui, depth + 1));
 }
 
@@ -70,7 +70,7 @@ impl BroadLevel {
         let Self { depth, key, change } = self;
         Panel::vstack()
             .id_salt(("broad", depth, key))
-            .size((Sizing::FILL, Sizing::HUG))
+            .size(SizeSpec::FILL_W)
             .show(ui, |ui| {
                 if depth == BROAD_DEPTH {
                     let changed = |to| key == 0 && change == Some(to);

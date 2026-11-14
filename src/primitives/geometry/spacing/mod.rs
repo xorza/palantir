@@ -27,6 +27,26 @@ f16x4_lanes!(
 );
 
 impl Spacing {
+    /// The left edge.
+    pub fn left(self) -> f32 {
+        self.to_array()[0]
+    }
+
+    /// The top edge.
+    pub fn top(self) -> f32 {
+        self.to_array()[1]
+    }
+
+    /// The right edge.
+    pub fn right(self) -> f32 {
+        self.to_array()[2]
+    }
+
+    /// The bottom edge.
+    pub fn bottom(self) -> f32 {
+        self.to_array()[3]
+    }
+
     /// Packed 8-byte form, used by `LayoutCore::hash_with_flags`.
     #[inline]
     pub(crate) const fn as_u64(self) -> u64 {

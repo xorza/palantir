@@ -55,24 +55,15 @@ impl ButtonTheme {
         // Pressed = hovered fill + focused stroke (the palette has no further fill tier).
         let pressed_chrome = Chrome::rounded(p.element_strong, corners)
             .with_border(Border::new(p.border_focused, m.stroke.hairline));
-        let pressed = WidgetLook {
-            chrome: pressed_chrome,
-            text: TextStyleOverrides::NONE,
-        };
+        let pressed = WidgetLook::new(pressed_chrome);
         let disabled = WidgetLook {
             chrome: chrome(p.element),
             text: TextStyleOverrides::NONE.with_color(p.text_disabled),
         };
         Self {
             unselected: StatefulLook {
-                normal: WidgetLook {
-                    chrome: chrome(p.element_mid),
-                    text: TextStyleOverrides::NONE,
-                },
-                hovered: WidgetLook {
-                    chrome: chrome(p.element_strong),
-                    text: TextStyleOverrides::NONE,
-                },
+                normal: WidgetLook::new(chrome(p.element_mid)),
+                hovered: WidgetLook::new(chrome(p.element_strong)),
                 active: pressed.clone(),
                 disabled: disabled.clone(),
             },
@@ -130,10 +121,8 @@ impl ButtonTheme {
     ///
     /// [`Button::style`]: crate::Button::style
     pub fn subtle(p: &Palette, m: &Metrics) -> Self {
-        let flat = |fill: Brush| WidgetLook {
-            chrome: Chrome::rounded(fill, Corners::all(m.radius.control)),
-            text: TextStyleOverrides::NONE,
-        };
+        let flat =
+            |fill: Brush| WidgetLook::new(Chrome::rounded(fill, Corners::all(m.radius.control)));
         let disabled = WidgetLook {
             text: TextStyleOverrides::NONE.with_color(p.text_disabled),
             ..flat(Brush::TRANSPARENT)

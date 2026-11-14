@@ -330,3 +330,40 @@ fn a_fit_row_by_row_matches_the_whole_image_two_pass() {
         );
     }
 }
+
+/// `texel` reads row-major, column then row; `magnified` repeats each texel into a block of the
+/// factor's side, 2 × 1 at 3 becoming 6 × 3; a texel past the size panics.
+#[test]
+fn a_texel_reads_by_position_and_magnifies_into_a_block() {
+    use crate::internals::panic_probe;
+
+    let (red, blue) = (SrgbaU8::rgb(255, 0, 0), SrgbaU8::rgb(0, 0, 255));
+    let mut image = Image::blank(UVec2::new(2, 1));
+    image.texels_mut().copy_from_slice(&[red, blue]);
+    assert_eq!(image.texel(UVec2::new(0, 0)), red);
+    assert_eq!(image.texel(UVec2::new(1, 0)), blue);
+
+    let big = image.magnified(3);
+    assert_eq!(big.size(), UVec2::new(6, 3));
+    for y in 0..3 {
+        for x in 0..6 {
+            let want = if x < 3 { red } else { blue };
+            assert_eq!(big.texel(UVec2::new(x, y)), want, "({x}, {y})");
+        }
+    }
+    assert_eq!(image.magnified(1), image);
+    panic_probe::assert_panics_with("lies outside", || image.texel(UVec2::new(2, 0)));
+    panic_probe::assert_panics_with("at least one", || image.magnified(0));
+}
+
+/// A PNG round-trips the bytes it was written from, and bytes that are no PNG are refused.
+#[cfg(feature = "png")]
+#[test]
+fn an_image_round_trips_through_png() {
+    let mut image = Image::blank(UVec2::new(3, 2));
+    image.fill_with(|at| SrgbaU8::new(at.x as u8 * 80, at.y as u8 * 120, 7, 200));
+    let mut bytes = Vec::new();
+    image.write_png(&mut bytes).unwrap();
+    assert_eq!(Image::from_png(&bytes).unwrap(), image);
+    assert!(Image::from_png(b"not a png").is_err());
+}

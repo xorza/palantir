@@ -39,8 +39,7 @@ const RECENT: usize = 12;
 
 pub(crate) fn build(ui: &mut Ui, k: Kit, look: &mut Appearance) {
     let state_id = WidgetId::from_hash("showcase::colors::state");
-    ui.with_state::<Option<State>, _>(state_id, |ui, state| {
-        let state = state.get_or_insert_with(|| State::new(k.swatch));
+    ui.with_state_or_insert_with(state_id, |_| State::new(k.swatch), |ui, state| {
         Section::new("Picker").apis(&[api!(ColorPicker::alpha), api!(ColorPicker::swatches)]).show(ui, k, |ui| {
                 support::note(ui, k,
                     "The whole panel: field, hue and alpha bars, preview, channel values, the \

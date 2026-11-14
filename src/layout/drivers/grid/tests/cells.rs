@@ -5,7 +5,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::align::{HAlign, VAlign};
 use crate::primitives::layout::grid_cell::GridCell;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::SizeSpec;
 use crate::primitives::layout::track::Track;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::widget::Widget;
@@ -44,7 +44,7 @@ fn a_cell_past_the_tracks_is_held_inside_them() {
             cols: &[Track::fixed(50.0), Track::fixed(50.0)],
         };
         rec.grid("grid", Widget::grid(), tracks, |rec| {
-            let fill = || Widget::leaf().size((Sizing::FILL, Sizing::FILL));
+            let fill = || Widget::leaf().size(SizeSpec::FILL);
             rec.leaf("far", fill().grid_cell((5, 7)));
             rec.leaf("tall", fill().grid_cell(GridCell::at(0, 0).with_span(3, 1)));
         });

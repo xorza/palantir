@@ -5,8 +5,8 @@ use crate::scaffold::tokens::M;
 use crate::support;
 use crate::support::{Col, Kit, Knob, Section};
 use palantir::{
-    Block, Button, Chrome, Configure, Corners, Grid, Panel, RgbaF32, Sizing, Text, TextWrap, Track,
-    Ui, WidgetId,
+    Block, Button, Chrome, Configure, Corners, Grid, Panel, RgbaF32, SizeSpec, Sizing, Text,
+    TextWrap, Track, Ui, WidgetId,
 };
 
 const PARAGRAPH: &str = "The quick brown fox jumps over the lazy dog. \
@@ -189,7 +189,7 @@ fn compositions(ui: &mut Ui, k: Kit) {
                 "A Hug label column and a Fill value column that wraps.",
             );
             Grid::new()
-                .size((Sizing::FILL, Sizing::HUG))
+                .size(SizeSpec::FILL_W)
                 .cols([Track::HUG, Track::FILL])
                 .rows([Track::HUG, Track::HUG, Track::HUG])
                 .line_gap(6.0)
@@ -228,7 +228,7 @@ fn compositions(ui: &mut Ui, k: Kit) {
                  again.",
         );
         Panel::vstack()
-            .size((Sizing::FILL, Sizing::HUG))
+            .size(SizeSpec::FILL_W)
             .gap(8.0)
             .show(ui, |ui| {
                 ChatRow {
@@ -271,7 +271,7 @@ impl ChatRow {
         } = self;
         Panel::hstack()
             .id_salt(("chat-row", key))
-            .size((Sizing::FILL, Sizing::HUG))
+            .size(SizeSpec::FILL_W)
             .gap(10.0)
             .show(ui, |ui| {
                 Block::new()
@@ -282,7 +282,7 @@ impl ChatRow {
                 Text::new(message)
                     .id_salt(("message", key))
                     .style(&k.t.body())
-                    .size((Sizing::FILL, Sizing::HUG))
+                    .size(SizeSpec::FILL_W)
                     .text_wrap(TextWrap::WrapWithOverflow)
                     .show(ui);
             });

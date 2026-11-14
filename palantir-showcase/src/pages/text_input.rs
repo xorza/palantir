@@ -6,8 +6,8 @@ use crate::scaffold::api;
 use crate::support;
 use crate::support::{Kit, Section};
 use palantir::{
-    Align, Button, ComboBox, Configure, DragValue, EditEnd, EditableLabel, HAlign, Sizing, Span,
-    Switch, Text, TextEdit, TextEditResponse, Ui, VAlign, WidgetId, fmt,
+    Align, Button, ComboBox, Configure, DragValue, EditEnd, EditableLabel, HAlign, SizeSpec,
+    Sizing, Span, Switch, Text, TextEdit, TextEditResponse, Ui, VAlign, WidgetId, fmt,
 };
 
 #[derive(Debug)]
@@ -129,7 +129,7 @@ fn page(ui: &mut Ui, k: Kit, s: &mut Page) {
                         TextEdit::new(buf)
                             .id_salt(hint)
                             .placeholder(hint)
-                            .size((Sizing::FILL, Sizing::HUG))
+                            .size(SizeSpec::FILL_W)
                             .max_size((320.0, f32::INFINITY))
                             .show(ui);
                     }
@@ -361,7 +361,7 @@ fn ime(ui: &mut Ui, k: Kit, s: &mut Page) {
             );
             TextEdit::new(&mut s.ime)
                 .placeholder("type with an input method")
-                .size((Sizing::FILL, Sizing::HUG))
+                .size(SizeSpec::FILL_W)
                 .max_size((420.0, f32::INFINITY))
                 .show(ui);
             s.preedit.clear();

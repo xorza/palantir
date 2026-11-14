@@ -7,7 +7,7 @@ use palantir::{
     AnimationSpec, Axis, Block, Border, Button, Checkbox, Chrome, ColorCoords, ColorField,
     ColorModel, ColorPicker, ColorScheme, ColorStrip, ComboBox, Configure, Corners, DragValue,
     InputEvent, Key, KeyText, Modal, Panel, ProgressBar, RadioGroup, RadioLook, Rect, RgbaF32,
-    Sizing, Slider, Spinner, SrgbaU8, SwatchRow, Switch, Text, TextEdit, Ui,
+    SizeSpec, Sizing, Slider, Spinner, SrgbaU8, SwatchRow, Switch, Text, TextEdit, Ui,
 };
 
 use crate::fixtures;
@@ -23,7 +23,7 @@ fn padded(ui: &mut Ui, p: f32, body: impl FnOnce(&mut Ui)) {
     Panel::vstack()
         .id_salt("well")
         .padding(p)
-        .size((Sizing::FILL, Sizing::FILL))
+        .size(SizeSpec::FILL)
         .show(ui, body);
 }
 
@@ -40,7 +40,7 @@ fn rounded_clip(ui: &mut Ui, panel: Panel) {
     panel.clip_rounded().show(ui, |ui| {
         Block::new()
             .id_salt("inner")
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .chrome(Chrome::new(RgbaF32::BLACK))
             .show(ui);
     });
@@ -52,7 +52,7 @@ fn button_hello_matches_golden() {
         Button::new()
             .auto_id()
             .label("hello")
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui);
     });
 }
@@ -64,7 +64,7 @@ fn frame_filled_with_border_matches_golden() {
         padded(ui, 20.0, |ui| {
             Block::new()
                 .id_salt("card")
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .chrome(
                     Chrome::rounded(RgbaF32::srgb(0.20, 0.30, 0.55), Corners::all(16.0))
                         .with_border(Border::new(RgbaF32::srgb(0.65, 0.80, 1.00), 2.0)),
@@ -113,13 +113,13 @@ fn surface_rounded_clips_full_fill_child() {
     GoldenName::SurfaceRoundedClipsFullFillChild.assert_scene(UVec2::new(220, 220), |ui| {
         Panel::vstack()
             .auto_id()
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .padding(20.0)
             .chrome(Chrome::new(RgbaF32::srgb(1.0, 0.42, 0.72)))
             .show(ui, |ui| {
                 let panel = Panel::zstack()
                     .id_salt("rounded")
-                    .size((Sizing::FILL, Sizing::FILL))
+                    .size(SizeSpec::FILL)
                     .chrome(green_rim(5.0, Corners::new(4.0, 12.0, 20.0, 28.0)));
                 rounded_clip(ui, panel);
             });
@@ -192,7 +192,7 @@ fn rounded_clip_survives_surface_resize() {
         padded(ui, 10.0, |ui| {
             Panel::zstack()
                 .id_salt("rounded")
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .chrome(Chrome::rounded(
                     RgbaF32::srgb(0.2, 0.2, 0.3),
                     Corners::all(8.0),
@@ -242,7 +242,7 @@ fn toggle_switch_states_matches_golden() {
             .auto_id()
             .padding(20.0)
             .gap(16.0)
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 for (salt, mut on) in [("on", true), ("off", false)] {
                     Switch::new(&mut on)
@@ -268,7 +268,7 @@ fn light_theme_widgets_match_golden() {
                 .auto_id()
                 .padding(16.0)
                 .gap(12.0)
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| {
                     Panel::hstack().auto_id().gap(8.0).show(ui, |ui| {
                         Button::new().id_salt("apply").label("Apply").show(ui);
@@ -375,7 +375,7 @@ fn modal_dialog_matches_golden() {
     GoldenName::ModalDialog.assert_scene(UVec2::new(300, 200), |ui| {
         Panel::vstack()
             .auto_id()
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .chrome(Chrome::new(RgbaF32::srgb(0.35, 0.45, 0.65)))
             .show(ui, |_| {});
         Modal::new().id_salt("m").show(ui, |ui| {
@@ -393,14 +393,14 @@ fn color_field_and_bars_match_golden() {
             .auto_id()
             .padding(12.0)
             .gap(16.0)
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 for model in ColorModel::ALL {
                     let mut coords = ColorCoords::from_color(RgbaF32::hex(0x2b7fd4), model, 0.0);
                     Panel::vstack()
                         .id_salt(model)
                         .gap(8.0)
-                        .size((Sizing::HUG, Sizing::HUG))
+                        .size(SizeSpec::HUG)
                         .show(ui, |ui| {
                             ColorField::new(&mut coords).id_salt("field").show(ui);
                             ColorStrip::hue(&mut coords).id_salt("hue").show(ui);
@@ -441,11 +441,11 @@ fn focus_ring_matches_golden() {
             .auto_id()
             .padding(16.0)
             .gap(16.0)
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 Block::new()
                     .id_salt("ringed")
-                    .size((Sizing::FILL, Sizing::FILL))
+                    .size(SizeSpec::FILL)
                     .focusable(true)
                     .chrome(
                         Chrome::rounded(RgbaF32::srgb(0.20, 0.30, 0.55), Corners::all(10.0))
@@ -454,7 +454,7 @@ fn focus_ring_matches_golden() {
                     .show(ui);
                 Block::new()
                     .id_salt("plain")
-                    .size((Sizing::FILL, Sizing::FILL))
+                    .size(SizeSpec::FILL)
                     .focusable(true)
                     .show(ui);
             });

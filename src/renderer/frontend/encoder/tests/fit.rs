@@ -3,7 +3,7 @@
 use crate::damage::region::DamageRegion;
 use crate::host::harness::Harness;
 use crate::primitives::geometry::rect::Rect;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::renderer::frontend::payload::draw_stroke_payload::{DrawStrokePayload, StrokePath};
 use crate::shape::image_paint::ImagePaint;
 use crate::widget_core::configure::Configure;
@@ -32,7 +32,7 @@ fn downsample_modes_encode_to_distinct_tap_flags() {
     h.frame(|ui| {
         Panel::canvas()
             .auto_id()
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 for (_, mode, _) in modes {
                     ui.add_shape(
@@ -85,7 +85,7 @@ fn an_image_carries_the_shape_that_clips_it() {
     h.frame(|ui| {
         Panel::canvas()
             .auto_id()
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 for corners in [Corners::all(6.0), Corners::ZERO] {
                     ui.add_shape(
@@ -188,7 +188,7 @@ fn the_cascade_bounds_an_image_by_the_rect_the_encoder_draws() {
         h.frame(|ui| {
             Panel::canvas()
                 .id(WidgetId::from_hash("root"))
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| {
                     Panel::zstack()
                         .id(WidgetId::from_hash("frame"))
@@ -319,7 +319,7 @@ fn the_cascade_bounds_a_triangles_image_as_its_triangle() {
     h.frame(|ui| {
         Panel::canvas()
             .id(WidgetId::from_hash("root"))
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 Panel::zstack()
                     .id(WidgetId::from_hash("frame"))

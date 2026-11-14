@@ -8,7 +8,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::grid_cell::GridCell;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::primitives::layout::track::Track;
 use crate::scene::tree::Tree;
 use crate::text::wrap::TextWrap;
@@ -23,7 +23,7 @@ type Cell = (&'static str, (u16, u16), (Sizing, Sizing));
 fn fill_grid(surface: Size, tracks: GridTracks<'_>, cells: &[Cell]) -> LayoutRig {
     let mut rig = LayoutRig::new();
     rig.run(surface, |rec| {
-        let grid = Widget::grid().size((Sizing::FILL, Sizing::FILL));
+        let grid = Widget::grid().size(SizeSpec::FILL);
         rec.grid("grid", grid, tracks, |rec| {
             for &(id, cell, size) in cells {
                 rec.leaf(id, Widget::leaf().grid_cell(cell).size(size));
@@ -107,9 +107,7 @@ fn hug_column_stretches_fill_cells_to_widest_content() {
         };
         rec.grid("grid", Widget::grid(), tracks, |rec| {
             for (id, row, w) in [("a", 0, 120.0), ("b", 1, 60.0)] {
-                let cell = Widget::hstack()
-                    .grid_cell((row, 0))
-                    .size((Sizing::FILL, Sizing::HUG));
+                let cell = Widget::hstack().grid_cell((row, 0)).size(SizeSpec::FILL_W);
                 rec.node(id, cell, |rec| {
                     rec.leaf(&format!("f{id}"), Widget::leaf().size((w, 20.0)));
                 });
@@ -139,9 +137,7 @@ fn hug_column_max_caps_shrinkable_and_rigid_content() {
             cols: &[Track::HUG.with_max(150.0)],
         };
         rec.grid("grid", Widget::grid(), tracks, |rec| {
-            let cell = Widget::leaf()
-                .grid_cell((0, 0))
-                .size((Sizing::FILL, Sizing::HUG));
+            let cell = Widget::leaf().grid_cell((0, 0)).size(SizeSpec::FILL_W);
             rec.text_leaf(
                 "label",
                 cell,
@@ -371,21 +367,17 @@ fn resolve_axis_marks_fixed_and_hug_resolved_but_leaves_fill_unresolved() {
 fn grid_multi_row_hug_heights_resolve_independently() {
     let mut rig = LayoutRig::new();
     rig.run(Size::new(400.0, 400.0), |rec| {
-        rec.node(
-            "row",
-            Widget::hstack().size((Sizing::FILL, Sizing::FILL)),
-            |rec| {
-                let tracks = GridTracks {
-                    rows: &[Track::HUG; 3],
-                    cols: &[Track::fixed(50.0)],
-                };
-                rec.grid("multi-row", Widget::grid(), tracks, |rec| {
-                    for (id, row, h) in [("short", 0, 10.0), ("tall", 1, 80.0), ("med", 2, 30.0)] {
-                        rec.leaf(id, Widget::leaf().size((50.0, h)).grid_cell((row, 0)));
-                    }
-                });
-            },
-        );
+        rec.node("row", Widget::hstack().size(SizeSpec::FILL), |rec| {
+            let tracks = GridTracks {
+                rows: &[Track::HUG; 3],
+                cols: &[Track::fixed(50.0)],
+            };
+            rec.grid("multi-row", Widget::grid(), tracks, |rec| {
+                for (id, row, h) in [("short", 0, 10.0), ("tall", 1, 80.0), ("med", 2, 30.0)] {
+                    rec.leaf(id, Widget::leaf().size((50.0, h)).grid_cell((row, 0)));
+                }
+            });
+        });
     });
     assert_eq!(rig.rect("short").size.h, 10.0);
     assert_eq!(rig.rect("tall").size.h, 80.0);

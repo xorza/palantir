@@ -95,18 +95,12 @@ impl TextEditTheme {
             .with_border(Border::new(p.border_soft(), border_width));
         let selection = selection_wash(p);
         // `hovered` defaults to `normal`: no hover feedback out of the box.
-        let normal = WidgetLook {
-            chrome: normal_chrome,
-            text: TextStyleOverrides::NONE,
-        };
+        let normal = WidgetLook::new(normal_chrome);
         Self {
             looks: StatefulLook {
                 hovered: normal.clone(),
                 normal,
-                active: WidgetLook {
-                    chrome: focused_chrome,
-                    text: TextStyleOverrides::NONE,
-                },
+                active: WidgetLook::new(focused_chrome),
                 disabled: WidgetLook {
                     chrome: disabled_chrome,
                     text: TextStyleOverrides::NONE.with_color(p.text_disabled),

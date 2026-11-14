@@ -9,6 +9,7 @@ use crate::primitives::paint::border::Border;
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::brush::gradient::Gradient;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::primitives::paint::paint::Paint;
 use crate::primitives::paint::shadow::Shadow;
 use palantir_derive::{Animatable, Lerp};
@@ -151,8 +152,7 @@ impl Default for Chrome {
     }
 }
 
-/// A square box of `brush`, as [`Chrome::new`]: sugar for a box that only fills, as
-/// `Modal::scrim(color)` takes one.
+/// A square box of `brush`, as [`Chrome::new`]: sugar for a box that only fills.
 impl From<Brush> for Chrome {
     fn from(brush: Brush) -> Self {
         Self::new(brush)
@@ -163,6 +163,27 @@ impl From<Brush> for Chrome {
 impl From<RgbaF32> for Chrome {
     fn from(color: RgbaF32) -> Self {
         Self::new(color)
+    }
+}
+
+/// A square box of `color`, decoded from sRGB bytes, as [`Chrome::new`].
+impl From<SrgbaU8> for Chrome {
+    fn from(color: SrgbaU8) -> Self {
+        Self::new(color)
+    }
+}
+
+/// A square box of `border` alone, as [`Chrome::new`].
+impl From<Border> for Chrome {
+    fn from(border: Border) -> Self {
+        Self::new(border)
+    }
+}
+
+/// A square box of `shadow` alone, as [`Chrome::new`].
+impl From<Shadow> for Chrome {
+    fn from(shadow: Shadow) -> Self {
+        Self::new(shadow)
     }
 }
 
@@ -270,6 +291,37 @@ mod tests {
     const _CONST_BUILDER: Chrome = Chrome::NONE
         .with_border(Border::NONE)
         .with_shadow(Shadow::NONE);
+
+    /// Every value a `Paint` converts from converts to a `Chrome` too, as a square box of that
+    /// paint, so the ladders hold one set at each level: a color in bytes or floats, a brush, a
+    /// gradient, a border alone and a shadow alone.
+    #[test]
+    fn a_chrome_converts_from_what_its_paint_does() {
+        use crate::primitives::paint::color::srgba_u8::SrgbaU8;
+
+        let bytes = SrgbaU8::new(255, 0, 255, 51);
+        let border = Border::new(RgbaF32::BLACK, 2.0);
+        let shadow = Shadow::drop(RgbaF32::BLACK, Vec2::new(1.0, 2.0), 3.0);
+        let gradient = Gradient::horizontal([RgbaF32::BLACK, RgbaF32::WHITE]);
+        assert_eq!(
+            Paint::from(bytes),
+            Paint::from(RgbaF32::new(1.0, 0.0, 1.0, 0.2))
+        );
+        assert_eq!(Chrome::from(bytes), Chrome::new(Paint::from(bytes)));
+        assert_eq!(
+            Chrome::from(border),
+            Chrome::new(Paint::NONE.with_border(border))
+        );
+        assert_eq!(
+            Chrome::from(shadow),
+            Chrome::new(Paint::NONE.with_shadow(shadow))
+        );
+        assert_eq!(
+            Chrome::from(gradient.clone()),
+            Chrome::new(Paint::from(Brush::from(gradient)))
+        );
+        assert_eq!(Chrome::from(border).corners, Corners::ZERO);
+    }
 
     #[test]
     fn with_border_and_with_shadow_set_the_named_field_only() {

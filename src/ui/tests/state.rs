@@ -153,3 +153,55 @@ fn a_singleton_is_lent_across_widget_calls_and_kept() {
         "kept across frames"
     );
 }
+
+/// `with_state_or_insert_with` builds a new row once, from `init` with the `Ui`, and lends the
+/// kept row after: `init` runs on the first frame alone, and the row is the value, no `Option`.
+#[test]
+fn a_row_init_runs_for_a_new_row_alone() {
+    struct Loaded {
+        theme_gap: f32,
+        frames: u32,
+    }
+
+    let id = WidgetId::from_hash("insert-with");
+    let mut h = Harness::mono(SURFACE);
+    let mut inits = 0;
+    for frame in 1..=3_u32 {
+        h.frame(|ui| {
+            let seen = ui.with_state_or_insert_with(
+                id,
+                |ui| {
+                    inits += 1;
+                    Loaded {
+                        theme_gap: ui.theme().combo_box.gap,
+                        frames: 0,
+                    }
+                },
+                |_, loaded| {
+                    loaded.frames += 1;
+                    loaded.frames
+                },
+            );
+            assert_eq!(seen, frame);
+        });
+    }
+    assert_eq!(inits, 1, "init runs for the new row alone");
+    let gap = h.ui().theme().combo_box.gap;
+    assert_eq!(h.ui().state::<Loaded>(id).map(|l| l.theme_gap), Some(gap));
+}
+
+/// `set_singleton` stores the one `S` and `remove_singleton` takes it back, as `set_state` and
+/// `remove_state` do for a row.
+#[test]
+fn a_singleton_sets_and_removes() {
+    #[derive(Debug, PartialEq)]
+    struct Shared(u32);
+
+    let mut h = Harness::mono(SURFACE);
+    assert_eq!(h.ui_mut().remove_singleton::<Shared>(), None);
+    h.ui_mut().set_singleton(Shared(4));
+    assert_eq!(h.ui().singleton::<Shared>(), Some(&Shared(4)));
+    h.ui_mut().set_singleton(Shared(7));
+    assert_eq!(h.ui_mut().remove_singleton::<Shared>(), Some(Shared(7)));
+    assert_eq!(h.ui().singleton::<Shared>(), None);
+}

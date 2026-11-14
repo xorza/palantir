@@ -7,7 +7,7 @@ use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::keyboard::key::Key;
 use crate::primitives::layout::align::Align;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::scene::layer::Layer;
 use crate::shape::record::ShapeRecord;
 use crate::ui::Ui;
@@ -27,7 +27,7 @@ fn editing_a_long_value_holds_the_field_width() {
     let render = |ui: &mut Ui, v: &mut f64| {
         Panel::hstack()
             .id(WidgetId::from_hash("dv-row"))
-            .size((Sizing::HUG, Sizing::HUG))
+            .size(SizeSpec::HUG)
             .show(ui, |ui| {
                 DragValue::new(v)
                     .decimals(3)
@@ -123,7 +123,7 @@ fn entering_edit_mode_preserves_the_callers_node_placement() {
         let mut v = 1.5_f64;
         Panel::canvas()
             .id(WidgetId::from_hash("canvas"))
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 DragValue::new(&mut v)
                     .id(id)
@@ -226,7 +226,7 @@ fn every_text_form_labels_the_same_suffix() {
                     let suffix = form(ui);
                     DragValue::new(&mut fps)
                         .suffix(suffix)
-                        .size((Sizing::HUG, Sizing::HUG))
+                        .size(SizeSpec::HUG)
                         .id(id)
                         .show(ui);
                 });

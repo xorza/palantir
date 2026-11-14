@@ -7,8 +7,8 @@ use crate::support;
 use crate::support::Kit;
 use palantir::glam::Vec2;
 use palantir::{
-    Border, Button, Chrome, Configure, Corners, DragValue, Panel, Scroll, Sizing, SplitHalf,
-    Splitter, Text, Ui, WidgetId, fmt,
+    Border, Button, Chrome, Configure, Corners, DragValue, Panel, Scroll, SizeSpec, Sizing,
+    SplitHalf, Splitter, Text, Ui, WidgetId, fmt,
 };
 
 /// Items in the vertical list and the horizontal strip, enough to overflow either pane.
@@ -89,18 +89,16 @@ fn split_panes(ui: &mut Ui, k: Kit, s: &mut State) {
                 if let Some(item) = reveal {
                     list = list.reveal(item);
                 }
-                list.size((Sizing::FILL, Sizing::FILL))
-                    .gap(M.space.xs)
-                    .show(ui, |ui| {
-                        for i in 0..ITEMS {
-                            Item {
-                                id: item_id(i),
-                                number: i,
-                                size: (Sizing::FILL, Sizing::fixed(28.0)),
-                            }
-                            .show(ui, k);
+                list.size(SizeSpec::FILL).gap(M.space.xs).show(ui, |ui| {
+                    for i in 0..ITEMS {
+                        Item {
+                            id: item_id(i),
+                            number: i,
+                            size: (Sizing::FILL, Sizing::fixed(28.0)),
                         }
-                    });
+                        .show(ui, k);
+                    }
+                });
             }),
             SplitHalf::Second => {
                 Splitter::col(&mut s.v)
@@ -108,7 +106,7 @@ fn split_panes(ui: &mut Ui, k: Kit, s: &mut State) {
                     .show(ui, |ui, half| match half {
                         SplitHalf::First => pane(ui, k, "horizontal", |ui| {
                             Scroll::horizontal()
-                                .size((Sizing::FILL, Sizing::FILL))
+                                .size(SizeSpec::FILL)
                                 .gap(M.space.xs)
                                 .show(ui, |ui| {
                                     for i in 0..ITEMS {
@@ -125,7 +123,7 @@ fn split_panes(ui: &mut Ui, k: Kit, s: &mut State) {
                             Scroll::both()
                                 .id(grid_id())
                                 .zoomable()
-                                .size((Sizing::FILL, Sizing::FILL))
+                                .size(SizeSpec::FILL)
                                 .show(ui, |ui| grid(ui, &mut clicked));
                         }),
                     });
@@ -156,7 +154,7 @@ fn split_panes(ui: &mut Ui, k: Kit, s: &mut State) {
 fn pane(ui: &mut Ui, k: Kit, label: &'static str, body: impl FnOnce(&mut Ui)) {
     Panel::vstack()
         .auto_id()
-        .size((Sizing::FILL, Sizing::FILL))
+        .size(SizeSpec::FILL)
         .padding(M.space.sm)
         .gap(M.space.xs)
         .chrome(k.t.card())

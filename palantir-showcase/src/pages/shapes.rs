@@ -95,14 +95,17 @@ fn radii(ui: &mut Ui, k: Kit) {
 /// memoizes its content hash), even at three vertices.
 fn retained_mesh(ui: &mut Ui, key: &'static str, build: impl FnOnce(&mut Mesh)) {
     let id = WidgetId::from_hash(("showcase::shapes::mesh", key));
-    ui.with_state::<Option<Mesh>, _>(id, |ui, m| {
-        let m = m.get_or_insert_with(|| {
+    ui.with_state_or_insert_with(
+        id,
+        |_| {
             let mut m = Mesh::new();
             build(&mut m);
             m
-        });
-        ui.add_shape(Shape::mesh(m), RgbaF32::WHITE);
-    });
+        },
+        |ui, m| {
+            ui.add_shape(Shape::mesh(m), RgbaF32::WHITE);
+        },
+    );
 }
 
 fn mesh_triangle(ui: &mut Ui, k: Kit) {

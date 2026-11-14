@@ -119,9 +119,8 @@ fn value_padding(m: &Metrics) -> Spacing {
 /// the focus color pressed, and back to `element` disabled. It shows no selected state, so both
 /// packs are one.
 fn chip(p: &Palette, m: &Metrics) -> ButtonTheme {
-    let ring = |color: RgbaF32| WidgetLook {
-        chrome: Chrome::NONE.with_border(Border::new(color, m.stroke.hairline)),
-        text: TextStyleOverrides::NONE,
+    let ring = |color: RgbaF32| {
+        WidgetLook::new(Chrome::NONE.with_border(Border::new(color, m.stroke.hairline)))
     };
     let looks = StatefulLook {
         normal: ring(p.element_strong),

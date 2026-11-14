@@ -4,7 +4,7 @@ use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::align::{Align, VAlign};
 use crate::primitives::layout::axis::{Axis, AxisExtent};
 use crate::primitives::layout::justify::Justify;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::text::wrap::TextWrap;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::widget::Widget;
@@ -20,7 +20,7 @@ fn label(rec: &mut NodeRecorder<'_>, id: &str, leaf: Widget, text: &str) {
 fn hstack_arranges_two_labels_side_by_side() {
     let mut rig = LayoutRig::new();
     rig.run(Size::new(800.0, 600.0), |rec| {
-        let fill = Widget::hstack().size((Sizing::FILL, Sizing::FILL));
+        let fill = Widget::hstack().size(SizeSpec::FILL);
         rec.node("root", fill, |rec| {
             label(rec, "hi", Widget::leaf(), "Hi");
             label(
@@ -41,10 +41,10 @@ fn hstack_arranges_two_labels_side_by_side() {
 fn vstack_with_fill_distributes_remainder() {
     let mut rig = LayoutRig::new();
     rig.run(Size::new(200.0, 300.0), |rec| {
-        let column = Widget::vstack().size((Sizing::HUG, Sizing::FILL));
+        let column = Widget::vstack().size(SizeSpec::FILL_H);
         rec.node("root", column, |rec| {
             rec.leaf("a", Widget::leaf().size((Sizing::HUG, 50.0)));
-            rec.leaf("b", Widget::leaf().size((Sizing::HUG, Sizing::FILL)));
+            rec.leaf("b", Widget::leaf().size(SizeSpec::FILL_H));
         });
     });
     assert_eq!(rig.rect("a").size.h, 50.0);
@@ -74,15 +74,11 @@ fn hstack_fill_weights_split_remainder_proportionally() {
     ] {
         let mut rig = LayoutRig::new();
         rig.run(Size::new(400.0, 100.0), |rec| {
-            rec.node(
-                "root",
-                Widget::hstack().size((Sizing::FILL, Sizing::HUG)),
-                |rec| {
-                    for (id, weight) in ["a", "b"].into_iter().zip(case.weights) {
-                        rec.leaf(id, Widget::leaf().size((Sizing::fill(weight), Sizing::HUG)));
-                    }
-                },
-            );
+            rec.node("root", Widget::hstack().size(SizeSpec::FILL_W), |rec| {
+                for (id, weight) in ["a", "b"].into_iter().zip(case.weights) {
+                    rec.leaf(id, Widget::leaf().size((Sizing::fill(weight), Sizing::HUG)));
+                }
+            });
         });
         let kids = rig.child_rects("root");
         assert_eq!(kids[0].size.w, case.widths[0], "{} first", case.label);
@@ -95,15 +91,11 @@ fn hstack_fill_weights_split_remainder_proportionally() {
 fn hstack_equal_fill_siblings_are_equal_width_regardless_of_content() {
     let mut rig = LayoutRig::new();
     rig.run(Size::new(400.0, 100.0), |rec| {
-        rec.node(
-            "root",
-            Widget::hstack().size((Sizing::FILL, Sizing::HUG)),
-            |rec| {
-                let fill = || Widget::leaf().size((Sizing::FILL, Sizing::HUG));
-                label(rec, "wide", fill(), "wide label");
-                label(rec, "narrow", fill(), "x");
-            },
-        );
+        rec.node("root", Widget::hstack().size(SizeSpec::FILL_W), |rec| {
+            let fill = || Widget::leaf().size(SizeSpec::FILL_W);
+            label(rec, "wide", fill(), "wide label");
+            label(rec, "narrow", fill(), "x");
+        });
     });
     assert_eq!(rig.rect("wide"), Rect::new(0.0, 0.0, 200.0, 16.0));
     assert_eq!(rig.rect("narrow"), Rect::new(200.0, 0.0, 200.0, 16.0));
@@ -122,9 +114,7 @@ fn hstack_justify_distributes_leftover() {
     for (label, justify, expected_xs) in cases {
         let mut rig = LayoutRig::new();
         rig.run(Size::new(200.0, 100.0), |rec| {
-            let row = Widget::hstack()
-                .size((Sizing::FILL, Sizing::HUG))
-                .justify(*justify);
+            let row = Widget::hstack().size(SizeSpec::FILL_W).justify(*justify);
             rec.node("root", row, |rec| {
                 for i in 0..expected_xs.len() {
                     rec.leaf(&format!("c{i}"), Widget::leaf().size(40.0));
@@ -143,11 +133,11 @@ fn hstack_justify_is_noop_when_fill_child_consumes_leftover() {
     let mut rig = LayoutRig::new();
     rig.run(Size::new(200.0, 100.0), |rec| {
         let row = Widget::hstack()
-            .size((Sizing::FILL, Sizing::HUG))
+            .size(SizeSpec::FILL_W)
             .justify(Justify::Center);
         rec.node("root", row, |rec| {
             rec.leaf("a", Widget::leaf().size(40.0));
-            rec.leaf("filler", Widget::leaf().size((Sizing::FILL, Sizing::HUG)));
+            rec.leaf("filler", Widget::leaf().size(SizeSpec::FILL_W));
             rec.leaf("c", Widget::leaf().size(40.0));
         });
     });
@@ -218,7 +208,7 @@ fn hug_hstack_pass2_does_not_double_count_non_fill_children() {
     rig.run(Size::new(200.0, 100.0), |rec| {
         rec.node("root", Widget::hstack(), |rec| {
             label(rec, "hi", Widget::leaf(), "Hi");
-            rec.leaf("filler", Widget::leaf().size((Sizing::FILL, Sizing::HUG)));
+            rec.leaf("filler", Widget::leaf().size(SizeSpec::FILL_W));
         });
     });
     assert_eq!([rig.desired("hi").w, rig.desired("root").w], [16.0, 16.0]);

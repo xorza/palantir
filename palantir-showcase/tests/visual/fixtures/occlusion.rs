@@ -3,7 +3,7 @@
 use image::RgbaImage;
 use palantir::glam::UVec2;
 use palantir::widget::Shape;
-use palantir::{Configure, Panel, Rect, RgbaF32, Sizing, Ui};
+use palantir::{Configure, Panel, Rect, RgbaF32, SizeSpec, Ui};
 
 use crate::fixtures;
 use crate::goldens;
@@ -39,7 +39,7 @@ fn render_fractional_layers(grouping: Grouping) -> RgbaImage {
                     Grouping::Split => {
                         Panel::canvas()
                             .auto_id()
-                            .size((Sizing::FILL, Sizing::FILL))
+                            .size(SizeSpec::FILL)
                             .clip_rect()
                             .show(ui, |ui| add_layer(ui, RgbaF32::srgb(0.0, 0.0, 1.0)));
                     }

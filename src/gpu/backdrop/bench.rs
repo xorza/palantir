@@ -25,7 +25,7 @@ use crate::host::harness::Harness;
 use crate::host::harness::harness_builder::HarnessDepth;
 use crate::host::offscreen::OffscreenHost;
 use crate::primitives::geometry::rect::Rect;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
 use crate::primitives::paint::material::lens::Lens;
@@ -57,23 +57,23 @@ impl<S: Scene> State<S> {
     fn record(&mut self, ui: &mut Ui) {
         Panel::zstack()
             .id_salt("backdrop-capture-bench")
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 self.frame.scroll = Vec2::new(self.scroll, 0.0);
                 self.frame.record(ui);
                 Panel::hstack()
                     .id_salt("backdrop-capture-bench-row")
-                    .size((Sizing::FILL, Sizing::FILL))
+                    .size(SizeSpec::FILL)
                     .show(ui, |ui| {
                         Panel::canvas()
                             .id_salt("backdrop-capture-bench-backdrop")
-                            .size((Sizing::FILL, Sizing::FILL))
+                            .size(SizeSpec::FILL)
                             .show(ui, |ui| {
                                 ui.add_shape(Shape::rect(), Material::blur(SIGMA));
                             });
                         Panel::canvas()
                             .id_salt("backdrop-capture-bench-rest")
-                            .size((Sizing::FILL, Sizing::FILL))
+                            .size(SizeSpec::FILL)
                             .show(ui, |_| {});
                     });
             });
@@ -214,7 +214,7 @@ fn composite(c: &mut Criterion, backends: &Backends, backend: Backend) {
                     frames.frame(gpu, &target, |ui| {
                         Panel::canvas()
                             .id_salt("backdrop-composite-bench")
-                            .size((Sizing::FILL, Sizing::FILL))
+                            .size(SizeSpec::FILL)
                             .show(ui, |ui| {
                                 ui.add_shape(
                                     Shape::rect().at(Rect::new(10.0, 10.0, 100.0, 100.0)),
@@ -339,12 +339,12 @@ impl<S: Scene> MaterialFrame<S> {
         };
         Panel::zstack()
             .id_salt("backdrop-frame")
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 self.frame.record(ui);
                 Panel::canvas()
                     .id_salt("backdrop-frame-backdrops")
-                    .size((Sizing::FILL, Sizing::FILL))
+                    .size(SizeSpec::FILL)
                     .show(ui, |ui| {
                         ui.add_shape(
                             Shape::rect().at(Rect::new(300.0, 20.0, 12.0, 12.0)),
@@ -602,12 +602,12 @@ const fn scroll<S>(frame: &mut SceneFrame<S>, n: u32) {
 fn over<S: Scene>(fixture: &mut SceneFrame<S>, ui: &mut Ui, backdrops: impl FnOnce(&mut Ui)) {
     Panel::zstack()
         .id_salt("backdrop-scene")
-        .size((Sizing::FILL, Sizing::FILL))
+        .size(SizeSpec::FILL)
         .show(ui, |ui| {
             fixture.record(ui);
             Panel::canvas()
                 .id_salt("backdrop-scene-backdrops")
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, backdrops);
         });
 }
@@ -638,17 +638,17 @@ fn pair<S: Scene>(fixture: &mut SceneFrame<S>, ui: &mut Ui, gap: f32) {
 fn first<S: Scene>(fixture: &mut SceneFrame<S>, ui: &mut Ui) {
     Panel::zstack()
         .id_salt("backdrop-first")
-        .size((Sizing::FILL, Sizing::FILL))
+        .size(SizeSpec::FILL)
         .show(ui, |ui| {
             Panel::canvas()
                 .id_salt("backdrop-first-background")
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| {
                     ui.add_shape(Shape::rect(), RgbaF32::srgb(0.12, 0.13, 0.16));
                 });
             Panel::hstack()
                 .id_salt("backdrop-first-row")
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| {
                     Panel::canvas()
                         .id_salt("backdrop-first-sidebar")

@@ -383,38 +383,6 @@ Files: as listed per item. No exported signature changes.
   `nearest` all show the start. Not local: fixed by the shared `reveal_pan` of batch 11, which
   carries this item's test of the three oversized cases.
 
-### Batch 5: additions the call sites ask for (API, additive)
-
-Files: per item.
-
-- [ ] `host/offscreen/mod.rs:219-381`: a `Waker` wake is invisible on `OffscreenHost`. Add
-  `has_pending_wake()` and `wait_for_wake(timeout)`, as `Harness` names them; test it.
-- [ ] `theme/look`: `impl From<Chrome> for WidgetLook`, `WidgetLook::new(chrome)`,
-  `with_text(overrides)`; 36 literals carry `text: TextStyleOverrides::NONE`.
-- [ ] `primitives/layout/sizing.rs`: `SizeSpec::FILL` and `SizeSpec::FILL_W`; 77 of the showcase's
-  220 `.size(` calls are these two.
-- [ ] `primitives/geometry/{spacing, corners}`: lane accessors (`left()` … `bottom_left()`); the
-  only read is `to_array()[i]`.
-- [ ] `primitives/geometry/translate_scale/mod.rs:158-189`: add `apply_vector`; the `apply_point`
-  doc sends a forward caller to `inverse_vector`.
-- [ ] `ui/mod.rs:1248-1264`: a state row built from `ui` needs `Option<S>` plus
-  `get_or_insert_with` at six showcase sites. Add `with_state_or_insert_with(id, init, body)`,
-  named as std's `Entry::or_insert_with`, with `init: impl FnOnce(&mut Ui) -> S`; add
-  `set_singleton`/`remove_singleton` or say why a singleton only lends.
-- [ ] `primitives/paint/{brush/mod.rs:111-144, paint.rs:143-181, chrome.rs:156-185}`: the `From`
-  ladders differ per level (`Brush: From<SrgbaU8>` but not `Paint` or `Chrome`). One set at each
-  level, each delegating down.
-- [ ] `primitives/input/shortcut`: `ShortcutMods: FromStr`; the shot runner parses
-  `"{word}+a"` and takes `.mods`.
-- [ ] `primitives/paint/image`: `Image::texel(at: UVec2)`, `Image::magnified(factor)`, and a
-  fallible PNG pair under `golden` in place of the two private copies (`golden/mod.rs:351-372`,
-  `palantir-showcase/src/shot/mod.rs:370-389`).
-- [ ] `theme/color_scheme.rs`: `ColorScheme::ALL`, as `ColorModel::ALL`.
-- [ ] `input/capture.rs`: the double-click interval and radius, which
-  `palantir-showcase/examples/reel/script.rs:53-57` copies.
-- [ ] `host/harness/harness_builder.rs`: `collect_gpu_stats` is public on the other two builders;
-  make it public here or record why.
-
 ### Batch 6: errors (API)
 
 Files: `src/driver/error.rs`, `src/clipboard/mod.rs`, `src/image_registry/error.rs`,

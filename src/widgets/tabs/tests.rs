@@ -11,7 +11,7 @@ use crate::primitives::input::keyboard::key::Key;
 use crate::primitives::input::keyboard::modifiers::Modifiers;
 use crate::primitives::input::pointer::PointerButton;
 use crate::primitives::input::sense::Sense;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::primitives::paint::line_style::LineCap;
 use crate::scene::layer::Layer;
 use crate::shape::geometry::bezier_geometry::BezierGeometry;
@@ -927,7 +927,7 @@ fn a_draggable_view_reports_the_slot_a_drag_released_over() {
             .show(ui, |ui, _| {
                 Panel::vstack()
                     .id_salt("page")
-                    .size((Sizing::FILL, Sizing::FILL))
+                    .size(SizeSpec::FILL)
                     .show(ui, |_| {});
             })
             .into()
@@ -1144,7 +1144,7 @@ fn a_keyed_view_keeps_each_chip_with_its_page() {
             .show(ui, |ui, _| {
                 Panel::vstack()
                     .id_salt("page")
-                    .size((Sizing::FILL, Sizing::FILL))
+                    .size(SizeSpec::FILL)
                     .show(ui, |_| {});
             })
             .into()

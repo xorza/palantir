@@ -6,7 +6,7 @@ use crate::primitives::input::interaction::response::Response;
 use crate::primitives::input::sense::Sense;
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::grid_cell::GridCell;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::primitives::layout::track::Track;
 use crate::primitives::math::domain;
 use crate::primitives::paint::color::RgbaF32;
@@ -352,7 +352,7 @@ impl Inputs<'_> {
         Panel::hstack()
             .id(id.with("bars"))
             .gap(gap)
-            .size((Sizing::FILL, Sizing::HUG))
+            .size(SizeSpec::FILL_W)
             .show(ui, |ui| {
                 ColorSwatch::new(preview)
                     .style(theme)
@@ -364,7 +364,7 @@ impl Inputs<'_> {
                 Panel::vstack()
                     .id(id.with("bar-stack"))
                     .gap(gap)
-                    .size((Sizing::FILL, Sizing::HUG))
+                    .size(SizeSpec::FILL_W)
                     .show(ui, |ui| {
                         let hue = ColorStrip::hue(&mut state.coords)
                             .texel_size(texel_size)
@@ -459,13 +459,13 @@ impl Rows<'_> {
             .rows([Track::HUG; 2])
             .gap(gap)
             .line_gap(gap)
-            .size((Sizing::FILL, Sizing::HUG))
+            .size(SizeSpec::FILL_W)
             .show(ui, |ui| {
                 Panel::vstack()
                     .id(id.with("hex-cell"))
                     .gap(LABEL_GAP)
                     .grid_cell(GridCell::at(0, 0).with_span(1, 2))
-                    .size((Sizing::FILL, Sizing::HUG))
+                    .size(SizeSpec::FILL_W)
                     .show(ui, |ui| {
                         Text::new("HEX")
                             .style(&theme.label.apply(&ui.theme().text))
@@ -475,7 +475,7 @@ impl Rows<'_> {
                             .max_chars(7)
                             .style(&theme.hex)
                             .id(hex_id)
-                            .size((Sizing::FILL, Sizing::HUG))
+                            .size(SizeSpec::FILL_W)
                             .show(ui);
                         // A draft parsing to the color already shown is no edit, as `#0000ff`
                         // under `#0000FF`.
@@ -553,7 +553,7 @@ impl Rows<'_> {
             .id(cell_id)
             .gap(LABEL_GAP)
             .grid_cell(cell.cell)
-            .size((Sizing::FILL, Sizing::HUG))
+            .size(SizeSpec::FILL_W)
             .show(ui, |ui| {
                 Text::new(cell.caption)
                     .style(&theme.label.apply(&ui.theme().text))
@@ -563,7 +563,7 @@ impl Rows<'_> {
                     .range(0.0..=cell.top)
                     .style(&theme.value)
                     .id(value_id)
-                    .size((Sizing::FILL, Sizing::HUG))
+                    .size(SizeSpec::FILL_W)
                     .show(ui)
             })
             .inner;
@@ -581,7 +581,7 @@ impl Rows<'_> {
             .axis(Axis::X)
             .id(id.with("models"))
             .gap(gap)
-            .size((Sizing::FILL, Sizing::HUG))
+            .size(SizeSpec::FILL_W)
             .show(ui, |ui, options| {
                 for choice in ColorModel::ALL {
                     options.option(choice).label(model_label(choice)).show(ui);
@@ -603,7 +603,7 @@ impl Rows<'_> {
         Panel::wrap_hstack()
             .id(id.with("swatches"))
             .gap(domain::length_at_least(theme.gap, 0.0))
-            .size((Sizing::FILL, Sizing::HUG))
+            .size(SizeSpec::FILL_W)
             .show(ui, |ui| {
                 for (idx, color) in colors.iter().enumerate() {
                     if ColorSwatch::new(*color)

@@ -8,8 +8,8 @@ use crate::support;
 use crate::support::{Kit, Section};
 use palantir::{
     Axis, Button, Checkbox, ColorButton, ColorPicker, ComboBox, Configure, DragValue, FocusPolicy,
-    FocusRingTheme, Grid, Modal, Panel, PopupTrigger, RadioGroup, Sizing, Slider, Switch, Text,
-    TextEdit, Track, Ui, WidgetId,
+    FocusRingTheme, Grid, Modal, Panel, PopupTrigger, RadioGroup, SizeSpec, Sizing, Slider, Switch,
+    Text, TextEdit, Track, Ui, WidgetId,
 };
 
 static PLANS: [&str; 3] = ["Free", "Pro", "Team"];
@@ -151,7 +151,7 @@ fn form(ui: &mut Ui, k: Kit, s: &mut State, seen: &mut Seen) {
         .rows([Track::HUG; LABELS.len() + 1])
         .gap(M.space.lg)
         .line_gap(M.space.md)
-        .size((Sizing::FILL, Sizing::HUG))
+        .size(SizeSpec::FILL_W)
         .show(ui, |ui| {
             for (row, label) in LABELS.iter().enumerate() {
                 Text::new(*label)
@@ -163,13 +163,13 @@ fn form(ui: &mut Ui, k: Kit, s: &mut State, seen: &mut Seen) {
             let r = TextEdit::new(&mut s.name)
                 .placeholder("Ada Lovelace")
                 .grid_cell((0, 1))
-                .size((Sizing::FILL, Sizing::HUG))
+                .size(SizeSpec::FILL_W)
                 .show(ui);
             seen.note("Name", r.response.focused);
             let r = TextEdit::new(&mut s.email)
                 .placeholder("ada@example.com")
                 .grid_cell((1, 1))
-                .size((Sizing::FILL, Sizing::HUG))
+                .size(SizeSpec::FILL_W)
                 .show(ui);
             seen.note("Email", r.response.focused);
             let r = Checkbox::new(&mut s.subscribe)
@@ -297,7 +297,7 @@ fn arrow_groups(ui: &mut Ui, k: Kit, s: &mut State, seen: &mut Seen) {
                         let r = Button::new()
                             .id_salt(i)
                             .label(*label)
-                            .size((Sizing::FILL, Sizing::HUG))
+                            .size(SizeSpec::FILL_W)
                             .show(ui);
                         if r.clicked() {
                             s.picked = i;
@@ -364,7 +364,7 @@ fn dialog(ui: &mut Ui, k: Kit, s: &mut State) {
                 Text::new("Rename layer").style(&k.t.body()).show(ui);
                 TextEdit::new(&mut s.dialog_note)
                     .placeholder("new name")
-                    .size((Sizing::FILL, Sizing::HUG))
+                    .size(SizeSpec::FILL_W)
                     .show(ui);
                 support::row(ui, |ui| {
                     if Button::new().label("Cancel").show(ui).clicked() {

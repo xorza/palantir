@@ -29,7 +29,7 @@ use crate::host::harness::harness_builder::HarnessDepth;
 use crate::primitives::effect::effect_name::EffectName;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::SizeSpec;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::paint::Paint;
 use crate::primitives::paint::shadow::Shadow;
@@ -212,7 +212,7 @@ fn record(ui: &mut Ui, arm: GlowArm) {
     );
     Panel::canvas()
         .id_salt("effect-bench")
-        .size((Sizing::FILL, Sizing::FILL))
+        .size(SizeSpec::FILL)
         .show(ui, |ui| {
             for i in 0..CARDS {
                 let card = card(i);

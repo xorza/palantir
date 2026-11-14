@@ -5,7 +5,7 @@ use crate::host::harness::Harness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::renderer::frontend::encoder::tests::support::{drawn_fills, screen_rects_by_fill};
@@ -121,7 +121,7 @@ fn damage_filter_paints_leaves_in_any_rect() {
     h.frame(|ui| {
         Panel::canvas()
             .auto_id()
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 for (key, at, fill) in corners {
                     Block::new()
@@ -171,7 +171,7 @@ fn viewport_and_damage_culls_advance_the_sparse_paint_anim_cursor() {
         h.at(HALF).frame(|ui| {
             Panel::canvas()
                 .auto_id()
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| {
                     for (key, pos, started_at) in [
                         (
@@ -305,7 +305,7 @@ fn damage_filter_repaints_neighbor_in_aa_pad_ring() {
         h.frame(|ui| {
             Panel::canvas()
                 .auto_id()
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| {
                     // Static neighbor at (100..120, 100..120), standing in for a node border the wire swept past.
                     Block::new()

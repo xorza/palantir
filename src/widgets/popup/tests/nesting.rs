@@ -4,7 +4,7 @@
 use crate::host::harness::Harness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::anchor::Anchor;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::SizeSpec;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::combo_box::{ComboBox, ComboBoxList};
@@ -39,7 +39,7 @@ fn dropdown(ui: &mut Ui, selected: &mut &'static str) {
 fn record(ui: &mut Ui, opener: Opener, selected: &mut &'static str) {
     Panel::vstack()
         .id(menu_trigger())
-        .size((Sizing::FILL, Sizing::FILL))
+        .size(SizeSpec::FILL)
         .show(ui, |ui| match opener {
             Opener::Modal => {
                 Modal::new().auto_id().show(ui, |ui| dropdown(ui, selected));

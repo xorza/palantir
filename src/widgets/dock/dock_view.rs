@@ -4,7 +4,7 @@ use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::interaction::response::Response;
 use crate::primitives::input::keyboard::key::Key;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::SizeSpec;
 use crate::primitives::math::domain;
 use crate::scene::layer::Layer;
 use crate::theme::dock::DockTheme;
@@ -209,9 +209,7 @@ impl<'a, T: DockTab> DockView<'a, T, Emitting<'a, T>> {
             tabs_style,
             menu_style,
         } = self;
-        widget
-            .configure()
-            .default_size((Sizing::FILL, Sizing::FILL));
+        widget.configure().default_size(SizeSpec::FILL);
         let response = widget.response(ui);
         let id = response.id;
         assert!(
@@ -535,7 +533,7 @@ impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
         let dock = self.dock;
         Panel::vstack()
             .id(group.id.pane_id(dock))
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .focusable(true)
             .show(ui, |ui| {
                 self.strip(ui, group);
@@ -544,7 +542,7 @@ impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
                 let tabs = &mut *self.tabs;
                 Panel::vstack()
                     .id(group.id.content_id(dock))
-                    .size((Sizing::FILL, Sizing::FILL))
+                    .size(SizeSpec::FILL)
                     .show(ui, |ui| tabs.body(ui, tab, size));
             });
     }
@@ -622,7 +620,7 @@ impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
         let tabs = &mut *self.tabs;
         Menu::for_id(chip)
             .style(self.menu_style)
-            .size((Sizing::HUG, Sizing::HUG))
+            .size(SizeSpec::HUG)
             .show(ui, |ui| {
                 tabs.tab_menu(
                     ui,
@@ -649,7 +647,7 @@ impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
                 .show(|ui| {
                     Panel::zstack()
                         .id(dock.with("preview"))
-                        .size((Sizing::FILL, Sizing::FILL))
+                        .size(SizeSpec::FILL)
                         .chrome(preview)
                         .show(ui, |_| {});
                 });
@@ -666,7 +664,7 @@ impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
             .show(|ui| {
                 Panel::hstack()
                     .id(dock.with("ghost"))
-                    .size((Sizing::HUG, Sizing::HUG))
+                    .size(SizeSpec::HUG)
                     .padding(padding)
                     .chrome(ghost)
                     .show(ui, |ui| {

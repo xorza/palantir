@@ -6,7 +6,7 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::input_event::InputEvent;
 use crate::primitives::input::pointer::PointerButton;
 use crate::primitives::input::sense::Sense;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
@@ -24,7 +24,7 @@ fn build_hover_target(ui: &mut Ui) {
 fn build_two_hover_targets(ui: &mut Ui) {
     Panel::hstack()
         .id(WidgetId::from_hash("outer"))
-        .size((Sizing::HUG, Sizing::HUG))
+        .size(SizeSpec::HUG)
         .show(ui, |ui| {
             Panel::hstack()
                 .id(WidgetId::from_hash("a"))

@@ -5,7 +5,7 @@ use crate::internals::panic_probe;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::anchor::Anchor;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::scene::layer::Layer;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
@@ -30,7 +30,7 @@ fn placed(mut place: impl FnMut(&mut Ui)) -> Rect {
     h.frame(|ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("main-bg"))
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, &mut place);
     });
     let root = h.ui().tree(Layer::Popup).roots[0].first_node.idx();
@@ -95,7 +95,7 @@ fn a_layer_raised_from_a_disabled_scope_is_disabled() {
                 let mut read = false;
                 Panel::vstack()
                     .id(WidgetId::from_hash("owner"))
-                    .size((Sizing::FILL, Sizing::FILL))
+                    .size(SizeSpec::FILL)
                     .disabled(disabled)
                     .show(ui, |ui| {
                         ui.layer(Layer::Popup).at(Vec2::new(40.0, 40.0)).show(|ui| {

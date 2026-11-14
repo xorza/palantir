@@ -10,7 +10,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::sense::Sense;
 use crate::primitives::layout::placement::{Origin, Placement};
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::SizeSpec;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
@@ -99,7 +99,7 @@ fn ui_layer_size_caps_overlay_available() {
         h.frame(|ui| {
             Panel::vstack()
                 .id(WidgetId::from_hash("main"))
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |_| {});
             let mut scope = ui.layer(Layer::Popup).at(anchor);
             if let Some(cap) = cap {
@@ -108,7 +108,7 @@ fn ui_layer_size_caps_overlay_available() {
             scope.show(|ui| {
                 Panel::vstack()
                     .id(WidgetId::from_hash("overlay-root"))
-                    .size((Sizing::FILL, Sizing::FILL))
+                    .size(SizeSpec::FILL)
                     .show(ui, |_| {});
             });
         });

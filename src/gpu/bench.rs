@@ -26,7 +26,7 @@ use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::fit::Fit;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::layout::clip_mode::ClipMode;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::image::Image;
@@ -170,7 +170,7 @@ impl Scene<'_> {
         let style = TextStyle::stock(ColorScheme::Dark).with_color(color);
         Panel::canvas()
             .id_salt("record-bench-root")
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 for i in 0..ITEMS {
                     let cell = Panel::zstack()

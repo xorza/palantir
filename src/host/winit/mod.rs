@@ -16,7 +16,7 @@
 //! WinitHost::builder(WindowToken(0))
 //!     .title("title")
 //!     .build(|ui, _handle| {
-//!         for scheme in [ColorScheme::Light, ColorScheme::Dark] {
+//!         for scheme in ColorScheme::ALL {
 //!             let mut theme = Theme::stock(scheme);
 //!             theme.button.defaults.transition = AnimationSpec::SPRING;
 //!             ui.set_scheme_theme(scheme, theme).expect("a stock theme names no press effect");

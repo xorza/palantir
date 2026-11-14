@@ -7,7 +7,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::identity::backdrop_key::BackdropKey;
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::SizeSpec;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
 use crate::renderer::backdrop_captures::{
@@ -388,18 +388,18 @@ fn a_backdrop_whose_key_moves_takes_a_new_result() {
         move |ui: &mut Ui| {
             Panel::zstack()
                 .id(WidgetId::from_hash("scene"))
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| {
                     Panel::canvas()
                         .id(WidgetId::from_hash("under"))
-                        .size((Sizing::FILL, Sizing::FILL))
+                        .size(SizeSpec::FILL)
                         .show(ui, |ui| {
                             let square = Rect::new(42.0, 42.0, 4.0, 4.0);
                             ui.add_shape(Shape::rect().at(square), RgbaF32::WHITE);
                         });
                     Panel::canvas()
                         .id(WidgetId::from_hash("moved"))
-                        .size((Sizing::FILL, Sizing::FILL))
+                        .size(SizeSpec::FILL)
                         .show(ui, |ui| {
                             if lead {
                                 let lead = Rect::new(0.0, 0.0, 4.0, 4.0);

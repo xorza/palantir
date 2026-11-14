@@ -8,6 +8,7 @@
 use std::time::Duration;
 
 use palantir::glam::Vec2;
+use palantir::widget::{DOUBLE_CLICK_INTERVAL, DOUBLE_CLICK_RADIUS};
 use palantir::{Harness, PointerButton, Ui, WidgetId};
 
 use crate::deck::Deck;
@@ -49,12 +50,6 @@ const PRESS: Duration = Duration::from_millis(90);
 
 /// The pause after a click before the next step, so its ring is seen.
 const AFTER_CLICK: Duration = Duration::from_millis(350);
-
-/// Two presses this close in time and space, bounds included, read as a double click: palantir's
-/// own window and radius (`DOUBLE_CLICK_INTERVAL` and `DOUBLE_CLICK_RADIUS` in
-/// `src/input/capture.rs`).
-const DOUBLE_CLICK: Duration = Duration::from_millis(500);
-const DOUBLE_CLICK_RADIUS: f32 = 5.0;
 
 /// Fitts' law, `a + b · log2(D / W + 1)`, with MacKenzie's mouse constants (a ≈ 0.2 s,
 /// b ≈ 0.1 s a bit; "Fitts' law as a research and design tool", 1992), slowed by [`CALM`] so a
@@ -274,7 +269,7 @@ impl Runner {
     /// show a selection it never meant.
     fn press(&mut self, at: Duration, h: &mut Harness) {
         if let Some((last, place)) = self.last_press
-            && at.saturating_sub(last) <= DOUBLE_CLICK
+            && at.saturating_sub(last) <= DOUBLE_CLICK_INTERVAL
             && place.distance(self.cursor) <= DOUBLE_CLICK_RADIUS
         {
             panic!(

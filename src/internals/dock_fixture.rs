@@ -3,7 +3,7 @@
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::text::interned_str::InternedStr;
 use crate::ui::Ui;
@@ -118,7 +118,7 @@ impl DockTabs for Panes {
     fn body(&mut self, ui: &mut Ui, tab: Tab, _size: Option<Size>) {
         Panel::vstack()
             .id_salt(("pane", tab.title()))
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .padding(14.0)
             .show(ui, |ui| {
                 Text::new(tab.title()).id_salt("body").show(ui);

@@ -8,7 +8,7 @@ use crate::gpu::backdrop::tests::{
 use crate::gpu::test_gpu::headless_test_gpu;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
@@ -42,7 +42,7 @@ fn stripes(ui: &mut Ui, width: u32) {
 fn canvas(ui: &mut Ui, body: impl FnOnce(&mut Ui)) {
     Panel::canvas()
         .id_salt("backdrop-neighbors")
-        .size((Sizing::FILL, Sizing::FILL))
+        .size(SizeSpec::FILL)
         .show(ui, body);
 }
 

@@ -119,15 +119,16 @@ struct Sources {
 
 impl Sources {
     fn load(ui: &mut Ui) -> Self {
-        ui.with_state::<Option<Self>, _>(sources_id(), |ui, slot| {
-            slot.get_or_insert_with(|| Self {
+        ui.with_state_or_insert_with(
+            sources_id(),
+            |ui| Self {
                 checker: MadeImage::new(ui, checker),
                 gradient: MadeImage::new(ui, gradient),
                 sprite: MadeImage::new(ui, sprite),
                 starfield: MadeImage::new(ui, starfield),
-            })
-            .clone()
-        })
+            },
+            |_, sources: &mut Self| sources.clone(),
+        )
     }
 }
 
@@ -391,11 +392,7 @@ mod tests {
             .build();
         h.frame(&mut record);
         let before = h.read_back();
-        let src = h
-            .state::<Option<Sources>>(sources_id())
-            .unwrap()
-            .clone()
-            .unwrap();
+        let src = h.state::<Sources>(sources_id()).unwrap().clone();
         let handles = [&src.checker, &src.gradient, &src.sprite, &src.starfield]
             .map(|made| made.handle().clone());
 

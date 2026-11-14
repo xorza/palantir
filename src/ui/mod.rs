@@ -1149,7 +1149,27 @@ impl Ui {
         id: WidgetId,
         body: impl FnOnce(&mut Self, &mut S) -> R,
     ) -> R {
-        let mut value = self.memory.state.lend::<S>(id).unwrap_or_default();
+        self.with_state_or_insert_with(id, |_| S::default(), body)
+    }
+
+    /// [`Self::with_state`] for a row a new `id` builds with `init`, which takes the `Ui`, as a
+    /// row of loaded icons or images does, so the row holds the value rather than an `Option` of
+    /// it; named as std's `Entry::or_insert_with`. `init` runs only for a new row.
+    ///
+    /// # Panics
+    ///
+    /// As [`Self::with_state`].
+    #[track_caller]
+    pub fn with_state_or_insert_with<S: 'static, R>(
+        &mut self,
+        id: WidgetId,
+        init: impl FnOnce(&mut Self) -> S,
+        body: impl FnOnce(&mut Self, &mut S) -> R,
+    ) -> R {
+        let mut value = match self.memory.state.lend::<S>(id) {
+            Some(value) => value,
+            None => init(self),
+        };
         let out = body(self, &mut value);
         // Re-probed: `body` may have inserted rows of the same `S`, reallocating the store.
         self.memory.state.put(id, value);
@@ -1202,6 +1222,28 @@ impl Ui {
         body: impl FnOnce(&mut Self, &mut S) -> R,
     ) -> R {
         self.with_state::<S, R>(singleton_id::<S>(), body)
+    }
+
+    /// Store `value` as the one `S`, in place of any; sugar over [`Self::set_state`] under the id
+    /// of `S`.
+    ///
+    /// # Panics
+    ///
+    /// While `S` is lent to a [`Self::with_singleton`] body.
+    #[track_caller]
+    pub fn set_singleton<S: 'static>(&mut self, value: S) {
+        self.set_state(singleton_id::<S>(), value);
+    }
+
+    /// Drop the one `S`, returning it; `None` when there is none. Sugar over
+    /// [`Self::remove_state`] under the id of `S`.
+    ///
+    /// # Panics
+    ///
+    /// While `S` is lent to a [`Self::with_singleton`] body.
+    #[track_caller]
+    pub fn remove_singleton<S: 'static>(&mut self) -> Option<S> {
+        self.remove_state::<S>(singleton_id::<S>())
     }
 
     /// Advance the animation row `request` names toward its target and return the current

@@ -166,10 +166,7 @@ fn widget_look_animate_resolves_components_and_falls_back() {
             shadow: Shadow::NONE,
         },
     };
-    let look = WidgetLook {
-        chrome: chrome.clone(),
-        text: TextStyleOverrides::NONE,
-    };
+    let look = WidgetLook::new(chrome.clone());
     let fallback = TextStyle::stock(ColorScheme::Dark);
 
     let captured: Cell<Option<AnimatedLook>> = Cell::new(None);
@@ -206,16 +203,13 @@ fn widget_look_animate_resolves_components_and_falls_back() {
     );
 
     // Retargeting the fill allocates one `AnimatedLook` row.
-    let look2 = WidgetLook {
-        chrome: Chrome {
-            paint: Paint {
-                fill: RgbaF32::hex(0xff0000).into(),
-                ..chrome.paint.clone()
-            },
-            ..chrome
+    let look2 = WidgetLook::new(Chrome {
+        paint: Paint {
+            fill: RgbaF32::hex(0xff0000).into(),
+            ..chrome.paint.clone()
         },
-        text: TextStyleOverrides::NONE,
-    };
+        ..chrome
+    });
     let _ = h.at(Duration::from_millis(32)).frame(|ui| {
         let target = look2.to_animated(fallback);
         let _ = ui.animate(

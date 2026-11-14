@@ -8,7 +8,7 @@ use crate::support::{CELL_PADDING, DemoCell, Kit, Knob, Section, Surface};
 use palantir::glam::Vec2;
 use palantir::widget::Shape;
 use palantir::{
-    Block, Chrome, Configure, Corners, Panel, Rect, RgbaF32, Shadow, Sizing, Ui, WidgetId,
+    Block, Chrome, Configure, Corners, Panel, Rect, RgbaF32, Shadow, SizeSpec, Sizing, Ui, WidgetId,
 };
 
 const CARD: Rect = Rect::new(22.0, 28.0, 124.0, 86.0);
@@ -200,15 +200,13 @@ fn stacked(ui: &mut Ui) {
 
 /// The card via `Chrome`: drop shadow emitted before the chrome rect, inset after. Placed on [`CARD`] exactly, so it lines up with its shape twin.
 fn chrome_card(ui: &mut Ui, chrome: Chrome) {
-    Panel::canvas()
-        .size((Sizing::FILL, Sizing::FILL))
-        .show(ui, |ui| {
-            Block::new()
-                .at((CARD.min.x - CELL_PADDING, CARD.min.y - CELL_PADDING))
-                .size((Sizing::fixed(CARD.size.w), Sizing::fixed(CARD.size.h)))
-                .chrome(chrome)
-                .show(ui);
-        });
+    Panel::canvas().size(SizeSpec::FILL).show(ui, |ui| {
+        Block::new()
+            .at((CARD.min.x - CELL_PADDING, CARD.min.y - CELL_PADDING))
+            .size((Sizing::fixed(CARD.size.w), Sizing::fixed(CARD.size.h)))
+            .chrome(chrome)
+            .show(ui);
+    });
 }
 
 fn chrome(shadow: Shadow) -> Chrome {

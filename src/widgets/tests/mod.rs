@@ -299,7 +299,7 @@ fn widget_setters_check_their_kinds() {
 /// `Debug` text shows a NaN in any field).
 #[test]
 fn coercing_inputs_at_their_worst_paint_no_nan() {
-    use crate::primitives::layout::sizing::Sizing;
+    use crate::primitives::layout::sizing::{SizeSpec, Sizing};
     use crate::primitives::layout::track::Track;
     use crate::primitives::paint::brush::gradient::Gradient;
     use crate::primitives::paint::brush::gradient::stops::Stop;
@@ -334,7 +334,7 @@ fn coercing_inputs_at_their_worst_paint_no_nan() {
     let mut scene = |ui: &mut Ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("worst"))
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 ProgressBar::new(f32::NAN).show(ui);
                 ProgressBar::new(f32::INFINITY).show(ui);

@@ -11,7 +11,7 @@ use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::pointer::PointerButton;
 use crate::primitives::layout::axis::Axis;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::SizeSpec;
 use crate::primitives::text::interned_str::InternedStr;
 use crate::theme::Theme;
 use crate::theme::close_shown::CloseShown;
@@ -876,7 +876,7 @@ impl DockTabs for Labels {
     fn body(&mut self, ui: &mut Ui, _tab: Tab, _size: Option<Size>) {
         Panel::vstack()
             .id_salt("body")
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |_| {});
     }
 }
@@ -1361,7 +1361,7 @@ fn escape_ends_a_chip_drag_at_the_root_and_inside_an_overlay() {
             let mut tabs = Labels;
             if overlay {
                 ui.layer(Layer::Popup).show(|ui| {
-                    let mut root = Panel::zstack().id_salt("claim").size(Sizing::FILL);
+                    let mut root = Panel::zstack().id_salt("claim").size(SizeSpec::FILL);
                     root.configure().input_scope(KeyFilter::ALL).blocks_below();
                     root.show(ui, |ui| {
                         DockView::new(dock(), d).show(ui, &mut tabs);

@@ -8,7 +8,7 @@ use palantir::glam::{UVec2, Vec2};
 use palantir::widget::{PaintAnimation, PaintRepeat, Shape};
 use palantir::{
     Block, Chrome, Configure, Fit, Gradient, Image, ImageHandle, Layer, Panel, Rect, RgbaF32,
-    Shadow, ShadowKind, Sizing, SrgbaU8, Text, Ui,
+    Shadow, ShadowKind, SizeSpec, Sizing, SrgbaU8, Text, Ui,
 };
 
 use crate::goldens;
@@ -55,7 +55,7 @@ fn scene(ui: &mut Ui, k: Knobs, picture: &ImageHandle) {
     ]);
     Panel::vstack()
         .id_salt("root")
-        .size((Sizing::FILL, Sizing::FILL))
+        .size(SizeSpec::FILL)
         .chrome(Chrome::new(veil))
         .gap(4.0)
         .show(ui, |ui| {

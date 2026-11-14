@@ -496,14 +496,10 @@ impl Words {
                 "mods" => {
                     self.next += 1;
                     let word = self.next_word("modifiers, as ctrl+shift")?;
-                    // A shortcut with a key, so its parse reads the modifiers alone.
-                    mods = format!("{word}+a")
-                        .parse::<Shortcut>()
-                        .map_err(|_| ParseErrorKind::Bad {
-                            expected: "modifiers, as ctrl+shift",
-                            found: word,
-                        })?
-                        .mods;
+                    mods = word.parse().map_err(|_| ParseErrorKind::Bad {
+                        expected: "modifiers, as ctrl+shift",
+                        found: word,
+                    })?;
                 }
                 _ => break,
             }

@@ -12,8 +12,8 @@ use palantir::Stroke;
 use palantir::glam::Vec2;
 use palantir::widget::{AddedShape, Configurator, PolylineShape, Shape, Widget};
 use palantir::{
-    Align, Chrome, Configure, Corners, DragValue, Key, Panel, Response, RgbaF32, Sense, Sizing,
-    Text, Ui, VAlign, WidgetId, fmt,
+    Align, Chrome, Configure, Corners, DragValue, Key, Panel, Response, RgbaF32, Sense, SizeSpec,
+    Sizing, Text, Ui, VAlign, WidgetId, fmt,
 };
 
 const BUTTON: f32 = 28.0;
@@ -175,7 +175,7 @@ fn surface(ui: &mut Ui, k: Kit) {
             for (i, (item, what)) in surface.into_iter().enumerate() {
                 Panel::hstack()
                     .id_salt(i)
-                    .size((Sizing::FILL, Sizing::HUG))
+                    .size(SizeSpec::FILL_W)
                     .gap(ROW_GAP)
                     .child_align(VAlign::Center)
                     .show(ui, |ui| {
@@ -194,7 +194,7 @@ fn surface(ui: &mut Ui, k: Kit) {
 fn labeled(ui: &mut Ui, k: Kit, label: &'static str, body: impl FnOnce(&mut Ui)) {
     Panel::hstack()
         .auto_id()
-        .size((Sizing::FILL, Sizing::HUG))
+        .size(SizeSpec::FILL_W)
         .gap(ROW_GAP)
         .child_align(VAlign::Center)
         .show(ui, |ui| {

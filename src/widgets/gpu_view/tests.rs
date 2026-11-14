@@ -1,5 +1,6 @@
 use super::*;
 use crate::host::harness::Harness;
+use crate::primitives::layout::sizing::Sizing;
 use crate::shape::paint::closed_paint::ClosedPaint;
 
 use crate::damage::Damage;

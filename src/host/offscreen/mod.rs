@@ -311,6 +311,19 @@ impl OffscreenHost {
         self.device.wait_for_gpu(&self.window.frames)
     }
 
+    /// Block until a [`Waker`](crate::Waker) of this window wakes it, or `timeout` passes, in
+    /// real time; whether a wake waits for the next frame. As
+    /// [`Harness::wait_for_wake`](crate::Harness::wait_for_wake).
+    pub fn wait_for_wake(&self, timeout: Duration) -> bool {
+        self.window.wait_for_wake(timeout)
+    }
+
+    /// Whether a [`Waker`](crate::Waker) of this window woke it since the last frame, which the
+    /// next frame takes. As [`Harness::has_pending_wake`](crate::Harness::has_pending_wake).
+    pub fn has_pending_wake(&self) -> bool {
+        self.window.is_wake_pending()
+    }
+
     /// The windows the last frame opened or closed with [`Ui::open_window`] and
     /// [`Ui::close_window`], in the order called: this host has one window and opens or closes
     /// none, so an app that drives other windows reads them here.

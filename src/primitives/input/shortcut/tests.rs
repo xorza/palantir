@@ -337,6 +337,35 @@ fn shortcuts_parse_from_text() {
     assert_eq!(parse("ctrl+banana"), Err(ParseShortcutError::Key));
 }
 
+/// Modifiers alone parse as a shortcut reads the ones before its key: each by each of its names,
+/// case-blind and trimmed, a repeat folding in; empty text, an empty name and an unknown one are
+/// refused.
+#[test]
+fn modifiers_parse_from_text() {
+    let parse = |text: &str| text.parse::<ShortcutMods>();
+    assert_eq!(parse("ctrl"), Ok(ShortcutMods::CTRL));
+    assert_eq!(parse("cmd"), Ok(ShortcutMods::CTRL));
+    assert_eq!(
+        parse(" Shift + ALT "),
+        Ok(ShortcutMods::SHIFT | ShortcutMods::ALT)
+    );
+    assert_eq!(parse("meta"), parse("super"));
+    assert_eq!(parse("win"), Ok(ShortcutMods::META));
+    assert_eq!(parse("shift+shift"), Ok(ShortcutMods::SHIFT));
+    for refused in ["", "ctrl+", "+shift", "hyper"] {
+        assert_eq!(
+            parse(refused),
+            Err(ParseShortcutError::Modifier),
+            "{refused:?}"
+        );
+    }
+    assert_eq!(
+        "ctrl+shift+z".parse::<Shortcut>().map(|s| s.mods),
+        parse("ctrl+shift"),
+        "a shortcut's modifiers are their own parse"
+    );
+}
+
 /// A Windows or Linux label parses back to its shortcut, for every key a label names and every
 /// modifier: the label and the parse speak one language. Space labels as a word, as a blank
 /// would leave `Ctrl+` dangling; `Key::Other`, which names no key, labels as `Unknown` and parses

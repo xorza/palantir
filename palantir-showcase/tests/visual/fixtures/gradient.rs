@@ -4,7 +4,7 @@
 
 use palantir::glam::UVec2;
 use palantir::widget::Shape;
-use palantir::{ColorScheme, Configure, Gradient, Panel, Rect, RgbaF32, Sizing, Stop};
+use palantir::{ColorScheme, Configure, Gradient, Panel, Rect, RgbaF32, SizeSpec, Stop};
 use palantir_showcase::pages::gradients;
 use palantir_showcase::support;
 use palantir_showcase::support::Kits;
@@ -127,7 +127,7 @@ fn add_shape_rounded_rect_linear_gradient_matches_golden() {
         Panel::vstack()
             .auto_id()
             .padding(20.0)
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 ui.add_shape(
                     Shape::rect()

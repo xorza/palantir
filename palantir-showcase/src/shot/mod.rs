@@ -14,7 +14,6 @@ use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
-use palantir::glam::UVec2;
 use palantir::{AgentWindow, Gpu, Harness, HarnessDepth, Image, PlayError, Rect, RequestedGpu};
 
 use crate::shell::Shell;
@@ -282,7 +281,7 @@ pub(crate) fn play(
                             max_side: header.max_side,
                         });
                     }
-                    magnified(shot.image(), *zoom)
+                    shot.image().magnified(*zoom)
                 } else {
                     shot.image().fitted(header.max_side)
                 };
@@ -307,7 +306,7 @@ pub(crate) fn play(
                 let shot = window.shot(Some(pixel)).map_err(failed(line))?;
                 let image = shot.image();
                 let center = image.size() / 2;
-                let texel = image.texels()[(center.y * image.size().x + center.x) as usize];
+                let texel = image.texel(center);
                 report::probe(report, *point, texel).map_err(ShotError::Report)?;
             }
             StepKind::Widgets(filter) => {
@@ -317,18 +316,6 @@ pub(crate) fn play(
         }
     }
     Ok(())
-}
-
-/// `image` magnified `zoom` times, each texel a `zoom` × `zoom` block.
-fn magnified(image: &Image, zoom: u32) -> Image {
-    let size = image.size();
-    let mut out = Image::blank(size * zoom);
-    let texels = image.texels();
-    out.fill_with(|at: UVec2| {
-        let from = at / zoom;
-        texels[(from.y * size.x + from.x) as usize]
-    });
-    out
 }
 
 /// Compare `picture` with the earlier one at `earlier`, the difference marked in `diff`, and
@@ -359,26 +346,10 @@ fn compare(
 /// tell a missing file from a broken one.
 #[cfg(feature = "golden")]
 fn read_png(path: &Path) -> io::Result<Image> {
-    let decoded = image::open(path)
-        .map_err(|error| match error {
-            image::ImageError::IoError(error) => error,
-            error => io::Error::other(error),
-        })?
-        .into_rgba8();
-    let size = UVec2::new(decoded.width(), decoded.height());
-    Image::from_srgba8(size, decoded.into_raw()).map_err(io::Error::other)
+    Image::from_png(&fs::read(path)?)
 }
 
 /// `image` as a PNG at `path`, written from its bytes as they are.
 fn write_png(image: &Image, path: &Path) -> io::Result<()> {
-    let size = image.size();
-    image::save_buffer_with_format(
-        path,
-        image.as_srgba8(),
-        size.x,
-        size.y,
-        image::ExtendedColorType::Rgba8,
-        image::ImageFormat::Png,
-    )
-    .map_err(io::Error::other)
+    image.write_png(io::BufWriter::new(fs::File::create(path)?))
 }

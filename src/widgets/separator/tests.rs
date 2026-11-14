@@ -6,7 +6,7 @@ use crate::theme::color_scheme::ColorScheme;
 
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::layout::align::{HAlign, VAlign};
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::scene::layer::Layer;
 use crate::theme::separator::SeparatorTheme;
 use crate::widget_core::configure::Configure;
@@ -28,7 +28,7 @@ fn instance_style_beats_the_global_slot_and_explicit_margin_beats_both() {
     h.ui_mut().theme_mut().separator.margin = Spacing::all(9.0);
 
     let [inherited, explicit, global, thick] = h.frame_value(|ui| {
-        let col = Panel::vstack().auto_id().size((Sizing::FILL, Sizing::FILL));
+        let col = Panel::vstack().auto_id().size(SizeSpec::FILL);
         col.show(ui, |ui| {
             [
                 Separator::horizontal().style(&styled).show(ui).node(ui),
@@ -104,7 +104,7 @@ fn explicit_size_overrides_stretch_default() {
 fn a_callers_alignment_survives_the_stretch_default_axis_by_axis() {
     let mut h = Harness::mono(UVec2::new(400, 300));
     let [default, centered, bottom] = h.frame_value(|ui| {
-        let layers = Panel::zstack().auto_id().size((Sizing::FILL, Sizing::FILL));
+        let layers = Panel::zstack().auto_id().size(SizeSpec::FILL);
         layers
             .show(ui, |ui| {
                 [

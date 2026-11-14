@@ -12,7 +12,7 @@ use crate::primitives::geometry::fit::Fit;
 use crate::primitives::geometry::mesh::Mesh;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::icon_handle::IconHandle;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::image::Image;
@@ -122,7 +122,7 @@ fn clipped(ui: &mut Ui, salt: &str, rect: Rect, corners: Corners, body: impl FnO
 fn on_canvas(ui: &mut Ui, body: impl FnOnce(&mut Ui)) {
     Panel::canvas()
         .id_salt("canvas")
-        .size((Sizing::FILL, Sizing::FILL))
+        .size(SizeSpec::FILL)
         .show(ui, body);
 }
 

@@ -1,5 +1,5 @@
 use palantir::{
-    App, Button, Configure, HostHandle, Panel, Sizing, Text, Ui, WindowToken, WinitHost,
+    App, Button, Configure, HostHandle, Panel, SizeSpec, Text, Ui, WindowToken, WinitHost,
     WinitHostError, fmt,
 };
 
@@ -16,16 +16,13 @@ impl Counter {
 
 impl App for Counter {
     fn record(&mut self, _win: WindowToken, ui: &mut Ui) {
-        Panel::vstack()
-            .gap(8.0)
-            .size((Sizing::HUG, Sizing::HUG))
-            .show(ui, |ui| {
-                // `fmt!` formats into the frame's text arena — no `String`.
-                Text::new(fmt!(ui, "clicks: {}", self.clicks)).show(ui);
-                if Button::new().label("click me").show(ui).clicked() {
-                    self.clicks += 1;
-                }
-            });
+        Panel::vstack().gap(8.0).size(SizeSpec::HUG).show(ui, |ui| {
+            // `fmt!` formats into the frame's text arena — no `String`.
+            Text::new(fmt!(ui, "clicks: {}", self.clicks)).show(ui);
+            if Button::new().label("click me").show(ui).clicked() {
+                self.clicks += 1;
+            }
+        });
     }
 }
 

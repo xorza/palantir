@@ -50,10 +50,10 @@ impl MenuItemTheme {
     pub fn from_parts(p: &Palette, m: &Metrics) -> Self {
         // Hover is one surface step brighter (`element_mid`), as `ButtonTheme::subtle`; `active` keeps it
         // since a click closes the menu. The chip radius stays under the panel's so it nests in the corner.
-        let hovered = WidgetLook {
-            chrome: Chrome::rounded(p.element_mid, Corners::all(m.radius.control)),
-            text: TextStyleOverrides::NONE,
-        };
+        let hovered = WidgetLook::new(Chrome::rounded(
+            p.element_mid,
+            Corners::all(m.radius.control),
+        ));
         let unselected = StatefulLook {
             normal: WidgetLook::default(),
             active: hovered.clone(),

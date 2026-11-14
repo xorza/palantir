@@ -5,7 +5,7 @@ use crate::image_registry::image_handle::ImageHandle;
 use crate::internals::oracle::Oracle;
 use crate::primitives::geometry::fit::Fit;
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::image::Image;
@@ -63,7 +63,7 @@ fn fill(c: RgbaF32) -> Chrome {
 fn scene(ui: &mut Ui, k: Knobs, picture: &ImageHandle) {
     Panel::vstack()
         .id(WidgetId::from_hash("root"))
-        .size((Sizing::FILL, Sizing::FILL))
+        .size(SizeSpec::FILL)
         .gap(4.0)
         .show(ui, |ui| {
             Block::new()

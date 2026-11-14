@@ -28,7 +28,7 @@ mod widgets;
 
 use std::fmt;
 
-use palantir::{Configure, Panel, RgbaF32, Sizing, Ui};
+use palantir::{Configure, Panel, RgbaF32, SizeSpec, Ui};
 
 use crate::visual_rig::FIXTURE_PALETTE;
 
@@ -58,6 +58,6 @@ pub(crate) fn assert_px(got: [u8; 4], want: [u8; 4], what: impl fmt::Display) {
 pub(crate) fn canvas(ui: &mut Ui, body: impl FnOnce(&mut Ui)) {
     Panel::canvas()
         .id_salt("canvas")
-        .size((Sizing::FILL, Sizing::FILL))
+        .size(SizeSpec::FILL)
         .show(ui, body);
 }

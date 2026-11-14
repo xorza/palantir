@@ -22,7 +22,7 @@ use palantir::glam::Vec2;
 use palantir::widget::IconPaint;
 use palantir::widget::{Mesh, Shape};
 use palantir::{
-    Block, Chrome, Configure, FramePaint, Grid, Panel, RgbaF32, Sizing, Track, TranslateScale, Ui,
+    Block, Chrome, Configure, FramePaint, Grid, Panel, RgbaF32, SizeSpec, Track, TranslateScale, Ui,
 };
 
 /// Distinct nudge positions: more than one so damage is full every frame, few
@@ -51,7 +51,7 @@ fn frontend_audit(mut scene: impl FnMut(&mut Ui)) {
             let report = frontend.frame(|ui| {
                 Panel::zstack()
                     .auto_id()
-                    .size((Sizing::FILL, Sizing::FILL))
+                    .size(SizeSpec::FILL)
                     .transform(TranslateScale::from_translation(Vec2::new(
                         step as f32,
                         0.0,
@@ -72,7 +72,7 @@ fn many_rects_compose_alloc_free() {
             .auto_id()
             .cols([Track::FILL; 16])
             .rows([Track::FILL; 16])
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 for r in 0..16u16 {
                     for c in 0..16u16 {
@@ -98,7 +98,7 @@ fn polyline_static_alloc_free() {
     frontend_audit(move |ui| {
         Panel::vstack()
             .auto_id()
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 ui.add_shape(Shape::polyline(&points), Stroke::new(RgbaF32::WHITE, 2.0));
             });
@@ -121,7 +121,7 @@ fn mesh_static_alloc_free() {
     frontend_audit(move |ui| {
         Panel::vstack()
             .auto_id()
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 ui.add_shape(Shape::mesh(&mesh), RgbaF32::WHITE);
             });
@@ -144,7 +144,7 @@ fn many_icons_compose_alloc_free() {
             .auto_id()
             .cols([Track::FILL; 20])
             .rows([Track::FILL; 10])
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 for r in 0..10u16 {
                     for c in 0..20u16 {

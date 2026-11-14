@@ -8,8 +8,6 @@ use std::path::{Path, PathBuf};
 
 use crate::golden::row_stats::RowStats;
 use crate::primitives::paint::image::Image;
-use glam::UVec2;
-use image::ExtendedColorType;
 use std::env;
 use std::fs;
 use std::io;
@@ -350,25 +348,16 @@ impl Goldens {
 
 /// Read the PNG at `path` as RGBA8.
 fn load(path: &Path) -> Image {
-    let decoded = image::open(path)
-        .unwrap_or_else(|error| panic!("read {}: {error}", path.display()))
-        .into_rgba8();
-    let size = UVec2::new(decoded.width(), decoded.height());
-    Image::from_srgba8(size, decoded.into_raw())
+    fs::read(path)
+        .and_then(|bytes| Image::from_png(&bytes))
         .unwrap_or_else(|error| panic!("read {}: {error}", path.display()))
 }
 
 /// Write `image` as an RGBA8 PNG at `path`.
 fn save(image: &Image, path: &Path) {
-    let size = image.size();
-    image::save_buffer(
-        path,
-        &image.pixels,
-        size.x,
-        size.y,
-        ExtendedColorType::Rgba8,
-    )
-    .unwrap_or_else(|error| panic!("write {}: {error}", path.display()));
+    fs::File::create(path)
+        .and_then(|file| image.write_png(io::BufWriter::new(file)))
+        .unwrap_or_else(|error| panic!("write {}: {error}", path.display()));
 }
 
 #[cfg(test)]

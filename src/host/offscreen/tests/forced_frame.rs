@@ -6,7 +6,7 @@ use crate::damage::region::DamageRegion;
 use crate::gpu::test_gpu::headless_test_gpu;
 use crate::host::offscreen::OffscreenHost;
 use crate::primitives::geometry::rect::Rect;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
@@ -28,7 +28,7 @@ const BACKDROP: Rect = Rect::new(100.0, 70.0, 40.0, 30.0);
 fn scene(ui: &mut Ui, backdrop: bool) {
     Panel::zstack()
         .id_salt("forced-scene")
-        .size((Sizing::FILL, Sizing::FILL))
+        .size(SizeSpec::FILL)
         .chrome(Chrome::new(RgbaF32::hex(0x202830)))
         .show(ui, |ui| {
             Block::new()
@@ -39,7 +39,7 @@ fn scene(ui: &mut Ui, backdrop: bool) {
             if backdrop {
                 Panel::canvas()
                     .id_salt("forced-backdrops")
-                    .size((Sizing::FILL, Sizing::FILL))
+                    .size(SizeSpec::FILL)
                     .show(ui, |ui| {
                         ui.add_shape(
                             Shape::rect().at(BACKDROP),

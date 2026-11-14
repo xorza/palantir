@@ -70,7 +70,7 @@ mod tests {
     use crate::host::host_core::HostCore;
     use crate::host::host_options::HostOptions;
     use crate::primitives::geometry::rect::Rect;
-    use crate::primitives::layout::sizing::Sizing;
+    use crate::primitives::layout::sizing::SizeSpec;
     use crate::primitives::paint::chrome::Chrome;
     use crate::primitives::paint::color::RgbaF32;
     use crate::primitives::paint::shadow::Shadow;
@@ -181,7 +181,7 @@ mod tests {
         let mut app = |ui: &mut Ui| {
             Panel::canvas()
                 .auto_id()
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| {
                     ui.add_shape(
                         Shape::rect()
@@ -245,7 +245,7 @@ mod tests {
             let mut app = |ui: &mut Ui| {
                 Block::new()
                     .id_salt("fill")
-                    .size(Sizing::FILL)
+                    .size(SizeSpec::FILL)
                     .chrome(Chrome::new(RgbaF32::hex(fill)))
                     .show(ui);
             };
@@ -311,7 +311,7 @@ mod tests {
                 let mut app = |ui: &mut Ui| {
                     Panel::canvas()
                         .id_salt("fill")
-                        .size(Sizing::FILL)
+                        .size(SizeSpec::FILL)
                         .chrome(Chrome::new(RgbaF32::hex(FILLS[i])))
                         .show(ui, |ui| {
                             if let Some(block) = block {

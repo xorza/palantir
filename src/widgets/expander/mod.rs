@@ -10,7 +10,7 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::interaction::response::Response;
 use crate::primitives::input::sense::Sense;
 use crate::primitives::layout::align::VAlign;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::SizeSpec;
 use crate::primitives::text::text_input::TextInput;
 use crate::shape::Shape;
 use crate::theme::expander::ExpanderTheme;
@@ -107,7 +107,7 @@ impl<'a> Expander<'a> {
             style: _,
         } = self;
 
-        widget.configure().default_size((Sizing::FILL, Sizing::HUG));
+        widget.configure().default_size(SizeSpec::FILL_W);
         let id = widget.resolve(ui);
         let header_id = id.with("header");
         let body_id = id.with("body");
@@ -125,7 +125,7 @@ impl<'a> Expander<'a> {
         widget.record(ui, None, |ui| {
             let mut header = Widget::hstack()
                 .id(header_id)
-                .size((Sizing::FILL, Sizing::HUG))
+                .size(SizeSpec::FILL_W)
                 .gap(t.gap)
                 .child_align(VAlign::Center)
                 .sense(Sense::CLICK)
@@ -174,7 +174,7 @@ impl<'a> Expander<'a> {
                 // the height the next clips against.
                 let mut reveal = Widget::vstack()
                     .id(body_id.with("reveal"))
-                    .size((Sizing::FILL, Sizing::HUG))
+                    .size(SizeSpec::FILL_W)
                     .margin(Spacing::new(t.indent, 0.0, 0.0, 0.0));
                 if !showing {
                     reveal = reveal.collapsed();
@@ -185,7 +185,7 @@ impl<'a> Expander<'a> {
                 }
                 let body_panel = Widget::vstack()
                     .id(body_id)
-                    .size((Sizing::FILL, Sizing::HUG))
+                    .size(SizeSpec::FILL_W)
                     .padding(t.body_padding);
                 pass.inner = Some(reveal.record(ui, None, |ui| body_panel.record(ui, None, body)));
             }

@@ -24,7 +24,7 @@ use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::mesh::Mesh;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::layout::clip_mode::ClipMode;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::SizeSpec;
 use crate::primitives::paint::brush::gradient::Gradient;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
@@ -160,7 +160,7 @@ impl App for Scene {
         let image = self.handle.clone().unwrap();
         Panel::canvas()
             .id_salt("scene")
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 ui.add_shape(Shape::rect().at(Rect::new(4.0, 4.0, 12.0, 12.0)), self.tile);
                 ui.add_shape(

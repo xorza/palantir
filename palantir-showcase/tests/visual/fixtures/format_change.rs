@@ -12,8 +12,8 @@ use palantir::glam::UVec2;
 use palantir::wgpu::TextureFormat;
 use palantir::widget::Shape;
 use palantir::{
-    Block, Border, Button, Chrome, Configure, Corners, Image, ImageHandle, Panel, RgbaF32, Sizing,
-    TargetFormat, Ui,
+    Block, Border, Button, Chrome, Configure, Corners, Image, ImageHandle, Panel, RgbaF32,
+    SizeSpec, Sizing, TargetFormat, Ui,
 };
 
 use crate::goldens;
@@ -25,11 +25,11 @@ fn scene(ui: &mut Ui) {
     Panel::vstack()
         .auto_id()
         .padding(16.0)
-        .size((Sizing::FILL, Sizing::FILL))
+        .size(SizeSpec::FILL)
         .show(ui, |ui| {
             Block::new()
                 .id_salt("card")
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .chrome(
                     Chrome::rounded(RgbaF32::srgb(0.20, 0.30, 0.55), Corners::all(12.0))
                         .with_border(Border::new(RgbaF32::srgb(0.65, 0.80, 1.00), 2.0)),
@@ -89,7 +89,7 @@ fn image_scene(ui: &mut Ui, image: &ImageHandle) {
     Panel::zstack()
         .auto_id()
         .padding(8.0)
-        .size((Sizing::FILL, Sizing::FILL))
+        .size(SizeSpec::FILL)
         .show(ui, |ui| {
             ui.add_shape(Shape::rect(), ImagePaint::new(image.clone()));
         });

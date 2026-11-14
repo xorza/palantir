@@ -132,6 +132,15 @@ fn composition_rect_application_and_inverses_agree_exactly() {
         composed.inverse_vector(Vec2::new(24.0, -40.0)),
         Vec2::new(3.0, -5.0)
     );
+    // A vector scales and does not translate, where the point it starts from would.
+    assert_eq!(
+        composed.apply_vector(Vec2::new(3.0, -5.0)),
+        Vec2::new(24.0, -40.0)
+    );
+    assert_ne!(
+        composed.apply_vector(Vec2::new(3.0, -5.0)),
+        composed.apply_point(Vec2::new(3.0, -5.0))
+    );
     let physical = composed.in_units_of(1.5);
     assert_eq!(physical.translation(), Vec2::new(25.5, 40.5));
     assert_eq!(physical.scale(), 8.0);

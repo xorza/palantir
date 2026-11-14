@@ -3,6 +3,7 @@
 
 use crate::display::system_scale::SystemScale;
 use crate::gpu::device::gpu::Gpu;
+use crate::gpu::frame::gpu_timings::FrameTiming;
 use crate::gpu::surface::owned_target::OwnedTarget;
 use crate::gpu::texel::TargetFormat;
 use crate::host::harness::{Harness, HarnessPaint};
@@ -149,6 +150,13 @@ impl HarnessBuilder {
         self
     }
 
+    /// Opts into GPU timestamp and pipeline-statistics collection, as the other hosts' builders
+    /// do; the device needs the wgpu features. Off by default.
+    pub const fn collect_gpu_stats(mut self, collect_gpu_stats: bool) -> Self {
+        self.settings.options.timing = FrameTiming::new(collect_gpu_stats);
+        self
+    }
+
     /// Whether axis-aligned paint edges snap to physical pixels; on by default.
     pub const fn pixel_snap(mut self, pixel_snap: bool) -> Self {
         self.settings.options.pixel_snap = pixel_snap;
@@ -262,7 +270,6 @@ impl HarnessBuilder {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
-    use crate::gpu::frame::gpu_timings::FrameTiming;
     use crate::host::harness::harness_builder::HarnessBuilder;
     #[cfg(test)]
     use crate::host::harness::harness_builder::HarnessDepth;
@@ -290,13 +297,6 @@ pub(crate) mod internals {
         /// measures what the desktop pays.
         pub(crate) const fn swapchain_present(mut self) -> Self {
             self.strategy = PresentStrategy::DirectAdaptive;
-            self
-        }
-
-        /// Opts into GPU timestamp and pipeline-statistics collection; the device needs the wgpu
-        /// features.
-        pub(crate) const fn collect_gpu_stats(mut self, collect_gpu_stats: bool) -> Self {
-            self.settings.options.timing = FrameTiming::new(collect_gpu_stats);
             self
         }
     }

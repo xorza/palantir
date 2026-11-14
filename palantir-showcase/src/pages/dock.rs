@@ -5,7 +5,7 @@ use crate::support;
 use crate::support::Kit;
 use palantir::{
     Block, Button, Chrome, ColorPicker, Configure, Corners, DockDrop, DockOperation, DockState,
-    DockTabMenu, DockTabs, DockView, InternedStr, MenuItem, Panel, RgbaF32, Size, Sizing,
+    DockTabMenu, DockTabs, DockView, InternedStr, MenuItem, Panel, RgbaF32, Size, SizeSpec, Sizing,
     SplitSide, TabChip, Text, Ui, WidgetId, fmt,
 };
 
@@ -105,7 +105,7 @@ impl DockTabs for Panes<'_> {
     fn body(&mut self, ui: &mut Ui, tab: Tab, size: Option<Size>) {
         let k = self.k;
         Panel::vstack()
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .padding(M.space.md)
             .gap(M.space.sm)
             .chrome(k.t.card())
@@ -115,7 +115,7 @@ impl DockTabs for Panes<'_> {
                 match tab {
                     Tab::Canvas => {
                         Block::new()
-                            .size((Sizing::FILL, Sizing::FILL))
+                            .size(SizeSpec::FILL)
                             .chrome(Chrome::rounded(*self.color, Corners::all(M.radius.card)))
                             .show(ui);
                     }
@@ -179,24 +179,22 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
     let state_id = WidgetId::from_hash("showcase::dock::state");
     ui.with_state::<State, _>(state_id, |ui, s| {
         reopen_row(ui, k, s);
-        Panel::vstack()
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                // The scan settles the arrangement before the record walks it, so a click draws on the frame it lands.
-                s.operations.clear();
-                let dock_id = WidgetId::from_hash("showcase::dock");
-                DockView::scan(ui, dock_id, &s.dock, &mut s.operations);
-                s.apply_operations();
-                let mut panes = Panes {
-                    k,
-                    color: &mut s.color,
-                    last: s.last,
-                };
-                DockView::emitting(dock_id, &s.dock, &mut s.operations)
-                    .min_pane(140.0)
-                    .show(ui, &mut panes);
-                s.apply_operations();
-            });
+        Panel::vstack().size(SizeSpec::FILL).show(ui, |ui| {
+            // The scan settles the arrangement before the record walks it, so a click draws on the frame it lands.
+            s.operations.clear();
+            let dock_id = WidgetId::from_hash("showcase::dock");
+            DockView::scan(ui, dock_id, &s.dock, &mut s.operations);
+            s.apply_operations();
+            let mut panes = Panes {
+                k,
+                color: &mut s.color,
+                last: s.last,
+            };
+            DockView::emitting(dock_id, &s.dock, &mut s.operations)
+                .min_pane(140.0)
+                .show(ui, &mut panes);
+            s.apply_operations();
+        });
     });
 }
 

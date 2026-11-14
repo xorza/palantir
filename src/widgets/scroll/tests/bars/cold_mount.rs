@@ -3,7 +3,7 @@
 use crate::host::harness::Harness;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::ui::Ui;
@@ -201,13 +201,13 @@ fn nested_clipped_scrolls_compose_through_warm_cache() {
         Panel::hstack()
             .id(WidgetId::from_hash("root"))
             .gap(12.0)
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 for tag in ["v", "h", "xy"] {
                     Panel::vstack()
                         .id(WidgetId::from_hash(("card", tag)))
                         .padding(8.0)
-                        .size((Sizing::FILL, Sizing::FILL))
+                        .size(SizeSpec::FILL)
                         .chrome(Chrome::new(RgbaF32::srgb(0.16, 0.20, 0.28)))
                         .clip_rect()
                         .show(ui, |ui| {
@@ -218,7 +218,7 @@ fn nested_clipped_scrolls_compose_through_warm_cache() {
                                 }
                                 _ => Scroll::both().id(WidgetId::from_hash(("scroll", tag))),
                             };
-                            s.size((Sizing::FILL, Sizing::FILL)).show(ui, |ui| {
+                            s.size(SizeSpec::FILL).show(ui, |ui| {
                                 for i in 0..40u32 {
                                     Block::new()
                                         .id(WidgetId::from_hash((tag, "item", i)))

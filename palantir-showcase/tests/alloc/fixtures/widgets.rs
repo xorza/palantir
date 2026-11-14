@@ -9,8 +9,8 @@ use palantir::glam::Vec2;
 use palantir::{
     Anchor, AnimationSpec, Block, Button, Checkbox, Chrome, ColorCoords, ColorField, ColorPicker,
     ColorScheme, Configure, Easing, Expander, ExpanderTheme, Menu, MenuItem, Modal, Panel, Popup,
-    ProgressBar, RadioGroup, RgbaF32, Scroll, Separator, Shortcut, Sizing, Slider, SlotDefaults,
-    Spinner, SwatchRow, Switch, Text, TextEdit, Theme, Tooltip, Ui, WidgetId,
+    ProgressBar, RadioGroup, RgbaF32, Scroll, Separator, Shortcut, SizeSpec, Sizing, Slider,
+    SlotDefaults, Spinner, SwatchRow, Switch, Text, TextEdit, Theme, Tooltip, Ui, WidgetId,
 };
 
 #[test]
@@ -50,7 +50,7 @@ fn nested_vstack_64_alloc_free() {
             }
             Panel::vstack()
                 .id_salt(depth)
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| rec(ui, depth - 1));
         }
         rec(ui, 64);
@@ -210,7 +210,7 @@ fn scroll_alloc_free() {
         Audit::new().run(move |ui| {
             Scroll::vertical()
                 .id_salt("scroll")
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| {
                     Block::new()
                         .id_salt("content")
@@ -232,7 +232,7 @@ fn value_and_toggle_widgets_alloc_free() {
         ui.request_repaint();
         Panel::vstack()
             .auto_id()
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 Spinner::new().id_salt("spin").show(ui);
                 Separator::horizontal().id_salt("sep").show(ui);
@@ -340,7 +340,7 @@ fn overlays_alloc_free() {
     Audit::new().text().run(|ui| {
         Panel::vstack()
             .auto_id()
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 Popup::new()
                     .anchor(Anchor::at_point(Vec2::new(40.0, 40.0)))

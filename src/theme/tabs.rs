@@ -143,15 +143,14 @@ impl TabsTheme {
                     chrome: Chrome::NONE,
                     text: inactive_text,
                 },
-                hovered: WidgetLook {
-                    chrome: Chrome::rounded(p.element_strong, Corners::all(m.radius.control)),
-                    text: TextStyleOverrides::NONE,
-                },
-                active: WidgetLook {
-                    chrome: Chrome::rounded(p.element_strong, Corners::all(m.radius.control))
+                hovered: WidgetLook::new(Chrome::rounded(
+                    p.element_strong,
+                    Corners::all(m.radius.control),
+                )),
+                active: WidgetLook::new(
+                    Chrome::rounded(p.element_strong, Corners::all(m.radius.control))
                         .with_border(Border::new(p.border_focused, m.stroke.hairline)),
-                    text: TextStyleOverrides::NONE,
-                },
+                ),
                 disabled: WidgetLook {
                     chrome: Chrome::NONE,
                     text: disabled_text,

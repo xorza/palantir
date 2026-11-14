@@ -6,8 +6,8 @@ use crate::scaffold::tokens::M;
 use crate::support;
 use crate::support::{Kit, Section};
 use palantir::{
-    Block, Button, Chrome, Configure, Corners, Panel, Sizing, TabChip, TabItem, TabKey, TabMove,
-    TabOverflow, TabStrip, TabbedView, Text, Ui, WidgetId, fmt,
+    Block, Button, Chrome, Configure, Corners, Panel, SizeSpec, Sizing, TabChip, TabItem, TabKey,
+    TabMove, TabOverflow, TabStrip, TabbedView, Text, Ui, WidgetId, fmt,
 };
 
 /// The pages the view may hold; it opens on the first three, and "+" adds the next missing.
@@ -206,7 +206,7 @@ fn tabbed_view(ui: &mut Ui, k: Kit, s: &mut State) {
         .closable(true)
         .show(ui, |ui, page| {
             Panel::vstack()
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .padding(M.space.md)
                 .gap(M.space.sm)
                 .show(ui, |ui| {

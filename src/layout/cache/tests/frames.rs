@@ -12,7 +12,7 @@ use crate::host::harness::Harness;
 use crate::internals::oracle;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::translate_scale::TranslateScale;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::primitives::layout::track::Track;
 use crate::primitives::layout::visibility::Visibility;
 use crate::primitives::paint::border::Border;
@@ -51,11 +51,11 @@ fn cache_hit_preserves_grid_cell_rects() {
         ("single_grid", |ui| {
             Panel::vstack()
                 .auto_id()
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| {
                     Grid::new()
                         .id(WidgetId::from_hash("g"))
-                        .size((Sizing::FILL, Sizing::HUG))
+                        .size(SizeSpec::FILL_W)
                         .cols([Track::HUG, Track::FILL])
                         .rows([Track::HUG])
                         .line_gap(6.0)
@@ -78,11 +78,11 @@ fn cache_hit_preserves_grid_cell_rects() {
         ("nested_grids", |ui| {
             Panel::vstack()
                 .auto_id()
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| {
                     Grid::new()
                         .id(WidgetId::from_hash("outer"))
-                        .size((Sizing::FILL, Sizing::HUG))
+                        .size(SizeSpec::FILL_W)
                         .cols([Track::HUG, Track::FILL])
                         .rows([Track::HUG])
                         .show(ui, |ui| {
@@ -97,7 +97,7 @@ fn cache_hit_preserves_grid_cell_rects() {
                                 .show(ui, |ui| {
                                     Grid::new()
                                         .id(WidgetId::from_hash("inner"))
-                                        .size((Sizing::FILL, Sizing::HUG))
+                                        .size(SizeSpec::FILL_W)
                                         .cols([Track::HUG, Track::HUG, Track::FILL])
                                         .rows([Track::HUG])
                                         .show(ui, |ui| {
@@ -119,11 +119,11 @@ fn cache_hit_preserves_grid_cell_rects() {
         ("sibling_grids", |ui| {
             Panel::vstack()
                 .auto_id()
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| {
                     Grid::new()
                         .id(WidgetId::from_hash("g1"))
-                        .size((Sizing::FILL, Sizing::HUG))
+                        .size(SizeSpec::FILL_W)
                         .cols([Track::HUG, Track::FILL])
                         .rows([Track::HUG])
                         .show(ui, |ui| {
@@ -140,7 +140,7 @@ fn cache_hit_preserves_grid_cell_rects() {
                         });
                     Grid::new()
                         .id(WidgetId::from_hash("g2"))
-                        .size((Sizing::FILL, Sizing::HUG))
+                        .size(SizeSpec::FILL_W)
                         .cols([Track::HUG, Track::HUG, Track::FILL])
                         .rows([Track::HUG])
                         .show(ui, |ui| {
@@ -287,7 +287,7 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
     let record = |ui: &mut Ui| {
         Panel::vstack()
             .auto_id()
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .padding(8.0)
             .gap(6.0)
             .show(ui, |ui| {
@@ -295,7 +295,7 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
                     .id(WidgetId::from_hash("transformed"))
                     .transform(TranslateScale::new(glam::Vec2::new(4.0, 2.0), 1.0))
                     .clip_rect()
-                    .size((Sizing::FILL, Sizing::HUG))
+                    .size(SizeSpec::FILL_W)
                     .padding(6.0)
                     .chrome(Chrome {
                         corners: Corners::all(4.0),
@@ -308,7 +308,7 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
                     .show(ui, |ui| {
                         Grid::new()
                             .id(WidgetId::from_hash("grid"))
-                            .size((Sizing::FILL, Sizing::HUG))
+                            .size(SizeSpec::FILL_W)
                             .cols([Track::HUG, Track::FILL])
                             .rows([Track::HUG, Track::HUG])
                             .line_gap(6.0)
@@ -376,16 +376,16 @@ fn cache_rects_match_cold_oracle_across_resizes() {
     let record = |ui: &mut Ui| {
         Panel::vstack()
             .auto_id()
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 Panel::zstack()
                     .id(WidgetId::from_hash("xform"))
                     .transform(TranslateScale::new(glam::Vec2::new(2.0, 2.0), 1.0))
-                    .size((Sizing::FILL, Sizing::HUG))
+                    .size(SizeSpec::FILL_W)
                     .show(ui, |ui| {
                         Grid::new()
                             .id(WidgetId::from_hash("g"))
-                            .size((Sizing::FILL, Sizing::HUG))
+                            .size(SizeSpec::FILL_W)
                             .cols([Track::HUG, Track::FILL])
                             .rows([Track::HUG])
                             .show(ui, |ui| {
@@ -463,11 +463,11 @@ fn cache_rects_match_cold_oracle_across_resizes() {
                     });
                 Panel::vstack()
                     .id(WidgetId::from_hash("label"))
-                    .size((Sizing::FILL, Sizing::HUG))
+                    .size(SizeSpec::FILL_W)
                     .show(ui, |ui| {
                         Text::new(LONG_LABEL)
                             .auto_id()
-                            .size((Sizing::FILL, Sizing::HUG))
+                            .size(SizeSpec::FILL_W)
                             .font_size(14.0)
                             .text_wrap(TextWrap::Truncate)
                             .show(ui);
@@ -488,7 +488,7 @@ fn cache_rects_match_cold_oracle_across_resizes() {
                     });
                 Panel::hstack()
                     .id(WidgetId::from_hash("width-share"))
-                    .size((Sizing::FILL, Sizing::HUG))
+                    .size(SizeSpec::FILL_W)
                     .show(ui, |ui| {
                         for col in 0..2u16 {
                             Text::new(&LONG_LABEL[..50])
@@ -514,7 +514,7 @@ fn cache_rects_match_cold_oracle_across_resizes() {
                     .show(ui, |ui| {
                         Panel::canvas()
                             .id(WidgetId::from_hash("canvas"))
-                            .size((Sizing::HUG, Sizing::FILL))
+                            .size(SizeSpec::FILL_H)
                             .show(ui, |ui| {
                                 Scroll::vertical()
                                     .id(WidgetId::from_hash("canvas-scroll"))
@@ -595,11 +595,11 @@ fn measure_cache_restores_intrinsics_so_localized_change_skips_sibling_rewalk() 
     fn build(ui: &mut Ui, tick: u32) {
         Panel::vstack()
             .auto_id()
-            .size((Sizing::HUG, Sizing::HUG))
+            .size(SizeSpec::HUG)
             .show(ui, |ui| {
                 Panel::vstack()
                     .id_salt("heavy")
-                    .size((Sizing::HUG, Sizing::HUG))
+                    .size(SizeSpec::HUG)
                     .show(ui, |ui| {
                         for i in 0..HEAVY {
                             Text::new("lorem ipsum dolor").id_salt(("h", i)).show(ui);
@@ -646,7 +646,7 @@ fn measure_cache_hit_restores_the_floor_its_parent_reads() {
             .show(ui, |ui| {
                 Panel::zstack()
                     .id(WidgetId::from_hash("mid"))
-                    .size((Sizing::HUG, Sizing::HUG))
+                    .size(SizeSpec::HUG)
                     .show(ui, |ui| {
                         Panel::vstack()
                             .id(WidgetId::from_hash("paragraph"))
@@ -693,7 +693,7 @@ fn moved_subtree_replays_translated_rects() {
         capture.clear();
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 Panel::zstack()
                     .id(WidgetId::from_hash("header"))
@@ -701,7 +701,7 @@ fn moved_subtree_replays_translated_rects() {
                     .show(ui, |_ui| {});
                 Panel::vstack()
                     .id(WidgetId::from_hash("stable"))
-                    .size((Sizing::FILL, Sizing::HUG))
+                    .size(SizeSpec::FILL_W)
                     .show(ui, |ui| {
                         for row in 0..ROWS {
                             let outer = Panel::hstack()
@@ -769,7 +769,7 @@ fn translated_replay_lands_where_a_cold_arrange_does() {
     let record = |ui: &mut Ui, header_h: f32| {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 Panel::zstack()
                     .id(WidgetId::from_hash("header"))
@@ -777,7 +777,7 @@ fn translated_replay_lands_where_a_cold_arrange_does() {
                     .show(ui, |_ui| {});
                 Panel::vstack()
                     .id(WidgetId::from_hash("stable"))
-                    .size((Sizing::FILL, Sizing::HUG))
+                    .size(SizeSpec::FILL_W)
                     .gap(0.3)
                     .padding(1.7)
                     .show(ui, |ui| {
@@ -840,11 +840,11 @@ fn a_resized_hit_root_replays_its_unchanged_descendants() {
     let record = |ui: &mut Ui, grower_w: f32| {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 Panel::zstack()
                     .id(WidgetId::from_hash("host"))
-                    .size((Sizing::HUG, Sizing::HUG))
+                    .size(SizeSpec::HUG)
                     .show(ui, |ui| {
                         Panel::zstack()
                             .id(WidgetId::from_hash("grower"))
@@ -852,7 +852,7 @@ fn a_resized_hit_root_replays_its_unchanged_descendants() {
                             .show(ui, |_ui| {});
                         Panel::vstack()
                             .id(WidgetId::from_hash("stable"))
-                            .size((Sizing::FILL, Sizing::FILL))
+                            .size(SizeSpec::FILL)
                             .show(ui, |ui| {
                                 for row in 0..ROWS {
                                     Panel::hstack()
@@ -904,16 +904,16 @@ fn fractional_offers_at_scale_one_and_a_half_match_cold() {
     let record = |ui: &mut Ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("columns"))
-            .size((Sizing::FILL, Sizing::HUG))
+            .size(SizeSpec::FILL_W)
             .show(ui, |ui| {
                 for column in 0..2u32 {
                     Panel::vstack()
                         .id(WidgetId::from_hash(("column", column)))
-                        .size((Sizing::FILL, Sizing::HUG))
+                        .size(SizeSpec::FILL_W)
                         .show(ui, |ui| {
                             Text::new(LABEL)
                                 .id(WidgetId::from_hash(("label", column)))
-                                .size((Sizing::FILL, Sizing::HUG))
+                                .size(SizeSpec::FILL_W)
                                 .text_wrap(TextWrap::WrapWithOverflow)
                                 .show(ui);
                         });

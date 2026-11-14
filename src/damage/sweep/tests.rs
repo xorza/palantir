@@ -19,7 +19,7 @@ use crate::damage::sweep::stage::Stage;
 use crate::host::harness::Harness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
@@ -672,7 +672,7 @@ fn a_scene_counts_the_rows_that_draw_on_the_surface() {
         h.frame(|ui| {
             Panel::canvas()
                 .id_salt("visible-rows")
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| {
                     block(ui, 0, (10.0, 10.0));
                     for far in 0..far_blocks {
@@ -694,7 +694,7 @@ fn a_scene_reads_the_share_its_backdrops_hold() {
         let record = |ui: &mut Ui| {
             Panel::canvas()
                 .id_salt("share-backdrops")
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| {
                     for _ in 0..backdrop_count {
                         ui.add_shape(
@@ -879,7 +879,7 @@ impl Scene for SmallScene {
     fn record(&mut self, ui: &mut Ui) {
         Panel::vstack()
             .id_salt("small-scene")
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 for id in self.hover_targets() {
                     Button::new().id(id).label("target").show(ui);

@@ -7,7 +7,7 @@ use crate::internals::paint_capture::PaintCall;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::primitives::layout::track::Track;
 use crate::primitives::paint::border::Border;
 use crate::primitives::paint::chrome::Chrome;
@@ -29,7 +29,7 @@ const PARAGRAPH: &str = "The quick brown fox jumps over the lazy dog. \
 /// section is.
 fn section(rec: &mut NodeRecorder<'_>, id: &str, body: impl FnOnce(&mut NodeRecorder<'_>)) {
     let section = Widget::vstack()
-        .size((Sizing::FILL, Sizing::HUG))
+        .size(SizeSpec::FILL_W)
         .gap(6.0)
         .padding(9.0);
     rec.node(id, section, |rec| {
@@ -43,7 +43,7 @@ fn section(rec: &mut NodeRecorder<'_>, id: &str, body: impl FnOnce(&mut NodeReco
 fn chrome_section(ui: &mut Ui, id: &'static str, body: &mut dyn FnMut(&mut Ui)) {
     Panel::vstack()
         .id(WidgetId::from_hash(id))
-        .size((Sizing::FILL, Sizing::HUG))
+        .size(SizeSpec::FILL_W)
         .gap(6.0)
         .padding(8.0)
         .chrome(Chrome {
@@ -84,26 +84,22 @@ fn grid_columns_with_wrapping_text_do_not_overlap() {
     for (label_id, grid_main, cols, gaps) in cases {
         let mut rig = LayoutRig::new();
         rig.run(Size::new(800.0, 600.0), |rec| {
-            rec.node(
-                "column",
-                Widget::vstack().size((Sizing::FILL, Sizing::FILL)),
-                |rec| {
-                    let mut grid = Widget::grid().line_gap(gaps.0).gap(gaps.1);
-                    if let Some(s) = *grid_main {
-                        grid = grid.size((s, Sizing::HUG));
-                    }
-                    let tracks = GridTracks {
-                        rows: &[Track::HUG],
-                        cols,
-                    };
-                    rec.grid("grid", grid, tracks, |rec| {
-                        let left = TextRun::new(PARAGRAPH, 14.0, TextWrap::WrapWithOverflow);
-                        rec.text_leaf("left", Widget::leaf().grid_cell((0, 0)), left);
-                        let right = TextRun::new("right column", 14.0, TextWrap::SingleLine);
-                        rec.text_leaf("right", Widget::leaf().grid_cell((0, 1)), right);
-                    });
-                },
-            );
+            rec.node("column", Widget::vstack().size(SizeSpec::FILL), |rec| {
+                let mut grid = Widget::grid().line_gap(gaps.0).gap(gaps.1);
+                if let Some(s) = *grid_main {
+                    grid = grid.size((s, Sizing::HUG));
+                }
+                let tracks = GridTracks {
+                    rows: &[Track::HUG],
+                    cols,
+                };
+                rec.grid("grid", grid, tracks, |rec| {
+                    let left = TextRun::new(PARAGRAPH, 14.0, TextWrap::WrapWithOverflow);
+                    rec.text_leaf("left", Widget::leaf().grid_cell((0, 0)), left);
+                    let right = TextRun::new("right column", 14.0, TextWrap::SingleLine);
+                    rec.text_leaf("right", Widget::leaf().grid_cell((0, 1)), right);
+                });
+            });
         });
 
         // Mono at 14 px is 7 px a char: "right column" is 12 × 7 = 84.
@@ -124,9 +120,7 @@ fn grid_columns_with_wrapping_text_do_not_overlap() {
 fn text_layouts_two_sections_back_to_back_no_overlap() {
     let mut rig = LayoutRig::new();
     rig.run(Size::new(1500.0, 900.0), |rec| {
-        let column = Widget::vstack()
-            .gap(16.0)
-            .size((Sizing::FILL, Sizing::FILL));
+        let column = Widget::vstack().gap(16.0).size(SizeSpec::FILL);
         rec.node("column", column, |rec| {
             section(rec, "two-hug-columns", |rec| {
                 let tracks = GridTracks {
@@ -147,7 +141,7 @@ fn text_layouts_two_sections_back_to_back_no_overlap() {
                     cols: &[Track::HUG, Track::FILL],
                 };
                 let grid = Widget::grid()
-                    .size((Sizing::FILL, Sizing::HUG))
+                    .size(SizeSpec::FILL_W)
                     .line_gap(6.0)
                     .gap(16.0);
                 rec.grid("property-grid-inner", grid, tracks, |rec| {
@@ -192,11 +186,11 @@ fn property_grid_emits_distinct_drawtext_x_positions() {
         Panel::vstack()
             .auto_id()
             .gap(16.0)
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 Grid::new()
                     .id(WidgetId::from_hash("property-grid-inner"))
-                    .size((Sizing::FILL, Sizing::HUG))
+                    .size(SizeSpec::FILL_W)
                     .cols([Track::HUG, Track::FILL])
                     .rows([Track::HUG, Track::HUG, Track::HUG])
                     .line_gap(6.0)
@@ -248,18 +242,18 @@ fn text_layouts_full_showcase_drawtext_dump() {
         Panel::vstack().auto_id()
         .padding(12.0)
         .gap(12.0)
-        .size((Sizing::FILL, Sizing::FILL))
+        .size(SizeSpec::FILL)
         .show(ui, |ui| {
             Panel::hstack().auto_id()
-                .size((Sizing::FILL, Sizing::HUG))
+                .size(SizeSpec::FILL_W)
                 .show(ui, |_| {});
             Panel::zstack().auto_id()
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .padding(16.0)
                 .show(ui, |ui| {
                     Panel::vstack().auto_id()
                         .gap(16.0)
-                        .size((Sizing::FILL, Sizing::FILL))
+                        .size(SizeSpec::FILL)
                         .show(ui, |ui| {
                             chrome_section(ui, "two-hug-columns", &mut |ui| {
                                 Grid::new().id(WidgetId::from_hash("two-hug-inner"))
@@ -280,7 +274,7 @@ fn text_layouts_full_showcase_drawtext_dump() {
                             });
                             chrome_section(ui, "property-grid", &mut |ui| {
                                 Grid::new().id(WidgetId::from_hash("property-grid-inner"))
-                                    .size((Sizing::FILL, Sizing::HUG))
+                                    .size(SizeSpec::FILL_W)
                                     .cols([Track::HUG, Track::FILL])
                                     .rows([Track::HUG, Track::HUG, Track::HUG])
                                     .line_gap(6.0).gap(16.0)

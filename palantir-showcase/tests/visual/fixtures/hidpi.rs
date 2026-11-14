@@ -3,7 +3,7 @@
 use palantir::glam::UVec2;
 use palantir::{
     Block, Border, Button, Chrome, ColorScheme, Configure, Corners, Grid, GridCell, Panel, RgbaF32,
-    Sizing, SystemScale, Text, TextStyle, Track,
+    SizeSpec, Sizing, SystemScale, Text, TextStyle, Track,
 };
 
 use crate::golden_name::GoldenName;
@@ -24,12 +24,12 @@ fn dashboard_matches_golden() {
                 .line_gap(8.0)
                 .gap(8.0)
                 .padding(12.0)
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| {
                     Panel::hstack()
                         .id_salt("header")
                         .grid_cell(GridCell::at(0, 0).with_span(1, 2))
-                        .size((Sizing::FILL, Sizing::FILL))
+                        .size(SizeSpec::FILL)
                         .max_size((f32::INFINITY, 40.0))
                         .padding((10.0, 14.0, 10.0, 14.0))
                         .gap(8.0)

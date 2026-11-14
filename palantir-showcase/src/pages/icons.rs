@@ -84,8 +84,9 @@ impl Icons {
     /// atlas rasters, so letting one drop at the end of every frame would unload and re-rasterize the
     /// set each frame. The row is scoped to the `Ui` that minted the handles, not to the thread.
     fn load(ui: &mut Ui) -> Self {
-        ui.with_state::<Option<Self>, _>(WidgetId::from_hash("showcase::icons::set"), |ui, held| {
-            held.get_or_insert_with(|| {
+        ui.with_state_or_insert_with(
+            WidgetId::from_hash("showcase::icons::set"),
+            |ui| {
                 let set = ui.load_icons(
                     IconTable::from_svgs([
                         ("folder", FOLDER_SVG),
@@ -103,9 +104,9 @@ impl Icons {
                     wide: handle("wide"),
                     set,
                 }
-            })
-            .clone()
-        })
+            },
+            |_, held: &mut Self| held.clone(),
+        )
     }
 
     fn draw(ui: &mut Ui, icon: IconHandle, tint: RgbaF32) {

@@ -6,7 +6,7 @@ use crate::gpu::frame::submission::Route;
 use crate::gpu::test_gpu::headless_test_gpu;
 use crate::host::offscreen::OffscreenHost;
 use crate::primitives::geometry::rect::Rect;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
@@ -45,7 +45,7 @@ fn record(ui: &mut Ui, screen: Screen, big: RgbaF32, tiny: RgbaF32) {
     };
     Panel::canvas()
         .id_salt("promote-scene")
-        .size((Sizing::FILL, Sizing::FILL))
+        .size(SizeSpec::FILL)
         .show(ui, |ui| {
             block(ui, ("big", 0), Vec2::ZERO, Vec2::new(100.0, 80.0), big);
             block(

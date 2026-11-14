@@ -58,13 +58,13 @@ pub trait Configure: Sized {
     /// a `#[track_caller]` helper, where that site is the helper's caller:
     ///
     /// ```
-    /// # use palantir::{Configure, Panel, Sizing, Text, Ui};
+    /// # use palantir::{Configure, Panel, SizeSpec, Text, Ui};
     /// /// One section per caller, each with its own id.
     /// #[track_caller]
     /// fn section(ui: &mut Ui, title: &str, body: impl FnOnce(&mut Ui)) {
     ///     Panel::vstack()
     ///         .auto_id()                 // ← the caller's location, not this one
-    ///         .size((Sizing::FILL, Sizing::HUG))
+    ///         .size(SizeSpec::FILL_W)
     ///         .show(ui, |ui| {
     ///             Text::new(title).show(ui);
     ///             body(ui);
@@ -79,8 +79,8 @@ pub trait Configure: Sized {
         self
     }
 
-    /// Both axes at once: a [`Sizing`](crate::Sizing), a bare number (fixed), a `(w, h)` pair or a
-    /// [`Size`].
+    /// Both axes at once: a [`Sizing`](crate::Sizing), a bare number (fixed), a `(w, h)` pair, a
+    /// [`Size`], or a named [`SizeSpec`]: `FILL`, `HUG`, `FILL_W`, `FILL_H`.
     ///
     /// # Panics
     ///

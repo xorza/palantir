@@ -17,7 +17,7 @@ use crate::primitives::input::keyboard::key::Key;
 use crate::primitives::input::keyboard::modifiers::Modifiers;
 use crate::primitives::input::pointer::PointerButton;
 use crate::primitives::input::shortcut::{Shortcut, ShortcutMods};
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::primitives::paint::brush::gradient::Gradient;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
@@ -196,7 +196,7 @@ impl App for Board {
     fn record(&mut self, _window: WindowToken, ui: &mut Ui) {
         Panel::canvas()
             .auto_id()
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 let one = button(ui, "one", "One", Vec2::new(10.0, 10.0));
                 if one.clicked() {

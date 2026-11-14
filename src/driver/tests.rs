@@ -11,7 +11,7 @@ use crate::primitives::input::keyboard::modifiers::Modifiers;
 use crate::primitives::input::pointer::PointerButton;
 use crate::primitives::input::sense::Sense;
 use crate::primitives::input::shortcut::{Shortcut, ShortcutMods};
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::button::Button;
@@ -37,7 +37,7 @@ fn scene(ui: &mut Ui) {
     };
     Panel::canvas()
         .auto_id()
-        .size((Sizing::FILL, Sizing::FILL))
+        .size(SizeSpec::FILL)
         .show(ui, |ui| {
             button(ui, "one", "One", Vec2::new(10.0, 10.0));
             button(ui, "two", "Two", Vec2::new(10.0, 40.0));

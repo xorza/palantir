@@ -3,8 +3,8 @@
 use palantir::glam::UVec2;
 use palantir::internals::dock_fixture::DockFixture;
 use palantir::{
-    Block, Chrome, Configure, Corners, Panel, Sizing, TabItem, TabKey, TabStrip, TabbedView, Text,
-    Ui, WidgetId,
+    Block, Chrome, Configure, Corners, Panel, SizeSpec, Sizing, TabItem, TabKey, TabStrip,
+    TabbedView, Text, Ui, WidgetId,
 };
 
 use crate::golden_name::GoldenName;
@@ -23,7 +23,7 @@ fn tab_strip_matches_golden() {
             .collect();
         Panel::vstack()
             .id_salt("strip-well")
-            .size((Sizing::FILL, Sizing::HUG))
+            .size(SizeSpec::FILL_W)
             .padding(12.0)
             .show(ui, |ui| {
                 TabStrip::new(&items)
@@ -53,11 +53,11 @@ fn tabbed_view_matches_golden() {
             *page = 1;
             TabbedView::new(page, &["Color", "Geometry", "Metadata"])
                 .id_salt("pages")
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui, idx| {
                     Panel::vstack()
                         .id_salt("page")
-                        .size((Sizing::FILL, Sizing::FILL))
+                        .size(SizeSpec::FILL)
                         .padding(14.0)
                         .show(ui, |ui| {
                             Text::new(["Color", "Geometry", "Metadata"][idx])

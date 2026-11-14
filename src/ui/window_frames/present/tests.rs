@@ -970,7 +970,7 @@ mod cutout_census_tests {
     use crate::gpu::pipeline::quad_pipeline::cutout_placements::{CutoutPlacements, CutoutPlacing};
     use crate::gpu::render_owner_id::RenderOwners;
     use crate::primitives::geometry::rect::Rect;
-    use crate::primitives::layout::sizing::Sizing;
+    use crate::primitives::layout::sizing::SizeSpec;
     use crate::primitives::paint::chrome::Chrome;
     use crate::primitives::paint::color::RgbaF32;
     use crate::primitives::paint::shadow::Shadow;
@@ -1010,7 +1010,7 @@ mod cutout_census_tests {
         let mut app = |ui: &mut Ui| {
             Panel::canvas()
                 .id_salt("cards")
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| {
                     for card in 0..cards.get() {
                         ui.add_shape(
@@ -1354,7 +1354,7 @@ mod escalation_tests {
     use crate::gpu::pipeline::quad_pipeline::cutout_placements::{CutoutPlacements, CutoutPlacing};
     use crate::primitives::geometry::rect::Rect;
     use crate::primitives::identity::backdrop_key::BackdropKey;
-    use crate::primitives::layout::sizing::Sizing;
+    use crate::primitives::layout::sizing::SizeSpec;
     use crate::primitives::paint::color::RgbaF32;
     use crate::primitives::paint::material::Material;
     use crate::renderer::frontend::Frontend;
@@ -1411,7 +1411,7 @@ mod escalation_tests {
     fn bars(ui: &mut Ui, count: u32) {
         Panel::canvas()
             .id_salt("backdrops")
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 for i in 0..count {
                     ui.add_shape(
@@ -1677,7 +1677,7 @@ mod escalation_tests {
 mod capture_path_tests {
     use crate::gpu::frame::submission::Route;
     use crate::primitives::geometry::rect::Rect;
-    use crate::primitives::layout::sizing::Sizing;
+    use crate::primitives::layout::sizing::SizeSpec;
     use crate::primitives::paint::color::RgbaF32;
     use crate::primitives::paint::material::Material;
     use crate::renderer::frontend::Frontend;
@@ -1716,7 +1716,7 @@ mod capture_path_tests {
         let mut app = |ui: &mut Ui| {
             Panel::canvas()
                 .id_salt("backdrops")
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| {
                     ui.add_shape(
                         Shape::rect().at(Rect::new(0.0, 0.0, 4.0, 4.0)),

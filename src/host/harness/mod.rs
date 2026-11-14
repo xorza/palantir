@@ -1010,7 +1010,7 @@ pub(crate) mod internals {
         primitives::identity::widget_id::WidgetId,
         primitives::input::input_event::InputEvent,
         primitives::input::interaction::input_delta::InputDelta,
-        primitives::layout::sizing::Sizing,
+        primitives::layout::sizing::SizeSpec,
         primitives::math::animatable::Animatable,
         renderer::frontend::Frontend,
         renderer::frontend::encoder::Encoder,
@@ -1302,7 +1302,7 @@ pub(crate) mod internals {
             self.frame_value(|ui| {
                 Panel::hstack()
                     .auto_id()
-                    .size((Sizing::FILL, Sizing::FILL))
+                    .size(SizeSpec::FILL)
                     .show(ui, &mut f)
                     .inner
             })

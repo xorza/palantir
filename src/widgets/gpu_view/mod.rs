@@ -5,7 +5,7 @@ use crate::gpu::gpu_paint::GpuPaint;
 use crate::gpu::gpu_paint::gpu_paint_ref::GpuPaintRef;
 use crate::gpu::gpu_paint::gpu_views::{RecordedView, ViewContent};
 use crate::primitives::input::interaction::response::Response;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::SizeSpec;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
@@ -100,7 +100,7 @@ impl GpuView {
             paint,
             content,
         } = self;
-        widget.configure().default_size(Sizing::FILL);
+        widget.configure().default_size(SizeSpec::FILL);
         let id = widget.resolve(ui);
         widget
             .show(ui, None, |ui| {

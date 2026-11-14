@@ -75,18 +75,9 @@ impl ExpanderTheme {
         let gap = m.space.sm;
         Self {
             looks: StatefulLook {
-                normal: WidgetLook {
-                    chrome: Chrome::NONE,
-                    text: TextStyleOverrides::NONE,
-                },
-                hovered: WidgetLook {
-                    chrome: Chrome::rounded(p.element_mid, radius),
-                    text: TextStyleOverrides::NONE,
-                },
-                active: WidgetLook {
-                    chrome: Chrome::rounded(p.element_strong, radius),
-                    text: TextStyleOverrides::NONE,
-                },
+                normal: WidgetLook::new(Chrome::NONE),
+                hovered: WidgetLook::new(Chrome::rounded(p.element_mid, radius)),
+                active: WidgetLook::new(Chrome::rounded(p.element_strong, radius)),
                 disabled: WidgetLook {
                     chrome: Chrome::NONE,
                     text: TextStyleOverrides::NONE.with_color(p.text_disabled),

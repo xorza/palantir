@@ -10,7 +10,7 @@ use palantir::widget::{GlyphFont, PaintAnimation, PaintRepeat, Shape};
 use palantir::{
     BackdropEffect, BackdropReach, Button, ButtonTheme, Configure, Corners, EffectError,
     EffectName, EffectParams, EffectSource, Panel, PressEffect, PressParams, Rect, ReducedEffect,
-    RgbaF32, Sizing, Ui,
+    RgbaF32, SizeSpec, Ui,
 };
 use std::time::Duration;
 
@@ -166,7 +166,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
             );
             DemoCell::new("ring").size(CELL, CELL).show(ui, k, |ui| {
                 Panel::canvas()
-                    .size((Sizing::FILL, Sizing::FILL))
+                    .size(SizeSpec::FILL)
                     .show(ui, |ui| ring(ui, k));
             });
         });
@@ -192,7 +192,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
             );
             DemoCell::new("water").size(CELL, CELL).show(ui, k, |ui| {
                 Panel::canvas()
-                    .size((Sizing::FILL, Sizing::FILL))
+                    .size(SizeSpec::FILL)
                     .show(ui, |ui| water(ui, k));
             });
         });

@@ -5,7 +5,7 @@ use crate::primitives::input::keyboard::key::Key;
 use crate::primitives::input::sense::Sense;
 use crate::primitives::input::shortcut::Shortcut;
 use crate::primitives::layout::axis::Axis;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::SizeSpec;
 use crate::primitives::text::text_input::TextInput;
 use crate::shape::Shape;
 use crate::theme::Theme;
@@ -175,7 +175,7 @@ impl<'a> MenuBar<'a> {
 
         let theme = Rc::clone(ui.theme());
         let style = self.style.unwrap_or(&theme.menu_bar);
-        self.widget = self.widget.default_size((Sizing::FILL, Sizing::HUG));
+        self.widget = self.widget.default_size(SizeSpec::FILL_W);
         self.widget
             .configure()
             .default_gap(style.gap)

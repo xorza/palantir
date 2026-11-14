@@ -2,8 +2,8 @@
 
 use palantir::glam::UVec2;
 use palantir::{
-    Block, Chrome, Configure, Corners, FramePaint, Panel, RgbaF32, Scroll, ScrollbarTheme, Sizing,
-    Ui,
+    Block, Chrome, Configure, Corners, FramePaint, Panel, RgbaF32, Scroll, ScrollbarTheme,
+    SizeSpec, Sizing, Ui,
 };
 
 use crate::golden_name::GoldenName;
@@ -32,7 +32,7 @@ fn assert_well_matches_golden(golden: GoldenName, size: UVec2, scene: impl Fn(&m
         Panel::vstack()
             .id_salt("well")
             .padding(8.0)
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, &scene);
     });
 }
@@ -52,7 +52,7 @@ fn scroll_vertical_overflow_matches_golden() {
             Scroll::vertical()
                 .id_salt("scroll")
                 .gap(3.0)
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| {
                     for i in 0..30u32 {
                         row(3.0)
@@ -75,7 +75,7 @@ fn scroll_horizontal_overflow_matches_golden() {
             Scroll::horizontal()
                 .id_salt("scroll")
                 .gap(3.0)
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| {
                     for i in 0..30u32 {
                         row(3.0)
@@ -94,7 +94,7 @@ fn scroll_xy_overflow_matches_golden() {
     assert_well_matches_golden(GoldenName::ScrollXyOverflow, UVec2::new(160, 160), |ui| {
         Scroll::both()
             .id_salt("scroll")
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 row(6.0)
                     .id_salt("big")
@@ -113,7 +113,7 @@ fn scroll_no_bar_when_content_fits_matches_golden() {
         |ui| {
             Scroll::vertical()
                 .id_salt("scroll")
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| {
                     row(3.0)
                         .id_salt("short")
@@ -135,7 +135,7 @@ fn scroll_with_user_padding_matches_golden() {
                 .id_salt("scroll")
                 .padding(16.0)
                 .gap(3.0)
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| {
                     for i in 0..20u32 {
                         row(3.0)
@@ -164,12 +164,12 @@ fn scroll_warm_cache_repaint_matches_the_cold_encode() {
                         .padding(6.0)
                         .chrome(Chrome::rounded(CARD, Corners::all(6.0)))
                         .clip_rect()
-                        .size((Sizing::FILL, Sizing::FILL))
+                        .size(SizeSpec::FILL)
                         .show(ui, |ui| {
                             Scroll::vertical()
                                 .id_salt(("scroll", tag))
                                 .gap(3.0)
-                                .size((Sizing::FILL, Sizing::FILL))
+                                .size(SizeSpec::FILL)
                                 .show(ui, |ui| {
                                     for i in 0..25u32 {
                                         row(3.0)

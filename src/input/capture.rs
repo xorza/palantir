@@ -16,16 +16,15 @@ pub(crate) const DRAG_THRESHOLD: f32 = 4.0;
 
 /// Maximum interval between two clicks on the same widget for a double-click when no platform
 /// setting is read: the Windows and macOS default, and what a host with no desktop keeps, so a
-/// test repeats. The winit host reads the platform's own into the host's
-/// [`AppSettings`](crate::ui::resources::app_settings::AppSettings).
-pub(crate) const DOUBLE_CLICK_INTERVAL: Duration = Duration::from_millis(500);
+/// test repeats. The winit host reads the platform's own setting in its place.
+pub const DOUBLE_CLICK_INTERVAL: Duration = Duration::from_millis(500);
 
 /// Maximum pointer travel (logical px) between two clicks for a double-click. Held fixed: macOS and
 /// Wayland have no setting for it, Windows a rectangle in physical pixels (`SM_CXDOUBLECLK`), and
 /// X11's XSETTINGS `Net/DoubleClickDistance`.
 /// [`TextEdit`](crate::TextEdit)'s word and all-selection read the run it
 /// bounds rather than keeping a radius of their own.
-pub(super) const DOUBLE_CLICK_RADIUS: f32 = 5.0;
+pub const DOUBLE_CLICK_RADIUS: f32 = 5.0;
 
 /// Per-button capture, one slot per
 /// [`PointerButton`](crate::primitives::input::pointer::PointerButton). Three

@@ -14,7 +14,7 @@ use palantir::bench::scene::BENCH_DPR;
 use palantir::glam::UVec2;
 use palantir::internals::{TEXT_SCALE_STEP, TestGpu, isolated_headless_test_gpu};
 use palantir::widget::Shape;
-use palantir::{App, Configure, Grid, Panel, Sizing, Track, TranslateScale, Ui};
+use palantir::{App, Configure, Grid, Panel, SizeSpec, Track, TranslateScale, Ui};
 use palantir_showcase::{MAIN_WINDOW, Shell};
 
 use crate::fixtures::parked_icons::ParkedIcons;
@@ -162,7 +162,7 @@ fn scale_ramp_rasterizes_at_a_flat_cost_per_frame() {
                     let chip = icons.chip(ui);
                     Panel::vstack()
                         .auto_id()
-                        .size((Sizing::FILL, Sizing::FILL))
+                        .size(SizeSpec::FILL)
                         .transform(TranslateScale::from_scale(zoom))
                         .show(ui, |ui| {
                             Grid::new()

@@ -10,7 +10,7 @@ use crate::support::{Dialog, Kit, Section};
 use palantir::{
     Align, Anchor, AnchorAlign, Axis, Block, Button, Checkbox, Configure, Justify, Key, Menu,
     MenuBar, MenuItem, MenuSeparator, MenuTheme, Modal, Panel, Popup, PopupTrigger, Response,
-    Sense, Shortcut, Sizing, Slider, Spacing, Text, Theme, Tooltip, Ui, WidgetId, fmt,
+    Sense, Shortcut, SizeSpec, Sizing, Slider, Spacing, Text, Theme, Tooltip, Ui, WidgetId, fmt,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -398,9 +398,7 @@ impl DemoMenu<'_> {
     /// Records the menu, writing the clicked item's label to `action`.
     fn show(self, ui: &mut Ui, action: &mut Option<&'static str>) {
         let Self { trigger, style } = self;
-        let mut menu = Menu::context(trigger)
-            .size((Sizing::HUG, Sizing::HUG))
-            .style(style);
+        let mut menu = Menu::context(trigger).size(SizeSpec::HUG).style(style);
         if style.is_some() {
             menu = menu.min_size((260.0, 0.0)).max_size((320.0, 280.0));
         }

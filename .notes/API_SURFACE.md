@@ -171,6 +171,7 @@ Border
         pub const NONE: Self
         pub const fn is_noop(&self) -> bool
         pub const fn new(color: RgbaF32, width: f32) -> Self
+        impl From<Border> for Chrome
         impl From<Border> for Paint
 
 BoundNum
@@ -214,7 +215,7 @@ Checkbox
         pub fn show(self, ui: &mut Ui) -> ValueResponse
 
 Chrome
-    struct Chrome: Animatable, Clone, Debug, Default, Deserialize<'de>, From<Brush>, From<Gradient>, From<Paint>, From<RgbaF32>, Lerp, PartialEq, Serialize
+    struct Chrome: Animatable, Clone, Debug, Default, Deserialize<'de>, From<Border>, From<Brush>, From<Gradient>, From<Paint>, From<RgbaF32>, From<Shadow>, From<SrgbaU8>, Lerp, PartialEq, Serialize
         pub corners: Corners
         pub paint: Paint
         pub const NONE: Self
@@ -226,6 +227,7 @@ Chrome
         pub fn with_fill(self, brush: impl Into<Brush>) -> Self
         pub const fn with_border(self, border: Border) -> Self
         pub const fn with_shadow(self, shadow: Shadow) -> Self
+        impl From<Chrome> for WidgetLook
 
 ClickOutside
     enum ClickOutside: Clone, Copy, Debug, Eq, PartialEq
@@ -343,6 +345,7 @@ ColorScheme
         Light
         Dark
         pub const FALLBACK: Self
+        pub const ALL: [Self; 2]
 
 ColorStrip
     struct ColorStrip<'a>: Configure, Debug, ThemeDefaults (blanket)
@@ -428,6 +431,10 @@ Corners
     struct Corners: Animatable, Clone, Copy, Debug, Default, Deserialize<'de>, DockTab (blanket), Eq, Hash, Lerp, PartialEq, Pod, Serialize, Zeroable
         pub const ZERO: Self
         pub fn to_array(self) -> [f32; 4]
+        pub fn top_left(self) -> f32
+        pub fn top_right(self) -> f32
+        pub fn bottom_right(self) -> f32
+        pub fn bottom_left(self) -> f32
         pub fn all(r: f32) -> Self
         pub fn new(top_left: f32, top_right: f32, bottom_right: f32, bottom_left: f32) -> Self
         pub fn top(r: f32) -> Self
@@ -1081,6 +1088,7 @@ HarnessBuilder
         pub const fn system_motion_reduced(self, reduced: bool) -> Self
         pub const fn system_transparency_reduced(self, reduced: bool) -> Self
         pub const fn system_power_reduced(self, reduced: bool) -> Self
+        pub const fn collect_gpu_stats(self, collect_gpu_stats: bool) -> Self
         pub const fn pixel_snap(self, pixel_snap: bool) -> Self
         pub const fn fonts(self, scope: FontScope) -> Self
         pub fn shaper(self, shaper: TextShaper) -> Self
@@ -1147,8 +1155,12 @@ Image
         pub fn blank(size: UVec2) -> Self
         pub const fn size(&self) -> UVec2
         pub fn texels(&self) -> &[SrgbaU8]
+        pub fn texel(&self, at: UVec2) -> SrgbaU8
+        pub fn magnified(&self, factor: u32) -> Self
         pub fn as_srgba8(&self) -> &[u8]
         pub fn texels_mut(&mut self) -> &mut [SrgbaU8]
+        pub fn from_png(bytes: &[u8]) -> Result<Self>  [features: golden or png]
+        pub fn write_png(&self, out: impl Write) -> Result<()>  [features: golden or png]
         pub fn fill_with(&mut self, texel: impl FnMut(UVec2) -> SrgbaU8)
         pub fn row_mut(&mut self, row: u32) -> &mut [SrgbaU8]
         pub fn repeat_row(&mut self, row: u32)
@@ -1620,6 +1632,8 @@ OffscreenHost
         pub fn set_system_transparency_reduced(&mut self, reduced: bool) -> &mut Self
         pub fn set_system_power_reduced(&mut self, reduced: bool) -> &mut Self
         pub fn wait_for_gpu(&self) -> GpuWait
+        pub fn wait_for_wake(&self, timeout: Duration) -> bool
+        pub fn has_pending_wake(&self) -> bool
         pub fn window_commands(&self) -> &[WindowCommand]
         pub fn is_device_lost(&self) -> bool
         pub fn recover(&mut self, gpu: Gpu)
@@ -1669,7 +1683,7 @@ PLATFORM
     const PLATFORM: Platform
 
 Paint
-    struct Paint: Animatable, Clone, Debug, Default, Deserialize<'de>, From<Border>, From<Brush>, From<Gradient>, From<RgbaF32>, From<Shadow>, Lerp, PartialEq, Serialize
+    struct Paint: Animatable, Clone, Debug, Default, Deserialize<'de>, From<Border>, From<Brush>, From<Gradient>, From<RgbaF32>, From<Shadow>, From<SrgbaU8>, Lerp, PartialEq, Serialize
         pub fill: Brush
         pub border: Border
         pub shadow: Shadow
@@ -2197,6 +2211,7 @@ Shadow
         pub const fn inset(color: RgbaF32, offset: Vec2, blur: f32) -> Self
         pub const fn with_spread(self, spread: f32) -> Self
         pub const fn is_noop(&self) -> bool
+        impl From<Shadow> for Chrome
         impl From<Shadow> for Paint
 
 ShadowGeometry
@@ -2219,7 +2234,7 @@ Shortcut
         pub fn matches(self, press: KeyPress) -> bool
 
 ShortcutMods
-    struct ShortcutMods: BitOr, Clone, Copy, Debug, Default, DockTab (blanket), Eq, Hash, PartialEq
+    struct ShortcutMods: BitOr, Clone, Copy, Debug, Default, DockTab (blanket), Eq, FromStr, Hash, PartialEq
         pub const CTRL: Self
         pub const SHIFT: Self
         pub const ALT: Self
@@ -2255,6 +2270,10 @@ Size
 
 SizeSpec
     struct SizeSpec: Clone, Copy, Debug, Default, From<Size>, From<Sizing>, Hash, PartialEq
+        pub const FILL: Self
+        pub const HUG: Self
+        pub const FILL_W: Self
+        pub const FILL_H: Self
         pub const fn new(w: Sizing, h: Sizing) -> Self
         pub const fn w(self) -> Sizing
         pub const fn h(self) -> Sizing
@@ -2316,6 +2335,10 @@ Spacing
     struct Spacing: Add, Animatable, Clone, Copy, Debug, Default, Deserialize<'de>, DockTab (blanket), Eq, Hash, Lerp, PartialEq, Pod, Serialize, Zeroable
         pub const ZERO: Self
         pub fn to_array(self) -> [f32; 4]
+        pub fn left(self) -> f32
+        pub fn top(self) -> f32
+        pub fn right(self) -> f32
+        pub fn bottom(self) -> f32
         pub fn all(v: f32) -> Self
         pub fn xy(x: f32, y: f32) -> Self
         pub fn new(left: f32, top: f32, right: f32, bottom: f32) -> Self
@@ -2404,6 +2427,8 @@ SrgbaU8
         pub const fn hex(rgb: u32) -> Self
         pub const fn hexa(rgba: u32) -> Self
         impl From<SrgbaU8> for Brush
+        impl From<SrgbaU8> for Chrome
+        impl From<SrgbaU8> for Paint
         impl From<SrgbaU8> for RgbaF32
 
 StatefulLook
@@ -2872,6 +2897,7 @@ TranslateScale
         pub const fn compose(self, other: Self) -> Self
         pub const fn apply_point(self, p: Vec2) -> Vec2
         pub const fn inverse_point(self, p: Vec2) -> Vec2
+        pub const fn apply_vector(self, v: Vec2) -> Vec2
         pub const fn inverse_vector(self, v: Vec2) -> Vec2
         pub const fn apply_rect(self, r: Rect) -> Rect
 
@@ -2933,10 +2959,13 @@ Ui
         pub fn response_for(&self, id: WidgetId) -> Response
         pub fn state<S: 'static>(&self, id: WidgetId) -> Option<&S>
         pub fn with_state<S: Default + 'static, R>(&mut self, id: WidgetId, body: impl FnOnce(&mut Self, &mut S) -> R) -> R
+        pub fn with_state_or_insert_with<S: 'static, R>(&mut self, id: WidgetId, init: impl FnOnce(&mut Self) -> S, body: impl FnOnce(&mut Self, &mut S) -> R) -> R
         pub fn set_state<S: 'static>(&mut self, id: WidgetId, value: S)
         pub fn remove_state<S: 'static>(&mut self, id: WidgetId) -> Option<S>
         pub fn singleton<S: 'static>(&self) -> Option<&S>
         pub fn with_singleton<S: Default + 'static, R>(&mut self, body: impl FnOnce(&mut Self, &mut S) -> R) -> R
+        pub fn set_singleton<S: 'static>(&mut self, value: S)
+        pub fn remove_singleton<S: 'static>(&mut self) -> Option<S>
         pub fn animate<V: Animatable>(&mut self, request: AnimationRequest<V>, spec: AnimationSpec) -> Animated<V>
         pub const fn focus(&self) -> Option<WidgetId>
         pub fn is_focus_within(&self, ancestor: WidgetId) -> bool
@@ -3034,9 +3063,11 @@ WidgetId
         impl<X> From<WidgetId> for Locator<X>
 
 WidgetLook
-    struct WidgetLook: Clone, Debug, Default, Deserialize<'de>, Lerp, PartialEq, Serialize
+    struct WidgetLook: Clone, Debug, Default, Deserialize<'de>, From<Chrome>, Lerp, PartialEq, Serialize
         pub chrome: Chrome
         pub text: TextStyleOverrides
+        pub const fn new(chrome: Chrome) -> Self
+        pub const fn with_text(self, text: TextStyleOverrides) -> Self
         pub fn to_animated(&self, ambient_text: TextStyle) -> AnimatedLook
 
 WindowCommand
@@ -3348,6 +3379,12 @@ widget::CurveShape
     struct CurveShape: Clone, Copy, Debug, PaintedBy<Stroke>
         pub const fn at(self, rect: Rect) -> Self
         pub const fn fit(self, fit: Fit) -> Self
+
+widget::DOUBLE_CLICK_INTERVAL
+    const DOUBLE_CLICK_INTERVAL: Duration
+
+widget::DOUBLE_CLICK_RADIUS
+    const DOUBLE_CLICK_RADIUS: f32
 
 widget::EffectPaint
     struct EffectPaint<U: EffectParams, K: EffectKind = ColorEffect>

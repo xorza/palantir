@@ -2,7 +2,7 @@
 
 use palantir::glam::UVec2;
 use palantir::widget::Shape;
-use palantir::{Block, Chrome, Configure, Corners, Panel, Rect, RgbaF32, Sizing};
+use palantir::{Block, Chrome, Configure, Corners, Panel, Rect, RgbaF32, SizeSpec, Sizing};
 
 use crate::fixtures;
 use crate::visual_rig::VisualRig;
@@ -33,7 +33,7 @@ fn oversized_radii_fit_their_box() {
                     .show(ui, |ui| {
                         Block::new()
                             .id_salt("clipped")
-                            .size((Sizing::FILL, Sizing::FILL))
+                            .size(SizeSpec::FILL)
                             .chrome(Chrome::new(RgbaF32::WHITE))
                             .show(ui);
                     });

@@ -5,7 +5,7 @@ use crate::primitives::input::key_class::KeyFilter;
 use crate::primitives::input::keyboard::key::Key;
 use crate::primitives::input::sense::Sense;
 use crate::primitives::layout::anchor::Anchor;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::SizeSpec;
 use crate::scene::layer::Layer;
 use crate::ui::Ui;
 use crate::widget_core::click_outside::ClickOutside;
@@ -156,7 +156,7 @@ impl OverlayScope {
             ui.layer(layer).show(|ui| {
                 Widget::leaf()
                     .id(id)
-                    .size((Sizing::FILL, Sizing::FILL))
+                    .size(SizeSpec::FILL)
                     .sense(Sense::ABSORB_POINTER)
                     .record(ui, None, |_| {});
             });
@@ -207,7 +207,7 @@ mod tests {
     use crate::host::harness::Harness;
     use crate::primitives::identity::widget_id::WidgetId;
     use crate::primitives::input::keyboard::key::Key;
-    use crate::primitives::layout::sizing::Sizing;
+    use crate::primitives::layout::sizing::SizeSpec;
     use crate::scene::layer::Layer;
     use crate::ui::Ui;
     use crate::widget_core::click_outside::ClickOutside;
@@ -222,7 +222,7 @@ mod tests {
     fn overlay(ui: &mut Ui, click_outside: ClickOutside, close: bool) -> OverlayResponse<()> {
         let mut root = Widget::zstack()
             .id(WidgetId::from_hash("test.overlay"))
-            .size((Sizing::FILL, Sizing::FILL));
+            .size(SizeSpec::FILL);
         let spec = OverlaySpec {
             layer: Layer::Modal,
             anchor: None,

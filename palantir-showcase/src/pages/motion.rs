@@ -19,8 +19,8 @@ use palantir::widget::{
 };
 use palantir::{
     Animated, AnimationSpec, Block, Border, Button, Chrome, Configure, Corners, Easing, Fit,
-    IconHandle, IconSet, IconTable, Image, Panel, Rect, RgbaF32, Sense, Shadow, Sizing, Spinner,
-    Text, TranslateScale, Ui, VAlign, WidgetId,
+    IconHandle, IconSet, IconTable, Image, Panel, Rect, RgbaF32, Sense, Shadow, SizeSpec, Sizing,
+    Spinner, Text, TranslateScale, Ui, VAlign, WidgetId,
 };
 use std::array;
 use std::time::Duration;
@@ -131,8 +131,9 @@ struct TurnSources {
 
 impl TurnSources {
     fn load(ui: &mut Ui) -> Self {
-        ui.with_state::<Option<Self>, _>(turn_sources_id(), |ui, held| {
-            held.get_or_insert_with(|| {
+        ui.with_state_or_insert_with(
+            turn_sources_id(),
+            |ui| {
                 let set = ui.load_icons(
                     IconTable::from_svgs([("badge", TURN_ICON_SVG)])
                         .expect("the bundled icon is a readable SVG"),
@@ -142,9 +143,9 @@ impl TurnSources {
                     image: MadeImage::new(ui, turn_image),
                     set,
                 }
-            })
-            .clone()
-        })
+            },
+            |_, held: &mut Self| held.clone(),
+        )
     }
 }
 
@@ -369,7 +370,7 @@ impl Bar {
         let bar = (Sizing::fixed(BAR_TRACK_W), Sizing::fixed(18.0));
         Panel::hstack()
             .id_salt(self.key)
-            .size((Sizing::FILL, Sizing::HUG))
+            .size(SizeSpec::FILL_W)
             .gap(M.space.md)
             .show(ui, |ui| {
                 // A full bar slides out of a clip by a transform: a width is layout, which lands
@@ -525,9 +526,7 @@ mod tests {
         h.frame(&mut record);
         let before = h.read_back();
         let image = h
-            .state::<Option<TurnSources>>(turn_sources_id())
-            .unwrap()
-            .as_ref()
+            .state::<TurnSources>(turn_sources_id())
             .unwrap()
             .image
             .handle()

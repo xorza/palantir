@@ -5,9 +5,9 @@
 
 use palantir::{
     Align, Axis, Button, ButtonTheme, Chrome, ColorScheme, Configure, Corners, FontWeight, Grid,
-    GridCell, Panel, Preference, RadioGroup, RadioLook, Reduction, Scroll, SegmentedTheme, Sizing,
-    SlotDefaults, Spacing, StatefulLook, Text, TextStyleOverrides, Theme, Tooltip, Track, Ui,
-    UiPreferences, VAlign, WidgetId, WidgetLook,
+    GridCell, Panel, Preference, RadioGroup, RadioLook, Reduction, Scroll, SegmentedTheme,
+    SizeSpec, Sizing, SlotDefaults, Spacing, StatefulLook, Text, TextStyleOverrides, Theme,
+    Tooltip, Track, Ui, UiPreferences, VAlign, WidgetId, WidgetLook,
 };
 
 use crate::scaffold::tokens::M;
@@ -43,7 +43,7 @@ pub(crate) fn show(ui: &mut Ui, t: Tokens, body: impl FnOnce(&mut Ui)) {
 pub(crate) fn block(ui: &mut Ui, body: impl FnOnce(&mut Ui)) {
     Panel::vstack()
         .auto_id()
-        .size((Sizing::FILL, Sizing::HUG))
+        .size(SizeSpec::FILL_W)
         .margin((0.0, 0.0, INSET, 0.0))
         .gap(M.space.sm)
         .show(ui, body);
@@ -62,7 +62,7 @@ pub(crate) fn label(ui: &mut Ui, t: Tokens, text: &'static str) {
 pub(crate) fn brand(ui: &mut Ui, t: Tokens, title: &'static str, subtitle: &'static str) {
     Panel::vstack()
         .id_salt("brand")
-        .size((Sizing::FILL, Sizing::HUG))
+        .size(SizeSpec::FILL_W)
         .padding((INSET, 0.0, INSET, 0.0))
         .gap(M.space.xxs)
         .show(ui, |ui| {
@@ -83,7 +83,7 @@ pub(crate) fn brand(ui: &mut Ui, t: Tokens, title: &'static str, subtitle: &'sta
 pub(crate) fn list(id: WidgetId) -> Scroll<'static> {
     Scroll::vertical()
         .id(id)
-        .size((Sizing::FILL, Sizing::FILL))
+        .size(SizeSpec::FILL)
         .overlay_bars()
         .padding((0.0, 0.0, INSET, 0.0))
         .gap(M.space.xxs)
@@ -147,7 +147,7 @@ pub(crate) fn preferences(ui: &mut Ui, t: Tokens) {
         .rows([Track::HUG; 5])
         .gap(NAME_GAP)
         .line_gap(M.space.sm)
-        .size((Sizing::FILL, Sizing::HUG))
+        .size(SizeSpec::FILL_W)
         .show(ui, |ui| preference_rows(ui, &Segmented::new(ui.theme(), t)));
 }
 
@@ -298,7 +298,7 @@ impl Segmented {
             .axis(Axis::X)
             .id_salt((label, "track"))
             .grid_cell(GridCell::at(row, 1))
-            .size((Sizing::FILL, Sizing::HUG))
+            .size(SizeSpec::FILL_W)
             .show(ui, |ui, options| {
                 for (idx, (choice, text)) in choices.into_iter().enumerate() {
                     let segment = options

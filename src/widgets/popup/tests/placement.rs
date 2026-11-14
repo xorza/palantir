@@ -7,7 +7,7 @@ use crate::host::harness::Harness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::primitives::paint::chrome::Chrome;
 use crate::scene::layer::Layer;
 use crate::ui::Ui;
@@ -45,7 +45,7 @@ fn popup_body_sizing_matches_sizing_mode() {
         h.frame(|ui| {
             Panel::vstack()
                 .id(WidgetId::from_hash("main-bg"))
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| {
                     Popup::new()
                         .anchor(Anchor::at_point(anchor))
@@ -85,14 +85,14 @@ fn popup_near_bottom_flips_upward() {
     let scene = |ui: &mut Ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("main-bg"))
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 Popup::new()
                     .anchor(Anchor::at_point(anchor))
                     .id(WidgetId::from_hash("flip-popup"))
                     .padding(0.0)
                     .chrome(Chrome::NONE)
-                    .size((Sizing::HUG, Sizing::HUG))
+                    .size(SizeSpec::HUG)
                     .show(ui, |ui| {
                         Panel::vstack()
                             .id(WidgetId::from_hash("flip-content"))
@@ -128,14 +128,14 @@ fn popup_too_tall_for_both_sides_takes_the_roomier_one() {
     h.frame(|ui: &mut Ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("main-bg"))
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 Popup::new()
                     .anchor(Anchor::at_point(anchor))
                     .id(WidgetId::from_hash("tall-popup"))
                     .padding(0.0)
                     .chrome(Chrome::NONE)
-                    .size((Sizing::HUG, Sizing::FILL))
+                    .size(SizeSpec::FILL_H)
                     .show(ui, |ui| {
                         Scroll::vertical()
                             .id(WidgetId::from_hash("tall-scroll"))
@@ -165,14 +165,14 @@ fn popup_flip_reaches_cascade_not_just_layout() {
     let scene = |ui: &mut Ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("main-bg"))
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 Popup::new()
                     .anchor(Anchor::at_point(anchor))
                     .id(body_id)
                     .padding(0.0)
                     .chrome(Chrome::NONE)
-                    .size((Sizing::HUG, Sizing::HUG))
+                    .size(SizeSpec::HUG)
                     .show(ui, |ui| {
                         Panel::vstack()
                             .id(WidgetId::from_hash("cascade-flip-content"))
@@ -209,14 +209,14 @@ fn popup_with_scroll_settles_in_one_frame() {
     let scene = |ui: &mut Ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("main-bg"))
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 Popup::new()
                     .anchor(Anchor::at_point(anchor))
                     .id(WidgetId::from_hash("scroll-popup"))
                     .padding(0.0)
                     .chrome(Chrome::NONE)
-                    .size((Sizing::HUG, Sizing::HUG))
+                    .size(SizeSpec::HUG)
                     .max_size((f32::INFINITY, 100.0))
                     .show(ui, |ui| {
                         Scroll::vertical()
@@ -269,14 +269,14 @@ fn popup_placement_is_stable_across_frames() {
     let scene = |ui: &mut Ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("main-bg"))
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 Popup::new()
                     .anchor(Anchor::at_point(anchor))
                     .id(WidgetId::from_hash("stable-popup"))
                     .padding(0.0)
                     .chrome(Chrome::NONE)
-                    .size((Sizing::HUG, Sizing::HUG))
+                    .size(SizeSpec::HUG)
                     .show(ui, |ui| {
                         Panel::vstack()
                             .id(WidgetId::from_hash("stable-content"))

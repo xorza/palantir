@@ -3,7 +3,7 @@
 use crate::internals::layout_rig::{LayoutRig, NodeRecorder, TextRun};
 use crate::layout::drivers::wrapstack::tests::support::cell;
 use crate::primitives::geometry::size::Size;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::text::wrap::TextWrap;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::widget::Widget;
@@ -35,14 +35,12 @@ fn wrap_hstack_labels_never_overflow_parent_at_narrow_widths() {
     ] {
         let mut rig = LayoutRig::new();
         rig.run(Size::new(surface_w, 600.0), |rec| {
-            let column = Widget::vstack()
-                .padding(12.0)
-                .size((Sizing::FILL, Sizing::FILL));
+            let column = Widget::vstack().padding(12.0).size(SizeSpec::FILL);
             rec.node("column", column, |rec| {
                 let wrap = Widget::wrap_hstack()
                     .gap(6.0)
                     .line_gap(6.0)
-                    .size((Sizing::FILL, Sizing::HUG));
+                    .size(SizeSpec::FILL_W);
                 rec.node("wrap", wrap, |rec| {
                     for label in LABELS {
                         rec.text_leaf(
@@ -169,7 +167,7 @@ fn a_fill_wrap_under_a_header_wraps_against_what_is_left() {
             rec.node("cat", Widget::vstack(), |rec| {
                 header(rec);
                 let wrap = Widget::wrap_vstack()
-                    .size((Sizing::HUG, Sizing::FILL))
+                    .size(SizeSpec::FILL_H)
                     .gap(10.0)
                     .line_gap(12.0);
                 rec.node("wrap", wrap, |rec| {
@@ -200,7 +198,7 @@ fn a_hug_wrap_stack_keeps_its_lines_under_a_short_parent() {
             let wrap = Widget::wrap_hstack()
                 .gap(10.0)
                 .line_gap(5.0)
-                .size((Sizing::FILL, Sizing::HUG));
+                .size(SizeSpec::FILL_W);
             rec.node("wrap", wrap, |rec| {
                 for i in 0..5u32 {
                     cell(rec, &format!("item{i}"), Size::new(40.0, 20.0));

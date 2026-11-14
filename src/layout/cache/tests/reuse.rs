@@ -8,7 +8,7 @@ use crate::layout::counters::ReplayCounts;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
@@ -327,14 +327,14 @@ fn changing_available_remeasures_wrapping_text() {
     let build = |ui: &mut Ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("inner"))
-            .size((Sizing::FILL, Sizing::HUG))
+            .size(SizeSpec::FILL_W)
             .show(ui, |ui| {
                 Text::new(
                     "the quick brown fox jumps over the lazy dog \
                      pack my box with five dozen liquor jugs",
                 )
                 .id(WidgetId::from_hash("fill"))
-                .size((Sizing::FILL, Sizing::HUG))
+                .size(SizeSpec::FILL_W)
                 .font_size(16.0)
                 .text_wrap(TextWrap::WrapWithOverflow)
                 .show(ui);
@@ -360,12 +360,12 @@ fn solver_order_text_runs_form_contiguous_subtree_snapshots() {
         nodes.clear();
         Panel::hstack()
             .id(WidgetId::from_hash("solver-order"))
-            .size((Sizing::FILL, Sizing::HUG))
+            .size(SizeSpec::FILL_W)
             .show(ui, |ui| {
                 nodes.push(
                     Text::new("fill measured second")
                         .id(WidgetId::from_hash("fill-text"))
-                        .size((Sizing::FILL, Sizing::HUG))
+                        .size(SizeSpec::FILL_W)
                         .show(ui)
                         .node(ui),
                 );

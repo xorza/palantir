@@ -5,7 +5,7 @@ use crate::display::system_scale::SystemScale;
 use crate::host::harness::Harness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::urect::URect;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
 use crate::primitives::paint::material::lens::Lens;
@@ -51,7 +51,7 @@ fn listed_drawn(scale: f32, clip: Option<f32>, draw: impl Fn(&mut Ui)) -> Listed
             Some(side) => canvas
                 .size((Sizing::fixed(side), Sizing::fixed(side)))
                 .clip_rect(),
-            None => canvas.size((Sizing::FILL, Sizing::FILL)),
+            None => canvas.size(SizeSpec::FILL),
         };
         canvas.show(ui, |ui| draw(ui));
     });

@@ -9,7 +9,7 @@ use crate::support;
 use crate::support::{Kit, Section};
 use palantir::glam::Mat4;
 use palantir::{
-    Configure, GpuFrameCtx, GpuInitCtx, GpuPaint, GpuView, Sense, Sizing, Switch, Ui, WidgetId,
+    Configure, GpuFrameCtx, GpuInitCtx, GpuPaint, GpuView, Sense, SizeSpec, Switch, Ui, WidgetId,
 };
 
 /// The app's persistent renderer; `'static` so it can live behind the `Rc<RefCell<…>>` the framework holds.
@@ -58,10 +58,11 @@ impl GpuPaint for Cube {
 /// Showcase page. The cube lives in a state row under an id no node records, so it lasts as long as the `Ui`.
 pub(crate) fn build(ui: &mut Ui, k: Kit) {
     let id = WidgetId::from_hash("showcase::gpu_view::cube");
-    ui.with_state::<Option<Rc<RefCell<Cube>>>, _>(id, |ui, cube| {
-        let cube = cube.get_or_insert_with(|| Rc::new(RefCell::new(Cube::new())));
-        view(ui, k, cube);
-    });
+    ui.with_state_or_insert_with(
+        id,
+        |_| Rc::new(RefCell::new(Cube::new())),
+        |ui, cube| view(ui, k, cube),
+    );
 }
 
 fn view(ui: &mut Ui, k: Kit, cube: &Rc<RefCell<Cube>>) {
@@ -88,7 +89,7 @@ fn view(ui: &mut Ui, k: Kit, cube: &Rc<RefCell<Cube>>) {
     // GpuView doesn't sense by default: opt into drag so `Response` reports the orbit delta.
     let resp = GpuView::new(cube)
         .sense(Sense::DRAG)
-        .size((Sizing::FILL, Sizing::FILL))
+        .size(SizeSpec::FILL)
         .show(ui);
     if let Some(delta) = resp.left.drag.delta() {
         cube.borrow_mut().orbit(delta.x * 0.05, delta.y * 0.05);

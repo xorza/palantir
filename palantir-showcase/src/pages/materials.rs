@@ -10,7 +10,7 @@ use palantir::widget::{EffectPaint, GlyphFont, MotionRole, PaintAnimation, Paint
 use palantir::{
     Align, BackdropEffect, BackdropFallback, Border, Button, Chrome, Configure, Corners,
     EffectName, Gradient, Lens, Material, Menu, MenuItem, MenuTheme, Panel, PopupTheme,
-    PopupTrigger, Rect, RgbaF32, Sizing, Switch, Text, Theme, Ui, WidgetId, fmt,
+    PopupTrigger, Rect, RgbaF32, SizeSpec, Sizing, Switch, Text, Theme, Ui, WidgetId, fmt,
 };
 use std::time::Duration;
 
@@ -206,23 +206,21 @@ fn live(ui: &mut Ui, k: Kit) {
                 DemoCell::new("the knobs' backdrop")
                     .size(CELL, CELL)
                     .show(ui, k, |ui| {
-                        Panel::canvas()
-                            .size((Sizing::FILL, Sizing::FILL))
-                            .show(ui, |ui| {
-                                page(ui, k, Vec2::splat(CELL));
-                                ui.add_shape(
-                                    Shape::rect().at(LIVE_BOX).corners(Corners::all(14.0)),
-                                    Paint::from(fill).with_material(material),
-                                );
-                                let label = ui.intern("readable");
-                                ui.add_shape(
-                                    Shape::text(label, GlyphFont::new(18.0)).at_origin(Vec2::new(
-                                        LIVE_BOX.min.x + 16.0,
-                                        LIVE_BOX.min.y + 36.0,
-                                    )),
-                                    ink,
-                                );
-                            });
+                        Panel::canvas().size(SizeSpec::FILL).show(ui, |ui| {
+                            page(ui, k, Vec2::splat(CELL));
+                            ui.add_shape(
+                                Shape::rect().at(LIVE_BOX).corners(Corners::all(14.0)),
+                                Paint::from(fill).with_material(material),
+                            );
+                            let label = ui.intern("readable");
+                            ui.add_shape(
+                                Shape::text(label, GlyphFont::new(18.0)).at_origin(Vec2::new(
+                                    LIVE_BOX.min.x + 16.0,
+                                    LIVE_BOX.min.y + 36.0,
+                                )),
+                                ink,
+                            );
+                        });
                     });
             });
         });
@@ -233,7 +231,7 @@ fn look(ui: &mut Ui, k: Kit, label: &'static str, material: Material, fill: Rgba
     DemoCell::new(label).size(CELL, CELL).show(ui, k, |ui| {
         Panel::canvas()
             .id_salt(label)
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 page(ui, k, Vec2::splat(CELL));
                 let corners = if material.effect.name() == EffectName::GLASS.name() {
@@ -296,7 +294,7 @@ fn chrome_demo(ui: &mut Ui, k: Kit) {
         .child_align(Align::CENTER)
         .show(ui, |ui| {
             Panel::canvas()
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| page(ui, k, size));
             let trigger = Button::new()
                 .id(popup_button())

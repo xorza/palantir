@@ -7,7 +7,7 @@ use palantir::glam::Vec2;
 use palantir::widget::{CubicBezier, QuadraticBezier, Shape};
 use palantir::{
     Align, Block, Border, Chrome, ComboBox, Configure, Corners, Gradient, LineCap, Paint, Panel,
-    Rect, RgbaF32, Sizing, Stroke, Text, TranslateScale, Ui, WidgetId,
+    Rect, RgbaF32, SizeSpec, Sizing, Stroke, Text, TranslateScale, Ui, WidgetId,
 };
 
 const CARD: f32 = 200.0;
@@ -169,7 +169,7 @@ fn board(ui: &mut Ui, k: Kit, label: &'static str, body: fn(&mut Ui, Kit)) {
         .surface(Surface::Bare)
         .show(ui, k, |ui| {
             Panel::canvas()
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| body(ui, k));
         });
 }
@@ -194,9 +194,7 @@ fn clip_at(
 
 /// A canvas child that fills its clip, so shapes added in `body` are laid out in the clip's rect.
 fn layer(ui: &mut Ui, body: impl FnOnce(&mut Ui)) {
-    Panel::zstack()
-        .size((Sizing::FILL, Sizing::FILL))
-        .show(ui, body);
+    Panel::zstack().size(SizeSpec::FILL).show(ui, body);
 }
 
 /// A layer filled with `color` edge to edge, which shows the clips over it.
@@ -325,7 +323,7 @@ fn three_nested(ui: &mut Ui, k: Kit) {
 fn filled_clip(ui: &mut Ui, k: Kit) {
     circle_at(ui, k, Vec2::splat(30.0), 140.0, |ui| {
         Block::new()
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .chrome(Chrome::new(k.swatch.teal))
             .show(ui);
     });
@@ -424,7 +422,7 @@ fn inside_border(ui: &mut Ui, k: Kit) {
 fn spiller_of(color: RgbaF32) -> impl FnOnce(&mut Ui) {
     move |ui| {
         Block::new()
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .margin((-SPILL, -SPILL, -SPILL, -SPILL))
             .chrome(Chrome::new(color))
             .show(ui);
@@ -481,7 +479,7 @@ impl ClipCard {
             .surface(Surface::Bare)
             .show(ui, k, |ui| {
                 Panel::zstack()
-                    .size((Sizing::FILL, Sizing::FILL))
+                    .size(SizeSpec::FILL)
                     .child_align(Align::CENTER)
                     .show(ui, |ui| {
                         let mut panel = Panel::zstack()
@@ -502,7 +500,7 @@ impl ClipCard {
 /// Rectangle overflowing the card on all sides: the negative margin grows its slot past the content rect and `Fill` takes it all, so the overhang stays [`SPILL`] padded or not.
 fn spiller(ui: &mut Ui, k: Kit) {
     Block::new()
-        .size((Sizing::FILL, Sizing::FILL))
+        .size(SizeSpec::FILL)
         .margin((-SPILL, -SPILL, -SPILL, -SPILL))
         // Translucent so the card edge stays visible beneath; unclipped would otherwise be a solid block.
         .chrome(Chrome::new(k.swatch.orange.with_alpha(0.8)))

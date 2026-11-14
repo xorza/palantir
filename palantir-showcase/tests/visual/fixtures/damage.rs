@@ -7,8 +7,8 @@
 use image::{Rgba, RgbaImage};
 use palantir::glam::{IVec2, UVec2, Vec2};
 use palantir::{
-    Block, Button, Chrome, Configure, DebugOverlayConfig, FramePaint, Panel, Rect, RgbaF32, Sizing,
-    Ui,
+    Block, Button, Chrome, Configure, DebugOverlayConfig, FramePaint, Panel, Rect, RgbaF32,
+    SizeSpec, Sizing, Ui,
 };
 
 use crate::fixtures;
@@ -109,7 +109,7 @@ fn button_scene(id_salt: &'static str, label: &'static str) -> impl FnMut(&mut U
             .auto_id()
             .padding(12.0)
             .gap(8.0)
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .chrome(Chrome::new(RgbaF32::srgb(0.15, 0.15, 0.18)))
             .show(ui, |ui| {
                 Button::new().id_salt(id_salt).label(label).show(ui);
@@ -125,7 +125,7 @@ fn corner_pair_scene(salt: &'static str) -> impl FnMut(&mut Ui) + Copy {
     move |ui: &mut Ui| {
         Panel::canvas()
             .auto_id()
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .chrome(Chrome::new(RgbaF32::srgb(0.15, 0.15, 0.18)))
             .show(ui, |ui| {
                 Block::new()
@@ -284,7 +284,7 @@ fn damage_rect_overlay_outlines_thin_sliver() {
         move |ui: &mut Ui| {
             Panel::canvas()
                 .auto_id()
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .chrome(Chrome::new(RgbaF32::srgb(0.12, 0.12, 0.15)))
                 .show(ui, |ui| {
                     Block::new()

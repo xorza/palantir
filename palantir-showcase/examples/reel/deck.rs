@@ -16,8 +16,8 @@ use palantir::{
     Align, App, Block, Border, Button, Checkbox, Chrome, ClipMode, ColorScheme, ComboBox,
     Configure, Corners, DockOperation, DockState, DockView, FontFamily, GpuView, Gradient, Justify,
     Layer, Lens, Material, Metrics, Palette, Panel, Preference, RgbaF32, Scroll, ScrollbarTheme,
-    Shadow, Sizing, Slider, Switch, Text, TextEdit, TextSteps, Theme, Ui, UiPreferences, WidgetId,
-    WindowToken, ZoomConfig, fmt,
+    Shadow, SizeSpec, Sizing, Slider, Switch, Text, TextEdit, TextSteps, Theme, Ui, UiPreferences,
+    WidgetId, WindowToken, ZoomConfig, fmt,
 };
 
 use crate::cube::{Cube, CubeHandle};
@@ -171,7 +171,7 @@ impl App for Deck {
             .id(canvas_id())
             .style(&bars)
             .zoom_config(ZoomConfig::new(0.05..=8.0, 1.1))
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 Panel::canvas().id_salt("reel.board").show(ui, |ui| {
                     for k in 0..SLIDES {
@@ -224,7 +224,7 @@ impl Deck {
         let color = ink(ui);
         Panel::vstack()
             .id(id(k, "page"))
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .padding(56.0)
             .gap(28.0)
             .justify(Justify::Center)
@@ -242,7 +242,7 @@ impl Deck {
         let (ink, muted) = (ink(ui), muted(ui));
         Panel::vstack()
             .id(id(0, "title"))
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .gap(18.0)
             .child_align(Align::CENTER)
             .justify(Justify::Center)
@@ -337,7 +337,7 @@ impl Deck {
                         .show(ui);
                     Slider::new(slider, 0.0..=1.0)
                         .id(id(3, "slider"))
-                        .size((Sizing::FILL, Sizing::HUG))
+                        .size(SizeSpec::FILL_W)
                         .show(ui);
                     ComboBox::new(combo, BLENDS)
                         .id(id(3, "combo"))
@@ -345,7 +345,7 @@ impl Deck {
                         .show(ui);
                     TextEdit::new(name)
                         .id(id(3, "edit"))
-                        .size((Sizing::FILL, Sizing::HUG))
+                        .size(SizeSpec::FILL_W)
                         .show(ui);
                 });
         });
@@ -400,7 +400,7 @@ impl Deck {
             |ui| {
                 Panel::canvas()
                     .id(id(5, "stage"))
-                    .size((Sizing::FILL, Sizing::FILL))
+                    .size(SizeSpec::FILL)
                     .show(ui, |ui| {
                         for (i, hex) in [0xf97316_u32, 0xec4899, 0x3b82f6, 0x22c55e, 0xfacc15]
                             .into_iter()
@@ -450,7 +450,7 @@ impl Deck {
                 .id(inner)
                 .zoom_config(ZoomConfig::new(1.0..=8.0, 1.1))
                 .style(&bars)
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| {
                     Panel::canvas().id(id(6, "art")).show(ui, |ui| {
                         Block::new()
@@ -495,7 +495,7 @@ impl Deck {
         Self::page(ui, 7, "Dock and windows", |ui| {
             Panel::vstack()
                 .id(id(7, "host"))
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| {
                     operations.clear();
                     let dock_id = id(7, "dock");
@@ -526,7 +526,7 @@ impl Deck {
                 .show(ui, |ui| {
                     GpuView::new(&cube)
                         .id(id(8, "view"))
-                        .size((Sizing::FILL, Sizing::FILL))
+                        .size(SizeSpec::FILL)
                         .show(ui);
                     Panel::vstack()
                         .id(id(8, "label"))
@@ -611,7 +611,7 @@ impl Deck {
         let (ink, muted) = (ink(ui), muted(ui));
         Panel::vstack()
             .id(id(12, "outro"))
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .gap(22.0)
             .child_align(Align::CENTER)
             .justify(Justify::Center)
@@ -643,7 +643,7 @@ impl Deck {
         ui.layer(Layer::Pointer).show(|ui| {
             Panel::canvas()
                 .id_salt("reel.pointer")
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| {
                     if let Some((place, t)) = ring {
                         let grown = motion::min_jerk(f64::from(t)) as f32;

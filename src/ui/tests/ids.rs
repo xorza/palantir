@@ -160,13 +160,13 @@ fn collision_outlines_repaint_whole_until_they_clear() {
 #[test]
 fn a_collision_under_a_transform_is_outlined_where_it_paints() {
     use crate::primitives::geometry::translate_scale::TranslateScale;
-    use crate::primitives::layout::sizing::Sizing;
+    use crate::primitives::layout::sizing::SizeSpec;
 
     let mut h = Harness::mono(UVec2::new(200, 200));
     h.frame(|ui| {
         Panel::canvas()
             .auto_id()
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .transform(TranslateScale::new(Vec2::new(30.0, 20.0), 0.5))
             .show(ui, |ui| {
                 for x in [10.0, 60.0] {

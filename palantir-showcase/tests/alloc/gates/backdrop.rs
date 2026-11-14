@@ -2,10 +2,8 @@
 
 use palantir::bench::scene::{BENCH_DPR, BENCH_SURFACE};
 use palantir::widget::Shape;
-use palantir::{App, Harness, HarnessDepth};
-use palantir::{
-    Configure, FramePaint, Lens, Material, MaterialPaint, Panel, Rect, RgbaF32, Sizing, Ui,
-};
+use palantir::{App, Harness, HarnessDepth, SizeSpec};
+use palantir::{Configure, FramePaint, Lens, Material, MaterialPaint, Panel, Rect, RgbaF32, Ui};
 use palantir_showcase::{MAIN_WINDOW, Shell};
 
 use crate::gates::{MEASURE_FRAMES, WARMUP_FRAMES};
@@ -25,12 +23,12 @@ enum Look {
 fn backdrops(ui: &mut Ui, shell: &mut Shell, look: Look, under: RgbaF32) {
     Panel::zstack()
         .id_salt("alloc-backdrop")
-        .size((Sizing::FILL, Sizing::FILL))
+        .size(SizeSpec::FILL)
         .show(ui, |ui| {
             shell.record(MAIN_WINDOW, ui);
             Panel::canvas()
                 .id_salt("alloc-backdrops")
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| {
                     ui.add_shape(Shape::rect().at(Rect::new(300.0, 20.0, 12.0, 12.0)), under);
                     for rect in [

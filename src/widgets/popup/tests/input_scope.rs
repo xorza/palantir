@@ -8,7 +8,7 @@ use crate::primitives::input::pointer::PointerButton;
 use crate::primitives::input::sense::Sense;
 use crate::primitives::input::zoom_factor::ZoomFactor;
 use crate::primitives::layout::anchor::Anchor;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::ui::Ui;
 use crate::widget_core::click_outside::ClickOutside;
 use crate::widget_core::configure::Configure;
@@ -29,7 +29,7 @@ fn outside_pointer_gestures_do_not_leak_to_main() {
         let scene = |ui: &mut Ui| {
             Panel::vstack()
                 .id(bg_id)
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .sense(Sense::DRAG | Sense::SCROLL | Sense::PINCH)
                 .show(ui, |ui| {
                     Popup::new()
@@ -123,7 +123,7 @@ fn only_pass_through_leaves_the_keyboard_to_the_layers_below() {
         let scene = |ui: &mut Ui| {
             Panel::vstack()
                 .id(WidgetId::from_hash("main-bg"))
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| {
                     // Read from `Main`; `F5`, not Esc, which the popup itself consumes.
                     let saw = ui.shortcut_pressed(Key::F5);
@@ -212,7 +212,7 @@ fn a_field_decides_whether_escape_closes_the_popup_around_it() {
         let scene = |ui: &mut Ui, buf: &mut String| {
             Panel::vstack()
                 .id(WidgetId::from_hash("main-bg"))
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| {
                     Popup::new()
                         .anchor(Anchor::at_point(ANCHOR))

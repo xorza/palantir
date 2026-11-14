@@ -5,7 +5,7 @@ use crate::host::harness::Harness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::shadow::ShadowKind;
@@ -371,7 +371,7 @@ fn a_clip_that_rounds_damages_its_mask() {
                 host(ui, mode, "clip-host", &mut |ui| {
                     Block::new()
                         .id(WidgetId::from_hash("inner"))
-                        .size((Sizing::FILL, Sizing::FILL))
+                        .size(SizeSpec::FILL)
                         .chrome(Chrome::new(BLUE))
                         .show(ui);
                 });

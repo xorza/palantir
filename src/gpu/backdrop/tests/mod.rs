@@ -10,7 +10,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::layout::anchor::Anchor;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::primitives::math::libm_ext::Libm;
 use crate::primitives::paint::border::Border;
 use crate::primitives::paint::chrome::Chrome;
@@ -47,7 +47,7 @@ const BACKDROP: Rect = Rect::new(16.0, 8.0, 32.0, 32.0);
 fn scene(ui: &mut Ui, sigma: Option<f32>) {
     Panel::canvas()
         .id_salt("backdrop-scene")
-        .size((Sizing::FILL, Sizing::FILL))
+        .size(SizeSpec::FILL)
         .show(ui, |ui| {
             for i in 0..16 {
                 let x = i as f32 * 4.0;
@@ -202,7 +202,7 @@ fn a_wide_backdrop_shows_its_pixels_through_a_scratch_texture() {
     let stripes = |ui: &mut Ui, sigma: Option<f32>| {
         Panel::canvas()
             .id_salt("wide-backdrop-scene")
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 for i in 0..180 {
                     let color = match i % 3 {
@@ -269,7 +269,7 @@ fn a_luminance_ceiling_holds_a_bright_backdrop_under_it() {
         reference.paint(move |ui: &mut Ui| {
             Panel::canvas()
                 .id_salt("backdrop-ceiling")
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| {
                     ui.add_shape(
                         Shape::rect().at(Rect::new(0.0, 0.0, 32.0, 48.0)),
@@ -320,7 +320,7 @@ fn a_luminance_floor_lifts_a_dark_backdrop_to_it() {
         reference.paint(move |ui: &mut Ui| {
             Panel::canvas()
                 .id_salt("backdrop-floor")
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| {
                     ui.add_shape(
                         Shape::rect().at(Rect::new(0.0, 0.0, 32.0, 48.0)),
@@ -362,7 +362,7 @@ fn a_luminance_floor_lifts_a_dark_backdrop_to_it() {
 fn layered(ui: &mut Ui, under: RgbaF32, backdrop: Rect, sigma: f32, over: RgbaF32) {
     Panel::canvas()
         .id_salt("backdrop-layered")
-        .size((Sizing::FILL, Sizing::FILL))
+        .size(SizeSpec::FILL)
         .show(ui, |ui| {
             ui.add_shape(Shape::rect().at(Rect::new(6.0, 10.0, 14.0, 14.0)), under);
             for i in 0..8 {
@@ -476,7 +476,7 @@ fn a_backdrop_over_a_backdrop_repaints_as_a_whole_frame() {
         move |ui: &mut Ui| {
             Panel::canvas()
                 .id_salt("backdrop-stacked")
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| {
                     for i in 0..8 {
                         ui.add_shape(
@@ -538,11 +538,11 @@ fn a_backdrop_growing_back_paints_once_under_overlapping_repaints() {
         move |ui: &mut Ui| {
             Panel::zstack()
                 .id_salt("backdrop-grow")
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| {
                     Panel::canvas()
                         .id_salt("backdrop-grow-stripes")
-                        .size((Sizing::FILL, Sizing::FILL))
+                        .size(SizeSpec::FILL)
                         .show(ui, |ui| scene(ui, None));
                     let style = PopupTheme {
                         panel: Chrome::rounded(

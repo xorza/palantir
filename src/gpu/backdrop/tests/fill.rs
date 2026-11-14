@@ -4,7 +4,7 @@ use crate::gpu::backdrop::tests::{CLEAR, SIZE, assert_within_a_step, encode, win
 use crate::gpu::test_gpu::headless_test_gpu;
 use crate::internals::paint_capture::PaintCall;
 use crate::primitives::geometry::rect::Rect;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::SizeSpec;
 use crate::primitives::paint::border::Border;
 use crate::primitives::paint::brush::gradient::Gradient;
 use crate::primitives::paint::color::RgbaF32;
@@ -26,7 +26,7 @@ where
     move |ui: &mut Ui| {
         Panel::canvas()
             .id_salt("backdrop-fill")
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 ui.add_shape(Shape::rect().at(BOX), paint.clone());
             });

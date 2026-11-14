@@ -81,7 +81,7 @@ impl Appearance {
             return;
         }
         self.seed = seed;
-        for scheme in [ColorScheme::Light, ColorScheme::Dark] {
+        for scheme in ColorScheme::ALL {
             let stock = Palette::for_scheme(scheme);
             let accent = seed.map_or(stock.accent, |seed| accent_for(seed, scheme));
             let palette = match scheme {
@@ -147,7 +147,7 @@ impl Appearance {
             if *applied == self.generation {
                 return;
             }
-            for scheme in [ColorScheme::Light, ColorScheme::Dark] {
+            for scheme in ColorScheme::ALL {
                 let palette = self.palette(scheme);
                 let mut theme = Theme::from_parts(palette, &M);
                 theme.focus_ring = self.ring(scheme);
@@ -221,7 +221,7 @@ mod tests {
     #[test]
     fn any_seed_holds_the_floors_nearest_to_itself() {
         let extra = [0x0000ff, 0xffff00, 0x808080, 0x000000, 0xffffff].map(RgbaF32::hex);
-        for scheme in [ColorScheme::Light, ColorScheme::Dark] {
+        for scheme in ColorScheme::ALL {
             let p = Palette::for_scheme(scheme);
             for seed in SEEDS.into_iter().chain(extra) {
                 let accent = accent_for(seed, scheme);

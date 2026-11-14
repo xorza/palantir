@@ -18,8 +18,8 @@ use std::panic::Location;
 use palantir::{
     Axis, Block, Border, Checkbox, Chrome, ColorCoords, ColorModel, ColorScheme, Configure,
     Corners, Expander, FontWeight, Justify, Modal, OverlayResponse, Palette, Panel, RadioGroup,
-    RadioOptions, RgbaF32, Sizing, Slider, Text, TextInput, TextStyle, TextWrap, Ui, VAlign,
-    WidgetId, fmt,
+    RadioOptions, RgbaF32, SizeSpec, Sizing, Slider, Text, TextInput, TextStyle, TextWrap, Ui,
+    VAlign, WidgetId, fmt,
 };
 
 use crate::scaffold::chip::Chip;
@@ -224,11 +224,11 @@ impl<'a> Section<'a> {
     pub(crate) fn show(self, ui: &mut Ui, k: Kit, body: impl FnOnce(&mut Ui)) {
         Panel::vstack()
             .auto_id()
-            .size((Sizing::FILL, Sizing::HUG))
+            .size(SizeSpec::FILL_W)
             .gap(TITLE_GAP)
             .show(ui, |ui| {
                 Panel::wrap_hstack()
-                    .size((Sizing::FILL, Sizing::HUG))
+                    .size(SizeSpec::FILL_W)
                     .gap(M.space.xs)
                     .line_gap(M.space.xs)
                     .child_align(VAlign::Center)
@@ -252,7 +252,7 @@ pub(crate) fn note(ui: &mut Ui, k: Kit, text: &'static str) {
     Text::new(text)
         .auto_id()
         .style(&k.t.caption())
-        .size((Sizing::FILL, Sizing::HUG))
+        .size(SizeSpec::FILL_W)
         .max_size((MEASURE, f32::INFINITY))
         .text_wrap(TextWrap::WrapWithOverflow)
         .show(ui);
@@ -262,7 +262,7 @@ pub(crate) fn note(ui: &mut Ui, k: Kit, text: &'static str) {
 pub(crate) fn row(ui: &mut Ui, body: impl FnOnce(&mut Ui)) {
     Panel::hstack()
         .auto_id()
-        .size((Sizing::FILL, Sizing::HUG))
+        .size(SizeSpec::FILL_W)
         .gap(ROW_GAP)
         .child_align(VAlign::Center)
         .show(ui, body);
@@ -294,14 +294,14 @@ pub(crate) enum Col {
 pub(crate) fn cols(ui: &mut Ui, mut body: impl FnMut(&mut Ui, Col)) {
     Panel::hstack()
         .auto_id()
-        .size((Sizing::FILL, Sizing::HUG))
+        .size(SizeSpec::FILL_W)
         .gap(2.0 * M.space.lg)
         .show(ui, |ui| {
             for col in [Col::Left, Col::Right] {
                 Panel::vstack()
                     .id_salt(col as u8)
                     .gap(PAGE_GAP)
-                    .size((Sizing::FILL, Sizing::HUG))
+                    .size(SizeSpec::FILL_W)
                     .show(ui, |ui| body(ui, col));
             }
         });
@@ -311,7 +311,7 @@ pub(crate) fn cols(ui: &mut Ui, mut body: impl FnMut(&mut Ui, Col)) {
 pub(crate) fn well(ui: &mut Ui, k: Kit, body: impl FnOnce(&mut Ui)) {
     Panel::vstack()
         .auto_id()
-        .size((Sizing::FILL, Sizing::HUG))
+        .size(SizeSpec::FILL_W)
         .padding(M.space.lg)
         .gap(M.space.md)
         .chrome(k.t.card())
@@ -328,7 +328,7 @@ pub(crate) fn readout<'a>(
 ) {
     Panel::hstack()
         .auto_id()
-        .size((Sizing::FILL, Sizing::HUG))
+        .size(SizeSpec::FILL_W)
         .gap(M.space.sm)
         .show(ui, |ui| {
             Text::new(label)
@@ -392,11 +392,11 @@ impl Dialog {
                     Text::new(self.title).style(&section_style(k)).show(ui);
                     Text::new(self.body)
                         .style(&k.t.dim())
-                        .size((Sizing::FILL, Sizing::HUG))
+                        .size(SizeSpec::FILL_W)
                         .text_wrap(TextWrap::WrapWithOverflow)
                         .show(ui);
                     Panel::hstack()
-                        .size((Sizing::FILL, Sizing::HUG))
+                        .size(SizeSpec::FILL_W)
                         .margin((0.0, M.space.sm, 0.0, 0.0))
                         .gap(M.space.sm)
                         .justify(Justify::End)
@@ -470,7 +470,7 @@ pub(crate) fn swatch(c: RgbaF32) -> Block {
 pub(crate) fn tiles(ui: &mut Ui, body: impl FnOnce(&mut Ui)) {
     Panel::wrap_hstack()
         .auto_id()
-        .size((Sizing::FILL, Sizing::HUG))
+        .size(SizeSpec::FILL_W)
         .gap(TILE_GAP)
         .line_gap(TILE_GAP)
         .show(ui, body);

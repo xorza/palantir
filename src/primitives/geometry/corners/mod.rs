@@ -38,6 +38,26 @@ const fn is_radius_lane(lane: f32) -> bool {
 }
 
 impl Corners {
+    /// The top-left radius.
+    pub fn top_left(self) -> f32 {
+        self.to_array()[0]
+    }
+
+    /// The top-right radius.
+    pub fn top_right(self) -> f32 {
+        self.to_array()[1]
+    }
+
+    /// The bottom-right radius.
+    pub fn bottom_right(self) -> f32 {
+        self.to_array()[2]
+    }
+
+    /// The bottom-left radius.
+    pub fn bottom_left(self) -> f32 {
+        self.to_array()[3]
+    }
+
     /// Panics unless every radius is a [length](crate::widget::domain::length) and a
     /// [lane](crate::widget::domain::lane). Checked on the packed lanes, where a radius that is no
     /// lane is infinite: the same check as one of the f32 radii.

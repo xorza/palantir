@@ -11,7 +11,7 @@ use crate::gpu::test_gpu::headless_test_gpu;
 use crate::host::headless_window::record_window_commands;
 use crate::internals::panic_probe;
 use crate::primitives::geometry::rect::Rect;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::SizeSpec;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
@@ -267,7 +267,7 @@ fn a_retained_target_without_copies_captures_through_the_backbuffer() {
         move |ui: &mut Ui| {
             Panel::canvas()
                 .id_salt("uncopied")
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| {
                     ui.add_shape(
                         Shape::rect().at(Rect::new(8.0, 8.0, 4.0, 4.0)),
@@ -472,4 +472,31 @@ fn the_system_facts_seed_at_build_and_change_by_setter() {
     assert!(!host.ui().reductions().motion.is_reduced());
     assert!(!host.ui().system_reductions().transparency.is_reduced());
     assert!(!host.ui().reductions().power.is_reduced());
+}
+
+/// A [`Waker`](crate::Waker) wake shows on the offscreen host as on a harness: pending until a
+/// frame takes it, and a wait that returns at once while one is pending and times out while none
+/// is.
+#[test]
+fn a_waker_wake_is_pending_until_a_frame_takes_it() {
+    let gpu = headless_test_gpu();
+    let mut host = OffscreenHost::builder(gpu.handles())
+        .shaper(TextShaper::test_mono())
+        .time(OffscreenTime::Manual)
+        .build();
+    let texture = gpu.target("palantir.offscreen.wake", UVec2::new(8, 8));
+    host.frame(texture.as_target(), &mut |_: &mut Ui| {});
+    assert!(!host.has_pending_wake(), "nothing woke it yet");
+    assert!(
+        !host.wait_for_wake(Duration::ZERO),
+        "a wait with none pending times out"
+    );
+    host.ui().waker().wake();
+    assert!(host.has_pending_wake());
+    assert!(
+        host.wait_for_wake(Duration::ZERO),
+        "a pending wake ends the wait at once"
+    );
+    host.frame(texture.as_target(), &mut |_: &mut Ui| {});
+    assert!(!host.has_pending_wake(), "the frame took the wake");
 }

@@ -4,8 +4,8 @@
 use palantir::glam::{UVec2, Vec2};
 use palantir::widget::{CubicBezier, QuadraticBezier, Shape};
 use palantir::{
-    Block, Border, Chrome, ColorRamp, Configure, Corners, Gradient, Panel, Rect, RgbaF32, Sizing,
-    Ui,
+    Block, Border, Chrome, ColorRamp, Configure, Corners, Gradient, Panel, Rect, RgbaF32, SizeSpec,
+    Sizing, Ui,
 };
 
 use crate::fixtures;
@@ -27,7 +27,7 @@ fn interleaved_shapes_paint_in_record_order() {
     GoldenName::InterleavedShapesPaintOrder.assert_scene(UVec2::new(220, 60), |ui| {
         Panel::hstack()
             .auto_id()
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .padding(0.0)
             .show(ui, |ui| {
                 ui.add_shape(

@@ -8,7 +8,7 @@ use crate::primitives::input::interaction::response::Response;
 use crate::primitives::input::sense::Sense;
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::scroll_axes::ScrollAxes;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::SizeSpec;
 use crate::primitives::paint::chrome::Chrome;
 use crate::scene::scrollbars_def::ScrollbarsDef;
 use crate::theme::scrollbar::ScrollbarTheme;
@@ -131,7 +131,7 @@ impl Bars {
     pub(super) fn record(&self, ui: &mut Ui, def: ScrollbarsDef) {
         let mut overlay = Widget::scrollbars()
             .id(def.content.with("bars"))
-            .size((Sizing::FILL, Sizing::FILL));
+            .size(SizeSpec::FILL);
         overlay.scrollbar_def(ui, def);
         overlay.record(ui, None, |ui| {
             for (_, bar) in self.axes() {

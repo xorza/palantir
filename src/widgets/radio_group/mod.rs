@@ -7,7 +7,7 @@ use crate::primitives::input::key_class::KeyFilter;
 use crate::primitives::input::keyboard::key::Key;
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::layout_mode::LayoutMode;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::SizeSpec;
 use crate::primitives::math::domain;
 use crate::primitives::text::text_input::TextInput;
 use crate::scene::node::node_mode::NodeMode;
@@ -245,7 +245,7 @@ impl<'g, T: PartialEq> RadioOptions<'g, T> {
                 let mut button = Button::new()
                     .activation(Activation::Toggle)
                     .style(&slot.segment);
-                button.configure().default_size((Sizing::FILL, Sizing::HUG));
+                button.configure().default_size(SizeSpec::FILL_W);
                 OptionWidget::Segment(button)
             }
         };

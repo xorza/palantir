@@ -31,7 +31,7 @@ use crate::primitives::geometry::fit::Fit;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::layout::clip_mode::ClipMode;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::image::Image;
@@ -195,11 +195,11 @@ impl ClipScene {
     fn record(&self, ui: &mut Ui) {
         Panel::zstack()
             .id_salt("clip-bench")
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 Panel::canvas()
                     .id_salt("clip-bench-cards")
-                    .size((Sizing::FILL, Sizing::FILL))
+                    .size(SizeSpec::FILL)
                     .transform(TranslateScale::from_translation(self.scroll))
                     .show(ui, |ui| {
                         for card in 0..CARDS {
@@ -208,7 +208,7 @@ impl ClipScene {
                     });
                 Panel::canvas()
                     .id_salt("clip-bench-counter")
-                    .size((Sizing::FILL, Sizing::FILL))
+                    .size(SizeSpec::FILL)
                     .show(ui, |ui| {
                         Text::new(fmt!(ui, "Frame {:08}", self.tick))
                             .id_salt("clip-bench-counter-text")

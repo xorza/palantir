@@ -164,8 +164,8 @@ impl hash::Hash for Sizing {
 /// - `Fill(w)` is `-w`: the weight is positive, so the sign bit is set.
 /// - `Hug` is `+∞`, which both others exclude.
 ///
-/// `Configure::size` takes `impl Into<SizeSpec>`: `.size(100.0)`,
-/// `.size(Sizing::FILL)`, `.size((Sizing::FILL, 40.0))`.
+/// `Configure::size` takes `impl Into<SizeSpec>`: `.size(100.0)`, `.size(Sizing::FILL)`,
+/// `.size((Sizing::FILL, 40.0))`, and the named specs, as `.size(SizeSpec::FILL_W)`.
 #[derive(Clone, Copy)]
 pub struct SizeSpec {
     w_packed: u32,
@@ -175,7 +175,7 @@ pub struct SizeSpec {
 impl Default for SizeSpec {
     #[inline]
     fn default() -> Self {
-        Self::new(Sizing::HUG, Sizing::HUG)
+        Self::HUG
     }
 }
 
@@ -204,6 +204,18 @@ const fn decode_sizing(packed: u32) -> Sizing {
 }
 
 impl SizeSpec {
+    /// Fill both axes.
+    pub const FILL: Self = Self::new(Sizing::FILL, Sizing::FILL);
+
+    /// Hug both axes: the content's size, the default.
+    pub const HUG: Self = Self::new(Sizing::HUG, Sizing::HUG);
+
+    /// Fill the width and hug the height, as a row in a column does.
+    pub const FILL_W: Self = Self::new(Sizing::FILL, Sizing::HUG);
+
+    /// Hug the width and fill the height, as a column in a row does.
+    pub const FILL_H: Self = Self::new(Sizing::HUG, Sizing::FILL);
+
     /// Both axes, packed into eight bytes.
     #[inline]
     pub const fn new(w: Sizing, h: Sizing) -> Self {
@@ -407,5 +419,23 @@ mod tests {
             let site = panic_probe::panic_site(domain::LENGTH_RULE, record);
             assert_eq!(site, format!("{}:{line}", file!()), "case {n}");
         }
+    }
+
+    /// `FILL_W` fills the width and hugs the height, as the tuple spells it, and `Sizing::FILL`
+    /// converts to both axes filling.
+    #[test]
+    fn the_named_specs_are_their_tuples() {
+        assert_eq!(
+            SizeSpec::FILL_W,
+            SizeSpec::from((Sizing::FILL, Sizing::HUG))
+        );
+        assert_eq!(
+            (SizeSpec::FILL_W.w(), SizeSpec::FILL_W.h()),
+            (Sizing::FILL, Sizing::HUG)
+        );
+        assert_eq!(
+            SizeSpec::from(Sizing::FILL),
+            SizeSpec::new(Sizing::FILL, Sizing::FILL)
+        );
     }
 }

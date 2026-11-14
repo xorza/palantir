@@ -6,7 +6,7 @@ use crate::damage::sweep::scenario::{REFERENCE, Scenario, Scope};
 use crate::display::system_scale::SystemScale;
 use crate::host::harness::Harness;
 use crate::primitives::geometry::rect::Rect;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::SizeSpec;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
@@ -60,19 +60,19 @@ fn dense(ui: &mut Ui) {
     Panel::vstack()
         .id_salt("sweep-dense")
         .gap(2.0)
-        .size((Sizing::FILL, Sizing::FILL))
+        .size(SizeSpec::FILL)
         .show(ui, |ui| {
             for row in 0..DENSE_ROWS {
                 Panel::hstack()
                     .id_salt(("sweep-row", row))
                     .gap(2.0)
-                    .size((Sizing::FILL, Sizing::FILL))
+                    .size(SizeSpec::FILL)
                     .show(ui, |ui| {
                         for col in 0..DENSE_COLS {
                             let shade = 0.1 + 0.2 * ((row + col) % 4) as f32 / 4.0;
                             Panel::zstack()
                                 .id_salt(("sweep-cell", row, col))
-                                .size((Sizing::FILL, Sizing::FILL))
+                                .size(SizeSpec::FILL)
                                 .chrome(Chrome::new(RgbaF32::srgb(shade, shade, shade + 0.05)))
                                 .show(ui, |ui| {
                                     Text::new("cell").id_salt("sweep-label").show(ui);
@@ -231,7 +231,7 @@ impl Stage {
             Content::Plain => {
                 Panel::zstack()
                     .id_salt("sweep-plain")
-                    .size((Sizing::FILL, Sizing::FILL))
+                    .size(SizeSpec::FILL)
                     .chrome(Chrome::new(RgbaF32::srgb(0.1, 0.1, 0.12)))
                     .show(ui, |_| {});
             }
@@ -240,7 +240,7 @@ impl Stage {
                 let backdrops = self.backdrops();
                 Panel::zstack()
                     .id_salt("sweep-glass")
-                    .size((Sizing::FILL, Sizing::FILL))
+                    .size(SizeSpec::FILL)
                     .show(ui, |ui| {
                         if self.content == Content::Glass {
                             dense(ui);
@@ -249,7 +249,7 @@ impl Stage {
                         }
                         Panel::canvas()
                             .id_salt("sweep-backdrops")
-                            .size((Sizing::FILL, Sizing::FILL))
+                            .size(SizeSpec::FILL)
                             .show(ui, |ui| {
                                 for backdrop in backdrops {
                                     ui.add_shape(

@@ -1,6 +1,7 @@
 //! What a field measures: an empty `Hug` editor sizes to its placeholder, focused or not, a `Fill`
 //! one shrinks below its text, and every placeholder text form measures alike.
 
+use crate::primitives::layout::sizing::SizeSpec;
 use crate::widgets::text_edit::tests::*;
 
 const SIZE: UVec2 = UVec2::new(400, 80);
@@ -11,13 +12,13 @@ fn frame(h: &mut Harness, buf: &mut String) -> NodeId {
     let mut record = |ui: &mut Ui| {
         Panel::hstack()
             .auto_id()
-            .size((Sizing::HUG, Sizing::HUG))
+            .size(SizeSpec::HUG)
             .show(ui, |ui| {
                 node = Some(
                     TextEdit::new(buf)
                         .id(WidgetId::from_hash("editor"))
                         .placeholder(PLACEHOLDER)
-                        .size((Sizing::HUG, Sizing::HUG))
+                        .size(SizeSpec::HUG)
                         .show(ui)
                         .response
                         .node(ui),
@@ -158,14 +159,14 @@ fn every_text_form_measures_the_same_placeholder() {
             h.frame(|ui| {
                 Panel::hstack()
                     .auto_id()
-                    .size((Sizing::HUG, Sizing::HUG))
+                    .size(SizeSpec::HUG)
                     .show(ui, |ui| {
                         let placeholder = form(ui);
                         node = Some(
                             TextEdit::new(&mut buf)
                                 .id(WidgetId::from_hash("editor"))
                                 .placeholder(placeholder)
-                                .size((Sizing::HUG, Sizing::HUG))
+                                .size(SizeSpec::HUG)
                                 .show(ui)
                                 .response
                                 .node(ui),

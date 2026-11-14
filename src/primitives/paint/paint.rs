@@ -6,6 +6,7 @@ use crate::primitives::paint::border::Border;
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::brush::gradient::Gradient;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::primitives::paint::material::Material;
 use crate::primitives::paint::material::material_paint::MaterialPaint;
 use crate::primitives::paint::shadow::Shadow;
@@ -152,6 +153,13 @@ impl From<Brush> for Paint {
 /// A plain fill of `color`.
 impl From<RgbaF32> for Paint {
     fn from(color: RgbaF32) -> Self {
+        Self::from(Brush::from(color))
+    }
+}
+
+/// A plain fill of `color`, decoded from sRGB bytes.
+impl From<SrgbaU8> for Paint {
+    fn from(color: SrgbaU8) -> Self {
         Self::from(Brush::from(color))
     }
 }

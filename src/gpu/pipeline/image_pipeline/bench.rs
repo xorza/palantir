@@ -17,7 +17,7 @@ use crate::gpu::bench_gpu::{BenchGpu, Timing};
 use crate::host::harness::Harness;
 use crate::image_registry::image_handle::ImageHandle;
 use crate::primitives::geometry::fit::Fit;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::image::{Image, ImageDownsample, ImageFilter};
 use crate::shape::Shape;
@@ -134,7 +134,7 @@ impl Scene<'_> {
         let filter = workload.filter();
         Panel::canvas()
             .id_salt("image-pipeline-bench-root")
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 for layer in 0..LAYERS {
                     Panel::zstack()

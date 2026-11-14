@@ -1,6 +1,7 @@
 //! Tests for `TextEdit::text_align` and per-mode default alignment. Mono fallback: 8 px/char at 16 px font, line height 19.203125 (`round(19.2 × 64) / 64`). Editor 280×40, padding (8, 4) plus 1 px stroke folded in: effective (9, 5), inner rect 262×30.
 
 use crate::primitives::geometry::size::Size;
+use crate::primitives::layout::sizing::SizeSpec;
 
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::input::pointer::PointerButton;
@@ -474,7 +475,7 @@ fn a_field_placed_by_its_own_text_centers_that_text_where_it_was_asked() {
                 TextEdit::new(&mut buf)
                     .id(ed_id())
                     .text_align(Align::CENTER)
-                    .size((Sizing::HUG, Sizing::HUG))
+                    .size(SizeSpec::HUG)
                     .at(corner)
                     .show(ui)
                     .response

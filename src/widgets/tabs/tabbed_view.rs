@@ -1,7 +1,7 @@
 //! A strip over a content area, bound to the caller's page index.
 
 use crate::primitives::input::interaction::response::Response;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::SizeSpec;
 use crate::primitives::math::domain;
 use crate::theme::menu::MenuTheme;
 use crate::theme::tabs::TabsTheme;
@@ -190,9 +190,7 @@ impl<'a, S, L: Fn(&S) -> &str, K: Fn(usize, &S) -> TabKey> TabbedView<'a, S, L, 
             menu_style,
         } = self;
         let mut shown = domain::idx(*selected, options.len());
-        widget
-            .configure()
-            .default_size((Sizing::FILL, Sizing::FILL));
+        widget.configure().default_size(SizeSpec::FILL);
         let response = widget.response(ui);
         let strip_id = response.id.with("strip");
         let pass = widget.record(ui, None, |ui| {
@@ -235,7 +233,7 @@ impl<'a, S, L: Fn(&S) -> &str, K: Fn(usize, &S) -> TabKey> TabbedView<'a, S, L, 
             }
             let inner = Panel::vstack()
                 .id(response.id.with("content"))
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| shown.map(|page| body(ui, page)))
                 .inner;
             ViewPass {

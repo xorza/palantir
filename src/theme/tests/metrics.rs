@@ -159,12 +159,12 @@ fn every_recipe_reads_its_geometry_from_the_metrics() {
         ("scrollbar gap", t.scrollbar.gap, 1.0),
         (
             "dock preview radius",
-            t.dock.preview.corners.to_array()[0],
+            t.dock.preview.corners.top_left(),
             11.0,
         ),
         (
             "tab radius",
-            t.tabs.unselected.normal.chrome.corners.to_array()[0],
+            t.tabs.unselected.normal.chrome.corners.top_left(),
             15.0,
         ),
         ("separator", t.separator.thickness, 0.25),

@@ -73,6 +73,15 @@ fn a_derived_spacing_saturates_at_the_f16_range() {
 fn to_array_reads_the_edges_in_new_order() {
     let original = Spacing::new(1.0, 2.0, 3.0, 4.0);
     assert_eq!(original.to_array(), [1.0, 2.0, 3.0, 4.0]);
+    assert_eq!(
+        [
+            original.left(),
+            original.top(),
+            original.right(),
+            original.bottom()
+        ],
+        [1.0, 2.0, 3.0, 4.0]
+    );
     assert_eq!(original.sums(), Size::new(4.0, 6.0));
 }
 

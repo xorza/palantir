@@ -17,21 +17,18 @@ pub(super) fn theme() -> Theme {
     Theme {
         button: ButtonTheme {
             unselected: StatefulLook {
-                normal: WidgetLook {
-                    chrome: Chrome::rounded(RgbaF32::hex(0x1e4048), Corners::all(4.0))
+                normal: WidgetLook::new(
+                    Chrome::rounded(RgbaF32::hex(0x1e4048), Corners::all(4.0))
                         .with_border(Border::new(RgbaF32::hexa(0x9ad2a02e), 1.0)),
-                    text: TextStyleOverrides::NONE,
-                },
-                hovered: WidgetLook {
-                    chrome: Chrome::rounded(RgbaF32::hex(0x3d4f1e), Corners::all(4.0))
+                ),
+                hovered: WidgetLook::new(
+                    Chrome::rounded(RgbaF32::hex(0x3d4f1e), Corners::all(4.0))
                         .with_border(Border::new(RgbaF32::hexa(0x9ad2a02e), 1.0)),
-                    text: TextStyleOverrides::NONE,
-                },
-                active: WidgetLook {
-                    chrome: Chrome::rounded(RgbaF32::hex(0x3d4f1e), Corners::all(4.0))
+                ),
+                active: WidgetLook::new(
+                    Chrome::rounded(RgbaF32::hex(0x3d4f1e), Corners::all(4.0))
                         .with_border(Border::new(RgbaF32::hex(0x2f6fd0), 1.0)),
-                    text: TextStyleOverrides::NONE,
-                },
+                ),
                 disabled: WidgetLook {
                     chrome: Chrome::rounded(RgbaF32::hex(0x2e1f38), Corners::all(4.0))
                         .with_border(Border::new(RgbaF32::hexa(0x9ad2a02e), 1.0)),
@@ -42,21 +39,18 @@ pub(super) fn theme() -> Theme {
                 },
             },
             selected: StatefulLook {
-                normal: WidgetLook {
-                    chrome: Chrome::rounded(RgbaF32::hex(0x3d4f1e), Corners::all(4.0))
+                normal: WidgetLook::new(
+                    Chrome::rounded(RgbaF32::hex(0x3d4f1e), Corners::all(4.0))
                         .with_border(Border::new(RgbaF32::hex(0x2f6fd0), 1.0)),
-                    text: TextStyleOverrides::NONE,
-                },
-                hovered: WidgetLook {
-                    chrome: Chrome::rounded(RgbaF32::hex(0x3d4f1e), Corners::all(4.0))
+                ),
+                hovered: WidgetLook::new(
+                    Chrome::rounded(RgbaF32::hex(0x3d4f1e), Corners::all(4.0))
                         .with_border(Border::new(RgbaF32::hex(0x2f6fd0), 1.0)),
-                    text: TextStyleOverrides::NONE,
-                },
-                active: WidgetLook {
-                    chrome: Chrome::rounded(RgbaF32::hex(0x3d4f1e), Corners::all(4.0))
+                ),
+                active: WidgetLook::new(
+                    Chrome::rounded(RgbaF32::hex(0x3d4f1e), Corners::all(4.0))
                         .with_border(Border::new(RgbaF32::hex(0x2f6fd0), 1.0)),
-                    text: TextStyleOverrides::NONE,
-                },
+                ),
                 disabled: WidgetLook {
                     chrome: Chrome::rounded(RgbaF32::hex(0x2e1f38), Corners::all(4.0))
                         .with_border(Border::new(RgbaF32::hexa(0x9ad2a02e), 1.0)),
@@ -75,21 +69,18 @@ pub(super) fn theme() -> Theme {
         },
         checkbox: ToggleTheme {
             unchecked: StatefulLook {
-                normal: WidgetLook {
-                    chrome: Chrome::rounded(RgbaF32::hex(0x1e4048), Corners::all(4.0))
+                normal: WidgetLook::new(
+                    Chrome::rounded(RgbaF32::hex(0x1e4048), Corners::all(4.0))
                         .with_border(Border::new(RgbaF32::hexa(0x9ad2a059), 1.0)),
-                    text: TextStyleOverrides::NONE,
-                },
-                hovered: WidgetLook {
-                    chrome: Chrome::rounded(RgbaF32::hex(0x3d4f1e), Corners::all(4.0))
+                ),
+                hovered: WidgetLook::new(
+                    Chrome::rounded(RgbaF32::hex(0x3d4f1e), Corners::all(4.0))
                         .with_border(Border::new(RgbaF32::hexa(0x9ad2a059), 1.0)),
-                    text: TextStyleOverrides::NONE,
-                },
-                active: WidgetLook {
-                    chrome: Chrome::rounded(RgbaF32::hex(0x3d4f1e), Corners::all(4.0))
+                ),
+                active: WidgetLook::new(
+                    Chrome::rounded(RgbaF32::hex(0x3d4f1e), Corners::all(4.0))
                         .with_border(Border::new(RgbaF32::hex(0x2f6fd0), 1.0)),
-                    text: TextStyleOverrides::NONE,
-                },
+                ),
                 disabled: WidgetLook {
                     chrome: Chrome::rounded(RgbaF32::hex(0x2e1f38), Corners::all(4.0))
                         .with_border(Border::new(RgbaF32::hexa(0x9ad2a02e), 1.0)),
@@ -100,19 +91,15 @@ pub(super) fn theme() -> Theme {
                 },
             },
             checked: StatefulLook {
-                normal: WidgetLook {
-                    chrome: Chrome::rounded(RgbaF32::hex(0xd23f7a), Corners::all(4.0)),
-                    text: TextStyleOverrides::NONE,
-                },
-                hovered: WidgetLook {
-                    chrome: Chrome::rounded(RgbaF32::hex(0xd23f7a), Corners::all(4.0)),
-                    text: TextStyleOverrides::NONE,
-                },
-                active: WidgetLook {
-                    chrome: Chrome::rounded(RgbaF32::hex(0xd23f7a), Corners::all(4.0))
+                normal: WidgetLook::new(Chrome::rounded(RgbaF32::hex(0xd23f7a), Corners::all(4.0))),
+                hovered: WidgetLook::new(Chrome::rounded(
+                    RgbaF32::hex(0xd23f7a),
+                    Corners::all(4.0),
+                )),
+                active: WidgetLook::new(
+                    Chrome::rounded(RgbaF32::hex(0xd23f7a), Corners::all(4.0))
                         .with_border(Border::new(RgbaF32::hex(0x2f6fd0), 1.0)),
-                    text: TextStyleOverrides::NONE,
-                },
+                ),
                 disabled: WidgetLook {
                     chrome: Chrome::rounded(RgbaF32::hexa(0xd23f7a73), Corners::all(4.0)),
                     text: TextStyleOverrides {
@@ -142,21 +129,18 @@ pub(super) fn theme() -> Theme {
         },
         radio: ToggleTheme {
             unchecked: StatefulLook {
-                normal: WidgetLook {
-                    chrome: Chrome::rounded(RgbaF32::hex(0x1e4048), Corners::all(8.0))
+                normal: WidgetLook::new(
+                    Chrome::rounded(RgbaF32::hex(0x1e4048), Corners::all(8.0))
                         .with_border(Border::new(RgbaF32::hexa(0x9ad2a059), 1.0)),
-                    text: TextStyleOverrides::NONE,
-                },
-                hovered: WidgetLook {
-                    chrome: Chrome::rounded(RgbaF32::hex(0x3d4f1e), Corners::all(8.0))
+                ),
+                hovered: WidgetLook::new(
+                    Chrome::rounded(RgbaF32::hex(0x3d4f1e), Corners::all(8.0))
                         .with_border(Border::new(RgbaF32::hexa(0x9ad2a059), 1.0)),
-                    text: TextStyleOverrides::NONE,
-                },
-                active: WidgetLook {
-                    chrome: Chrome::rounded(RgbaF32::hex(0x3d4f1e), Corners::all(8.0))
+                ),
+                active: WidgetLook::new(
+                    Chrome::rounded(RgbaF32::hex(0x3d4f1e), Corners::all(8.0))
                         .with_border(Border::new(RgbaF32::hex(0x2f6fd0), 1.0)),
-                    text: TextStyleOverrides::NONE,
-                },
+                ),
                 disabled: WidgetLook {
                     chrome: Chrome::rounded(RgbaF32::hex(0x2e1f38), Corners::all(8.0))
                         .with_border(Border::new(RgbaF32::hexa(0x9ad2a02e), 1.0)),
@@ -167,19 +151,15 @@ pub(super) fn theme() -> Theme {
                 },
             },
             checked: StatefulLook {
-                normal: WidgetLook {
-                    chrome: Chrome::rounded(RgbaF32::hex(0xd23f7a), Corners::all(8.0)),
-                    text: TextStyleOverrides::NONE,
-                },
-                hovered: WidgetLook {
-                    chrome: Chrome::rounded(RgbaF32::hex(0xd23f7a), Corners::all(8.0)),
-                    text: TextStyleOverrides::NONE,
-                },
-                active: WidgetLook {
-                    chrome: Chrome::rounded(RgbaF32::hex(0xd23f7a), Corners::all(8.0))
+                normal: WidgetLook::new(Chrome::rounded(RgbaF32::hex(0xd23f7a), Corners::all(8.0))),
+                hovered: WidgetLook::new(Chrome::rounded(
+                    RgbaF32::hex(0xd23f7a),
+                    Corners::all(8.0),
+                )),
+                active: WidgetLook::new(
+                    Chrome::rounded(RgbaF32::hex(0xd23f7a), Corners::all(8.0))
                         .with_border(Border::new(RgbaF32::hex(0x2f6fd0), 1.0)),
-                    text: TextStyleOverrides::NONE,
-                },
+                ),
                 disabled: WidgetLook {
                     chrome: Chrome::rounded(RgbaF32::hexa(0xd23f7a73), Corners::all(8.0)),
                     text: TextStyleOverrides {
@@ -285,21 +265,18 @@ pub(super) fn theme() -> Theme {
         },
         switch: ToggleTheme {
             unchecked: StatefulLook {
-                normal: WidgetLook {
-                    chrome: Chrome::rounded(RgbaF32::hex(0x1e4048), Corners::all(10.0))
+                normal: WidgetLook::new(
+                    Chrome::rounded(RgbaF32::hex(0x1e4048), Corners::all(10.0))
                         .with_border(Border::new(RgbaF32::hexa(0x9ad2a059), 1.0)),
-                    text: TextStyleOverrides::NONE,
-                },
-                hovered: WidgetLook {
-                    chrome: Chrome::rounded(RgbaF32::hex(0x3d4f1e), Corners::all(10.0))
+                ),
+                hovered: WidgetLook::new(
+                    Chrome::rounded(RgbaF32::hex(0x3d4f1e), Corners::all(10.0))
                         .with_border(Border::new(RgbaF32::hexa(0x9ad2a059), 1.0)),
-                    text: TextStyleOverrides::NONE,
-                },
-                active: WidgetLook {
-                    chrome: Chrome::rounded(RgbaF32::hex(0x3d4f1e), Corners::all(10.0))
+                ),
+                active: WidgetLook::new(
+                    Chrome::rounded(RgbaF32::hex(0x3d4f1e), Corners::all(10.0))
                         .with_border(Border::new(RgbaF32::hex(0x2f6fd0), 1.0)),
-                    text: TextStyleOverrides::NONE,
-                },
+                ),
                 disabled: WidgetLook {
                     chrome: Chrome::rounded(RgbaF32::hex(0x2e1f38), Corners::all(10.0))
                         .with_border(Border::new(RgbaF32::hexa(0x9ad2a02e), 1.0)),
@@ -310,19 +287,18 @@ pub(super) fn theme() -> Theme {
                 },
             },
             checked: StatefulLook {
-                normal: WidgetLook {
-                    chrome: Chrome::rounded(RgbaF32::hex(0xd23f7a), Corners::all(10.0)),
-                    text: TextStyleOverrides::NONE,
-                },
-                hovered: WidgetLook {
-                    chrome: Chrome::rounded(RgbaF32::hex(0xd23f7a), Corners::all(10.0)),
-                    text: TextStyleOverrides::NONE,
-                },
-                active: WidgetLook {
-                    chrome: Chrome::rounded(RgbaF32::hex(0xd23f7a), Corners::all(10.0))
+                normal: WidgetLook::new(Chrome::rounded(
+                    RgbaF32::hex(0xd23f7a),
+                    Corners::all(10.0),
+                )),
+                hovered: WidgetLook::new(Chrome::rounded(
+                    RgbaF32::hex(0xd23f7a),
+                    Corners::all(10.0),
+                )),
+                active: WidgetLook::new(
+                    Chrome::rounded(RgbaF32::hex(0xd23f7a), Corners::all(10.0))
                         .with_border(Border::new(RgbaF32::hex(0x2f6fd0), 1.0)),
-                    text: TextStyleOverrides::NONE,
-                },
+                ),
                 disabled: WidgetLook {
                     chrome: Chrome::rounded(RgbaF32::hexa(0xd23f7a73), Corners::all(10.0)),
                     text: TextStyleOverrides {
@@ -361,21 +337,18 @@ pub(super) fn theme() -> Theme {
         },
         text_edit: TextEditTheme {
             looks: StatefulLook {
-                normal: WidgetLook {
-                    chrome: Chrome::rounded(RgbaF32::hex(0x1e4048), Corners::all(4.0))
+                normal: WidgetLook::new(
+                    Chrome::rounded(RgbaF32::hex(0x1e4048), Corners::all(4.0))
                         .with_border(Border::new(RgbaF32::hexa(0x9ad2a02e), 1.0)),
-                    text: TextStyleOverrides::NONE,
-                },
-                hovered: WidgetLook {
-                    chrome: Chrome::rounded(RgbaF32::hex(0x1e4048), Corners::all(4.0))
+                ),
+                hovered: WidgetLook::new(
+                    Chrome::rounded(RgbaF32::hex(0x1e4048), Corners::all(4.0))
                         .with_border(Border::new(RgbaF32::hexa(0x9ad2a02e), 1.0)),
-                    text: TextStyleOverrides::NONE,
-                },
-                active: WidgetLook {
-                    chrome: Chrome::rounded(RgbaF32::hex(0x1e4048), Corners::all(4.0))
+                ),
+                active: WidgetLook::new(
+                    Chrome::rounded(RgbaF32::hex(0x1e4048), Corners::all(4.0))
                         .with_border(Border::new(RgbaF32::hex(0x2f6fd0), 1.0)),
-                    text: TextStyleOverrides::NONE,
-                },
+                ),
                 disabled: WidgetLook {
                     chrome: Chrome::rounded(RgbaF32::hex(0x2e1f38), Corners::all(4.0))
                         .with_border(Border::new(RgbaF32::hexa(0x9ad2a02e), 1.0)),
@@ -398,21 +371,18 @@ pub(super) fn theme() -> Theme {
         },
         drag_value: DragValueTheme {
             looks: StatefulLook {
-                normal: WidgetLook {
-                    chrome: Chrome::rounded(RgbaF32::hex(0x1e4048), Corners::all(4.0))
+                normal: WidgetLook::new(
+                    Chrome::rounded(RgbaF32::hex(0x1e4048), Corners::all(4.0))
                         .with_border(Border::new(RgbaF32::hexa(0x9ad2a02e), 1.0)),
-                    text: TextStyleOverrides::NONE,
-                },
-                hovered: WidgetLook {
-                    chrome: Chrome::rounded(RgbaF32::hex(0x3d4f1e), Corners::all(4.0))
+                ),
+                hovered: WidgetLook::new(
+                    Chrome::rounded(RgbaF32::hex(0x3d4f1e), Corners::all(4.0))
                         .with_border(Border::new(RgbaF32::hexa(0x9ad2a02e), 1.0)),
-                    text: TextStyleOverrides::NONE,
-                },
-                active: WidgetLook {
-                    chrome: Chrome::rounded(RgbaF32::hex(0x3d4f1e), Corners::all(4.0))
+                ),
+                active: WidgetLook::new(
+                    Chrome::rounded(RgbaF32::hex(0x3d4f1e), Corners::all(4.0))
                         .with_border(Border::new(RgbaF32::hex(0x2f6fd0), 1.0)),
-                    text: TextStyleOverrides::NONE,
-                },
+                ),
                 disabled: WidgetLook {
                     chrome: Chrome::rounded(RgbaF32::hex(0x2e1f38), Corners::all(4.0))
                         .with_border(Border::new(RgbaF32::hexa(0x9ad2a02e), 1.0)),
@@ -447,18 +417,15 @@ pub(super) fn theme() -> Theme {
             gap: 0.0,
             item: MenuItemTheme {
                 unselected: StatefulLook {
-                    normal: WidgetLook {
-                        chrome: Chrome::new(RgbaF32::hexa(0x00000000)),
-                        text: TextStyleOverrides::NONE,
-                    },
-                    hovered: WidgetLook {
-                        chrome: Chrome::rounded(RgbaF32::hex(0x1e4048), Corners::all(4.0)),
-                        text: TextStyleOverrides::NONE,
-                    },
-                    active: WidgetLook {
-                        chrome: Chrome::rounded(RgbaF32::hex(0x1e4048), Corners::all(4.0)),
-                        text: TextStyleOverrides::NONE,
-                    },
+                    normal: WidgetLook::new(Chrome::new(RgbaF32::hexa(0x00000000))),
+                    hovered: WidgetLook::new(Chrome::rounded(
+                        RgbaF32::hex(0x1e4048),
+                        Corners::all(4.0),
+                    )),
+                    active: WidgetLook::new(Chrome::rounded(
+                        RgbaF32::hex(0x1e4048),
+                        Corners::all(4.0),
+                    )),
                     disabled: WidgetLook {
                         chrome: Chrome::new(RgbaF32::hexa(0x00000000)),
                         text: TextStyleOverrides {
@@ -516,14 +483,14 @@ pub(super) fn theme() -> Theme {
                             ..TextStyleOverrides::NONE
                         },
                     },
-                    hovered: WidgetLook {
-                        chrome: Chrome::rounded(RgbaF32::hex(0x1e4048), Corners::all(4.0)),
-                        text: TextStyleOverrides::NONE,
-                    },
-                    active: WidgetLook {
-                        chrome: Chrome::rounded(RgbaF32::hex(0x3d4f1e), Corners::all(4.0)),
-                        text: TextStyleOverrides::NONE,
-                    },
+                    hovered: WidgetLook::new(Chrome::rounded(
+                        RgbaF32::hex(0x1e4048),
+                        Corners::all(4.0),
+                    )),
+                    active: WidgetLook::new(Chrome::rounded(
+                        RgbaF32::hex(0x3d4f1e),
+                        Corners::all(4.0),
+                    )),
                     disabled: WidgetLook {
                         chrome: Chrome::rounded(RgbaF32::hexa(0x00000000), Corners::all(4.0)),
                         text: TextStyleOverrides {
@@ -533,22 +500,22 @@ pub(super) fn theme() -> Theme {
                     },
                 },
                 selected: StatefulLook {
-                    normal: WidgetLook {
-                        chrome: Chrome::rounded(RgbaF32::hex(0x1e4048), Corners::all(4.0)),
-                        text: TextStyleOverrides::NONE,
-                    },
-                    hovered: WidgetLook {
-                        chrome: Chrome::rounded(RgbaF32::hex(0x1e4048), Corners::all(4.0)),
-                        text: TextStyleOverrides::NONE,
-                    },
-                    active: WidgetLook {
-                        chrome: Chrome::rounded(RgbaF32::hex(0x1e4048), Corners::all(4.0)),
-                        text: TextStyleOverrides::NONE,
-                    },
-                    disabled: WidgetLook {
-                        chrome: Chrome::rounded(RgbaF32::hex(0x1e4048), Corners::all(4.0)),
-                        text: TextStyleOverrides::NONE,
-                    },
+                    normal: WidgetLook::new(Chrome::rounded(
+                        RgbaF32::hex(0x1e4048),
+                        Corners::all(4.0),
+                    )),
+                    hovered: WidgetLook::new(Chrome::rounded(
+                        RgbaF32::hex(0x1e4048),
+                        Corners::all(4.0),
+                    )),
+                    active: WidgetLook::new(Chrome::rounded(
+                        RgbaF32::hex(0x1e4048),
+                        Corners::all(4.0),
+                    )),
+                    disabled: WidgetLook::new(Chrome::rounded(
+                        RgbaF32::hex(0x1e4048),
+                        Corners::all(4.0),
+                    )),
                 },
                 defaults: SlotDefaults {
                     padding: Spacing::xy(12.0, 8.0),
@@ -609,40 +576,32 @@ pub(super) fn theme() -> Theme {
             checker_cell: 6.0,
             chip: ButtonTheme {
                 unselected: StatefulLook {
-                    normal: WidgetLook {
-                        chrome: Chrome::NONE.with_border(Border::new(RgbaF32::hex(0x3d4f1e), 1.0)),
-                        text: TextStyleOverrides::NONE,
-                    },
-                    hovered: WidgetLook {
-                        chrome: Chrome::NONE.with_border(Border::new(RgbaF32::hex(0x9ad2a0), 1.0)),
-                        text: TextStyleOverrides::NONE,
-                    },
-                    active: WidgetLook {
-                        chrome: Chrome::NONE.with_border(Border::new(RgbaF32::hex(0x2f6fd0), 1.0)),
-                        text: TextStyleOverrides::NONE,
-                    },
-                    disabled: WidgetLook {
-                        chrome: Chrome::NONE.with_border(Border::new(RgbaF32::hex(0x2e1f38), 1.0)),
-                        text: TextStyleOverrides::NONE,
-                    },
+                    normal: WidgetLook::new(
+                        Chrome::NONE.with_border(Border::new(RgbaF32::hex(0x3d4f1e), 1.0)),
+                    ),
+                    hovered: WidgetLook::new(
+                        Chrome::NONE.with_border(Border::new(RgbaF32::hex(0x9ad2a0), 1.0)),
+                    ),
+                    active: WidgetLook::new(
+                        Chrome::NONE.with_border(Border::new(RgbaF32::hex(0x2f6fd0), 1.0)),
+                    ),
+                    disabled: WidgetLook::new(
+                        Chrome::NONE.with_border(Border::new(RgbaF32::hex(0x2e1f38), 1.0)),
+                    ),
                 },
                 selected: StatefulLook {
-                    normal: WidgetLook {
-                        chrome: Chrome::NONE.with_border(Border::new(RgbaF32::hex(0x3d4f1e), 1.0)),
-                        text: TextStyleOverrides::NONE,
-                    },
-                    hovered: WidgetLook {
-                        chrome: Chrome::NONE.with_border(Border::new(RgbaF32::hex(0x9ad2a0), 1.0)),
-                        text: TextStyleOverrides::NONE,
-                    },
-                    active: WidgetLook {
-                        chrome: Chrome::NONE.with_border(Border::new(RgbaF32::hex(0x2f6fd0), 1.0)),
-                        text: TextStyleOverrides::NONE,
-                    },
-                    disabled: WidgetLook {
-                        chrome: Chrome::NONE.with_border(Border::new(RgbaF32::hex(0x2e1f38), 1.0)),
-                        text: TextStyleOverrides::NONE,
-                    },
+                    normal: WidgetLook::new(
+                        Chrome::NONE.with_border(Border::new(RgbaF32::hex(0x3d4f1e), 1.0)),
+                    ),
+                    hovered: WidgetLook::new(
+                        Chrome::NONE.with_border(Border::new(RgbaF32::hex(0x9ad2a0), 1.0)),
+                    ),
+                    active: WidgetLook::new(
+                        Chrome::NONE.with_border(Border::new(RgbaF32::hex(0x2f6fd0), 1.0)),
+                    ),
+                    disabled: WidgetLook::new(
+                        Chrome::NONE.with_border(Border::new(RgbaF32::hex(0x2e1f38), 1.0)),
+                    ),
                 },
                 defaults: SlotDefaults {
                     padding: Spacing::all(0.0),
@@ -843,14 +802,11 @@ pub(super) fn theme() -> Theme {
                         ..TextStyleOverrides::NONE
                     },
                 },
-                hovered: WidgetLook {
-                    chrome: Chrome::rounded(RgbaF32::hex(0x1e4048), Corners::top(6.0)),
-                    text: TextStyleOverrides::NONE,
-                },
-                active: WidgetLook {
-                    chrome: Chrome::rounded(RgbaF32::hex(0x3d4f1e), Corners::top(6.0)),
-                    text: TextStyleOverrides::NONE,
-                },
+                hovered: WidgetLook::new(Chrome::rounded(
+                    RgbaF32::hex(0x1e4048),
+                    Corners::top(6.0),
+                )),
+                active: WidgetLook::new(Chrome::rounded(RgbaF32::hex(0x3d4f1e), Corners::top(6.0))),
                 disabled: WidgetLook {
                     chrome: Chrome::rounded(RgbaF32::hexa(0x00000000), Corners::top(6.0)),
                     text: TextStyleOverrides {
@@ -860,18 +816,12 @@ pub(super) fn theme() -> Theme {
                 },
             },
             selected: StatefulLook {
-                normal: WidgetLook {
-                    chrome: Chrome::rounded(RgbaF32::hex(0x14141a), Corners::top(6.0)),
-                    text: TextStyleOverrides::NONE,
-                },
-                hovered: WidgetLook {
-                    chrome: Chrome::rounded(RgbaF32::hex(0x14141a), Corners::top(6.0)),
-                    text: TextStyleOverrides::NONE,
-                },
-                active: WidgetLook {
-                    chrome: Chrome::rounded(RgbaF32::hex(0x14141a), Corners::top(6.0)),
-                    text: TextStyleOverrides::NONE,
-                },
+                normal: WidgetLook::new(Chrome::rounded(RgbaF32::hex(0x14141a), Corners::top(6.0))),
+                hovered: WidgetLook::new(Chrome::rounded(
+                    RgbaF32::hex(0x14141a),
+                    Corners::top(6.0),
+                )),
+                active: WidgetLook::new(Chrome::rounded(RgbaF32::hex(0x14141a), Corners::top(6.0))),
                 disabled: WidgetLook {
                     chrome: Chrome::rounded(RgbaF32::hex(0x14141a), Corners::top(6.0)),
                     text: TextStyleOverrides {
@@ -900,15 +850,14 @@ pub(super) fn theme() -> Theme {
                         ..TextStyleOverrides::NONE
                     },
                 },
-                hovered: WidgetLook {
-                    chrome: Chrome::rounded(RgbaF32::hex(0x3d4f1e), Corners::all(4.0)),
-                    text: TextStyleOverrides::NONE,
-                },
-                active: WidgetLook {
-                    chrome: Chrome::rounded(RgbaF32::hex(0x3d4f1e), Corners::all(4.0))
+                hovered: WidgetLook::new(Chrome::rounded(
+                    RgbaF32::hex(0x3d4f1e),
+                    Corners::all(4.0),
+                )),
+                active: WidgetLook::new(
+                    Chrome::rounded(RgbaF32::hex(0x3d4f1e), Corners::all(4.0))
                         .with_border(Border::new(RgbaF32::hex(0x2f6fd0), 1.0)),
-                    text: TextStyleOverrides::NONE,
-                },
+                ),
                 disabled: WidgetLook {
                     chrome: Chrome::new(RgbaF32::hexa(0x00000000)),
                     text: TextStyleOverrides {
@@ -934,28 +883,21 @@ pub(super) fn theme() -> Theme {
         dock: DockTheme {
             preview: Chrome::rounded(RgbaF32::hexa(0xd23f7a2e), Corners::all(2.0))
                 .with_border(Border::new(RgbaF32::hex(0xd23f7a), 1.5)),
-            ghost: WidgetLook {
-                chrome: Chrome::rounded(RgbaF32::hex(0x3a1a14), Corners::all(6.0))
+            ghost: WidgetLook::new(
+                Chrome::rounded(RgbaF32::hex(0x3a1a14), Corners::all(6.0))
                     .with_border(Border::new(RgbaF32::hex(0xd23f7a), 1.0)),
-                text: TextStyleOverrides::NONE,
-            },
+            ),
             ghost_padding: Spacing::xy(12.0, 8.0),
             ghost_offset: Vec2::new(12.0, 16.0),
         },
         expander: ExpanderTheme {
             looks: StatefulLook {
-                normal: WidgetLook {
-                    chrome: Chrome::new(RgbaF32::hexa(0x00000000)),
-                    text: TextStyleOverrides::NONE,
-                },
-                hovered: WidgetLook {
-                    chrome: Chrome::rounded(RgbaF32::hex(0x1e4048), Corners::all(4.0)),
-                    text: TextStyleOverrides::NONE,
-                },
-                active: WidgetLook {
-                    chrome: Chrome::rounded(RgbaF32::hex(0x3d4f1e), Corners::all(4.0)),
-                    text: TextStyleOverrides::NONE,
-                },
+                normal: WidgetLook::new(Chrome::new(RgbaF32::hexa(0x00000000))),
+                hovered: WidgetLook::new(Chrome::rounded(
+                    RgbaF32::hex(0x1e4048),
+                    Corners::all(4.0),
+                )),
+                active: WidgetLook::new(Chrome::rounded(RgbaF32::hex(0x3d4f1e), Corners::all(4.0))),
                 disabled: WidgetLook {
                     chrome: Chrome::new(RgbaF32::hexa(0x00000000)),
                     text: TextStyleOverrides {

@@ -10,8 +10,8 @@ use crate::scaffold::tokens::M;
 use crate::support;
 use crate::support::{Col, Kit, Knob, Section};
 use palantir::{
-    Align, Block, ComboBox, Configure, HAlign, Justify, Panel, RgbaF32, Sizing, Spacing, Text, Ui,
-    VAlign, Visibility, WidgetId,
+    Align, Block, ComboBox, Configure, HAlign, Justify, Panel, RgbaF32, SizeSpec, Sizing, Spacing,
+    Text, Ui, VAlign, Visibility, WidgetId,
 };
 
 pub(crate) fn build(ui: &mut Ui, k: Kit) {
@@ -366,7 +366,7 @@ fn playground(ui: &mut Ui, k: Kit) {
                 let justify = p.justify.1;
                 Panel::hstack()
                     .id_salt("playground row")
-                    .size((Sizing::FILL, Sizing::HUG))
+                    .size(SizeSpec::FILL_W)
                     .padding(p.padding)
                     .gap(p.gap)
                     .justify(justify)

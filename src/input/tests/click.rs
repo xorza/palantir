@@ -5,7 +5,7 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::input_event::InputEvent;
 use crate::primitives::input::pointer::PointerButton;
 use crate::primitives::input::sense::Sense;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::{button::Button, panel::Panel};
@@ -147,7 +147,7 @@ fn a_disabled_cover_absorbs_the_press_it_is_painted_over() {
                 .show(ui, |ui| {
                     let clicked = Block::new()
                         .id(under)
-                        .size(Sizing::FILL)
+                        .size(SizeSpec::FILL)
                         .sense(Sense::CLICK)
                         .focusable(true)
                         .show(ui)
@@ -155,7 +155,7 @@ fn a_disabled_cover_absorbs_the_press_it_is_painted_over() {
                         .clicked();
                     Block::new()
                         .id(cover)
-                        .size(Sizing::FILL)
+                        .size(SizeSpec::FILL)
                         .sense(sense)
                         .disabled(disabled)
                         .show(ui);

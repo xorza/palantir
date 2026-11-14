@@ -138,18 +138,12 @@ impl ToggleGeometry {
             |fill: RgbaF32, border: Border| Chrome::rounded(fill, radius).with_border(border);
         let disabled_text = TextStyleOverrides::NONE.with_color(p.text_disabled);
         let unchecked = StatefulLook {
-            normal: WidgetLook {
-                chrome: chrome(p.element_mid, Border::new(edge, hairline)),
-                text: TextStyleOverrides::NONE,
-            },
-            hovered: WidgetLook {
-                chrome: chrome(p.element_strong, Border::new(edge, hairline)),
-                text: TextStyleOverrides::NONE,
-            },
-            active: WidgetLook {
-                chrome: chrome(p.element_strong, Border::new(p.border_focused, hairline)),
-                text: TextStyleOverrides::NONE,
-            },
+            normal: WidgetLook::new(chrome(p.element_mid, Border::new(edge, hairline))),
+            hovered: WidgetLook::new(chrome(p.element_strong, Border::new(edge, hairline))),
+            active: WidgetLook::new(chrome(
+                p.element_strong,
+                Border::new(p.border_focused, hairline),
+            )),
             disabled: WidgetLook {
                 chrome: chrome(p.element, Border::new(p.border_soft(), hairline)),
                 text: disabled_text,
@@ -157,18 +151,9 @@ impl ToggleGeometry {
         };
         let acc = p.accent;
         let checked = StatefulLook {
-            normal: WidgetLook {
-                chrome: chrome(acc, Border::NONE),
-                text: TextStyleOverrides::NONE,
-            },
-            hovered: WidgetLook {
-                chrome: chrome(acc, Border::NONE),
-                text: TextStyleOverrides::NONE,
-            },
-            active: WidgetLook {
-                chrome: chrome(acc, Border::new(p.border_focused, hairline)),
-                text: TextStyleOverrides::NONE,
-            },
+            normal: WidgetLook::new(chrome(acc, Border::NONE)),
+            hovered: WidgetLook::new(chrome(acc, Border::NONE)),
+            active: WidgetLook::new(chrome(acc, Border::new(p.border_focused, hairline))),
             disabled: WidgetLook {
                 chrome: chrome(acc.with_alpha8(115), Border::NONE),
                 text: disabled_text,

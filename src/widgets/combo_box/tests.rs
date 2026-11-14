@@ -2,7 +2,7 @@ use crate::host::harness::Harness;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
 use crate::shape::paint::lowered_brush::LoweredBrush;
@@ -36,7 +36,7 @@ fn a_value_no_option_equals_shows_its_own_label_without_writing_back() {
     h.frame(|ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 for (selected, id) in picks.iter_mut().zip(ids) {
                     ComboBox::new(selected, OPTIONS).id(id).show(ui);
@@ -87,7 +87,7 @@ fn a_labeled_dropdown_reads_the_projected_field() {
     h.frame(|ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 ComboBox::labeled(&mut a, rows, |r| r.display)
                     .id(projected)
@@ -165,7 +165,7 @@ fn dropdown_aligns_to_the_full_trigger_rect_when_flipped_above() {
     let build = |ui: &mut Ui, selected: &mut &'static str| {
         Panel::canvas()
             .id(WidgetId::from_hash("root"))
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 ComboBox::new(selected, OPTIONS)
                     .id(id)
@@ -225,7 +225,7 @@ fn trigger_geometry_follows_the_combo_box_theme() {
                     let mut combo = ComboBox::new(&mut selected, options)
                         .id(id)
                         .style(instance)
-                        .size((Sizing::HUG, Sizing::HUG));
+                        .size(SizeSpec::HUG);
                     if let Some(gap) = caller {
                         combo = combo.gap(gap);
                     }
@@ -348,7 +348,7 @@ fn the_dropdown_takes_the_menu_theme_it_documents() {
         let mut build = |ui: &mut Ui| {
             Panel::canvas()
                 .id(WidgetId::from_hash("root"))
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| {
                     ComboBox::new(&mut selected, options)
                         .id(id)
@@ -578,7 +578,7 @@ fn the_list_and_a_context_menu_on_the_combo_do_not_collide() {
     let record = |ui: &mut Ui, selected: &mut &'static str| {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 let combo = ComboBox::new(selected, OPTIONS).id(id).show(ui);
                 Menu::context(&combo.response).show(ui, |ui| {

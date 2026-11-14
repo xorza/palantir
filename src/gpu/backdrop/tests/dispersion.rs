@@ -8,7 +8,7 @@ use crate::host::harness::Harness;
 use crate::host::harness::harness_builder::HarnessDepth;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::SizeSpec;
 use crate::primitives::math::libm_ext::Libm;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
@@ -50,7 +50,7 @@ fn frame(under: &[(Rect, RgbaF32)], lens: Lens, blur: f32) -> Vec<[f32; 4]> {
     let mut app = |ui: &mut Ui| {
         Panel::canvas()
             .id_salt("dispersion-scene")
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 for &(rect, color) in under {
                     ui.add_shape(Shape::rect().at(rect), color);

@@ -6,7 +6,7 @@ use crate::support;
 use crate::support::{DemoCell, Kit, Knob, Section};
 use palantir::{
     Align, Block, Border, Chrome, Configure, Corners, Grid, GridCell, Justify, Panel, RgbaF32,
-    Sizing, Text, Track, Ui, WidgetId,
+    SizeSpec, Sizing, Text, Track, Ui, WidgetId,
 };
 use std::hash::Hash;
 
@@ -41,15 +41,13 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
                     });
                 });
                 DemoCell::new("Canvas — positioned children").show(ui, k, |ui| {
-                    Panel::canvas()
-                        .size((Sizing::FILL, Sizing::FILL))
-                        .show(ui, |ui| {
-                            positioned(8.0, 8.0, k.swatch.teal).id_salt("p1").show(ui);
-                            positioned(64.0, 40.0, k.swatch.orange)
-                                .id_salt("p2")
-                                .show(ui);
-                            positioned(30.0, 88.0, k.swatch.lime).id_salt("p3").show(ui);
-                        });
+                    Panel::canvas().size(SizeSpec::FILL).show(ui, |ui| {
+                        positioned(8.0, 8.0, k.swatch.teal).id_salt("p1").show(ui);
+                        positioned(64.0, 40.0, k.swatch.orange)
+                            .id_salt("p2")
+                            .show(ui);
+                        positioned(30.0, 88.0, k.swatch.lime).id_salt("p3").show(ui);
+                    });
                 });
             });
         });
@@ -93,7 +91,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
                     .chrome(k.t.card())
                     .show(ui, |ui| {
                         Panel::wrap_hstack()
-                            .size((Sizing::FILL, Sizing::HUG))
+                            .size(SizeSpec::FILL_W)
                             .gap(w.gap)
                             .line_gap(w.line_gap)
                             .show(ui, |ui| {
@@ -119,7 +117,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
                     .size(200.0, 200.0)
                     .show(ui, k, |ui| {
                         Panel::wrap_vstack()
-                            .size((Sizing::HUG, Sizing::FILL))
+                            .size(SizeSpec::FILL_H)
                             .gap(6.0)
                             .line_gap(12.0)
                             .show(ui, |ui| {
@@ -132,7 +130,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
                     .size(200.0, 200.0)
                     .show(ui, k, |ui| {
                         Panel::wrap_hstack()
-                            .size((Sizing::FILL, Sizing::HUG))
+                            .size(SizeSpec::FILL_W)
                             .gap(10.0)
                             .line_gap(10.0)
                             .justify(Justify::Center)
@@ -164,7 +162,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
                             .rows([Track::fixed(32.0), Track::FILL])
                             .line_gap(8.0)
                             .gap(8.0)
-                            .size((Sizing::FILL, Sizing::FILL))
+                            .size(SizeSpec::FILL)
                             .show(ui, |ui| {
                                 GridTile::new(
                                     "header",
@@ -192,7 +190,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
                             .rows([Track::FILL])
                             .line_gap(8.0)
                             .gap(8.0)
-                            .size((Sizing::FILL, Sizing::FILL))
+                            .size(SizeSpec::FILL)
                             .show(ui, |ui| {
                                 GridTile::new("sidebar", GridCell::at(0, 0), k.swatch.teal)
                                     .show(ui);

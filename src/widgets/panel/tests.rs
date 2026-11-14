@@ -3,7 +3,7 @@ use crate::primitives::geometry::corners::Corners;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::align::{Align, HAlign, VAlign};
 use crate::primitives::layout::clip_mode::ClipMode;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
@@ -200,7 +200,7 @@ fn panel_with_fill_child_grows_to_panel_inner() {
                     .show(ui, |ui| {
                         Block::new()
                             .id(WidgetId::from_hash("filler"))
-                            .size((Sizing::FILL, Sizing::FILL))
+                            .size(SizeSpec::FILL)
                             .chrome(Chrome::new(RgbaF32::srgb(0.5, 0.5, 0.5)))
                             .show(ui)
                             .node(ui)

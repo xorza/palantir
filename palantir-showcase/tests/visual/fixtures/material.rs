@@ -4,7 +4,7 @@ use palantir::glam::{UVec2, Vec2};
 use palantir::widget::{PaintAnimation, Shape};
 use palantir::{
     Border, ColorScheme, Configure, Corners, Lens, Material, Panel, PopupTrigger, Rect, RgbaF32,
-    Sizing, Text, Ui, WidgetId,
+    SizeSpec, Text, Ui, WidgetId,
 };
 use palantir_showcase::pages::materials;
 use palantir_showcase::support;
@@ -42,7 +42,7 @@ fn materials_match_golden() {
     GoldenName::Materials.assert_scene(size, |ui| {
         Panel::canvas()
             .id(WidgetId::from_hash("backdrop-canvas"))
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 backdrop_scene(ui, size);
                 ui.add_shape(
@@ -87,7 +87,7 @@ fn triangle_materials_match_golden() {
     GoldenName::TriangleMaterials.assert_scene(size, |ui| {
         Panel::canvas()
             .id(WidgetId::from_hash("backdrop-triangles"))
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 backdrop_scene(ui, size);
                 ui.add_shape(
@@ -139,7 +139,7 @@ fn a_turned_material_matches_golden() {
     GoldenName::MaterialTurned.assert_scene(size, |ui| {
         Panel::canvas()
             .id(WidgetId::from_hash("backdrop-turned"))
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 backdrop_scene(ui, size);
                 if let Some(shape) = ui.add_shape(
@@ -165,7 +165,7 @@ fn glass_matches_golden() {
     GoldenName::MaterialGlass.assert_scene(size, |ui| {
         Panel::canvas()
             .id(WidgetId::from_hash("backdrop-glass"))
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 backdrop_scene(ui, size);
                 ui.add_shape(

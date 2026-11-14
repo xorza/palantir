@@ -5,8 +5,8 @@
 use palantir::{
     Align, App, Block, Border, Button, ButtonTheme, Checkbox, Chrome, Configure, Corners, EditEnd,
     FocusPolicy, FontFamily, Justify, Key, Palette, Panel, PopupTrigger, Preference, Reduction,
-    Scroll, Sense, Separator, Shortcut, ShortcutMods, Sizing, Text, TextEdit, TextWrap, Tooltip,
-    Ui, UiPreferences, UserScale, VAlign, Vsync, WidgetId, WindowConfig, WindowToken, fmt,
+    Scroll, Sense, Separator, Shortcut, ShortcutMods, SizeSpec, Sizing, Text, TextEdit, TextWrap,
+    Tooltip, Ui, UiPreferences, UserScale, VAlign, Vsync, WidgetId, WindowConfig, WindowToken, fmt,
 };
 
 use crate::app_state::AppState;
@@ -104,20 +104,20 @@ impl Page {
     fn header(&self, ui: &mut Ui, t: Tokens) {
         Panel::vstack()
             .id_salt(("header", self.label))
-            .size((Sizing::FILL, Sizing::HUG))
+            .size(SizeSpec::FILL_W)
             .gap(M.space.sm)
             .show(ui, |ui| {
                 Text::new(self.label).style(&t.title()).show(ui);
                 Text::new(self.blurb)
                     .style(&t.dim())
-                    .size((Sizing::FILL, Sizing::HUG))
+                    .size(SizeSpec::FILL_W)
                     .max_size((MEASURE, f32::INFINITY))
                     .text_wrap(TextWrap::WrapWithOverflow)
                     .show(ui);
                 if !self.keys.is_empty() {
                     Panel::wrap_hstack()
                         .id_salt("keys")
-                        .size((Sizing::FILL, Sizing::HUG))
+                        .size(SizeSpec::FILL_W)
                         .gap(M.space.xs)
                         .line_gap(M.space.xs)
                         .child_align(VAlign::Center)
@@ -452,12 +452,10 @@ impl Shell {
         self.app.appearance.apply(ui);
         let k = self.kit(ui);
 
-        Panel::hstack()
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                self.rail(ui, k);
-                self.card(ui, k);
-            });
+        Panel::hstack().size(SizeSpec::FILL).show(ui, |ui| {
+            self.rail(ui, k);
+            self.card(ui, k);
+        });
 
         pages::windows::intercept(ui, k, &self.app.appearance);
         // An edit made in this frame builds its theme now; palantir asks for the frame that
@@ -529,7 +527,7 @@ impl Shell {
         let response = TextEdit::new(&mut self.query)
             .id(WidgetId::from_hash(SEARCH))
             .placeholder("Search pages  Ctrl+K")
-            .size((Sizing::FILL, Sizing::HUG))
+            .size(SizeSpec::FILL_W)
             .show(ui);
         match response.ended {
             Some(EditEnd::Submitted) => {
@@ -603,7 +601,7 @@ impl Shell {
     fn card(&mut self, ui: &mut Ui, k: Kit) {
         let page = PAGES[self.active];
         Panel::vstack()
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .padding((M.space.xl, M.space.xl, M.space.sm, M.space.lg))
             .gap(M.space.xl)
             .show(ui, |ui| {
@@ -614,13 +612,13 @@ impl Shell {
                     Flow::Scroll => {
                         Scroll::vertical()
                             .id_salt(page.label)
-                            .size((Sizing::FILL, Sizing::FILL))
+                            .size(SizeSpec::FILL)
                             .overlay_bars()
                             // Keeps the overlay bar off the page's right edge.
                             .padding((0.0, 0.0, M.space.lg, 0.0))
                             .show(ui, |ui| {
                                 Panel::vstack()
-                                    .size((Sizing::FILL, Sizing::HUG))
+                                    .size(SizeSpec::FILL_W)
                                     .max_size((COLUMN, f32::INFINITY))
                                     .gap(PAGE_GAP)
                                     .show(ui, |ui| (page.build)(ui, &mut self.app, k));
@@ -629,7 +627,7 @@ impl Shell {
                     Flow::Fill => {
                         Panel::vstack()
                             .id_salt(page.label)
-                            .size((Sizing::FILL, Sizing::FILL))
+                            .size(SizeSpec::FILL)
                             .padding((0.0, 0.0, M.space.lg, 0.0))
                             .gap(PAGE_GAP)
                             .show(ui, |ui| (page.build)(ui, &mut self.app, k));
@@ -648,7 +646,7 @@ impl App for Shell {
                 Panel::vstack()
                     .padding(M.space.lg)
                     .gap(M.space.md)
-                    .size((Sizing::FILL, Sizing::FILL))
+                    .size(SizeSpec::FILL)
                     .show(ui, |ui| pages::windows::shared(ui, k, &mut self.app));
             }
             _ => self.build(ui),
@@ -679,7 +677,7 @@ fn accent_row(ui: &mut Ui, k: Kit, look: &mut Appearance) {
     let mut picked = current;
     Panel::hstack()
         .id_salt("accents")
-        .size((Sizing::FILL, Sizing::HUG))
+        .size(SizeSpec::FILL_W)
         .justify(Justify::SpaceBetween)
         .show(ui, |ui| {
             let stock = (None, Palette::for_scheme(scheme).accent);
@@ -726,14 +724,14 @@ fn ui_scale_row(ui: &mut Ui, k: Kit) {
     let mut next = scale;
     Panel::hstack()
         .id_salt("ui scale")
-        .size((Sizing::FILL, Sizing::HUG))
+        .size(SizeSpec::FILL_W)
         .gap(M.space.xs)
         .child_align(VAlign::Center)
         .show(ui, |ui| {
             Text::new("UI scale")
                 .style(&k.t.caption())
                 .margin((rail::INSET, 0.0, 0.0, 0.0))
-                .size((Sizing::FILL, Sizing::HUG))
+                .size(SizeSpec::FILL_W)
                 .show(ui);
             if Button::new().style(&step).label("−").show(ui).clicked() {
                 next = scale.stepped_down();
@@ -760,7 +758,7 @@ fn diagnostics(ui: &mut Ui) {
     let trigger = Button::new()
         .id_salt("diagnostics")
         .label("Diagnostics ▾")
-        .size((Sizing::FILL, Sizing::HUG))
+        .size(SizeSpec::FILL_W)
         .show(ui);
     let mut overlay = ui.debug_overlay();
     let mut vsync_on = ui.vsync() == Vsync::On;

@@ -21,7 +21,7 @@ bench = false
 test = false
 
 [dependencies]
-palantir = { workspace = true, features = ["winit"] }
+palantir = { workspace = true, features = ["winit", "png"] }
 bytemuck = { workspace = true }
 image = { workspace = true }
 tracing-subscriber = { workspace = true }
