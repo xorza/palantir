@@ -9,8 +9,10 @@ use std::fmt::{self, Display, Formatter};
 use std::time::Duration;
 
 /// Why a [`Locator`](crate::Locator) found no one place in the last frame. Each case says what
-/// corrects the locator, as an agent or a script reads it.
+/// corrects the locator, as an agent or a script reads it. Non-exhaustive, as a locator may learn
+/// a new way to miss.
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub enum LocateError {
     /// Nothing matches; `nearest` lists the visible texts that contain the one asked for, or the
     /// first ones when none does.
@@ -102,19 +104,21 @@ impl Display for LocateError {
 impl error::Error for LocateError {}
 
 /// Why a player could not play a step, settle the window or take its picture. Each case says
-/// what corrects the call, as an agent or a script reads it.
+/// what corrects the call, as an agent or a script reads it. Non-exhaustive, as a host may learn
+/// a new way to fail.
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub enum PlayError {
     /// A locator names no one place.
     Locate(LocateError),
-    /// The window still asked for frames after `frames` of them: an animation that never ends,
+    /// The window still asked for frames when the wait ran out: an animation that never ends,
     /// or an app that asks a repaint every frame. The step that failed is the caller's to name, as
     /// a [`StepError`] does by its index.
     Unsettled {
-        /// What the wait ran to: on a harness its bound in frames,
-        /// [`settle_frames`](crate::HarnessBuilder::settle_frames), and on a remote, whose bound
-        /// is real time, the frames the window recorded within it.
-        frames: u32,
+        /// The frames the window recorded while it was waited on, on every host: a harness waits
+        /// [`settle_frames`](crate::HarnessBuilder::settle_frames) frames that ask for another,
+        /// a remote its real-time wait.
+        frames_recorded: u32,
     },
     /// A [`Type`](crate::Action::Type) step's text holds `found`, a control character other than
     /// a newline or a tab, which types no key.
@@ -133,6 +137,9 @@ pub enum PlayError {
     /// A picture of a window that paints no pixels: a harness below
     /// [`HarnessDepth::Gpu`](crate::HarnessDepth::Gpu).
     NoPixels,
+    /// A device asked of a window that paints with none, as losing one is: a harness below
+    /// [`HarnessDepth::Gpu`](crate::HarnessDepth::Gpu).
+    NoDevice,
     /// The device was lost before the window's pixels came back.
     DeviceLost,
     /// The device did not finish the frame whose pixels a player waits for within its bound, and
@@ -171,10 +178,10 @@ impl Display for PlayError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::Locate(error) => error.fmt(f),
-            Self::Unsettled { frames } => write!(
+            Self::Unsettled { frames_recorded } => write!(
                 f,
-                "the window still asks for frames after {frames} frames; an animation runs on, \
-                 or the app asks a repaint each frame"
+                "the window still asks for frames after {frames_recorded} frames; an animation \
+                 runs on, or the app asks a repaint each frame"
             ),
             Self::Untypable { found } => write!(
                 f,
@@ -188,6 +195,7 @@ impl Display for PlayError {
             ),
             Self::EmptyRegion => f.write_str("the region holds no pixel of the window"),
             Self::NoPixels => f.write_str("the window paints no pixels; build it with a GPU"),
+            Self::NoDevice => f.write_str("the window paints with no device; build it with a GPU"),
             Self::DeviceLost => f.write_str("the device was lost before the pixels came back"),
             Self::GpuTimedOut => {
                 f.write_str("the device did not finish the frame in time, and hangs unreset")
@@ -242,7 +250,7 @@ pub struct StepError {
     /// The index of the step that failed, which is also the count of steps played before it.
     pub step: usize,
     /// Why it failed.
-    pub error: PlayError,
+    pub source: PlayError,
 }
 
 impl Display for StepError {
@@ -253,7 +261,7 @@ impl Display for StepError {
 
 impl error::Error for StepError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        Some(&self.error)
+        Some(&self.source)
     }
 }
 
@@ -276,7 +284,7 @@ mod tests {
 
         let failed = StepError {
             step: 3,
-            error: play.clone(),
+            source: play.clone(),
         };
         assert_eq!(failed.to_string(), "step 3 failed");
         assert_eq!(

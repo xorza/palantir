@@ -12,6 +12,7 @@ mod appearance;
 #[cfg(feature = "internals")]
 pub mod bench;
 pub mod cube_renderer;
+mod error;
 mod job;
 mod made_image;
 pub mod pages;
@@ -28,9 +29,10 @@ use std::env;
 use std::io::{self, Write};
 use std::process::ExitCode;
 
-use palantir::{Size, WindowConfig, WinitHost};
+use palantir::{ErrorChain, Size, WindowConfig, WinitHost};
 use tracing_subscriber::EnvFilter;
 
+use crate::error::RunError;
 pub use crate::shell::{MAIN_WINDOW, Shell};
 use crate::shot::Mode;
 
@@ -61,21 +63,20 @@ pub fn run() -> ExitCode {
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,
-        Err(message) => {
-            writeln!(stderr, "showcase: {message}").ok();
+        Err(error) => {
+            writeln!(stderr, "showcase: {}", ErrorChain(&error)).ok();
             ExitCode::FAILURE
         }
     }
 }
 
 /// The window, open on the page at `page`.
-fn window(page: usize) -> Result<(), String> {
-    WinitHost::builder(MAIN_WINDOW)
+fn window(page: usize) -> Result<(), RunError> {
+    Ok(WinitHost::builder(MAIN_WINDOW)
         .window(WindowConfig::new("palantir showcase").with_inner_size(Size::new(1600.0, 1000.0)))
         .build(move |ui, _handle| {
             ui.set_preferences(Shell::PREFERENCES);
             Shell::open(page)
         })
-        .and_then(WinitHost::run)
-        .map_err(|error| error.to_string())
+        .and_then(WinitHost::run)?)
 }

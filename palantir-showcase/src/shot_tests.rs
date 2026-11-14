@@ -5,10 +5,11 @@ use std::{env, fs, process};
 use palantir::glam::{UVec2, Vec2};
 use palantir::internals::{headless_test_gpu, main_pass_counts};
 use palantir::{
-    Action, AgentWindow, ColorScheme, Harness, HarnessDepth, Key, Locator, Palette, PointerButton,
-    Rect, Shortcut, ShortcutMods, SystemScale, ZoomFactor,
+    Action, AgentWindow, ColorScheme, ErrorChain, Harness, HarnessDepth, Key, Locator, Palette,
+    PointerButton, Rect, Shortcut, ShortcutMods, SystemScale, ZoomFactor,
 };
 
+use crate::error::RunError;
 use crate::shell::Shell;
 use crate::shot;
 use crate::shot::script::{Header, ParseError, ParseErrorKind, Region, Script, StepKind};
@@ -332,11 +333,18 @@ fn a_script_shoots_the_open_popup() {
         "an unknown page lists the pages"
     );
 
+    // A failed line names itself, and the chain prints why under it once.
     let missing = Script::parse("size 640x400\nclick \"Nothing here\"").unwrap();
-    assert!(matches!(
-        shot::play(gpu.handles(), &missing, folders(&scratch), &mut Vec::new()),
-        Err(ShotError::Play { line: 2, .. })
-    ));
+    let refused =
+        shot::play(gpu.handles(), &missing, folders(&scratch), &mut Vec::new()).unwrap_err();
+    let ShotError::Play { line: 2, source } = &refused else {
+        panic!("{refused:?}");
+    };
+    let why = source.to_string();
+    assert_eq!(
+        ErrorChain(&RunError::from(refused)).to_string(),
+        format!("line 2 failed\ncaused by: {why}")
+    );
 }
 
 /// A script shot twice against itself reports the same picture; shot again on another page it
@@ -432,11 +440,20 @@ fn page_opens_the_window_on_a_page() {
         Ok(Mode::Window { page: 5 })
     ));
     let unknown = mode(&["--page", "nowhere"]).expect_err("no such page");
-    assert!(unknown.starts_with("no page \"nowhere\""), "{unknown}");
-    let bare = mode(&["--page"]).expect_err("no page named");
-    assert!(bare.starts_with("usage: "), "{bare}");
-    let extra = mode(&["--page", "tabs", "more"]).expect_err("one page");
-    assert!(extra.starts_with("usage: "), "{extra}");
+    assert!(matches!(unknown, RunError::UnknownPage(_)), "{unknown:?}");
+    assert!(
+        unknown.to_string().starts_with("no page \"nowhere\""),
+        "{unknown}"
+    );
+    assert!(
+        matches!(mode(&["--page"]), Err(RunError::Usage)),
+        "no page named"
+    );
+    assert!(
+        matches!(mode(&["--page", "tabs", "more"]), Err(RunError::Usage)),
+        "one page"
+    );
+    assert!(matches!(mode(&["--frobnicate"]), Err(RunError::Usage)));
 }
 
 /// Every page settles and draws in `scheme`, over the rail's surround at the top-left texel and

@@ -16,6 +16,7 @@ use std::path::{Path, PathBuf};
 
 use palantir::{AgentWindow, Gpu, Harness, HarnessDepth, Image, PlayError, Rect, RequestedGpu};
 
+use crate::error::RunError;
 use crate::shell::Shell;
 use crate::shot::report::Legend;
 use crate::shot::script::{ParseError, Region, Script, StepKind};
@@ -74,43 +75,37 @@ pub(crate) enum Mode {
 
 impl Mode {
     /// The mode `args` ask, or why they are refused: the usage, or a page the tour lacks.
-    pub(crate) fn of(mut args: impl Iterator<Item = String>) -> Result<Self, String> {
-        let usage = || {
-            format!(
-                "usage: {} [--page PAGE | --shot SCRIPT [--out DIR] [--against DIR]]",
-                env!("CARGO_CRATE_NAME")
-            )
-        };
+    pub(crate) fn of(mut args: impl Iterator<Item = String>) -> Result<Self, RunError> {
         let Some(first) = args.next() else {
             return Ok(Self::Window { page: 0 });
         };
         if first == "--page" {
-            let label = args.next().ok_or_else(usage)?;
+            let label = args.next().ok_or(RunError::Usage)?;
             if args.next().is_some() {
-                return Err(usage());
+                return Err(RunError::Usage);
             }
-            let page = UnknownPage::find(Some(&label)).map_err(|error| error.to_string())?;
+            let page = UnknownPage::find(Some(&label))?;
             return Ok(Self::Window { page });
         }
         if first != "--shot" {
-            return Err(usage());
+            return Err(RunError::Usage);
         }
-        let script = PathBuf::from(args.next().ok_or_else(usage)?);
+        let script = PathBuf::from(args.next().ok_or(RunError::Usage)?);
         let mut out = None;
         let mut against = None;
         while let Some(flag) = args.next() {
             let slot = match flag.as_str() {
                 "--out" => &mut out,
                 "--against" => &mut against,
-                _ => return Err(usage()),
+                _ => return Err(RunError::Usage),
             };
             if slot.is_some() {
-                return Err(usage());
+                return Err(RunError::Usage);
             }
-            *slot = Some(PathBuf::from(args.next().ok_or_else(usage)?));
+            *slot = Some(PathBuf::from(args.next().ok_or(RunError::Usage)?));
         }
         if against.is_some() && !cfg!(feature = "golden") {
-            return Err("--against compares through the golden feature; build with it".to_owned());
+            return Err(RunError::AgainstNeedsGolden);
         }
         Ok(Self::Shot {
             script,
@@ -121,11 +116,9 @@ impl Mode {
 }
 
 /// Play the script at `script` on a headless device, its report on stdout.
-pub(crate) fn shots(script: &Path, folders: Folders<'_>) -> Result<(), String> {
-    let gpu = RequestedGpu::headless(palantir::PowerPreference::HighPerformance)
-        .map_err(|error| error.to_string())?
-        .gpu;
-    run(gpu, script, folders, &mut io::stdout().lock()).map_err(|error| error.to_string())
+pub(crate) fn shots(script: &Path, folders: Folders<'_>) -> Result<(), RunError> {
+    let gpu = RequestedGpu::headless(palantir::PowerPreference::HighPerformance)?.gpu;
+    Ok(run(gpu, script, folders, &mut io::stdout().lock())?)
 }
 
 /// The folders a run writes into and compares against.
@@ -148,10 +141,12 @@ pub(crate) enum ShotError {
     },
     Parse(ParseError),
     Page(UnknownPage),
-    /// A step failed in the window: its line, 0 for the launch, and why.
+    /// The window did not settle at its launch, before the first step.
+    Launch(PlayError),
+    /// A step failed in the window: its line, and why.
     Play {
         line: usize,
-        error: PlayError,
+        source: PlayError,
     },
     /// A zoom that would make a picture past the largest side.
     TooLarge {
@@ -169,14 +164,16 @@ pub(crate) enum ShotError {
     Report(io::Error),
 }
 
+/// Each case names itself and its cause is its `source`, so a chain prints the cause once; a
+/// script's parse error and an unknown page are their own words.
 impl Display for ShotError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Read { path, source } => write!(f, "{}: {source}", path.display()),
+            Self::Read { path, .. } => write!(f, "{} does not read", path.display()),
             Self::Parse(error) => error.fmt(f),
             Self::Page(error) => error.fmt(f),
-            Self::Play { line: 0, error } => write!(f, "the launch: {error}"),
-            Self::Play { line, error } => write!(f, "line {line}: {error}"),
+            Self::Launch(_) => f.write_str("the window did not settle at its launch"),
+            Self::Play { line, .. } => write!(f, "line {line} failed"),
             Self::TooLarge {
                 line,
                 side,
@@ -186,8 +183,8 @@ impl Display for ShotError {
                 "line {line}: the zoomed picture is {side} px a side, past max-side {max_side}; \
                  zoom less or take a smaller region"
             ),
-            Self::Write { path, source } => write!(f, "{}: {source}", path.display()),
-            Self::Report(source) => write!(f, "the report: {source}"),
+            Self::Write { path, .. } => write!(f, "{} does not write", path.display()),
+            Self::Report(_) => f.write_str("the report does not write"),
         }
     }
 }
@@ -198,9 +195,10 @@ impl error::Error for ShotError {
             Self::Read { source, .. } | Self::Write { source, .. } | Self::Report(source) => {
                 Some(source)
             }
-            Self::Parse(error) => Some(error),
-            Self::Page(error) => Some(error),
-            Self::Play { error, .. } => Some(error),
+            // Transparent: the `Display` is their own words.
+            Self::Parse(error) => error.source(),
+            Self::Page(error) => error.source(),
+            Self::Launch(source) | Self::Play { source, .. } => Some(source),
             Self::TooLarge { .. } => None,
         }
     }
@@ -251,8 +249,8 @@ pub(crate) fn play(
     h.ui_mut().set_preferences(Shell::PREFERENCES);
     let mut shell = Shell::open(page);
     let mut window = h.session(&mut shell);
-    let failed = |line| move |error| ShotError::Play { line, error };
-    window.settle().map_err(failed(0))?;
+    let failed = |line| move |source| ShotError::Play { line, source };
+    window.settle().map_err(ShotError::Launch)?;
     let written = |path: &Path| {
         let path = path.to_path_buf();
         move |source| ShotError::Write { path, source }
@@ -263,7 +261,7 @@ pub(crate) fn play(
             StepKind::Act(action) => {
                 window
                     .play(std::slice::from_ref(action))
-                    .map_err(|error| failed(line)(error.error))?;
+                    .map_err(|failed_step| failed(line)(failed_step.source))?;
             }
             StepKind::Shot { name, region, zoom } => {
                 let region = match region {

@@ -2,13 +2,14 @@
 //! and the checks an effect passes before it loads.
 
 use std::fmt::Write as _;
+use std::ops::Range;
 
 use naga::front::wgsl;
 use naga::valid::{Capabilities, ValidationFlags, Validator};
 use naga::{Module, ScalarKind, StructMember, TypeInner, VectorSize};
 
 use crate::effect::effect_store::EffectModule;
-use crate::effect::error::{EffectError, EntryMismatch, ParamMismatch};
+use crate::effect::error::{EffectError, EntryMismatch, ParamMismatch, WgslError};
 use crate::effect::{MAX_IMAGE_SLOTS, MAX_PARAMS_SIZE};
 use crate::primitives::effect::effect_kind::KindId;
 use crate::primitives::effect::effect_params::{EffectParam, ParamType};
@@ -119,7 +120,11 @@ pub(crate) fn check(wgsl: &str, spec: ContractSpec) -> Result<EffectModule, Effe
         KindId::Backdrop => BACKDROP,
     };
     let contract = format!("{CONTRACT}{TURN}{reads}{}", images(image_slots));
-    let app = parse_and_validate(format!("{wgsl}\n{contract}"), Capabilities::default())?;
+    let app = parse_and_validate(
+        format!("{wgsl}\n{contract}"),
+        0..wgsl.len(),
+        Capabilities::default(),
+    )?;
     check_bindings(&app.module, kind, image_slots)?;
     let params_struct = check_entry(&app.module, params)?;
     let material = match kind {
@@ -136,6 +141,7 @@ pub(crate) fn check(wgsl: &str, spec: ContractSpec) -> Result<EffectModule, Effe
     ) + &frame();
     let full = parse_and_validate(
         full,
+        ENABLE.len()..ENABLE.len() + wgsl.len(),
         // The f16 unpack the clip's corners take, as every palantir pipeline's instance does.
         Capabilities::default()
             | Capabilities::DUAL_SOURCE_BLENDING
@@ -199,22 +205,21 @@ struct Parsed {
     text: String,
 }
 
-/// `text` parsed and validated under `capabilities`; an error carries the text.
-fn parse_and_validate(text: String, capabilities: Capabilities) -> Result<Parsed, EffectError> {
+/// `text` parsed and validated under `capabilities`; an error carries the text and `app`, where
+/// the app's WGSL lies in it.
+fn parse_and_validate(
+    text: String,
+    app: Range<usize>,
+    capabilities: Capabilities,
+) -> Result<Parsed, EffectError> {
     let module = match wgsl::parse_str(&text) {
         Ok(module) => module,
-        Err(source) => {
-            return Err(EffectError::Parse {
-                source: Box::new(source),
-                text,
-            });
-        }
+        Err(source) => return Err(EffectError::Parse(WgslError::parse(source, text, app))),
     };
     if let Err(source) = Validator::new(ValidationFlags::all(), capabilities).validate(&module) {
-        return Err(EffectError::Validation {
-            source: Box::new(source),
-            text,
-        });
+        return Err(EffectError::Validation(WgslError::validation(
+            source, text, app,
+        )));
     }
     Ok(Parsed { module, text })
 }

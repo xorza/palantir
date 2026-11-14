@@ -383,47 +383,6 @@ Files: as listed per item. No exported signature changes.
   `nearest` all show the start. Not local: fixed by the shared `reveal_pan` of batch 11, which
   carries this item's test of the three oversized cases.
 
-### Batch 6: errors (API)
-
-Files: `src/driver/error.rs`, `src/clipboard/mod.rs`, `src/image_registry/error.rs`,
-`src/gpu/error.rs`, `src/host/winit/error`, `src/effect/error.rs`, `src/lib.rs`, `src/common`,
-`palantir-showcase/src/{lib.rs, shot/mod.rs}`.
-
-- [ ] (decided) Amend `AGENTS.md` "Error": a one-case error is a struct, named `*Error` for what
-  failed, as std's `ParseIntError` and `RecvError`. Rename `ClipboardUnavailable` →
-  `ClipboardError`, `ImageTooLarge` → `ImageSizeError`, `HostDisconnected` → `HostHandleError`,
-  `UnmetRequirements` → `DeviceRequirementsError`; the last is `#[non_exhaustive]` as its
-  neighbors are.
-- [ ] `driver/error.rs:106-162`: `PlayError::Unsettled.frames` is the bound on one host and the
-  frames recorded on the other; `NoPixels` also means "no device to lose". Target:
-  `Unsettled { frames_recorded }` on both; a `NoDevice` case; `#[non_exhaustive]` on `PlayError`
-  and `LocateError`; `StepError { step, source }`.
-- [ ] Wrappers take two forms: their own message with the cause in `source`
-  (`GpuRequestError::Requirements`), and transparent (`PlayError::Locate`, tested at
-  `driver/error.rs:258-264`). Both are sound; write into `AGENTS.md` "Error" which applies when
-  (transparent where the wrapper adds no context), and hold each exported wrapper to it in one
-  table test that walks every chain and asserts no message appears twice.
-- [ ] `lib.rs:159-160`, `effect/error.rs`: `pub use naga` for two error sources, where
-  `icons/error.rs:64-66` wraps `usvg` so no parser type reaches the surface. Target (decided):
-  one opaque `WgslError` holding naga's error and the text it parsed, as the source of
-  `EffectError::Parse(WgslError)` and `Validation(WgslError)`; `Display` is naga's message,
-  `diagnostic() -> String` what `source.emit_to_string(&text)` prints today, `span() ->
-  Option<Range<usize>>` the byte range in the app's text (`None` where it falls in palantir's
-  prelude); delete the re-export. Test `diagnostic()` and `span()` on a parse error and a
-  validation error.
-- [ ] `gpu/test_gpu.rs:33-48`, `damage/sweep/mod.rs:203-211`: two private chain walkers and none
-  exported, so the showcase prints "the graphics adapter cannot run Palantir" without the cause
-  (`palantir-showcase/src/lib.rs:53-67`, `shot/mod.rs:135`, `examples/reel/main.rs:162`). Target:
-  one exported `ErrorChain<'a>(&'a dyn Error): Display` in `common`, in the shape of the unstable
-  `std::error::Report`: the error, then each `source` on its own line. The table test above is
-  its oracle.
-- [ ] `palantir-showcase/src/lib.rs:53-80`, `shot/mod.rs:78-137`: results are `Result<_, String>`
-  and a test matches message prefixes. Target: `enum RunError { Usage, UnknownPage,
-  AgainstNeedsGolden, Gpu, Window, Shot }` with `From` impls, printed once through `ErrorChain`.
-- [ ] `palantir-showcase/src/shot/mod.rs:160-215`: `ShotError` prints its cause in `Display` and
-  returns it from `source`; `Play { line: 0 }` means the launch. `Display` names the case alone;
-  add `Launch(PlayError)`.
-
 ### Batch 7: the root and `palantir::widget` (API)
 
 Files: `src/lib.rs`, `AGENTS.md`, `src/primitives/math/domain`, the showcase's imports.

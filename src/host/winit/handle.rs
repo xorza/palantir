@@ -7,7 +7,7 @@ use std::sync::mpsc;
 
 use winit::event_loop::EventLoopProxy;
 
-use crate::host::winit::error::HostDisconnected;
+use crate::host::winit::error::HostHandleError;
 use crate::host::winit::frame_log::{FrameLog, LoggedFrame};
 use crate::host::winit::owned_input_event::OwnedInputEvent;
 use crate::host::winit::remote::{LoseTask, QueryTask, ReadTask, Remote, ShotAsk};
@@ -90,11 +90,11 @@ pub(super) enum EventSender<T: 'static> {
 }
 
 impl<T: 'static> EventSender<T> {
-    fn send(&self, event: UserEvent<T>) -> Result<(), HostDisconnected> {
+    fn send(&self, event: UserEvent<T>) -> Result<(), HostHandleError> {
         match self {
-            Self::Proxy(proxy) => proxy.send_event(event).map_err(|_| HostDisconnected),
+            Self::Proxy(proxy) => proxy.send_event(event).map_err(|_| HostHandleError),
             #[cfg(test)]
-            Self::Channel(sender) => sender.send(event).map_err(|_| HostDisconnected),
+            Self::Channel(sender) => sender.send(event).map_err(|_| HostHandleError),
         }
     }
 }
@@ -166,13 +166,13 @@ impl<T: 'static> HostHandle<T> {
     ///
     /// # Errors
     ///
-    /// [`HostDisconnected`] when the event loop has exited; `f` is dropped
+    /// [`HostHandleError`] when the event loop has exited; `f` is dropped
     /// unrun. This is the only method that reports delivery, as the only one
     /// whose loss discards a state mutation.
     pub fn run_on_main(
         &self,
         f: impl FnOnce(&mut T) + Send + 'static,
-    ) -> Result<(), HostDisconnected> {
+    ) -> Result<(), HostHandleError> {
         self.send(UserEvent::RunOnMain(Box::new(f)))
     }
 
@@ -187,7 +187,7 @@ impl<T: 'static> HostHandle<T> {
         Remote::new(self.clone(), window)
     }
 
-    pub(crate) fn send(&self, event: UserEvent<T>) -> Result<(), HostDisconnected> {
+    pub(crate) fn send(&self, event: UserEvent<T>) -> Result<(), HostHandleError> {
         self.sender.send(event)
     }
 }

@@ -348,9 +348,9 @@ impl<T: 'static> Remote<T> {
                 let frames = self.frames_since(first);
                 return Err(match error {
                     PlayError::NoFrame { waited } if working => PlayError::Busy { waited },
-                    PlayError::NoFrame { .. } if settled && frames > 0 => {
-                        PlayError::Unsettled { frames }
-                    }
+                    PlayError::NoFrame { .. } if settled && frames > 0 => PlayError::Unsettled {
+                        frames_recorded: frames,
+                    },
                     error => error,
                 });
             }

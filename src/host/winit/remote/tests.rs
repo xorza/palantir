@@ -352,7 +352,7 @@ fn a_step_failed_by_a_held_thread_leaves_nothing_held() {
         held.store(true, Ordering::Release);
         let failed = remote.play(std::slice::from_ref(&action)).unwrap_err();
         assert_eq!(failed.step, 0, "{action:?}");
-        assert_eq!(failed.error, PlayError::Blocked, "{action:?}");
+        assert_eq!(failed.source, PlayError::Blocked, "{action:?}");
         held.store(false, Ordering::Release);
         remote.settle().unwrap();
         assert_eq!(
@@ -618,7 +618,7 @@ fn a_settle_that_outlasts_its_wait_says_why() {
     remote = remote.with_wait(Duration::from_millis(250));
     let settled = remote.settle();
     assert!(
-        matches!(settled, Err(PlayError::Unsettled { frames }) if frames > 0),
+        matches!(settled, Err(PlayError::Unsettled { frames_recorded }) if frames_recorded > 0),
         "{settled:?}"
     );
 
@@ -707,10 +707,10 @@ fn both_players_play_each_gesture_alike() {
             .session(&mut app)
             .play(std::slice::from_ref(&action))
             .map(|_| app.gestures.clone())
-            .map_err(|failed| failed.error);
+            .map_err(|failed| failed.source);
         let on_remote = remote
             .play(std::slice::from_ref(&action))
-            .map_err(|failed| failed.error)
+            .map_err(|failed| failed.source)
             .map(|_| gestures_of(&mut remote));
         let outcome = |result: &Result<Gestures, PlayError>| {
             result.as_ref().map(|_| ()).map_err(Clone::clone)

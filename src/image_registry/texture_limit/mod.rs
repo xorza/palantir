@@ -1,6 +1,6 @@
 //! The device ceiling every texture is measured against.
 
-use crate::image_registry::error::ImageTooLarge;
+use crate::image_registry::error::ImageSizeError;
 use glam::UVec2;
 use std::num::NonZeroU32;
 
@@ -23,10 +23,10 @@ impl TextureLimit {
     }
 
     /// Reject `size` when either axis exceeds the ceiling; never shrinks, since scaling is the caller's call.
-    pub(crate) fn accepts(self, size: UVec2) -> Result<(), ImageTooLarge> {
+    pub(crate) fn accepts(self, size: UVec2) -> Result<(), ImageSizeError> {
         match self.0.map(NonZeroU32::get) {
             Some(max_dimension) if size.x > max_dimension || size.y > max_dimension => {
-                Err(ImageTooLarge {
+                Err(ImageSizeError {
                     size,
                     max_dimension,
                 })

@@ -8,7 +8,8 @@ use crate::gpu::flag_names;
 
 /// A device or adapter cannot run Palantir's pipelines.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum UnmetRequirements {
+#[non_exhaustive]
+pub enum DeviceRequirementsError {
     /// A required feature is absent.
     Features {
         /// The features of [`DeviceRequirements::REQUIRED_FEATURES`](crate::DeviceRequirements::REQUIRED_FEATURES)
@@ -32,7 +33,7 @@ pub enum UnmetRequirements {
     },
 }
 
-impl Display for UnmetRequirements {
+impl Display for DeviceRequirementsError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::Features { missing } => write!(
@@ -57,7 +58,7 @@ impl Display for UnmetRequirements {
     }
 }
 
-impl Error for UnmetRequirements {}
+impl Error for DeviceRequirementsError {}
 
 /// Failure while asking a driver for a device.
 #[derive(Debug)]
@@ -73,7 +74,7 @@ pub enum GpuRequestError {
     /// The adapter that answered cannot run Palantir's pipelines.
     Requirements {
         /// Which requirement went unmet.
-        source: UnmetRequirements,
+        source: DeviceRequirementsError,
     },
     /// The adapter could not create the logical device.
     RequestDevice {
@@ -110,8 +111,8 @@ impl From<wgpu::RequestAdapterError> for GpuRequestError {
     }
 }
 
-impl From<UnmetRequirements> for GpuRequestError {
-    fn from(source: UnmetRequirements) -> Self {
+impl From<DeviceRequirementsError> for GpuRequestError {
+    fn from(source: DeviceRequirementsError) -> Self {
         Self::Requirements { source }
     }
 }
@@ -196,7 +197,7 @@ impl Error for SurfaceError {
 
 #[cfg(test)]
 mod tests {
-    use crate::gpu::error::{GpuRequestError, UnmetRequirements};
+    use crate::gpu::error::{DeviceRequirementsError, GpuRequestError};
 
     /// A source converts into its own case, so `?` lands the failure where `source` finds it. wgpu's
     /// device error has private fields, so only wgpu builds one.
@@ -204,9 +205,9 @@ mod tests {
     fn each_source_converts_into_its_case() {
         let missing = wgpu::Features::empty();
         assert!(matches!(
-            GpuRequestError::from(UnmetRequirements::Features { missing }),
+            GpuRequestError::from(DeviceRequirementsError::Features { missing }),
             GpuRequestError::Requirements {
-                source: UnmetRequirements::Features { .. }
+                source: DeviceRequirementsError::Features { .. }
             }
         ));
         assert!(matches!(

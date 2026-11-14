@@ -156,9 +156,6 @@ pub use glam;
 // version palantir checks against.
 pub use bytemuck;
 
-// Re-exported whole: `EffectError` carries naga's parse and validation errors as its sources.
-pub use naga;
-
 /// Format text straight into the frame's record store with no `String`:
 /// `fmt!(ui, "…", args…)` is [`Ui::fmt`] over `format_args!`.
 ///
@@ -247,7 +244,8 @@ pub use animation::animated::Animated;
 pub use animation::animation_spec::AnimationSpec;
 pub use animation::easing::Easing;
 pub use cascade::rows::tab_stop_row::TabEnd;
-pub use clipboard::{Clipboard, ClipboardUnavailable};
+pub use clipboard::{Clipboard, ClipboardError};
+pub use common::error_chain::ErrorChain;
 pub use common::platform::{PLATFORM, Platform};
 pub use common::span::Span;
 pub use common::span::error::SpanRangeError;
@@ -260,7 +258,7 @@ pub use driver::agent_window::AgentWindow;
 pub use driver::error::{LocateError, PlayError, StepError};
 pub use driver::locator::{Found, Locate, Locator};
 pub use effect::effect_source::{EffectSource, ReducedEffect};
-pub use effect::error::{EffectError, EntryMismatch, ParamMismatch};
+pub use effect::error::{EffectError, EntryMismatch, ParamMismatch, WgslError};
 pub use effect::press_params::PressParams;
 pub use gpu::device::device_requirements::DeviceRequirements;
 pub use gpu::device::gpu::Gpu;
@@ -269,7 +267,7 @@ pub use gpu::device::power_preference::PowerPreference;
 pub use gpu::device::requested_gpu::RequestedGpu;
 #[cfg(feature = "winit")]
 pub use gpu::error::SurfaceError;
-pub use gpu::error::{GpuRequestError, UnmetRequirements};
+pub use gpu::error::{DeviceRequirementsError, GpuRequestError};
 pub use gpu::gpu_paint::GpuPaint;
 pub use gpu::gpu_paint::gpu_frame_ctx::GpuFrameCtx;
 pub use gpu::gpu_paint::gpu_init_ctx::GpuInitCtx;
@@ -282,14 +280,14 @@ pub use host::offscreen::{OffscreenHost, OffscreenHostBuilder, OffscreenTime};
 #[cfg(feature = "winit")]
 pub use host::winit::{
     WinitHost, WinitHostBuilder,
-    error::{HostDisconnected, WinitHostError},
+    error::{HostHandleError, WinitHostError},
     handle::HostHandle,
     remote::Remote,
 };
 pub use icons::error::{IconTableError, SvgParseError};
 pub use icons::icon_set::IconSet;
 pub use icons::icon_table::{IconDefinition, IconTable};
-pub use image_registry::error::ImageTooLarge;
+pub use image_registry::error::ImageSizeError;
 pub use image_registry::image_handle::ImageHandle;
 pub use palantir_derive::EffectParams;
 pub use primitives::effect::effect_kind::{BackdropEffect, ColorEffect, EffectKind};

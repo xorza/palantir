@@ -18,7 +18,7 @@ use crate::host::offscreen::{OffscreenHost, OffscreenTime};
 use crate::icons::icon_set::IconSet;
 use crate::icons::icon_table::IconTable;
 use crate::icons::internals::{ONE_COLOR, TWO_COLORS};
-use crate::image_registry::error::ImageTooLarge;
+use crate::image_registry::error::ImageSizeError;
 use crate::image_registry::image_handle::ImageHandle;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::mesh::Mesh;
@@ -475,7 +475,7 @@ fn a_recovery_onto_a_smaller_device_takes_its_limit() {
     assert_eq!(host.ui().max_image_dimension().unwrap().get(), 2048);
     assert_eq!(
         wide_handle.update(&wide),
-        Err(ImageTooLarge {
+        Err(ImageSizeError {
             size: wide.size,
             max_dimension: 2048,
         })

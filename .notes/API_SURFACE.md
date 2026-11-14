@@ -243,13 +243,13 @@ ClipMode
 
 Clipboard
     struct Clipboard: Clone, Debug
-        pub fn text(&self) -> Result<Option<String>, ClipboardUnavailable>
+        pub fn text(&self) -> Result<Option<String>, ClipboardError>
         pub fn set_text(&self, text: &str)
-        pub fn image(&self) -> Result<Option<Image>, ClipboardUnavailable>
+        pub fn image(&self) -> Result<Option<Image>, ClipboardError>
         pub fn set_image(&self, image: &Image)
 
-ClipboardUnavailable
-    struct ClipboardUnavailable: Clone, Copy, Debug, Display, Eq, Error, PartialEq
+ClipboardError
+    struct ClipboardError: Clone, Copy, Debug, Display, Eq, Error, PartialEq
 
 CloseShown
     enum CloseShown: Clone, Copy, Debug, Default, Deserialize<'de>, Eq, PartialEq, Serialize
@@ -472,7 +472,15 @@ DeviceRequirements
         pub const REQUIRED_FEATURES: Features
         pub const REQUIRED_DOWNLEVEL: DownlevelFlags
         pub const GPU_STATS_FEATURES: Features
-        pub fn negotiate(adapter: &Adapter, optional: Features) -> Result<Self, UnmetRequirements>
+        pub fn negotiate(adapter: &Adapter, optional: Features) -> Result<Self, DeviceRequirementsError>
+
+DeviceRequirementsError
+    #[non_exhaustive]
+    enum DeviceRequirementsError: Clone, Debug, Display, Eq, Error, PartialEq
+        Features { missing: Features }
+        Downlevel { missing: DownlevelFlags }
+        Limit { name: &'static str, required: u64, available: u64 }
+        impl From<DeviceRequirementsError> for GpuRequestError
 
 Display
     struct Display: Clone, Copy, Debug, Default, PartialEq
@@ -697,8 +705,8 @@ EditableLabelResponse
 
 EffectError
     enum EffectError: Debug, Display, Error
-        Parse { source: Box<ParseError>, text: String }
-        Validation { source: Box<WithSpan<ValidationError>>, text: String }
+        Parse(WgslError)
+        Validation(WgslError)
         MissingEntry
         Entry(EntryMismatch)
         ParamLayout(ParamMismatch)
@@ -766,6 +774,11 @@ EntryMismatch
         Input
         Params
         Output
+
+ErrorChain
+    struct ErrorChain<'a>: Clone, Copy, Debug, Display
+        pub 0: &'a dyn Error
+        pub const MAX_DEPTH: usize
 
 Expander
     struct Expander<'a>: Configure, Debug, ThemeDefaults (blanket)
@@ -942,10 +955,10 @@ GpuPassStats
 
 GpuRequestError
     #[non_exhaustive]
-    enum GpuRequestError: Debug, Display, Error, From<RequestAdapterError>, From<RequestDeviceError>, From<UnmetRequirements>
+    enum GpuRequestError: Debug, Display, Error, From<DeviceRequirementsError>, From<RequestAdapterError>, From<RequestDeviceError>
         NoBackend
         RequestAdapter { source: RequestAdapterError }
-        Requirements { source: UnmetRequirements }
+        Requirements { source: DeviceRequirementsError }
         RequestDevice { source: RequestDeviceError }
 
 GpuView
@@ -1111,16 +1124,16 @@ HarnessSession
         impl<'h, A: Debug> Debug for HarnessSession<'h, A>
         impl<A: App> AgentWindow<A> for HarnessSession<'_, A>
 
-HostDisconnected  [features: winit]
-    struct HostDisconnected: Clone, Copy, Debug, Display, Eq, Error, PartialEq
-
 HostHandle  [features: winit]
     struct HostHandle<T: 'static>: Clone, Debug
         pub fn is_open(&self, window: WindowToken) -> bool
         pub fn is_hidden(&self, window: WindowToken) -> bool
-        pub fn run_on_main(&self, f: impl FnOnce(&mut T) + Send + 'static) -> Result<(), HostDisconnected>
+        pub fn run_on_main(&self, f: impl FnOnce(&mut T) + Send + 'static) -> Result<(), HostHandleError>
         pub fn quit(&self)
         pub fn remote(&self, window: WindowToken) -> Remote<T>
+
+HostHandleError  [features: winit]
+    struct HostHandleError: Clone, Copy, Debug, Display, Eq, Error, PartialEq
 
 IconDefinition
     struct IconDefinition: Clone, Debug
@@ -1186,11 +1199,11 @@ ImageFilter
 ImageHandle
     struct ImageHandle: Clone, Debug
         pub fn size(&self) -> UVec2
-        pub fn update(&self, image: &Image) -> Result<(), ImageTooLarge>
+        pub fn update(&self, image: &Image) -> Result<(), ImageSizeError>
         pub fn is_resident(&self) -> bool
 
-ImageTooLarge
-    struct ImageTooLarge: Clone, Copy, Debug, Display, Eq, Error, PartialEq
+ImageSizeError
+    struct ImageSizeError: Clone, Copy, Debug, Display, Eq, Error, PartialEq
         pub size: UVec2
         pub max_dimension: u32
 
@@ -1412,6 +1425,7 @@ Locate
         fn find_all(&self, app: &A, ui: &Ui, out: &mut Vec<Found>) -> Result<(), LocateError>
 
 LocateError
+    #[non_exhaustive]
     enum LocateError: Clone, Debug, Display, Error, PartialEq
         NotFound { locator: String, nearest: Vec<String> }
         Ambiguous { locator: String, matches: Vec<Found> }
@@ -1786,13 +1800,15 @@ Platform
         Linux
 
 PlayError
+    #[non_exhaustive]
     enum PlayError: Clone, Debug, Display, Error, From<LocateError>, PartialEq
         Locate(LocateError)
-        Unsettled { frames: u32 }
+        Unsettled { frames_recorded: u32 }
         Untypable { found: char }
         ShortDrag { travel: f32 }
         EmptyRegion
         NoPixels
+        NoDevice
         DeviceLost
         GpuTimedOut
         Disconnected
@@ -2443,7 +2459,7 @@ StatefulLook
 StepError
     struct StepError: Clone, Debug, Display, Error, PartialEq
         pub step: usize
-        pub error: PlayError
+        pub source: PlayError
 
 Stop
     struct Stop: Clone, Copy, Debug, Default, Deserialize<'de>, Eq, PartialEq, Serialize
@@ -2942,7 +2958,7 @@ Ui
         pub fn is_window_open(&self, token: WindowToken) -> bool
         pub fn add_shape<S: PaintedBy<P>, P>(&mut self, shape: S, paint: P) -> Option<AddedShape<'_>>
         pub fn load_icons(&self, table: IconTable) -> IconSet
-        pub fn load_image(&self, image: &Image) -> Result<ImageHandle, ImageTooLarge>
+        pub fn load_image(&self, image: &Image) -> Result<ImageHandle, ImageSizeError>
         pub fn load_font(&self, source: impl Into<FontSource>) -> Result<FontFamily, FontLoadError>
         pub fn load_effect<U: EffectParams, K: EffectKind>(&self, name: EffectName<U, K>, source: EffectSource<U, K>) -> Result<(), EffectError>
         pub fn has_effect<U: EffectParams, K: EffectKind>(&self, name: EffectName<U, K>) -> bool
@@ -3004,13 +3020,6 @@ UiPreferences
         pub power: Preference<Reduction>
         pub frame_rate: Preference<Reduction>
 
-UnmetRequirements
-    enum UnmetRequirements: Clone, Debug, Display, Eq, Error, PartialEq
-        Features { missing: Features }
-        Downlevel { missing: DownlevelFlags }
-        Limit { name: &'static str, required: u64, available: u64 }
-        impl From<UnmetRequirements> for GpuRequestError
-
 UserScale
     struct UserScale: Clone, Copy, Debug, Default, PartialEq, PartialOrd
         pub const ONE: Self
@@ -3054,6 +3063,11 @@ Vsync
 Waker
     struct Waker: Clone, Debug
         pub fn wake(&self)
+
+WgslError
+    struct WgslError: Debug, Display, Error
+        pub fn diagnostic(&self) -> String
+        pub fn span(&self) -> Option<Range<usize>>
 
 WidgetId
     struct WidgetId: Clone, Copy, Debug, DockTab (blanket), Eq, Hash, NoUninit, PartialEq
@@ -3203,9 +3217,6 @@ golden::Tolerance  [features: golden]
         pub max_pixels: u32
         pub const EXACT: Self
         pub fn diff(self, actual: &Image, expected: &Image) -> DiffReport
-
-naga
-    pub use naga as naga
 
 wgpu
     pub use wgpu as wgpu

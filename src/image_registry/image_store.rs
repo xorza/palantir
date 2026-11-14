@@ -1,6 +1,6 @@
 //! The seam between a registered image's CPU lifecycle and the textures behind it.
 
-use crate::image_registry::error::ImageTooLarge;
+use crate::image_registry::error::ImageSizeError;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::image::Image;
 use std::fmt::Debug;
@@ -15,7 +15,7 @@ pub(crate) trait ImageStore: Debug {
     ///
     /// `image` exceeds the 2D texture limit of the device attached now, which can be smaller than
     /// the one `id` registered on; the store keeps no texture for `id`.
-    fn write(&self, id: TextureId, image: &Image) -> Result<(), ImageTooLarge>;
+    fn write(&self, id: TextureId, image: &Image) -> Result<(), ImageSizeError>;
 
     /// Whether `id` has a texture on the device attached now: a new device holds none until the
     /// next write.

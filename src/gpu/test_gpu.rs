@@ -1,13 +1,12 @@
 //! Shared headless GPU lifecycle for feature-gated tests.
 
+use crate::common::error_chain::ErrorChain;
 use crate::common::sync::MutexExt;
 use crate::gpu::device::device_requirements::DeviceRequirements;
 use crate::gpu::device::power_preference::PowerPreference;
 use glam::UVec2;
 use std::env;
-use std::error::Error;
 use std::ffi::c_int;
-use std::fmt::{self, Display, Formatter};
 use std::fs::{File, OpenOptions};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::mem;
@@ -29,23 +28,6 @@ use crate::gpu::texel::TargetSpec;
 
 /// HighPerformance, as the benches use: with several adapters, goldens must record the one users see.
 const TEST_POWER: PowerPreference = PowerPreference::HighPerformance;
-
-/// An error and each cause [`Error::source`] reaches under it, joined by `": "`, as anyhow's
-/// `{:#}` prints a chain: palantir's errors name their cause in `source` alone, so a panic that
-/// prints the error by itself hides what failed under it.
-struct Chain<'a>(&'a dyn Error);
-
-impl Display for Chain<'_> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)?;
-        let mut cause = self.0.source();
-        while let Some(error) = cause {
-            write!(f, ": {error}")?;
-            cause = error.source();
-        }
-        Ok(())
-    }
-}
 
 /// A headless device and its queue. It lends its [`Gpu`], as a guard does, and dropping it closes
 /// nothing the process shares (`PROCESS`).
@@ -193,7 +175,9 @@ impl ProcessGpu {
                     assert_eq!(atexit(close_at_exit), 0, "the C library takes the handler");
                     Self::Open(open)
                 }
-                Err(why) => Self::NoAdapter(format!("open headless test gpu: {}", Chain(&why))),
+                Err(why) => {
+                    Self::NoAdapter(format!("open headless test gpu: {}", ErrorChain(&why)))
+                }
             };
         }
         match self {
@@ -247,12 +231,12 @@ impl OpenGpu {
 fn device_on(adapter: &wgpu::Adapter, max_texture_dimension: u32) -> Gpu {
     let request = test_request();
     let mut requirements = DeviceRequirements::negotiate(adapter, request.optional)
-        .unwrap_or_else(|why| panic!("the test adapter runs Palantir: {}", Chain(&why)));
+        .unwrap_or_else(|why| panic!("the test adapter runs Palantir: {}", ErrorChain(&why)));
     let limit = &mut requirements.limits.max_texture_dimension_2d;
     *limit = (*limit).min(max_texture_dimension);
     request
         .open_with(adapter.clone(), requirements)
-        .unwrap_or_else(|why| panic!("open headless test gpu: {}", Chain(&why)))
+        .unwrap_or_else(|why| panic!("open headless test gpu: {}", ErrorChain(&why)))
         .gpu
 }
 

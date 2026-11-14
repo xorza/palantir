@@ -169,35 +169,68 @@ fn a_matching_effect_loads() {
 #[test]
 fn each_refusal_is_its_own_case() {
     let parse = load("fn effect(").unwrap_err();
-    let EffectError::Parse { source, text } = &parse else {
+    let EffectError::Parse(wgsl) = &parse else {
         panic!("{parse:?}");
     };
-    assert!(text.starts_with("fn effect(\n"), "the app's text first");
-    assert!(text.contains("struct EffectInput"), "then the prelude");
-    let printed = source.emit_to_string(text);
     assert!(
-        printed.contains("struct EffectInput"),
+        wgsl.diagnostic().contains("struct EffectInput"),
         "the error at the end of the app's text prints the contract's line"
     );
-    assert!(
-        error::Error::source(&parse).is_some(),
-        "naga's error is the source"
+    assert_eq!(
+        wgsl.span(),
+        None,
+        "it points past the app's text, into the prelude"
     );
     assert_eq!(parse.to_string(), "the effect's WGSL does not parse");
+    assert_eq!(
+        error::Error::source(&parse).map(ToString::to_string),
+        Some(wgsl.to_string()),
+        "naga's message is the source"
+    );
+    assert!(error::Error::source(wgsl).is_none(), "and shows once");
+
+    let stray = "fn effect() { let = 1.0; }";
+    let EffectError::Parse(wgsl) = load(stray).unwrap_err() else {
+        panic!("a stray `=` does not parse");
+    };
+    let span = wgsl.span().expect("the error points into the app's text");
+    assert_eq!(&stray[span], "=", "{}", wgsl.diagnostic());
+
+    // Only the second pass, over palantir's whole prelude, meets the name again; naga labels the
+    // prelude's definition first, and the span is the app's.
+    let shadow = format!("{RING_PARAMS}\nfn palantir_shape_point() {{}}\n{RING_ENTRY}");
+    let EffectError::Parse(wgsl) = load(&shadow).unwrap_err() else {
+        panic!("a name the prelude defines does not parse");
+    };
+    let span = wgsl.span().expect("the app's definition is labeled");
+    assert_eq!(&shadow[span.clone()], "palantir_shape_point");
+    assert_eq!(
+        span.start,
+        RING_PARAMS.len() + "\nfn ".len(),
+        "{}",
+        wgsl.diagnostic()
+    );
+
     let invalid = format!(
         "{RING_PARAMS}
         @group(0) @binding(0) var<uniform> unsized_values: array<f32>;
         {RING_ENTRY}"
     );
     let validation = load(&invalid).unwrap_err();
-    let EffectError::Validation { source, text } = &validation else {
+    let EffectError::Validation(wgsl) = &validation else {
         panic!("{validation:?}");
     };
+    assert!(wgsl.diagnostic().contains("unsized_values"));
+    let span = wgsl.span().expect("the error points into the app's text");
     assert!(
-        text.starts_with(&format!("{invalid}\n")),
-        "the app's text first"
+        invalid[span].contains("unsized_values"),
+        "{}",
+        wgsl.diagnostic()
     );
-    assert!(source.emit_to_string(text).contains("unsized_values"));
+    assert_eq!(
+        validation.to_string(),
+        "the effect's WGSL does not validate"
+    );
     assert!(matches!(
         load(&ring_wgsl(RING_PARAMS, "fn other() {}")),
         Err(EffectError::MissingEntry)
@@ -316,11 +349,11 @@ fn image_slots_declare_their_images() {
     assert!(!module.text.contains("effect_image2:"));
     assert!(matches!(
         contract::check(&sampling("effect_image2"), spec(KindId::Color, params, 2)),
-        Err(EffectError::Parse { .. })
+        Err(EffectError::Parse(_))
     ));
     assert!(matches!(
         contract::check(&sampling("effect_image0"), spec(KindId::Color, params, 0)),
-        Err(EffectError::Parse { .. })
+        Err(EffectError::Parse(_))
     ));
 }
 
@@ -483,7 +516,7 @@ fn a_load_replaces_and_a_refused_reload_keeps_the_last() {
         RING,
         &ring("fn effect(").power_saver(ReducedEffect::Nothing),
     );
-    assert!(matches!(refused, Err(EffectError::Parse { .. })));
+    assert!(matches!(refused, Err(EffectError::Parse(_))));
     assert!(registry.contains(RING));
     assert_eq!(
         registry.power_saver_of(RING),
@@ -2289,7 +2322,7 @@ fn only_a_backdrop_effect_reads_what_is_under_it() {
     assert_eq!(module.kind, KindId::Backdrop);
     assert!(matches!(
         contract::check(SHIFT_WGSL, spec(KindId::Color, params, 0)),
-        Err(EffectError::Parse { .. })
+        Err(EffectError::Parse(_))
     ));
 }
 

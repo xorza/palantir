@@ -20,7 +20,7 @@ pub(crate) mod image_handle;
 pub(crate) mod image_store;
 pub(crate) mod texture_limit;
 
-use crate::image_registry::error::ImageTooLarge;
+use crate::image_registry::error::ImageSizeError;
 use crate::image_registry::image_store::ImageStore;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::image::Image;
@@ -40,7 +40,7 @@ impl ImageRegistry {
         Self { store: Some(store) }
     }
 
-    fn write(&self, id: TextureId, image: &Image) -> Result<(), ImageTooLarge> {
+    fn write(&self, id: TextureId, image: &Image) -> Result<(), ImageSizeError> {
         self.store
             .as_ref()
             .map_or(Ok(()), |store| store.write(id, image))

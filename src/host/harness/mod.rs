@@ -898,7 +898,7 @@ impl Harness {
                 asking += 1;
                 if asking == self.pace.settle_frames {
                     return Err(PlayError::Unsettled {
-                        frames: self.pace.settle_frames,
+                        frames_recorded: play::frames_recorded(first, self.ui().record_frame_idx()),
                     });
                 }
                 if screenshots {

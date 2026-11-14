@@ -9,7 +9,7 @@ use crate::clipboard::Clipboard;
 use crate::effect::effect_registry::EffectRegistry;
 use crate::icons::icon_registry::IconRegistry;
 use crate::image_registry::ImageRegistry;
-use crate::image_registry::error::ImageTooLarge;
+use crate::image_registry::error::ImageSizeError;
 use crate::image_registry::image_handle::ImageHandle;
 use crate::image_registry::texture_limit::TextureLimit;
 use crate::primitives::identity::texture_id::TextureId;
@@ -114,7 +114,7 @@ impl UiResources {
         self.0.device.texture_limit().max_dimension()
     }
 
-    pub(super) fn load_image(&self, image: &Image) -> Result<ImageHandle, ImageTooLarge> {
+    pub(super) fn load_image(&self, image: &Image) -> Result<ImageHandle, ImageSizeError> {
         self.0.device.texture_limit().accepts(image.size)?;
         Ok(ImageHandle::new(
             TextureId::reserve(),

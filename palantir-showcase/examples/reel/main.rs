@@ -45,7 +45,7 @@ use std::process::{Child, Command, ExitCode, Stdio};
 use std::time::Duration;
 
 use palantir::glam::{UVec2, Vec2};
-use palantir::{Harness, HarnessDepth, RequestedGpu, Scroll, SystemScale};
+use palantir::{ErrorChain, Harness, HarnessDepth, RequestedGpu, Scroll, SystemScale};
 
 use crate::deck::{Deck, SLIDE, SLIDES};
 use crate::downscale::{Linear, Shrink};
@@ -152,7 +152,7 @@ fn run(args: &Args) -> Result<(), String> {
         Mode::Preview { .. } | Mode::Png { .. } => Render::PREVIEW,
     };
     let gpu = RequestedGpu::headless(palantir::PowerPreference::HighPerformance)
-        .map_err(|error| error.to_string())?
+        .map_err(|error| ErrorChain(&error).to_string())?
         .gpu;
     let depth = if render.float {
         HarnessDepth::gpu_float(gpu)
@@ -172,9 +172,10 @@ fn run(args: &Args) -> Result<(), String> {
         match beat {
             Beat::Settle => h
                 .capture(deck, &mut Vec::new())
-                .map_err(|e| e.to_string())?,
+                .map_err(|e| ErrorChain(&e).to_string())?,
             Beat::Frame(n) => {
-                h.capture(deck, &mut pixels).map_err(|e| e.to_string())?;
+                h.capture(deck, &mut pixels)
+                    .map_err(|e| ErrorChain(&e).to_string())?;
                 sink.frame(n, &pixels)?;
             }
             Beat::SlideEnd { k, length } => {
@@ -436,7 +437,7 @@ impl Encoder {
     /// shorter stream's (`-shortest`), so a track that ends early leaves the picture whole.
     fn finish(mut self, length: Duration) -> Result<(), String> {
         drop(self.child.stdin.take());
-        let status = self.child.wait().map_err(|e| e.to_string())?;
+        let status = self.child.wait().map_err(|e| ErrorChain(&e).to_string())?;
         if !status.success() {
             return Err(format!(
                 "ffmpeg failed on {}: {status}",
@@ -463,7 +464,7 @@ impl Encoder {
             .args(["-movflags", "+faststart"])
             .arg(&self.out)
             .status()
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| ErrorChain(&e).to_string())?;
         if !status.success() {
             return Err(format!(
                 "ffmpeg failed muxing {}: {status}",

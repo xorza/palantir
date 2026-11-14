@@ -15,15 +15,15 @@ use glam::UVec2;
 
 /// No clipboard backend could answer. Distinct from an empty clipboard, which is why [`Clipboard::text`] returns a `Result`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct ClipboardUnavailable;
+pub struct ClipboardError;
 
-impl fmt::Display for ClipboardUnavailable {
+impl fmt::Display for ClipboardError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("no clipboard backend could answer")
     }
 }
 
-impl error::Error for ClipboardUnavailable {}
+impl error::Error for ClipboardError {}
 
 /// The clipboard outside the process a [`Clipboard`] writes through first: the OS clipboard, or
 /// in this crate's tests one they script.
@@ -53,7 +53,7 @@ enum Primary {
     )
 )]
 impl Primary {
-    fn text(&mut self) -> Result<String, ClipboardUnavailable> {
+    fn text(&mut self) -> Result<String, ClipboardError> {
         match *self {
             #[cfg(feature = "system-clipboard")]
             Self::System(ref mut system) => system.text(),
@@ -62,7 +62,7 @@ impl Primary {
         }
     }
 
-    fn image(&mut self) -> Result<Option<Image>, ClipboardUnavailable> {
+    fn image(&mut self) -> Result<Option<Image>, ClipboardError> {
         match *self {
             #[cfg(feature = "system-clipboard")]
             Self::System(ref mut system) => system.image(),
@@ -71,7 +71,7 @@ impl Primary {
         }
     }
 
-    fn write(&mut self, content: Content<'_>) -> Result<(), ClipboardUnavailable> {
+    fn write(&mut self, content: Content<'_>) -> Result<(), ClipboardError> {
         match *self {
             #[cfg(feature = "system-clipboard")]
             Self::System(ref mut system) => match content {
@@ -110,36 +110,34 @@ impl fmt::Debug for SystemBackend {
 #[cfg(feature = "system-clipboard")]
 impl SystemBackend {
     /// arboard reports an empty clipboard and one with no text as `ContentNotAvailable`; both mean nothing to paste.
-    fn answer(read: Result<String, arboard::Error>) -> Result<String, ClipboardUnavailable> {
+    fn answer(read: Result<String, arboard::Error>) -> Result<String, ClipboardError> {
         match read {
             Ok(text) => Ok(text),
             Err(arboard::Error::ContentNotAvailable) => Ok(String::new()),
-            Err(_) => Err(ClipboardUnavailable),
+            Err(_) => Err(ClipboardError),
         }
     }
 }
 
 #[cfg(feature = "system-clipboard")]
 impl SystemBackend {
-    fn text(&mut self) -> Result<String, ClipboardUnavailable> {
+    fn text(&mut self) -> Result<String, ClipboardError> {
         Self::answer(self.0.get_text())
     }
 
-    fn set_text(&mut self, text: &str) -> Result<(), ClipboardUnavailable> {
-        self.0
-            .set_text(text.to_owned())
-            .map_err(|_| ClipboardUnavailable)
+    fn set_text(&mut self, text: &str) -> Result<(), ClipboardError> {
+        self.0.set_text(text.to_owned()).map_err(|_| ClipboardError)
     }
 
     /// arboard answers `ContentNotAvailable` for a clipboard with no image, which reads as none.
-    fn image(&mut self) -> Result<Option<Image>, ClipboardUnavailable> {
+    fn image(&mut self) -> Result<Option<Image>, ClipboardError> {
         let data = match self.0.get_image() {
             Ok(data) => data,
             Err(arboard::Error::ContentNotAvailable) => return Ok(None),
-            Err(_) => return Err(ClipboardUnavailable),
+            Err(_) => return Err(ClipboardError),
         };
         let (Ok(w), Ok(h)) = (u32::try_from(data.width), u32::try_from(data.height)) else {
-            return Err(ClipboardUnavailable);
+            return Err(ClipboardError);
         };
         image_or_none(Image::from_srgba8(
             UVec2::new(w, h),
@@ -147,14 +145,14 @@ impl SystemBackend {
         ))
     }
 
-    fn set_image(&mut self, image: &Image) -> Result<(), ClipboardUnavailable> {
+    fn set_image(&mut self, image: &Image) -> Result<(), ClipboardError> {
         self.0
             .set_image(arboard::ImageData {
                 width: image.size().x as usize,
                 height: image.size().y as usize,
                 bytes: Cow::Borrowed(&image.pixels),
             })
-            .map_err(|_| ClipboardUnavailable)
+            .map_err(|_| ClipboardError)
     }
 }
 
@@ -198,14 +196,12 @@ enum Keep {
 /// An image the system clipboard handed over, `None` for one with no texel; bytes that make no
 /// image read as no answer.
 #[cfg(feature = "system-clipboard")]
-fn image_or_none(
-    image: Result<Image, ImageDataError>,
-) -> Result<Option<Image>, ClipboardUnavailable> {
+fn image_or_none(image: Result<Image, ImageDataError>) -> Result<Option<Image>, ClipboardError> {
     match image {
         Ok(image) => Ok(Some(image)),
         Err(ImageDataError::ZeroSize { .. }) => Ok(None),
         Err(ImageDataError::LengthOverflow { .. } | ImageDataError::LengthMismatch { .. }) => {
-            Err(ClipboardUnavailable)
+            Err(ClipboardError)
         }
     }
 }
@@ -269,7 +265,7 @@ impl ClipboardState {
         }
     }
 
-    fn text(&mut self) -> Result<String, ClipboardUnavailable> {
+    fn text(&mut self) -> Result<String, ClipboardError> {
         let Some(primary) = self.primary.as_mut() else {
             return Ok(self.memory.text.clone());
         };
@@ -290,7 +286,7 @@ impl ClipboardState {
 
     /// The clipboard's image, from the backend that holds the clipboard. A read the primary
     /// refuses fails: the buffer keeps no copy of what the primary holds.
-    fn image(&mut self) -> Result<Option<Image>, ClipboardUnavailable> {
+    fn image(&mut self) -> Result<Option<Image>, ClipboardError> {
         let Some(primary) = self.primary.as_mut() else {
             return Ok(self.memory.image.clone());
         };
@@ -360,7 +356,7 @@ impl Clipboard {
 
     /// The clipboard's text, `None` when it holds none, as [`Self::image`] answers an empty
     /// clipboard.
-    pub fn text(&self) -> Result<Option<String>, ClipboardUnavailable> {
+    pub fn text(&self) -> Result<Option<String>, ClipboardError> {
         self.state
             .borrow_mut()
             .text()
@@ -376,7 +372,7 @@ impl Clipboard {
     }
 
     /// The clipboard's image, `None` when it holds none, as after a copy of text.
-    pub fn image(&self) -> Result<Option<Image>, ClipboardUnavailable> {
+    pub fn image(&self) -> Result<Option<Image>, ClipboardError> {
         self.state.borrow_mut().image()
     }
 
@@ -389,7 +385,7 @@ impl Clipboard {
 
 #[cfg(test)]
 pub(crate) mod internals {
-    use crate::clipboard::{Clipboard, ClipboardUnavailable, Primary};
+    use crate::clipboard::{Clipboard, ClipboardError, Primary};
     use crate::primitives::paint::image::Image;
     use std::cell::RefCell;
     use std::rc::Rc;
@@ -410,19 +406,19 @@ pub(crate) mod internals {
     pub(crate) struct Scripted(pub(crate) Rc<RefCell<ScriptedState>>);
 
     impl Scripted {
-        pub(super) fn text(&self) -> Result<String, ClipboardUnavailable> {
+        pub(super) fn text(&self) -> Result<String, ClipboardError> {
             let mut state = self.0.borrow_mut();
             state.reads += 1;
             if state.reject_reads {
-                return Err(ClipboardUnavailable);
+                return Err(ClipboardError);
             }
             Ok(state.text.clone())
         }
 
-        pub(super) fn set_text(&self, text: &str) -> Result<(), ClipboardUnavailable> {
+        pub(super) fn set_text(&self, text: &str) -> Result<(), ClipboardError> {
             let mut state = self.0.borrow_mut();
             if state.reject_writes {
-                return Err(ClipboardUnavailable);
+                return Err(ClipboardError);
             }
             state.text.clear();
             state.text.push_str(text);
@@ -430,20 +426,20 @@ pub(crate) mod internals {
             Ok(())
         }
 
-        pub(super) fn image(&self) -> Result<Option<Image>, ClipboardUnavailable> {
+        pub(super) fn image(&self) -> Result<Option<Image>, ClipboardError> {
             let mut state = self.0.borrow_mut();
             state.reads += 1;
             if state.reject_reads {
-                return Err(ClipboardUnavailable);
+                return Err(ClipboardError);
             }
             Ok(state.image.clone())
         }
 
         /// As a system clipboard holding an image: no text to read.
-        pub(super) fn set_image(&self, image: &Image) -> Result<(), ClipboardUnavailable> {
+        pub(super) fn set_image(&self, image: &Image) -> Result<(), ClipboardError> {
             let mut state = self.0.borrow_mut();
             if state.reject_writes {
-                return Err(ClipboardUnavailable);
+                return Err(ClipboardError);
             }
             state.text.clear();
             state.image = Some(image.clone());

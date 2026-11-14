@@ -256,7 +256,7 @@ fn play_acts_as_a_person() {
     let twin = Locator::from("Twin");
     let Err(StepError {
         step: 0,
-        error: PlayError::Locate(LocateError::Ambiguous { matches, .. }),
+        source: PlayError::Locate(LocateError::Ambiguous { matches, .. }),
     }) = h.session(&mut app).play(&[Action::click(twin.clone())])
     else {
         panic!("two buttons show \"Twin\"");
@@ -272,7 +272,7 @@ fn play_acts_as_a_person() {
             .play(&[Action::Hover("One".into()), Action::click("Hidden")]),
         Err(StepError {
             step: 1,
-            error: PlayError::Locate(LocateError::OffScreen { .. }),
+            source: PlayError::Locate(LocateError::OffScreen { .. }),
         })
     ));
 
@@ -281,7 +281,7 @@ fn play_acts_as_a_person() {
             .play(&[Action::Hover("Off".into()), Action::click("Off")]),
         Err(StepError {
             step: 1,
-            error: PlayError::Locate(LocateError::Disabled { .. }),
+            source: PlayError::Locate(LocateError::Disabled { .. }),
         })
     ));
     let short = Action::<Infallible>::Drag {
@@ -295,7 +295,7 @@ fn play_acts_as_a_person() {
         h.session(&mut app).play(&[short]),
         Err(StepError {
             step: 0,
-            error: PlayError::ShortDrag { travel: 2.0 },
+            source: PlayError::ShortDrag { travel: 2.0 },
         })
     );
     assert_eq!(app.one, 1, "the refused drag clicked nothing");
@@ -316,7 +316,7 @@ fn play_acts_as_a_person() {
             .play(&[Action::click(edit()), Action::Type("x\u{1b}".to_owned()),]),
         Err(StepError {
             step: 1,
-            error: PlayError::Untypable { found: '\u{1b}' },
+            source: PlayError::Untypable { found: '\u{1b}' },
         })
     );
     h.session(&mut app)
@@ -384,14 +384,23 @@ fn a_step_settles_and_lets_go() {
 }
 
 /// An app that asks a repaint each frame never settles: the settle stops at the builder's bound,
-/// 600 frames.
+/// 600 frames by default, and reports the frames it recorded.
 #[test]
 fn an_app_that_always_repaints_is_unsettled() {
-    let mut h = Harness::mono(UVec2::new(64, 32));
     let mut app = |ui: &mut Ui| ui.request_repaint();
+    let mut h = Harness::mono(UVec2::new(64, 32));
     assert_eq!(
         h.session(&mut app).settle(),
-        Err(PlayError::Unsettled { frames: 600 })
+        Err(PlayError::Unsettled {
+            frames_recorded: 600
+        })
+    );
+    let mut h = Harness::builder(UVec2::new(64, 32))
+        .settle_frames(5)
+        .build();
+    assert_eq!(
+        h.session(&mut app).settle(),
+        Err(PlayError::Unsettled { frames_recorded: 5 })
     );
 }
 
@@ -525,7 +534,11 @@ fn a_lost_device_fails_a_shot_and_a_settle_on_one() {
     let mut unpainted = Harness::builder(UVec2::new(64, 32)).build();
     assert_eq!(
         unpainted.session(&mut app).lose_device(),
-        Err(PlayError::NoPixels)
+        Err(PlayError::NoDevice)
+    );
+    assert_eq!(
+        PlayError::NoDevice.to_string(),
+        "the window paints with no device; build it with a GPU"
     );
 
     let gpu = isolated_headless_test_gpu();

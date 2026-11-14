@@ -45,7 +45,7 @@ use crate::effect::press_params::PressParams;
 use crate::gpu::gpu_paint::gpu_views::RecordedView;
 use crate::icons::icon_set::IconSet;
 use crate::icons::icon_table::IconTable;
-use crate::image_registry::error::ImageTooLarge;
+use crate::image_registry::error::ImageSizeError;
 use crate::image_registry::image_handle::ImageHandle;
 use crate::input::Input;
 use crate::input::key_reader::KeyReader;
@@ -841,7 +841,7 @@ impl Ui {
     ///
     /// An image axis exceeds the device's 2D texture limit.
     #[inline]
-    pub fn load_image(&self, image: &Image) -> Result<ImageHandle, ImageTooLarge> {
+    pub fn load_image(&self, image: &Image) -> Result<ImageHandle, ImageSizeError> {
         self.resources.load_image(image)
     }
 

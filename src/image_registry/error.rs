@@ -8,14 +8,14 @@ use std::fmt::{Display, Formatter};
 /// An [`Image`](crate::primitives::paint::image::Image) with an axis past
 /// the device's largest 2D texture, refused for GPU upload.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct ImageTooLarge {
+pub struct ImageSizeError {
     /// Rejected intrinsic pixel dimensions.
     pub size: UVec2,
     /// Maximum accepted width or height for the selected device.
     pub max_dimension: u32,
 }
 
-impl Display for ImageTooLarge {
+impl Display for ImageSizeError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -25,4 +25,4 @@ impl Display for ImageTooLarge {
     }
 }
 
-impl error::Error for ImageTooLarge {}
+impl error::Error for ImageSizeError {}

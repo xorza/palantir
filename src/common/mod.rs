@@ -7,6 +7,7 @@
 pub(crate) mod block_arena;
 pub(crate) mod content_hash;
 pub(crate) mod counters;
+pub(crate) mod error_chain;
 pub(crate) mod eviction_clock;
 pub(crate) mod expiry_wheel;
 pub(crate) mod expiry_window;

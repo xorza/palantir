@@ -2,10 +2,11 @@
 
 use std::error;
 use std::fmt;
+use std::ops::Range;
 
-use naga::WithSpan;
 use naga::front::wgsl::ParseError;
 use naga::valid::ValidationError;
+use naga::{Span, WithSpan};
 
 use crate::effect::stock::RESERVED_PREFIX;
 use crate::effect::{MAX_IMAGE_SLOTS, MAX_PARAMS_SIZE};
@@ -15,23 +16,9 @@ use crate::primitives::effect::effect_params::ParamType;
 #[derive(Debug)]
 pub enum EffectError {
     /// The WGSL does not parse.
-    Parse {
-        /// naga's error, boxed as it is large: `source.emit_to_string(&text)` prints it with its
-        /// position.
-        source: Box<ParseError>,
-        /// The text naga parsed: the app's WGSL, then palantir's prelude. A position in the app's
-        /// text reads the same in it; an error at the end of the app's text, as an unclosed
-        /// `fn`, points at the prelude's first line.
-        text: String,
-    },
+    Parse(WgslError),
     /// The WGSL parses but does not validate.
-    Validation {
-        /// naga's error, boxed as it is large: `source.emit_to_string(&text)` prints it with its
-        /// position.
-        source: Box<WithSpan<ValidationError>>,
-        /// The text naga parsed, as [`Self::Parse`] carries it.
-        text: String,
-    },
+    Validation(WgslError),
     /// The WGSL declares no function named `effect`.
     MissingEntry,
     /// `effect`'s signature is not the contract's ([`EffectSource`](crate::EffectSource)).
@@ -57,6 +44,99 @@ pub enum EffectError {
     /// The name starts with `palantir.`, the prefix of palantir's stock effects, as
     /// [`EffectName::RIPPLE`](crate::EffectName::RIPPLE).
     ReservedName,
+}
+
+/// Why the WGSL naga read does not parse or validate: naga's error over the text it read, the
+/// app's WGSL with palantir's prelude around it. Opaque, so no parser type reaches the surface,
+/// as an icon's error keeps `usvg`'s inside; its `Display` is naga's message.
+pub struct WgslError {
+    failure: WgslFailure,
+    /// The text naga read.
+    text: String,
+    /// Where the app's WGSL lies in [`Self::text`].
+    app: Range<usize>,
+}
+
+/// naga's error, boxed as each is large.
+enum WgslFailure {
+    Parse(Box<ParseError>),
+    Validation(Box<WithSpan<ValidationError>>),
+}
+
+impl WgslError {
+    pub(crate) fn parse(source: ParseError, text: String, app: Range<usize>) -> Self {
+        Self {
+            failure: WgslFailure::Parse(Box::new(source)),
+            text,
+            app,
+        }
+    }
+
+    pub(crate) fn validation(
+        source: WithSpan<ValidationError>,
+        text: String,
+        app: Range<usize>,
+    ) -> Self {
+        Self {
+            failure: WgslFailure::Validation(Box::new(source)),
+            text,
+            app,
+        }
+    }
+
+    /// naga's report over the text it read, its message with the lines it points at, as a
+    /// compiler prints one. An error at the end of the app's text, as an unclosed `fn`, points at
+    /// the prelude's first line after it.
+    pub fn diagnostic(&self) -> String {
+        match &self.failure {
+            WgslFailure::Parse(error) => error.emit_to_string(&self.text),
+            WgslFailure::Validation(error) => error.emit_to_string(&self.text),
+        }
+    }
+
+    /// The byte range in the app's WGSL of the first place naga points at there, `None` where it
+    /// points only into palantir's prelude or nowhere: a name the app redefines points at both.
+    pub fn span(&self) -> Option<Range<usize>> {
+        let in_app = |span: Span| {
+            let range = span.to_range()?;
+            (range.start >= self.app.start && range.end <= self.app.end)
+                .then(|| range.start - self.app.start..range.end - self.app.start)
+        };
+        match &self.failure {
+            WgslFailure::Parse(error) => error.labels().find_map(|(span, _)| in_app(span)),
+            WgslFailure::Validation(error) => error.spans().find_map(|&(span, _)| in_app(span)),
+        }
+    }
+}
+
+/// Summarized: the text is the whole prelude.
+impl fmt::Debug for WgslError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("WgslError")
+            .field("message", &format_args!("{self}"))
+            .field("span", &self.span())
+            .finish_non_exhaustive()
+    }
+}
+
+/// naga's message alone; [`WgslError::diagnostic`] prints it with its lines.
+impl fmt::Display for WgslError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.failure {
+            WgslFailure::Parse(error) => f.write_str(error.message()),
+            WgslFailure::Validation(error) => error.fmt(f),
+        }
+    }
+}
+
+/// Transparent over naga's error, whose message the `Display` already is.
+impl error::Error for WgslError {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        match &self.failure {
+            WgslFailure::Parse(_) => None,
+            WgslFailure::Validation(error) => error.source(),
+        }
+    }
 }
 
 /// How `effect`'s signature departs from the contract.
@@ -127,8 +207,8 @@ pub enum ParamMismatch {
 impl fmt::Display for EffectError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Parse { .. } => f.write_str("the effect's WGSL does not parse"),
-            Self::Validation { .. } => f.write_str("the effect's WGSL does not validate"),
+            Self::Parse(_) => f.write_str("the effect's WGSL does not parse"),
+            Self::Validation(_) => f.write_str("the effect's WGSL does not validate"),
             Self::MissingEntry => f.write_str("the effect's WGSL declares no `fn effect`"),
             Self::Entry(mismatch) => write!(f, "`fn effect` {mismatch}"),
             Self::ParamLayout(mismatch) => write!(f, "the parameter struct {mismatch}"),
@@ -200,8 +280,7 @@ impl fmt::Display for ParamMismatch {
 impl error::Error for EffectError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
-            Self::Parse { source, .. } => Some(source),
-            Self::Validation { source, .. } => Some(source),
+            Self::Parse(source) | Self::Validation(source) => Some(source),
             _ => None,
         }
     }

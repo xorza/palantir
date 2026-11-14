@@ -52,7 +52,7 @@ pub(crate) fn play_all<X: Debug>(
     actions: &[Action<X>],
 ) -> Result<(), StepError> {
     for (step, action) in actions.iter().enumerate() {
-        play(stage, action).map_err(|error| StepError { step, error })?;
+        play(stage, action).map_err(|source| StepError { step, source })?;
     }
     Ok(())
 }

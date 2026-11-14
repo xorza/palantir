@@ -5,7 +5,7 @@ use crate::gpu::device::device_health::DeviceHealth;
 use crate::gpu::device::device_requirements::DeviceRequirements;
 use crate::gpu::device::gpu_wait::GpuWait;
 use crate::gpu::device::pass_traffic::PassTraffic;
-use crate::gpu::error::UnmetRequirements;
+use crate::gpu::error::DeviceRequirementsError;
 use std::iter;
 use std::num::NonZeroU32;
 use std::thread;
@@ -87,7 +87,7 @@ impl Gpu {
         debug_assert!(self.is_lost(), "the lost callback ran");
     }
 
-    pub(crate) fn requirements_met(&self) -> Result<(), UnmetRequirements> {
+    pub(crate) fn requirements_met(&self) -> Result<(), DeviceRequirementsError> {
         DeviceRequirements::met_by(&self.device)
     }
 

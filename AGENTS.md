@@ -90,6 +90,11 @@ A subsystem's decisions sit in an `AGENTS.md` beside it; read it before changing
 - **Error**, `*Error`: an enum of the cases a caller tells apart; a foreign cause as `source`,
   never also in `Display`
   ([error-handling project group](https://blog.rust-lang.org/inside-rust/2021/07/01/What-the-error-handling-project-group-is-working-towards.html)).
+  A one-case error is a struct named for what failed, as std's `ParseIntError` and `RecvError`.
+  A case that wraps another error is transparent where it adds no context, its `Display` the
+  inner one's and its `source` the inner one's `source`, as `PlayError::Locate` is; one that
+  adds context names its own failure and returns the inner error from `source`. A test walks
+  every exported chain and holds that no message prints twice.
 
 ### Names
 

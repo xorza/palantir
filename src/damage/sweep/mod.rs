@@ -39,6 +39,7 @@ mod tests;
 
 use crate::bench::backends::Backends;
 use crate::bench::scene::Scene;
+use crate::common::error_chain::ErrorChain;
 use crate::damage::sweep::args::{SweepArgs, USAGE};
 use crate::damage::sweep::arms::Arms;
 use crate::damage::sweep::capture::capture;
@@ -202,12 +203,7 @@ fn run_args<S: Scene>(args: &SweepArgs, out: &mut impl Write) -> Result<(), Swee
     reason = "a bench that cannot run says why where a person reads it"
 )]
 fn report_error(error: &dyn Error) {
-    eprintln!("{error}");
-    let mut source = error.source();
-    while let Some(cause) = source {
-        eprintln!("caused by: {cause}");
-        source = cause.source();
-    }
+    eprintln!("{}", ErrorChain(error));
 }
 
 /// A sweep over `S` as `args`, its command line past the study's name, says: `cargo damage-sweep`.

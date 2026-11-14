@@ -2,7 +2,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::clipboard::internals::{Scripted, ScriptedState};
-use crate::clipboard::{Clipboard, ClipboardUnavailable};
+use crate::clipboard::{Clipboard, ClipboardError};
 use crate::primitives::paint::image::Image;
 use glam::UVec2;
 use std::error;
@@ -34,7 +34,7 @@ fn clones_share_one_clipboard() {
 /// The error crosses the public surface, so it owes the impls a caller needs to box and print it.
 #[test]
 fn unavailable_reports_itself_as_an_error() {
-    let boxed: Box<dyn error::Error> = Box::new(ClipboardUnavailable);
+    let boxed: Box<dyn error::Error> = Box::new(ClipboardError);
     assert_eq!(boxed.to_string(), "no clipboard backend could answer");
 }
 
@@ -57,13 +57,10 @@ fn system_reads_without_text_answer_empty() {
     let cases = [
         (Ok(String::from("text")), Ok(String::from("text"))),
         (Err(arboard::Error::ContentNotAvailable), Ok(String::new())),
-        (
-            Err(arboard::Error::ClipboardOccupied),
-            Err(ClipboardUnavailable),
-        ),
+        (Err(arboard::Error::ClipboardOccupied), Err(ClipboardError)),
         (
             Err(arboard::Error::ClipboardNotSupported),
-            Err(ClipboardUnavailable),
+            Err(ClipboardError),
         ),
     ];
     for (read, expected) in cases {
@@ -128,7 +125,7 @@ fn unreadable_primary_answers_from_a_current_fallback() {
     let primary = primary("seen");
     let clipboard = over(&primary);
     primary.borrow_mut().reject_reads = true;
-    assert_eq!(clipboard.text(), Err(ClipboardUnavailable));
+    assert_eq!(clipboard.text(), Err(ClipboardError));
 
     primary.borrow_mut().reject_reads = false;
     assert_eq!(clipboard.text().unwrap().as_deref(), Some("seen"));
@@ -169,7 +166,7 @@ fn an_image_copy_replaces_the_text_and_reads_back() {
     assert_eq!(clipboard.text().unwrap(), None);
     assert_eq!(clipboard.image(), Ok(Some(image.clone())));
     taking.borrow_mut().reject_reads = true;
-    assert_eq!(clipboard.image(), Err(ClipboardUnavailable));
+    assert_eq!(clipboard.image(), Err(ClipboardError));
 
     let refusing = primary("stale");
     let clipboard = over(&refusing);
