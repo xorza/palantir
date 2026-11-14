@@ -210,7 +210,7 @@ impl<'a> TextEdit<'a> {
     ///
     /// # Panics
     ///
-    /// Panics unless `color` is a [color](crate::widget::domain::color).
+    /// Panics unless `color` is a [color](crate::widget::domain::is_color).
     #[track_caller]
     pub const fn color(mut self, color: RgbaF32) -> Self {
         self.field.overrides.color = Some(domain::color(color));
@@ -224,7 +224,7 @@ impl<'a> TextEdit<'a> {
     ///
     /// # Panics
     ///
-    /// Panics unless `px` is a [length](crate::widget::domain::length).
+    /// Panics unless `px` is a [length](crate::widget::domain::is_length).
     #[track_caller]
     pub const fn font_size(mut self, px: f32) -> Self {
         self.field.overrides.font_size = Some(domain::length(px));
@@ -237,7 +237,7 @@ impl<'a> TextEdit<'a> {
     ///
     /// # Panics
     ///
-    /// Panics unless `factor` is [positive](crate::widget::domain::positive).
+    /// Panics unless `factor` is [positive](crate::widget::domain::is_positive).
     #[track_caller]
     pub const fn line_height_factor(mut self, factor: f32) -> Self {
         self.field.overrides.line_height_factor = Some(domain::positive(factor));

@@ -24,10 +24,10 @@ use palantir_derive::{Animatable, Lerp};
 ///
 /// Plain data, so arithmetic may pass through values no widget takes. A widget's `chrome` and a
 /// shape check it where it enters and panic unless every color is a
-/// [color](crate::widget::domain::color), gradient angles are
-/// [angles](crate::widget::domain::angle), centers and the shadow's offset and spread
-/// [offsets](crate::widget::domain::offset), the border width, radial radii and the shadow's blur
-/// [lengths](crate::widget::domain::length). Every value but the border width packs into an f16 lane, so it is a [lane](crate::widget::domain::lane) too.
+/// [color](crate::widget::domain::is_color), gradient angles are
+/// [angles](crate::widget::domain::is_angle), centers and the shadow's offset and spread
+/// [offsets](crate::widget::domain::is_offset), the border width, radial radii and the shadow's blur
+/// [lengths](crate::widget::domain::is_length). Every value but the border width packs into an f16 lane, so it is a [lane](crate::widget::domain::is_lane) too.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, Lerp, Animatable)]
 #[serde(deny_unknown_fields)]
 #[must_use]

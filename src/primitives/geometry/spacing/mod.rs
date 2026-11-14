@@ -79,7 +79,7 @@ impl Spacing {
     ///
     /// # Panics
     ///
-    /// Panics unless every edge is a [lane](crate::widget::domain::lane): finite, and below 65520
+    /// Panics unless every edge is a [lane](crate::widget::domain::is_lane): finite, and below 65520
     /// in magnitude, which rounds to 65504. A larger edge would pack to infinity.
     #[inline]
     #[track_caller]

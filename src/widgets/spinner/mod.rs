@@ -61,7 +61,7 @@ impl<'a> Spinner<'a> {
     ///
     /// # Panics
     ///
-    /// Panics unless `color` is a [color](crate::widget::domain::color).
+    /// Panics unless `color` is a [color](crate::widget::domain::is_color).
     #[track_caller]
     pub const fn color(mut self, color: RgbaF32) -> Self {
         self.color = Some(domain::color(color));
@@ -72,7 +72,7 @@ impl<'a> Spinner<'a> {
     ///
     /// # Panics
     ///
-    /// Panics unless `px` is a [length](crate::widget::domain::length).
+    /// Panics unless `px` is a [length](crate::widget::domain::is_length).
     #[track_caller]
     pub const fn stroke_width(mut self, px: f32) -> Self {
         self.width = Some(domain::length(px));

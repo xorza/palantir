@@ -115,7 +115,7 @@ impl Shape {
     ///
     /// # Panics
     ///
-    /// Panics unless both are [angles](crate::widget::domain::angle).
+    /// Panics unless both are [angles](crate::widget::domain::is_angle).
     #[track_caller]
     pub const fn arc(start_angle: f32, sweep: f32) -> ArcShape {
         ArcShape::new(domain::angle(start_angle), domain::angle(sweep))
@@ -125,7 +125,7 @@ impl Shape {
     ///
     /// # Panics
     ///
-    /// Panics unless every corner is an [offset](crate::widget::domain::offset).
+    /// Panics unless every corner is an [offset](crate::widget::domain::is_offset).
     #[track_caller]
     pub const fn triangle(a: Vec2, b: Vec2, c: Vec2) -> TriangleShape {
         TriangleShape::new(vec2::offset(a), vec2::offset(b), vec2::offset(c))
@@ -135,7 +135,7 @@ impl Shape {
     ///
     /// # Panics
     ///
-    /// Panics unless every point is an [offset](crate::widget::domain::offset).
+    /// Panics unless every point is an [offset](crate::widget::domain::is_offset).
     #[track_caller]
     pub const fn line(a: Vec2, b: Vec2) -> CurveShape {
         let (a, b) = (vec2::offset(a), vec2::offset(b));

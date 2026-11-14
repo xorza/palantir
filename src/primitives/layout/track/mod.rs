@@ -61,7 +61,7 @@ impl Track {
     ///
     /// # Panics
     ///
-    /// Panics unless `min` is a [length](crate::widget::domain::length).
+    /// Panics unless `min` is a [length](crate::widget::domain::is_length).
     #[track_caller]
     pub const fn with_min(mut self, min: f32) -> Self {
         self.min = domain::length(min);
@@ -73,7 +73,7 @@ impl Track {
     ///
     /// # Panics
     ///
-    /// Panics unless `max` is an [extent](crate::widget::domain::extent).
+    /// Panics unless `max` is an [extent](crate::widget::domain::is_extent).
     #[track_caller]
     pub const fn with_max(mut self, max: f32) -> Self {
         self.max = domain::extent(max).max(self.min);

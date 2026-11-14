@@ -55,7 +55,7 @@ impl Sizing {
     ///
     /// # Panics
     ///
-    /// Panics unless `value` is a [length](crate::widget::domain::length).
+    /// Panics unless `value` is a [length](crate::widget::domain::is_length).
     #[inline]
     #[track_caller]
     pub const fn fixed(value: f32) -> Self {
@@ -70,7 +70,7 @@ impl Sizing {
     ///
     /// # Panics
     ///
-    /// Panics unless `weight` is a [length](crate::widget::domain::length).
+    /// Panics unless `weight` is a [length](crate::widget::domain::is_length).
     #[inline]
     #[track_caller]
     pub const fn fill(weight: f32) -> Self {

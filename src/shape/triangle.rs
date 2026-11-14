@@ -51,7 +51,7 @@ impl TriangleShape {
     ///
     /// # Panics
     ///
-    /// Panics unless every component of `rect` is an [offset](crate::widget::domain::offset).
+    /// Panics unless every component of `rect` is an [offset](crate::widget::domain::is_offset).
     #[track_caller]
     pub const fn at(mut self, rect: Rect) -> Self {
         rect.validate();
@@ -70,8 +70,8 @@ impl TriangleShape {
     ///
     /// # Panics
     ///
-    /// Panics unless `radius` is a [length](crate::widget::domain::length) and a
-    /// [lane](crate::widget::domain::lane), as it packs into an f16 lane.
+    /// Panics unless `radius` is a [length](crate::widget::domain::is_length) and a
+    /// [lane](crate::widget::domain::is_lane), as it packs into an f16 lane.
     #[track_caller]
     pub const fn radius(mut self, radius: f32) -> Self {
         self.radius = domain::lane(domain::length(radius));

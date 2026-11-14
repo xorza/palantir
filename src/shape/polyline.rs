@@ -42,7 +42,7 @@ impl<'a> PolylineShape<'a> {
     ///
     /// # Panics
     ///
-    /// Panics unless every component of `rect` is an [offset](crate::widget::domain::offset).
+    /// Panics unless every component of `rect` is an [offset](crate::widget::domain::is_offset).
     #[track_caller]
     pub const fn at(mut self, rect: Rect) -> Self {
         rect.validate();
@@ -61,7 +61,7 @@ impl<'a> PolylineShape<'a> {
     /// # Panics
     ///
     /// Panics unless `colors` has one entry per point and every color is a
-    /// [color](crate::widget::domain::color); its product with the stroke's color is checked
+    /// [color](crate::widget::domain::is_color); its product with the stroke's color is checked
     /// where [`Ui::add_shape`](crate::Ui::add_shape) joins them.
     #[track_caller]
     pub const fn point_colors(mut self, colors: &'a [RgbaF32]) -> Self {
@@ -79,7 +79,7 @@ impl<'a> PolylineShape<'a> {
     /// # Panics
     ///
     /// Panics unless `colors` has one entry per segment, one fewer than the points, and every
-    /// color is a [color](crate::widget::domain::color); its product with the stroke's color is
+    /// color is a [color](crate::widget::domain::is_color); its product with the stroke's color is
     /// checked where [`Ui::add_shape`](crate::Ui::add_shape) joins them.
     #[track_caller]
     pub const fn segment_colors(mut self, colors: &'a [RgbaF32]) -> Self {

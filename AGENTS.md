@@ -71,8 +71,9 @@ A subsystem's decisions sit in an `AGENTS.md` beside it; read it before changing
   root-exported method takes or returns it, so the shapes and paints `Ui::add_shape` takes are at
   the root. A trait that only bounds a root method's parameter (`Animatable` on `Ui::animate`)
   stays in `widget`, as an app names it only to implement it, and so does what only a `widget`
-  type's methods hand out. `widget::domain` exports the kinds a `# Panics` doc links, item by
-  item.
+  type's methods hand out. `widget::domain` exports each kind's predicate, which a `# Panics` doc
+  links, item by item; the checkers that assert stay crate-private, as a caller wants to test a
+  value, not to panic on it.
 - **An exported item that breaks a rule below is a bug.** `cargo drive surface` writes the surface
   to `.notes/API_SURFACE.md`, which CI compares with the tree
   (`cargo install --locked --git https://github.com/xorza/drive`).

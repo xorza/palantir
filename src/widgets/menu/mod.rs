@@ -203,7 +203,7 @@ impl Menu<'_, TriggerOwned> {
     ///
     /// # Panics
     ///
-    /// Panics unless both axes of `point` are [offsets](crate::widget::domain::offset).
+    /// Panics unless both axes of `point` are [offsets](crate::widget::domain::is_offset).
     #[track_caller]
     pub fn open_at(ui: &mut Ui, trigger: WidgetId, point: Vec2) {
         TriggerState::<Menu<'static>>::open(ui, trigger, Opening::At(vec2::offset(point)));
@@ -233,7 +233,7 @@ impl Menu<'_, CallerOwned> {
     ///
     /// # Panics
     ///
-    /// Panics unless both axes of `point` are [offsets](crate::widget::domain::offset).
+    /// Panics unless both axes of `point` are [offsets](crate::widget::domain::is_offset).
     #[track_caller]
     pub fn at(point: Vec2) -> Self {
         Self {

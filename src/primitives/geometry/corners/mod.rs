@@ -31,8 +31,8 @@ f16x4_lanes!(
     valid = is_radius_lane,
 );
 
-/// A radius a lane holds: a [length](crate::widget::domain::length) and a
-/// [lane](crate::widget::domain::lane).
+/// A radius a lane holds: a [length](crate::widget::domain::is_length) and a
+/// [lane](crate::widget::domain::is_lane).
 const fn is_radius_lane(lane: f32) -> bool {
     domain::is_length(lane) && domain::is_lane(lane)
 }
@@ -58,8 +58,8 @@ impl Corners {
         self.to_array()[3]
     }
 
-    /// Panics unless every radius is a [length](crate::widget::domain::length) and a
-    /// [lane](crate::widget::domain::lane). Checked on the packed lanes, where a radius that is no
+    /// Panics unless every radius is a [length](crate::widget::domain::is_length) and a
+    /// [lane](crate::widget::domain::is_lane). Checked on the packed lanes, where a radius that is no
     /// lane is infinite: the same check as one of the f32 radii.
     #[inline]
     #[track_caller]
@@ -102,8 +102,8 @@ impl Corners {
     ///
     /// # Panics
     ///
-    /// Panics unless every radius is a [length](crate::widget::domain::length), finite and not
-    /// negative, and a [lane](crate::widget::domain::lane), below 65520, which rounds to 65504. A
+    /// Panics unless every radius is a [length](crate::widget::domain::is_length), finite and not
+    /// negative, and a [lane](crate::widget::domain::is_lane), below 65520, which rounds to 65504. A
     /// larger radius would pack to infinity.
     #[inline]
     #[track_caller]
@@ -160,7 +160,7 @@ impl Corners {
     ///
     /// # Panics
     ///
-    /// Panics unless `factor` is a [length](crate::widget::domain::length): a negative or NaN
+    /// Panics unless `factor` is a [length](crate::widget::domain::is_length): a negative or NaN
     /// factor makes no radius, and an infinite one makes NaN of a zero radius.
     #[inline]
     #[track_caller]

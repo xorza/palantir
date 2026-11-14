@@ -149,7 +149,7 @@ impl Mesh {
     ///
     /// # Panics
     ///
-    /// Panics unless `pos` is an [offset](crate::widget::domain::offset), or
+    /// Panics unless `pos` is an [offset](crate::widget::domain::is_offset), or
     /// if the new vertex index cannot be represented by `u32`.
     #[inline]
     #[track_caller]

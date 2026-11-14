@@ -103,7 +103,7 @@ impl<U: EffectParams> EffectPaint<U, ColorEffect> {
     ///
     /// # Panics
     ///
-    /// Panics unless `reach` is a [length](crate::widget::domain::length).
+    /// Panics unless `reach` is a [length](crate::widget::domain::is_length).
     #[track_caller]
     pub const fn outside(mut self, reach: f32) -> Self {
         self.outside = Some(domain::length(reach));
@@ -117,7 +117,7 @@ impl<U: EffectParams> EffectPaint<U, BackdropEffect> {
     ///
     /// # Panics
     ///
-    /// Panics unless `sigma` is a [length](crate::widget::domain::length).
+    /// Panics unless `sigma` is a [length](crate::widget::domain::is_length).
     #[track_caller]
     pub const fn backdrop_blur(mut self, sigma: f32) -> Self {
         self.backdrop_blur = domain::length(sigma);

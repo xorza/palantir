@@ -3700,26 +3700,8 @@ widget::domain
 widget::domain::EPS
     const EPS: f32
 
-widget::domain::angle
-    const fn angle(v: f32) -> f32
-
 widget::domain::band_fraction
     const fn band_fraction(pos: f32, extent: f32, band: f32) -> f32
-
-widget::domain::color
-    const fn color(c: RgbaF32) -> RgbaF32
-
-widget::domain::extent
-    const fn extent(v: f32) -> f32
-
-widget::domain::factor
-    const fn factor(v: f32) -> f32
-
-widget::domain::fraction
-    const fn fraction(v: f32) -> f32
-
-widget::domain::gap
-    const fn gap(v: f32) -> f32
 
 widget::domain::is_angle
     const fn is_angle(v: f32) -> bool
@@ -3756,21 +3738,6 @@ widget::domain::is_positive
 
 widget::domain::is_refractive_index
     const fn is_refractive_index(n: f32) -> bool
-
-widget::domain::lane
-    const fn lane(v: f32) -> f32
-
-widget::domain::length
-    const fn length(v: f32) -> f32
-
-widget::domain::offset
-    const fn offset(v: f32) -> f32
-
-widget::domain::positive
-    const fn positive(v: f32) -> f32
-
-widget::domain::refractive_index
-    const fn refractive_index(n: f32) -> f32
 
 ```
 

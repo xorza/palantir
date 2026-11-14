@@ -57,8 +57,8 @@ impl ImagePaint {
     ///
     /// # Panics
     ///
-    /// Panics unless `offset` is an [offset](crate::widget::domain::offset) and each axis of
-    /// `scale` is [positive](crate::widget::domain::positive).
+    /// Panics unless `offset` is an [offset](crate::widget::domain::is_offset) and each axis of
+    /// `scale` is [positive](crate::widget::domain::is_positive).
     #[track_caller]
     pub const fn tile(mut self, offset: Vec2, scale: Vec2) -> Self {
         self.placement = ImagePlacement::Tile {
@@ -90,7 +90,7 @@ impl ImagePaint {
     ///
     /// # Panics
     ///
-    /// Panics unless `tint` is a [color](crate::widget::domain::color).
+    /// Panics unless `tint` is a [color](crate::widget::domain::is_color).
     #[track_caller]
     pub const fn tint(mut self, tint: RgbaF32) -> Self {
         self.tint = domain::color(tint);

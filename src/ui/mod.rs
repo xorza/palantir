@@ -1426,7 +1426,7 @@ impl Ui {
     /// # Panics
     ///
     /// Panics unless every component of `area` is an
-    /// [offset](crate::widget::domain::offset).
+    /// [offset](crate::widget::domain::is_offset).
     #[inline]
     #[track_caller]
     pub const fn request_ime_area(&mut self, area: Rect) {

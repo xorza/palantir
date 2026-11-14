@@ -25,7 +25,7 @@ use palantir_derive::{Animatable, Lerp};
 /// them.
 ///
 /// Plain data, checked where it enters a widget: each corner radius a
-/// [length](crate::widget::domain::length) and a [lane](crate::widget::domain::lane), and the
+/// [length](crate::widget::domain::is_length) and a [lane](crate::widget::domain::is_lane), and the
 /// paint as [`Paint`] lists.
 // Intentionally **not `Copy`**: it is the largest of the three types
 // `primitives::math::animatable::Animatable` discusses, and the recording chain takes it

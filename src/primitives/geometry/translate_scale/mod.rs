@@ -58,8 +58,8 @@ impl TranslateScale {
     /// # Panics
     ///
     /// Panics unless both translation axes are
-    /// [offsets](crate::widget::domain::offset) and `scale` is
-    /// [positive](crate::widget::domain::positive).
+    /// [offsets](crate::widget::domain::is_offset) and `scale` is
+    /// [positive](crate::widget::domain::is_positive).
     #[track_caller]
     pub const fn new(translation: Vec2, scale: f32) -> Self {
         Self {
@@ -83,7 +83,7 @@ impl TranslateScale {
     ///
     /// # Panics
     ///
-    /// Panics unless both axes of `t` are [offsets](crate::widget::domain::offset).
+    /// Panics unless both axes of `t` are [offsets](crate::widget::domain::is_offset).
     #[track_caller]
     pub const fn from_translation(t: Vec2) -> Self {
         Self::new(t, 1.0)
@@ -93,7 +93,7 @@ impl TranslateScale {
     ///
     /// # Panics
     ///
-    /// Panics unless `s` is [positive](crate::widget::domain::positive).
+    /// Panics unless `s` is [positive](crate::widget::domain::is_positive).
     #[track_caller]
     pub const fn from_scale(s: f32) -> Self {
         Self::new(Vec2::ZERO, s)

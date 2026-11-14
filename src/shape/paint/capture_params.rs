@@ -35,7 +35,7 @@ impl CaptureReach {
     ///
     /// # Panics
     ///
-    /// Panics unless a fixed reach is a [length](crate::widget::domain::length): the source's
+    /// Panics unless a fixed reach is a [length](crate::widget::domain::is_length): the source's
     /// `reach` is app code, and a wrong value would draw quietly wrong.
     pub(crate) fn of(reach: BackdropReach) -> Self {
         match reach {

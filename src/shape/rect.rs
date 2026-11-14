@@ -34,7 +34,7 @@ impl RectShape {
     ///
     /// # Panics
     ///
-    /// Panics unless every component of `rect` is an [offset](crate::widget::domain::offset).
+    /// Panics unless every component of `rect` is an [offset](crate::widget::domain::is_offset).
     #[track_caller]
     pub const fn at(mut self, rect: Rect) -> Self {
         rect.validate();
@@ -46,8 +46,8 @@ impl RectShape {
     ///
     /// # Panics
     ///
-    /// Panics unless every radius is a [length](crate::widget::domain::length) and a
-    /// [lane](crate::widget::domain::lane).
+    /// Panics unless every radius is a [length](crate::widget::domain::is_length) and a
+    /// [lane](crate::widget::domain::is_lane).
     #[track_caller]
     pub fn corners(mut self, corners: impl Into<Corners>) -> Self {
         let corners = corners.into();

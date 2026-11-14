@@ -32,7 +32,7 @@ impl<'a> LayerScope<'a> {
     ///
     /// # Panics
     ///
-    /// Panics unless both axes of `p` are [offsets](crate::widget::domain::offset).
+    /// Panics unless both axes of `p` are [offsets](crate::widget::domain::is_offset).
     #[track_caller]
     pub fn at(mut self, p: impl Into<Vec2>) -> Self {
         self.placement = self.placement.with_fixed(vec2::offset(p.into()));
@@ -51,7 +51,7 @@ impl<'a> LayerScope<'a> {
     ///
     /// # Panics
     ///
-    /// Panics unless both axes are [extents](crate::widget::domain::extent).
+    /// Panics unless both axes are [extents](crate::widget::domain::is_extent).
     #[track_caller]
     pub fn max_size(mut self, s: impl Into<Size>) -> Self {
         let s = s.into();

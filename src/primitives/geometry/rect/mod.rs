@@ -52,7 +52,7 @@ impl FloatHash for Rect {
 }
 
 impl Rect {
-    /// Panics unless every component is an [offset](crate::widget::domain::offset) (finite). A negative size is not refused: it paints nothing.
+    /// Panics unless every component is an [offset](crate::widget::domain::is_offset) (finite). A negative size is not refused: it paints nothing.
     #[inline]
     #[track_caller]
     pub(crate) const fn validate(self) {

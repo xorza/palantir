@@ -15,7 +15,7 @@ pub struct QuadraticBezier {
 }
 
 impl QuadraticBezier {
-    /// Panics unless every control point is an [offset](crate::widget::domain::offset).
+    /// Panics unless every control point is an [offset](crate::widget::domain::is_offset).
     #[inline]
     #[track_caller]
     pub(crate) const fn validate(self) {

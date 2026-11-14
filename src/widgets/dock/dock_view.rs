@@ -334,7 +334,7 @@ impl<'a, T, M> DockView<'a, T, M> {
     ///
     /// # Panics
     ///
-    /// Panics unless `px` is a [length](crate::widget::domain::length).
+    /// Panics unless `px` is a [length](crate::widget::domain::is_length).
     #[track_caller]
     pub const fn min_pane(mut self, px: f32) -> Self {
         self.min_pane = domain::length(px);

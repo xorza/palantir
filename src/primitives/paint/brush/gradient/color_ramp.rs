@@ -39,7 +39,7 @@ impl ColorRamp {
     /// # Panics
     ///
     /// Panics unless there are two through eight `colors`, each a
-    /// [color](crate::widget::domain::color).
+    /// [color](crate::widget::domain::is_color).
     #[track_caller]
     pub fn evenly(colors: impl IntoIterator<Item = RgbaF32>) -> Self {
         let mut held = [RgbaF32::TRANSPARENT; MAX_STOPS];

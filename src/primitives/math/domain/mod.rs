@@ -14,7 +14,7 @@
 //! | [`lane`] | rounds to within `±65504` in f16 (below `65520`), on top of its own kind | panic |
 //! | [`positive`] | finite, `> 0` | panic |
 //! | [`factor`] | finite, `>= 0` | panic |
-//! | [`refractive_index`] | finite, `>= 1` | panic |
+//! | [`is_refractive_index`] | finite, `>= 1` | predicate alone; a lens raises it to 1 |
 //! | [`angle`] | finite | panic |
 //! | [`color`] | every channel a [`lane`] | panic |
 //! | [`power_of_two_in`] | a power of two in `1..=max` | panic |
@@ -59,7 +59,6 @@ pub(crate) const LANE_RULE: &str = "a value packed into an f16 lane must round t
 pub(crate) const POSITIVE_RULE: &str = "a positive value must be finite and above zero";
 pub(crate) const FACTOR_RULE: &str = "a factor must be finite and not negative";
 pub(crate) const ANGLE_RULE: &str = "an angle must be finite";
-pub(crate) const REFRACTIVE_INDEX_RULE: &str = "a refractive index must be finite and at least 1";
 pub(crate) const FRACTION_RULE: &str = "a fraction must be in 0..=1";
 pub(crate) const COLOR_RULE: &str =
     "a color must have finite channels that round to within ±65504 in f16";
@@ -92,7 +91,7 @@ pub const fn band_fraction(pos: f32, extent: f32, band: f32) -> f32 {
     share_of(pos - band * 0.5, extent - band)
 }
 
-/// True if `v` is an [`offset`]: finite.
+/// True if `v` is an *offset*: finite.
 #[inline]
 pub const fn is_offset(v: f32) -> bool {
     v.is_finite()
@@ -105,12 +104,12 @@ pub const fn is_offset(v: f32) -> bool {
 /// Panics unless [`is_offset`]`(v)`.
 #[inline]
 #[track_caller]
-pub const fn offset(v: f32) -> f32 {
+pub(crate) const fn offset(v: f32) -> f32 {
     assert!(is_offset(v), "{}", OFFSET_RULE);
     v
 }
 
-/// True if `v` is a [`length`]: finite and not negative.
+/// True if `v` is a *length*: finite and not negative.
 ///
 /// Bounded by `f32::MAX`, not `is_finite`, here and in the other signed kinds: LLVM folds
 /// `is_finite() && v >= 0.0` into one class test, which x86 lowers to a dozen integer ops where
@@ -127,12 +126,12 @@ pub const fn is_length(v: f32) -> bool {
 /// Panics unless [`is_length`]`(v)`.
 #[inline]
 #[track_caller]
-pub const fn length(v: f32) -> f32 {
+pub(crate) const fn length(v: f32) -> f32 {
     assert!(is_length(v), "{}", LENGTH_RULE);
     v
 }
 
-/// True if `v` is an [`extent`]: not negative, and not NaN.
+/// True if `v` is an *extent*: not negative, and not NaN.
 #[inline]
 pub const fn is_extent(v: f32) -> bool {
     v >= 0.0
@@ -145,7 +144,7 @@ pub const fn is_extent(v: f32) -> bool {
 /// Panics unless [`is_extent`]`(v)`.
 #[inline]
 #[track_caller]
-pub const fn extent(v: f32) -> f32 {
+pub(crate) const fn extent(v: f32) -> f32 {
     assert!(is_extent(v), "{}", EXTENT_RULE);
     v
 }
@@ -169,7 +168,7 @@ pub(crate) const fn is_file_offset(v: f32) -> bool {
     is_offset(v) && v.abs() <= MAX_FILE_LENGTH
 }
 
-/// True if `v` is a [`gap`]: a [length](is_length) that is a [lane](is_lane) too.
+/// True if `v` is a *gap*: a [length](is_length) that is a [lane](is_lane) too.
 #[inline]
 pub const fn is_gap(v: f32) -> bool {
     is_length(v) && is_lane(v)
@@ -183,12 +182,12 @@ pub const fn is_gap(v: f32) -> bool {
 /// Panics unless [`is_gap`]`(v)`.
 #[inline]
 #[track_caller]
-pub const fn gap(v: f32) -> f32 {
+pub(crate) const fn gap(v: f32) -> f32 {
     assert!(is_gap(v), "{}", GAP_RULE);
     v
 }
 
-/// True if `v` is a [`lane`]: it rounds to a finite f16, within ±65504.
+/// True if `v` is a *lane*: it rounds to a finite f16, within ±65504.
 #[inline]
 pub const fn is_lane(v: f32) -> bool {
     F16x4::fits_lane(v)
@@ -229,12 +228,12 @@ pub(crate) const fn are_length_lanes<const N: usize>(vs: [f32; N]) -> bool {
 /// Panics unless [`is_lane`]`(v)`.
 #[inline]
 #[track_caller]
-pub const fn lane(v: f32) -> f32 {
+pub(crate) const fn lane(v: f32) -> f32 {
     assert!(is_lane(v), "{}", LANE_RULE);
     v
 }
 
-/// True if `v` is [`positive`]: finite and above zero.
+/// True if `v` is *positive*: finite and above zero.
 #[inline]
 pub const fn is_positive(v: f32) -> bool {
     v > 0.0 && v <= f32::MAX
@@ -247,12 +246,12 @@ pub const fn is_positive(v: f32) -> bool {
 /// Panics unless [`is_positive`]`(v)`.
 #[inline]
 #[track_caller]
-pub const fn positive(v: f32) -> f32 {
+pub(crate) const fn positive(v: f32) -> f32 {
     assert!(is_positive(v), "{}", POSITIVE_RULE);
     v
 }
 
-/// True if `v` is a [`factor`]: finite and not negative, a [length](is_length)'s rule under the
+/// True if `v` is a *factor*: finite and not negative, a [length](is_length)'s rule under the
 /// name of a multiplier.
 #[inline]
 pub const fn is_factor(v: f32) -> bool {
@@ -267,31 +266,18 @@ pub const fn is_factor(v: f32) -> bool {
 /// Panics unless [`is_factor`]`(v)`.
 #[inline]
 #[track_caller]
-pub const fn factor(v: f32) -> f32 {
+pub(crate) const fn factor(v: f32) -> f32 {
     assert!(is_factor(v), "{}", FACTOR_RULE);
     v
 }
 
-/// True if `n` is a [`refractive_index`]: finite and at least 1.
+/// True if `n` is a *refractive index*: finite and at least 1.
 #[inline]
 pub const fn is_refractive_index(n: f32) -> bool {
     n >= 1.0 && n <= f32::MAX
 }
 
-/// `n`, which must be a *refractive index*: finite and at least 1, as no glass bends light away
-/// from the normal on entry.
-///
-/// # Panics
-///
-/// Panics unless [`is_refractive_index`]`(n)`.
-#[inline]
-#[track_caller]
-pub const fn refractive_index(n: f32) -> f32 {
-    assert!(is_refractive_index(n), "{}", REFRACTIVE_INDEX_RULE);
-    n
-}
-
-/// True if `v` is an [`angle`]: finite, an [offset](is_offset)'s rule under the name of an angle.
+/// True if `v` is an *angle*: finite, an [offset](is_offset)'s rule under the name of an angle.
 #[inline]
 pub const fn is_angle(v: f32) -> bool {
     is_offset(v)
@@ -304,7 +290,7 @@ pub const fn is_angle(v: f32) -> bool {
 /// Panics unless [`is_angle`]`(v)`.
 #[inline]
 #[track_caller]
-pub const fn angle(v: f32) -> f32 {
+pub(crate) const fn angle(v: f32) -> f32 {
     assert!(is_angle(v), "{}", ANGLE_RULE);
     v
 }
@@ -325,7 +311,7 @@ pub const fn is_color(c: RgbaF32) -> bool {
 /// Panics unless [`is_color`]`(c)`.
 #[inline]
 #[track_caller]
-pub const fn color(c: RgbaF32) -> RgbaF32 {
+pub(crate) const fn color(c: RgbaF32) -> RgbaF32 {
     assert!(is_color(c), "{}", COLOR_RULE);
     c
 }
@@ -356,7 +342,7 @@ pub const fn is_fraction(v: f32) -> bool {
 
 /// `v` as a *fraction*: clamped into `0..=1`, `0` when not finite.
 #[inline]
-pub const fn fraction(v: f32) -> f32 {
+pub(crate) const fn fraction(v: f32) -> f32 {
     fraction_or(v, 0.0)
 }
 

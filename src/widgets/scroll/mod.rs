@@ -232,7 +232,7 @@ impl<'a> Scroll<'a> {
     ///
     /// # Panics
     ///
-    /// Panics unless both axes of `delta` are [offsets](crate::widget::domain::offset).
+    /// Panics unless both axes of `delta` are [offsets](crate::widget::domain::is_offset).
     #[track_caller]
     pub fn pan_by(mut self, delta: Vec2) -> Self {
         self.pan_request += vec2::offset(delta);
@@ -284,7 +284,7 @@ impl<'a> Scroll<'a> {
     ///
     /// # Panics
     ///
-    /// Panics unless every edge is a [length](crate::widget::domain::length).
+    /// Panics unless every edge is a [length](crate::widget::domain::is_length).
     #[track_caller]
     pub fn content_margin(mut self, m: impl Into<Spacing>) -> Self {
         let m = m.into();
@@ -655,7 +655,7 @@ impl Scroll<'_> {
     ///
     /// # Panics
     ///
-    /// Panics unless both axes of `offset` are [offsets](crate::widget::domain::offset).
+    /// Panics unless both axes of `offset` are [offsets](crate::widget::domain::is_offset).
     #[track_caller]
     pub fn set_offset(ui: &mut Ui, id: WidgetId, offset: Vec2) {
         let offset = vec2::offset(offset);
@@ -674,7 +674,7 @@ impl Scroll<'_> {
     ///
     /// # Panics
     ///
-    /// Panics unless `zoom` is [positive](crate::widget::domain::positive).
+    /// Panics unless `zoom` is [positive](crate::widget::domain::is_positive).
     #[track_caller]
     pub fn set_zoom(ui: &mut Ui, id: WidgetId, zoom: f32) {
         let zoom = domain::positive(zoom);

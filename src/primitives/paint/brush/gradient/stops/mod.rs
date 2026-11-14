@@ -33,7 +33,7 @@ impl Stop {
     ///
     /// # Panics
     ///
-    /// Panics unless `color` is a [color](crate::widget::domain::color).
+    /// Panics unless `color` is a [color](crate::widget::domain::is_color).
     #[inline]
     #[track_caller]
     pub fn new(offset: f32, color: impl Into<RgbaF32>) -> Self {

@@ -208,7 +208,7 @@ fn each_validating_kind_takes_its_domain_and_refuses_the_rest() {
     const IN_CONST: f32 = domain::length(2.0);
     assert_eq!(IN_CONST, 2.0);
 
-    let rows: [(Kind, &[f32], &[f32]); 9] = [
+    let rows: [(Kind, &[f32], &[f32]); 8] = [
         (
             (domain::OFFSET_RULE, domain::is_offset, domain::offset),
             &[-1e30, -1.0, 0.0, 1e30],
@@ -265,22 +265,6 @@ fn each_validating_kind_takes_its_domain_and_refuses_the_rest() {
             &[0.0, -0.0, -1e-40, -1.0, f32::NAN, f32::INFINITY],
         ),
         (
-            (
-                domain::REFRACTIVE_INDEX_RULE,
-                domain::is_refractive_index,
-                domain::refractive_index,
-            ),
-            &[1.0, 1.5, 4.0, f32::MAX],
-            &[
-                0.999_999_94,
-                0.0,
-                -1.0,
-                f32::NAN,
-                f32::INFINITY,
-                f32::NEG_INFINITY,
-            ],
-        ),
-        (
             (domain::ANGLE_RULE, domain::is_angle, domain::angle),
             &[-7.0, 0.0, 7.0],
             &[f32::NAN, f32::INFINITY, f32::NEG_INFINITY],
@@ -295,6 +279,20 @@ fn each_validating_kind_takes_its_domain_and_refuses_the_rest() {
             assert!(!is_kind(v), "{rule}: refuses {v}");
             panic_probe::assert_panics_with(rule, || kind(v));
         }
+    }
+    // A lens raises its index to 1 rather than refusing it, so the kind is a predicate alone.
+    for n in [1.0, 1.5, 4.0, f32::MAX] {
+        assert!(domain::is_refractive_index(n), "takes {n}");
+    }
+    for n in [
+        0.999_999_94,
+        0.0,
+        -1.0,
+        f32::NAN,
+        f32::INFINITY,
+        f32::NEG_INFINITY,
+    ] {
+        assert!(!domain::is_refractive_index(n), "refuses {n}");
     }
 }
 

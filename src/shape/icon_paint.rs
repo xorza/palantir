@@ -44,7 +44,7 @@ impl IconPaint {
     ///
     /// # Panics
     ///
-    /// Panics unless `tint` is a [color](crate::widget::domain::color).
+    /// Panics unless `tint` is a [color](crate::widget::domain::is_color).
     #[track_caller]
     pub const fn tint(mut self, tint: RgbaF32) -> Self {
         self.tint = domain::color(tint);

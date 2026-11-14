@@ -84,7 +84,7 @@ pub trait Configure: Sized {
     ///
     /// # Panics
     ///
-    /// Panics unless each bare number is a [length](crate::widget::domain::length).
+    /// Panics unless each bare number is a [length](crate::widget::domain::is_length).
     #[inline]
     #[must_use]
     #[track_caller]
@@ -98,7 +98,7 @@ pub trait Configure: Sized {
     ///
     /// # Panics
     ///
-    /// Panics unless both axes are [lengths](crate::widget::domain::length).
+    /// Panics unless both axes are [lengths](crate::widget::domain::is_length).
     #[inline]
     #[must_use]
     #[track_caller]
@@ -112,7 +112,7 @@ pub trait Configure: Sized {
     ///
     /// # Panics
     ///
-    /// Panics unless both axes are [extents](crate::widget::domain::extent).
+    /// Panics unless both axes are [extents](crate::widget::domain::is_extent).
     #[inline]
     #[must_use]
     #[track_caller]
@@ -125,7 +125,7 @@ pub trait Configure: Sized {
     ///
     /// # Panics
     ///
-    /// Panics unless every edge is a [length](crate::widget::domain::length).
+    /// Panics unless every edge is a [length](crate::widget::domain::is_length).
     #[inline]
     #[must_use]
     #[track_caller]
@@ -139,7 +139,7 @@ pub trait Configure: Sized {
     ///
     /// # Panics
     ///
-    /// Panics unless every edge is an [offset](crate::widget::domain::offset).
+    /// Panics unless every edge is an [offset](crate::widget::domain::is_offset).
     #[inline]
     #[must_use]
     #[track_caller]
@@ -168,7 +168,7 @@ pub trait Configure: Sized {
     ///
     /// # Panics
     ///
-    /// Panics unless both axes are [offsets](crate::widget::domain::offset).
+    /// Panics unless both axes are [offsets](crate::widget::domain::is_offset).
     #[inline]
     #[must_use]
     #[track_caller]
@@ -208,7 +208,7 @@ pub trait Configure: Sized {
     ///
     /// # Panics
     ///
-    /// Panics unless `g` is a [gap](crate::widget::domain::gap).
+    /// Panics unless `g` is a [gap](crate::widget::domain::is_gap).
     #[inline]
     #[must_use]
     #[track_caller]
@@ -221,7 +221,7 @@ pub trait Configure: Sized {
     ///
     /// # Panics
     ///
-    /// Panics unless `g` is a [gap](crate::widget::domain::gap).
+    /// Panics unless `g` is a [gap](crate::widget::domain::is_gap).
     #[inline]
     #[must_use]
     #[track_caller]
@@ -407,7 +407,7 @@ pub trait ConfigureDefaults: Configure {
     ///
     /// # Panics
     ///
-    /// Panics unless each bare number is a [length](crate::widget::domain::length), even where
+    /// Panics unless each bare number is a [length](crate::widget::domain::is_length), even where
     /// the caller set a size.
     #[inline]
     #[must_use]
@@ -421,7 +421,7 @@ pub trait ConfigureDefaults: Configure {
     ///
     /// # Panics
     ///
-    /// Panics unless every edge is a [length](crate::widget::domain::length), even where the
+    /// Panics unless every edge is a [length](crate::widget::domain::is_length), even where the
     /// caller set a padding.
     #[inline]
     #[must_use]
@@ -435,7 +435,7 @@ pub trait ConfigureDefaults: Configure {
     ///
     /// # Panics
     ///
-    /// Panics unless every edge is an [offset](crate::widget::domain::offset), even where the
+    /// Panics unless every edge is an [offset](crate::widget::domain::is_offset), even where the
     /// caller set a margin.
     #[inline]
     #[must_use]
@@ -473,7 +473,7 @@ pub trait ConfigureDefaults: Configure {
     ///
     /// # Panics
     ///
-    /// Panics unless `g` is a [gap](crate::widget::domain::gap), even where the caller set one.
+    /// Panics unless `g` is a [gap](crate::widget::domain::is_gap), even where the caller set one.
     #[inline]
     #[must_use]
     #[track_caller]
@@ -486,7 +486,7 @@ pub trait ConfigureDefaults: Configure {
     ///
     /// # Panics
     ///
-    /// Panics unless `g` is a [gap](crate::widget::domain::gap), even where the caller set one.
+    /// Panics unless `g` is a [gap](crate::widget::domain::is_gap), even where the caller set one.
     #[inline]
     #[must_use]
     #[track_caller]
@@ -499,7 +499,7 @@ pub trait ConfigureDefaults: Configure {
     ///
     /// # Panics
     ///
-    /// Panics unless both axes are [lengths](crate::widget::domain::length), even where the
+    /// Panics unless both axes are [lengths](crate::widget::domain::is_length), even where the
     /// caller set a bound.
     #[inline]
     #[must_use]
@@ -513,7 +513,7 @@ pub trait ConfigureDefaults: Configure {
     ///
     /// # Panics
     ///
-    /// Panics unless both axes are [extents](crate::widget::domain::extent), even where the
+    /// Panics unless both axes are [extents](crate::widget::domain::is_extent), even where the
     /// caller set a bound.
     #[inline]
     #[must_use]

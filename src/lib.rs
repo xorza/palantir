@@ -205,32 +205,31 @@ pub mod widget {
     pub use crate::widgets::menu::{CallerOwned, TriggerOwned};
     pub use palantir_derive::{Animatable, Lerp};
 
-    /// The kinds a numeric input meets, which a `# Panics` doc names. Each is a predicate `is_*`
-    /// and a same-named checker that returns its argument or panics, in release too, but
-    /// [`fraction`](domain::fraction), which clamps and never panics.
+    /// The kinds a numeric input meets, each a predicate a `# Panics` doc links: a setter given a
+    /// value outside its kind panics, in release too, so a value read at run time goes through the
+    /// predicate first.
     ///
     /// | Kind | Rule |
     /// |---|---|
-    /// | [`offset`](domain::offset) | finite |
-    /// | [`length`](domain::length) | finite, `>= 0` |
-    /// | [`extent`](domain::extent) | `>= 0`, `+inf` allowed |
-    /// | [`gap`](domain::gap) | a length that rounds to at most `65504` in f16 |
-    /// | [`lane`](domain::lane) | rounds to within `±65504` in f16, on top of its own kind |
-    /// | [`positive`](domain::positive) | finite, `> 0` |
-    /// | [`factor`](domain::factor) | finite, `>= 0` |
-    /// | [`refractive_index`](domain::refractive_index) | finite, `>= 1` |
-    /// | [`angle`](domain::angle) | finite |
-    /// | [`color`](domain::color) | every channel a lane |
-    /// | [`fraction`](domain::fraction) | `0..=1`, clamped; non-finite is `0` |
+    /// | [`is_offset`](domain::is_offset) | finite |
+    /// | [`is_length`](domain::is_length) | finite, `>= 0` |
+    /// | [`is_extent`](domain::is_extent) | `>= 0`, `+inf` allowed |
+    /// | [`is_gap`](domain::is_gap) | a length that rounds to at most `65504` in f16 |
+    /// | [`is_lane`](domain::is_lane) | rounds to within `±65504` in f16, on top of its own kind |
+    /// | [`is_positive`](domain::is_positive) | finite, `> 0` |
+    /// | [`is_factor`](domain::is_factor) | finite, `>= 0` |
+    /// | [`is_refractive_index`](domain::is_refractive_index) | finite, `>= 1` |
+    /// | [`is_angle`](domain::is_angle) | finite |
+    /// | [`is_color`](domain::is_color) | every channel a lane |
+    /// | [`is_fraction`](domain::is_fraction) | `0..=1` |
     ///
     /// [`EPS`](domain::EPS) is the one epsilon for "can the eye resolve this",
     /// [`is_invisible`](domain::is_invisible) a magnitude that paints nothing by it, and
     /// [`band_fraction`](domain::band_fraction) where a centered knob sits along its track.
     pub mod domain {
         pub use crate::primitives::math::domain::{
-            EPS, angle, band_fraction, color, extent, factor, fraction, gap, is_angle, is_color,
-            is_extent, is_factor, is_fraction, is_gap, is_invisible, is_lane, is_length, is_offset,
-            is_positive, is_refractive_index, lane, length, offset, positive, refractive_index,
+            EPS, band_fraction, is_angle, is_color, is_extent, is_factor, is_fraction, is_gap,
+            is_invisible, is_lane, is_length, is_offset, is_positive, is_refractive_index,
         };
     }
 }

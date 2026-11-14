@@ -43,7 +43,7 @@ impl TextShape {
     ///
     /// # Panics
     ///
-    /// Panics unless `origin` is an [offset](crate::widget::domain::offset).
+    /// Panics unless `origin` is an [offset](crate::widget::domain::is_offset).
     #[track_caller]
     pub const fn at_origin(mut self, origin: Vec2) -> Self {
         self.local_origin = Some(vec2::offset(origin));
@@ -76,7 +76,7 @@ impl sealed::DrawWith<RgbaF32> for TextShape {
 
     /// # Panics
     ///
-    /// Unless the ink is a [color](crate::widget::domain::color).
+    /// Unless the ink is a [color](crate::widget::domain::is_color).
     #[track_caller]
     fn check(&self, color: &RgbaF32) {
         let _ = domain::color(*color);

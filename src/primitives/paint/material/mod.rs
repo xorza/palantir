@@ -119,8 +119,8 @@ use crate::primitives::paint::material::material_effect::MaterialEffect;
 /// frame where nothing does.
 ///
 /// Plain data, checked where it enters a shape or a theme: `backdrop_blur` is a
-/// [length](crate::widget::domain::length), each luminance bound a
-/// [factor](crate::widget::domain::factor), each a [lane](crate::widget::domain::lane) as it
+/// [length](crate::widget::domain::is_length), each luminance bound a
+/// [factor](crate::widget::domain::is_factor), each a [lane](crate::widget::domain::is_lane) as it
 /// packs into one, each parameter finite, and the fallback holds its own checks. The effect must
 /// be loaded where the box records, a backdrop effect that binds no image and takes as many lanes
 /// as the material holds, as an [`EffectPaint`](crate::EffectPaint)'s effect must be

@@ -48,7 +48,7 @@ impl IconTable {
     /// Panics unless `icons` holds at most 65 536 entries (the most one set
     /// indexes) sorted by [`IconDefinition::name`] with no name twice, each
     /// [`IconDefinition::svg`] lies inside `svg`, and each
-    /// [`IconDefinition::view_box`] is [positive](crate::widget::domain::positive) on
+    /// [`IconDefinition::view_box`] is [positive](crate::widget::domain::is_positive) on
     /// both axes. In a `const`, the panic is a build error.
     #[track_caller]
     pub const fn baked(icons: &'static [IconDefinition], svg: &'static [u8]) -> Self {
