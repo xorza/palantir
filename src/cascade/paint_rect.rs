@@ -47,14 +47,16 @@ pub(super) fn clip_screen(screen: Rect, clip: Option<Rect>) -> Rect {
     clip.map_or(screen, |c| screen.clamp_to(c))
 }
 
-/// Pad a text shape's screen rect by [`text::snap_slack`] of its local inked size, then re-clamp to `clip`: the composer paints at the ladder-snapped scale, the cascade lifts at the unsnapped one.
+/// Pad a text shape's screen rect by [`text::paint_slack`] of its local inked size at
+/// `display_scale`, then re-clamp to `clip`: the composer paints at the ladder-snapped scale and
+/// each glyph on the pixel grid, the cascade lifts at the unsnapped scale and the exact ink.
 #[inline]
-fn inflate_text_damage(screen: Rect, inked: Size, clip: Option<Rect>) -> Rect {
+fn inflate_text_damage(screen: Rect, inked: Size, display_scale: f32, clip: Option<Rect>) -> Rect {
     // `screen` is already clipped, so a fully-off-clip run has collapsed to zero on an axis. Padding it would re-grow it across the clip edge and fabricate a damage sliver for offscreen text. Leave a non-paintable box empty; `is_paint_empty` also covers NaN and near-zero.
     if screen.is_paint_empty() {
         return screen;
     }
-    let Size { w: pad_w, h: pad_h } = text::snap_slack(inked);
+    let Size { w: pad_w, h: pad_h } = text::paint_slack(inked, display_scale);
     let inflated = Rect {
         min: Vec2::new(screen.min.x - pad_w, screen.min.y - pad_h),
         size: Size {
@@ -260,7 +262,12 @@ impl PaintRectCtx<'_> {
                         // A turned run's slack turns with it, so it pads the swept square by the
                         // slack of that square: no slack vector reaches past it.
                         let swept = spun_if_animated(inked, idx);
-                        inflate_text_damage(shape.to_screen(swept, None), swept.size, shape_clip)
+                        inflate_text_damage(
+                            shape.to_screen(swept, None),
+                            swept.size,
+                            display_scale,
+                            shape_clip,
+                        )
                     }
                     ShapeRecord::Stroke { geometry, stroke } => match geometry {
                         StrokeGeometry::Polyline(PolylineGeometry {

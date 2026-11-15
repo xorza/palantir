@@ -15,3 +15,4 @@ mod support;
 mod text;
 mod theme_transition;
 mod transparency;
+mod zoomed_text;

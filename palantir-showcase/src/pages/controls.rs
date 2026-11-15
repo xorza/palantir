@@ -397,10 +397,12 @@ fn group(ui: &mut Ui, k: Kit, label: &'static str) {
         .show(ui);
 }
 
-/// Transparent fill, accent border: reads as a "selectable surface".
+/// Transparent fill, accent border: reads as a "selectable surface". The border is the stock
+/// button's hairline, as a border pads the button by its width, so every theme of the page sizes
+/// a label alike.
 fn outlined_style(k: Kit, base: &ButtonTheme) -> ButtonTheme {
     let accent = k.t.accent;
-    let border = Border::new(accent, 1.5);
+    let border = Border::new(accent, M.stroke.hairline);
     let chrome = |fill: RgbaF32, border| {
         Chrome::rounded(fill, Corners::all(M.radius.control)).with_border(border)
     };
@@ -412,7 +414,7 @@ fn outlined_style(k: Kit, base: &ButtonTheme) -> ButtonTheme {
             disabled: WidgetLook {
                 chrome: chrome(
                     RgbaF32::TRANSPARENT,
-                    Border::new(accent.with_alpha(0.35), 1.5),
+                    Border::new(accent.with_alpha(0.35), M.stroke.hairline),
                 ),
                 text: TextStyleOverrides::NONE.with_color(k.t.ink_faint),
             },
@@ -422,7 +424,9 @@ fn outlined_style(k: Kit, base: &ButtonTheme) -> ButtonTheme {
 }
 
 /// The red swatch under the swatch ink, which it holds 4.5:1 against; hovered and pressed it
-/// moves toward white, which only raises that contrast; disabled, it is the theme's button.
+/// moves toward white, which only raises that contrast; disabled, it is the theme's button. A
+/// hairline of its own fill borders it, as palantir's accent button does, so it sizes a label as
+/// the stock button does.
 fn danger_style(k: Kit, base: &ButtonTheme) -> ButtonTheme {
     let red = k.swatch.red;
     let ink = scaffold::on_swatch_style().color;
@@ -434,7 +438,8 @@ fn danger_style(k: Kit, base: &ButtonTheme) -> ButtonTheme {
             1.0,
         );
         WidgetLook {
-            chrome: Chrome::rounded(fill, Corners::all(M.radius.control)),
+            chrome: Chrome::rounded(fill, Corners::all(M.radius.control))
+                .with_border(Border::new(fill, M.stroke.hairline)),
             text: TextStyleOverrides::NONE.with_color(ink),
         }
     };

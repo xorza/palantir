@@ -56,14 +56,20 @@ use crate::primitives::geometry::size::Size;
 /// Measurement uses the unscaled `font_size`; only paint snaps, so the glyph block is up to `TEXT_SCALE_STEP / 2` off the layout rect per axis. `TextDrawRow.bounds` clips the excess and `inflate_text_damage` inflates damage by the same fraction.
 pub(crate) const TEXT_SCALE_STEP: f32 = 0.005;
 
+/// How far a glyph's raster reaches past its exact ink, physical px: its pen and its box lie on
+/// the pixel grid, each rounded, so a descender at a small zoom crosses into the next pixel row.
+pub(crate) const RASTER_SLACK_PX: f32 = 1.0;
+
 /// How far a run inked over `inked` (local logical px) can paint past it per side, in the logical
-/// px of its screen. The snap moves the scale by at most `TEXT_SCALE_STEP / 2`, absolute, so the
-/// painted block moves by `inked × STEP/2` whatever the zoom: padding the transformed size instead
-/// would shrink the slack below scale 1 and cut glyphs.
-pub(crate) fn snap_slack(inked: Size) -> Size {
+/// px of its screen at `display_scale` physical px a logical one. The snap moves the scale by at
+/// most `TEXT_SCALE_STEP / 2`, absolute, so the painted block moves by `inked × STEP/2` whatever
+/// the zoom: padding the transformed size instead would shrink the slack below scale 1 and cut
+/// glyphs. Each glyph's raster then reaches [`RASTER_SLACK_PX`] past its ink.
+pub(crate) fn paint_slack(inked: Size, display_scale: f32) -> Size {
+    let raster = RASTER_SLACK_PX / display_scale;
     Size::new(
-        inked.w * (TEXT_SCALE_STEP * 0.5),
-        inked.h * (TEXT_SCALE_STEP * 0.5),
+        inked.w * (TEXT_SCALE_STEP * 0.5) + raster,
+        inked.h * (TEXT_SCALE_STEP * 0.5) + raster,
     )
 }
 

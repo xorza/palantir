@@ -16,8 +16,8 @@ use crate::primitives::paint::stroke::Stroke;
 use crate::scene::layer::Layer;
 use crate::scene::plane::Plane;
 use crate::shape::Shape;
-use crate::text::TEXT_SCALE_STEP;
 use crate::text::glyph_font::GlyphFont;
+use crate::text::{RASTER_SLACK_PX, TEXT_SCALE_STEP};
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, button::Button, panel::Panel};
@@ -289,7 +289,8 @@ fn a_turning_shape_is_damaged_against_the_square_it_sweeps() {
         (Kind::Triangle, 0.5),
         (Kind::Mesh, 0.0),
         (Kind::Rect, 0.0),
-        (Kind::Text, 2.0 * r * 0.0025),
+        // The swept square's scale-step slack, and a pixel of the raster's grid at scale 1.
+        (Kind::Text, 2.0 * r * 0.0025 + RASTER_SLACK_PX),
     ] {
         let mut h = Harness::cold(DISPLAY.physical);
         frame(&mut h, |ui| {
@@ -689,10 +690,12 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
         "steady frame must produce no diff"
     );
 
-    // Damage rects inflate by `TEXT_SCALE_STEP * measured` per axis (`STEP/2` per side; see the cascade's `inflate_text_damage`).
+    // Damage rects inflate by `TEXT_SCALE_STEP * measured` per axis (`STEP/2` per side), and by a
+    // pixel of the raster's grid a side at scale 1 (the cascade's `inflate_text_damage`).
     let inflate = 1.0 + TEXT_SCALE_STEP;
+    let grid = 2.0 * RASTER_SLACK_PX;
     let prev_text_rect = h.frames().damage().prev_paint_rows(leaf_id)[0].screen;
-    let prev_size_short = Size::new(FONT * 0.5 * 3.0 * inflate, FONT * inflate);
+    let prev_size_short = Size::new(FONT * 0.5 * 3.0 * inflate + grid, FONT * inflate + grid);
     assert_eq!(
         prev_text_rect.size, prev_size_short,
         "the short text's damage size"
@@ -700,7 +703,7 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
 
     frame(&mut h, |ui| build("abcdef", ui));
     let cur_text_rect = h.frames().damage().prev_paint_rows(leaf_id)[0].screen;
-    let cur_size_long = Size::new(FONT * 0.5 * 6.0 * inflate, FONT * inflate);
+    let cur_size_long = Size::new(FONT * 0.5 * 6.0 * inflate + grid, FONT * inflate + grid);
     assert_eq!(
         cur_text_rect.size, cur_size_long,
         "the long text's damage size"
@@ -725,7 +728,7 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
     );
 }
 
-/// A run's damage covers its glyphs' ink (an italic `f` reaches past its advance): the block grown by the measured ink, then padded by the scale-step fraction as `inflate_text_damage` does.
+/// A run's damage covers its glyphs' ink (an italic `f` reaches past its advance): the block grown by the measured ink, then padded by the scale-step fraction and a pixel of the raster's grid at scale 1, as `inflate_text_damage` does.
 #[test]
 fn a_text_run_damages_its_ink_past_the_block() {
     const ORIGIN: Vec2 = Vec2::new(20.0, 10.0);
@@ -770,7 +773,7 @@ fn a_text_run_damages_its_ink_past_the_block() {
         shaped.extent.size.w + left + right,
         shaped.extent.size.h + top + bottom,
     );
-    let pad = Vec2::new(inked.w, inked.h) * (TEXT_SCALE_STEP * 0.5);
+    let pad = Vec2::new(inked.w, inked.h) * (TEXT_SCALE_STEP * 0.5) + Vec2::splat(RASTER_SLACK_PX);
     assert_eq!(
         h.frames().damage().prev_paint_rows(leaf_id)[0].screen,
         Rect {

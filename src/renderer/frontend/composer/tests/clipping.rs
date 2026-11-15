@@ -69,8 +69,9 @@ fn finishing_a_session_emits_the_trailing_group_and_batch() {
                 lane: Lane::Text,
                 rows: Span::new(0, 1),
                 scissor: None,
-                // The run's bounds padded by the scale step's slack and covered.
-                bounds: URect::new(0, 19, 11, 12),
+                // The run's bounds padded by the scale step's slack and a pixel of the raster's
+                // grid, and covered.
+                bounds: URect::new(0, 18, 12, 14),
                 batch: 0,
             },
         ],

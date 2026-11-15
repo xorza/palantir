@@ -523,14 +523,14 @@ impl PaintSink for ComposeSession<'_> {
             .transform
             .physical_rect(t.rect, self.out.display.edge_rounding());
         // What the glyphs can reach: ink from the placed origin at true size, padded by
-        // the scale-step fraction like the run's damage rect (`inflate_text_damage`).
-        // Covered, never rounded in, so the last AA column is not cut.
+        // the scale-step fraction and the raster's pixel grid like the run's damage rect
+        // (`inflate_text_damage`). Covered, never rounded in, so the last AA column is not cut.
         let reach = {
             let local_inked = t.rect.inflated_by(t.ink);
             let inked = self.composer.transform.apply_rect(local_inked);
             let lead = (world.min - inked.min) * scale;
             let size = Vec2::new(inked.size.w, inked.size.h) * scale;
-            let slack = text::snap_slack(local_inked.size);
+            let slack = text::paint_slack(local_inked.size, scale);
             let pad = Vec2::new(slack.w, slack.h) * scale;
             let min = physical_rect.min - lead;
             let mut reach = Rect::from_min_max(min - pad, min + size + pad);

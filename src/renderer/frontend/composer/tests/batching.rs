@@ -611,11 +611,13 @@ fn quad_flushes_text_in_already_closed_batch_same_group() {
         ],
         "each panel quad paints over the text before it"
     );
-    // Each box is padded 0.25 % a side (0.75 px across, 0.05 down) and covered; the first clamps to (0, 0)..(301, 21), the second spans y 99.95..120.05, so 99..121.
+    // Each box is padded 0.25 % a side (0.75 px across, 0.05 down) and a pixel of the raster's
+    // grid, and covered; the first clamps to (0, 0)..(302, 22), the second spans y 98.95..121.05,
+    // so 98..122.
     let scissors: Vec<URect> = text_runs(&buf).iter().map(|run| run.1).collect();
     assert_eq!(
         scissors,
-        [URect::new(0, 0, 301, 21), URect::new(0, 99, 301, 22)]
+        [URect::new(0, 0, 302, 22), URect::new(0, 98, 302, 24)]
     );
 }
 
@@ -825,9 +827,9 @@ fn text_batch_drains_past_a_non_overlapping_image() {
     );
 }
 
-/// A text batch's scissor never cuts the glyphs' extent. Pixel-snapped, a run at x 10 of width 100.4 spans 10..110.4; padded 0.25 % a side and covered: x 9..111, y 9..31.
+/// A text batch's scissor never cuts the glyphs' extent. Pixel-snapped, a run at x 10 of width 100.4 spans 10..110.4; padded 0.25 % a side and a pixel of the raster's grid, and covered: x 8..112, y 8..32.
 ///
-/// Ink past the block (3, 2, 5, 4 px out) gives 7..115.4 by 8..34, padded 0.271 x 0.065 to 6.729..115.671 by 7.935..34.065, covered x 6..116, y 7..35. At scale 2: 216.8 x 52 from (14, 16), padded 0.542 x 0.13: x 13..232, y 15..69.
+/// Ink past the block (3, 2, 5, 4 px out) gives 7..115.4 by 8..34, padded 1.271 x 1.065 to 5.729..116.671 by 6.935..35.065, covered x 5..117, y 6..36. At scale 2: 216.8 x 52 from (14, 16), padded 1.542 x 1.13 physical: x 12..233, y 14..70.
 #[test]
 fn a_text_scissor_covers_the_snapped_glyph_block() {
     let block = Rect::new(10.0, 10.0, 100.4, 20.0);
@@ -838,21 +840,21 @@ fn a_text_scissor_covers_the_snapped_glyph_block() {
             UVec2::new(200, 100),
             Spacing::ZERO,
             10.0,
-            URect::new(9, 9, 102, 22),
+            URect::new(8, 8, 104, 24),
         ),
         (
             1.0,
             UVec2::new(200, 100),
             ink,
             10.0,
-            URect::new(6, 7, 110, 28),
+            URect::new(5, 6, 112, 30),
         ),
         (
             2.0,
             UVec2::new(400, 200),
             ink,
             20.0,
-            URect::new(13, 15, 219, 54),
+            URect::new(12, 14, 221, 56),
         ),
     ];
     for (scale, physical, ink, origin, scissor) in cases {
@@ -868,9 +870,9 @@ fn a_text_scissor_covers_the_snapped_glyph_block() {
     }
 
     // Zoomed out to 0.5 the slack is still a share of the local size: a block 101.6 x 20 spans
-    // 5..55.8 by 5..15, padded `101.6 · 0.0025 = 0.254` x `0.05` to 4.746..56.054 by 4.95..15.05,
-    // covered x 4..57, y 4..16. A share of the 50.8 on screen, 0.127, would end at 55.927 and cut
-    // the last column at 56.
+    // 5..55.8 by 5..15, padded `101.6 · 0.0025 = 0.254` x `0.05` and a pixel of the raster's grid
+    // to 3.746..57.054 by 3.95..16.05, covered x 3..58, y 3..17. A share of the 50.8 on screen,
+    // 0.127, would end at 56.927 and cut the last column at 57.
     let mut display = params(1.0, UVec2::new(200, 100));
     display.pixel_snap = true;
     let buf = run(
@@ -883,6 +885,6 @@ fn a_text_scissor_covers_the_snapped_glyph_block() {
     );
     assert_eq!(
         text_runs(&buf),
-        [(Span::new(0, 1), URect::new(4, 4, 53, 12))]
+        [(Span::new(0, 1), URect::new(3, 3, 55, 14))]
     );
 }
