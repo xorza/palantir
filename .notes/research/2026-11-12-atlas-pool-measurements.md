@@ -60,8 +60,8 @@ waited submit costs about 250 µs on this machine, the floor of each case.
 - **The page branch costs nothing measurable here**: the steady text scene drawn eight times
   over in one pass, 226 µs with one texture of each kind against 223 µs through four pages and
   the branch.
-- Not measured here: lavapipe and the Windows AMD iGPU. The bench-profile runs below replace these
-  numbers for the Apple laptop, the board and the handheld.
+- Not measured here: lavapipe. The bench-profile runs below replace these numbers for the Apple
+  laptop, the board, the handheld and the Windows AMD iGPU.
 
 # The pool against its base, on three hosts (2026-11-12)
 
@@ -240,3 +240,94 @@ now runs them at a 1 MiB mask budget, so they compare with no earlier run.
 - **The age-out at the starting budget**: with the age-out off, as one page under the budget now
   is, `cache_churn/frame` 328 → 281 µs and `cache_churn/prepare` 47.6 → 7.1 µs on the apple, where
   the pool's base took 283 and 34.6 (the spike above).
+
+# The pool on the Windows AMD iGPU (2026-11-15)
+
+The windows host as `.notes/PERF.md` names it (Vulkan, logical CPU 2 through `ProcessorAffinity`),
+bench profile. Both builds at thin LTO, one codegen unit, wgpu 30.0.2 and Rust 1.100.0: the base's
+`lto = "fat"` and its wgpu 30.0.1 lock set to the pool's, so the builds differ in palantir's code
+alone.
+
+## Frames and text
+
+`1851f60e2`, the pool's base, against `b9d5e48f9`, the pool with its fixes and rework, the commit
+before the batching. Each case ABBA, `--measurement-time 3 --warm-up-time 1`; the 20 cases whose
+two pairs disagreed by more than 3 points ran two more ABBA rounds. The change is the median of
+every B leg against every A leg, the pairs' range after it. The text churn cases are left out, as
+the two builds run them at different mask budgets.
+
+| case | change | pairs |
+|---|---|---|
+| `text_atlas/steady_warm/prepare` | 6.8 → 7.6 µs, +12.0 % | +11.3, +12.8 |
+| `text_atlas/stable_keys/prepare` | 40.5 → 43.3 µs, +6.9 % | +6.8, +7.0 |
+| `text_atlas/steady_warm/frame` | −0.8 % | −5.5 to +0.4 |
+| `text_atlas/zoom_smooth/frame` | −2.5 % | −2.9, −2.1 |
+| `frame/cached` | +0.9 % | +0.8, +1.0 |
+| `frame/hovering` | +1.0 % | −1.5 to +3.0 |
+| `frame/partial` | 1.21 → 1.27 ms, +4.8 % | −5.7 to +8.2 |
+| `frame/typing` | +0.7 % | 0.0, +1.5 |
+| `frame/alternating` | +1.0 % | −3.8 to +5.2 |
+| `frame/resizing` | 1.23 → 1.25 ms, +1.9 % | +0.8 to +5.1 |
+| `frame/scrolling` | −1.5 % | −6.3 to +3.5 |
+| `frame/theming` | −0.6 % | −1.0, −0.2 |
+| `backdrop_frame/*/cached`, each look and the modal | +1.1 to +2.1 %, about 41 µs | each pair alike |
+| `backdrop_frame/glass/moving` | 2.22 → 2.09 ms, −5.9 % | −6.6, −5.2 |
+| `backdrop_frame/glass/sliding` | −2.7 % | −3.2, −2.2 |
+| `backdrop_frame/glass/{hover,under,scrolling}` | −0.5 to +1.1 % | −5.1 to +9.5 |
+| `backdrop_frame/frosted/hover` | −3.6 % | −3.8, −3.3 |
+| `backdrop_frame/frosted/{sliding,moving}` | −1.3 %, +1.2 % | −3.6 to +4.0 |
+| `backdrop_frame/blur/{hover,sliding,moving}` | +0.1 to +1.7 % | −6.2 to +4.9 |
+| `backdrop_frame/modal/scrolling` | 7.84 → 7.64 ms, −2.5 % | −5.5 to +0.1 |
+| `backdrop_frame/pair_near/scrolling` | +3.6 % | −1.1 to +6.1 |
+| `backdrop_frame/{pair_apart,cards,cards_apart,first}/scrolling`, `many/under` | −1.5 to +1.6 % | −4.5 to +7.2 |
+| `backdrop_frame/{blur,frosted}/{under,scrolling}`, `stacked/scrolling` | no reading | −28 to +35 |
+
+- **Only the glyph lookups move past the floor in every pair**: `steady_warm/prepare` +12 % and
+  `stable_keys/prepare` +7 %, as on the other three hosts (+8 to +15 %).
+- **The whole frames stay within the floor** (median 1 %, up to 8 %). `resizing` is slower in all
+  six pairs, by 1.9 % at the median; `partial` leans slower and `scrolling` faster, with pairs on
+  both sides.
+- **Every cached frame is 1 to 2 % slower in every pair**, about 0.6 µs of 41; not profiled.
+- **Glass moves and slides 3 to 6 % faster**, the board's glass gain, far smaller here.
+- **Five backdrop cases are bimodal on this host**: their A legs alone differ by up to 27 %, so
+  they give no reading.
+
+## Moves, pages and the gradient flush
+
+Criterion's median, `979bb2a37` alone, where a draw stages its rectangles through the belt; a case
+waits for its device. A waited submit is the floor, about 0.8 ms here, and criterion puts a
+sample's spread at ±0.2 to 0.3 ms, the widest of the hosts.
+
+| case | 16 | 64 | 256 |
+|---|---|---|---|
+| copy, R8 24² | 1000 µs | 1344 µs | 2552 µs |
+| draw, R8 24² | 861 µs | 885 µs | 966 µs |
+| copy, R8 128² | 1052 µs | 1379 µs | 3014 µs |
+| draw, R8 128² | 991 µs | 1190 µs | 1359 µs |
+| copy, RGBA8 24² | 953 µs | 1451 µs | 2273 µs |
+| draw, RGBA8 24² | 869 µs | 892 µs | 1004 µs |
+| copy, RGBA8 128² | 1177 µs | 1579 µs | 3128 µs |
+| draw, RGBA8 128² | 950 µs | 1275 µs | 1502 µs |
+| copy, RGBA16F 24² | 1003 µs | 1464 µs | 2432 µs |
+| draw, RGBA16F 24² | 888 µs | 948 µs | 1005 µs |
+| copy, RGBA16F 128² | 1195 µs | 1620 µs | 7182 µs |
+| draw, RGBA16F 128² | 1243 µs | 1433 µs | 3007 µs |
+
+| | 256² | 1024² | 2048² |
+|---|---|---|---|
+| page R8 | 803 µs | 793 µs | 795 µs |
+| page RGBA8 | 795 µs | 802 µs | 834 µs |
+| page RGBA16F | 837 µs | 814 µs | 849 µs |
+
+| gap | 16 | 32 | 48 | 64 | 128 |
+|---|---|---|---|---|---|
+| split | 936 µs | 978 µs | 985 µs | 968 µs | 955 µs |
+| merged | 916 µs | 1188 µs | 1418 µs | 1590 µs | 2347 µs |
+
+- **A copy command costs about 6.5 µs here**, R8 24², `(t₂₅₆ − t₁₆) / 240`: between the apple's
+  2.6 and the handheld's 9.4.
+- **A draw wins past 16 rectangles in every format**: the 64 glyphs of a frame's budget 885 µs
+  against 1344, 256 RGBA16F 128² rectangles 3.0 ms against 7.2. At 16 the two sit within the
+  floor's spread.
+- **Making a page costs nothing past the floor**, at every edge and format, as on the handheld.
+- **Merged and split staging cross between gaps 16 and 32**, as on the apple and the handheld.

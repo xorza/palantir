@@ -6,8 +6,6 @@
 - optimal resolve strategies
 - material for texts and strokes?
 
-- atlas pool: the move bench and the frame A/B on the Windows AMD iGPU
-
 - widget-authoring surface
 - table widget: sortable header, virtual rows over a fixed row height
 - reorderable list: a drag handle and Alt+arrows
