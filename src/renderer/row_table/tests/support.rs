@@ -1,6 +1,6 @@
 //! Tables, ramps that differ only where intended, and what a flush owes, as the tests read them.
 
-use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
+use crate::primitives::paint::brush::gradient::Gradient;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::renderer::row_table::*;
@@ -12,10 +12,10 @@ pub(crate) fn magenta() -> RgbaF16 {
 
 /// A gradient whose stops are distinct for every `i` below 2^24 (`i`'s three low bytes are the
 /// first stop's color). Only the ramp keys a row, so varying geometry would silently reuse one.
-pub(crate) fn distinct_grad(i: u32) -> LinearGradient {
+pub(crate) fn distinct_grad(i: u32) -> Gradient {
     assert!(i < 1 << 24, "{i} does not fit three color bytes");
     let [r, g, b, _] = i.to_le_bytes();
-    LinearGradient::horizontal([
+    Gradient::horizontal([
         SrgbaU8::rgb(r, g, b).into(),
         RgbaF32::new(0.0, 1.0, 0.0, 1.0),
     ])

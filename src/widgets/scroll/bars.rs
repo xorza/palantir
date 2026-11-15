@@ -5,11 +5,10 @@ use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::interaction::response::Response;
-use crate::primitives::input::interaction::response_state::ResponseState;
 use crate::primitives::input::sense::Sense;
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::scroll_axes::ScrollAxes;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::SizeSpec;
 use crate::primitives::paint::chrome::Chrome;
 use crate::scene::scrollbars_def::ScrollbarsDef;
 use crate::theme::scrollbar::ScrollbarTheme;
@@ -25,8 +24,8 @@ use crate::widgets::scroll::{Scroll, ScrollGeometry};
 struct BarAxis {
     track_id: WidgetId,
     thumb_id: WidgetId,
-    track: ResponseState,
-    thumb: ResponseState,
+    track: Response,
+    thumb: Response,
 }
 
 impl BarAxis {
@@ -44,7 +43,7 @@ impl BarAxis {
         let track_chrome = (!theme.track.is_noop()).then(|| Chrome::rounded(theme.track, radius));
         track.record(ui, track_chrome.as_ref(), |_| {});
 
-        let fill = if self.thumb.left.drag.delta().is_some() || self.thumb.pressed() {
+        let fill = if self.thumb.left.drag.delta().is_some() || self.thumb.is_pressed() {
             theme.thumb_active
         } else if self.thumb.hovered() {
             theme.thumb_hovered
@@ -76,7 +75,7 @@ impl Bars {
         let axis = |track: &str, thumb: &str| {
             let (track_id, thumb_id) = (scroll_id.with(track), scroll_id.with(thumb));
             let read = |id| {
-                let mut state = ui.response_for(id).state;
+                let mut state = ui.response_for(id);
                 state.merge_disabled(disabled);
                 state
             };
@@ -132,7 +131,7 @@ impl Bars {
     pub(super) fn record(&self, ui: &mut Ui, def: ScrollbarsDef) {
         let mut overlay = Widget::scrollbars()
             .id(def.content.with("bars"))
-            .size((Sizing::FILL, Sizing::FILL));
+            .size(SizeSpec::FILL);
         overlay.scrollbar_def(ui, def);
         overlay.record(ui, None, |ui| {
             for (_, bar) in self.axes() {

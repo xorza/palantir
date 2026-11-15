@@ -23,7 +23,7 @@ impl CascadeInputHash {
         Self((hash.as_u64() & HASH_MASK) | ((invisible as u64) << 63))
     }
 
-    /// A node's input: its parent's [`CascadeCtx::prefix`](crate::cascade::engine::CascadeCtx::prefix) folded with its own arranged rect and the extent its layout read from outside its subtree ([`PlaneLayout::outside_input`](crate::layout::plane_layout::PlaneLayout::outside_input)), packed with its resolved `invisible`.
+    /// A node's input: its parent's [`CascadeCtx::prefix`](crate::cascade::engine::CascadeCtx::prefix) folded with its own arranged rect and the extent its layout read from outside its subtree ([`outside_input`](crate::layout::drivers::outside_input)), packed with its resolved `invisible`.
     #[inline]
     pub(crate) fn finish(
         prefix: &Hasher,

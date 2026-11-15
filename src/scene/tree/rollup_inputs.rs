@@ -5,9 +5,9 @@ use crate::primitives::layout::grid_def::GridDef;
 use crate::primitives::layout::track::Track;
 use crate::scene::node::bounds_extras::BoundsExtras;
 use crate::scene::node::panel_extras::PanelExtras;
-use crate::scene::scrollbars_def::ResolvedScrollbarsDef;
 use crate::scene::tree::Tree;
 use crate::scene::tree::node_record::NodeRecord;
+use crate::scene::tree::resolved_scrollbars_def::ResolvedScrollbarsDef;
 #[cfg(debug_assertions)]
 use crate::scene::tree::subtree_rollups::SubtreeRollups;
 use crate::shape::paint::chrome_row::ChromeRow;

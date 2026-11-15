@@ -41,7 +41,7 @@ fn a_chip_is_a_themed_square_with_a_checker_behind_translucency() {
                 .show(ui)
                 .node(ui)
         });
-        let rect = h.arranged(id);
+        let rect = h.layout_rect(id);
         assert_eq!(
             (rect.unwrap().size.w, rect.unwrap().size.h),
             (side, side),

@@ -18,14 +18,14 @@ use crate::host::offscreen::{OffscreenHost, OffscreenTime};
 use crate::icons::icon_set::IconSet;
 use crate::icons::icon_table::IconTable;
 use crate::icons::internals::{ONE_COLOR, TWO_COLORS};
-use crate::image_registry::error::ImageTooLarge;
+use crate::image_registry::error::ImageSizeError;
 use crate::image_registry::image_handle::ImageHandle;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::mesh::Mesh;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::layout::clip_mode::ClipMode;
-use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
+use crate::primitives::layout::sizing::SizeSpec;
+use crate::primitives::paint::brush::gradient::Gradient;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
@@ -49,7 +49,6 @@ use crate::widgets::panel::Panel;
 use crate::widgets::text::Text;
 use crate::window::window_token::WindowToken;
 use glam::{UVec2, Vec2};
-use image::{RgbaImage, imageops};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -108,7 +107,7 @@ struct Scene {
     tile: RgbaF32,
     image: Image,
     handle: Option<ImageHandle>,
-    icons: Rc<IconTable>,
+    /// The icon set, loaded at the first frame and held.
     held: Option<IconSet>,
     view: Rc<RefCell<ClearView>>,
     mesh: Mesh,
@@ -123,17 +122,14 @@ impl Scene {
             *texel = SrgbaU8::rgb((i * 10) as u8, 200, 255 - (i * 10) as u8);
         }
         let mut mesh = Mesh::with_capacity(3, 3);
-        let a = mesh.vertex(Vec2::new(4.0, 116.0), RgbaF32::hex(0xff5e44));
-        let b = mesh.vertex(Vec2::new(20.0, 90.0), RgbaF32::hex(0xfacc15));
-        let c = mesh.vertex(Vec2::new(36.0, 116.0), RgbaF32::hex(0x46c46c));
-        mesh.triangle(a, b, c);
+        let a = mesh.add_vertex(Vec2::new(4.0, 116.0), RgbaF32::hex(0xff5e44));
+        let b = mesh.add_vertex(Vec2::new(20.0, 90.0), RgbaF32::hex(0xfacc15));
+        let c = mesh.add_vertex(Vec2::new(36.0, 116.0), RgbaF32::hex(0x46c46c));
+        mesh.add_triangle(a, b, c);
         Self {
             tile: RgbaF32::WHITE,
             image,
             handle: None,
-            icons: Rc::new(
-                IconTable::from_svgs([("mask", ONE_COLOR), ("color", TWO_COLORS)]).unwrap(),
-            ),
             held: None,
             view: Rc::default(),
             mesh,
@@ -153,18 +149,22 @@ impl App for Scene {
         if self.handle.is_none() {
             self.handle = Some(ui.load_image(&self.image).unwrap());
         }
-        let icons = self.held.insert(ui.load_icons(Rc::clone(&self.icons)));
+        let icons = self.held.get_or_insert_with(|| {
+            ui.load_icons(
+                IconTable::from_svgs([("mask", ONE_COLOR), ("color", TWO_COLORS)]).unwrap(),
+            )
+        });
         let mask = icons.by_name("mask").unwrap();
         let color = icons.by_name("color").unwrap();
         let image = self.handle.clone().unwrap();
         Panel::canvas()
             .id_salt("scene")
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 ui.add_shape(Shape::rect().at(Rect::new(4.0, 4.0, 12.0, 12.0)), self.tile);
                 ui.add_shape(
                     Shape::rect().at(Rect::new(20.0, 4.0, 40.0, 12.0)),
-                    LinearGradient::horizontal([RgbaF32::hex(0xff0000), RgbaF32::hex(0x0000ff)]),
+                    Gradient::horizontal([RgbaF32::hex(0xff0000), RgbaF32::hex(0x0000ff)]),
                 );
                 for i in 0..4 {
                     Block::new()
@@ -247,11 +247,7 @@ fn host_on(gpu: &TestGpu, shaper: &TextShaper) -> OffscreenHost {
 
 /// Two frames of `scene` on `host`, the first whole and the second partial after the tile turns,
 /// each read back.
-fn paint_twice(
-    host: &mut OffscreenHost,
-    scene: &mut Scene,
-    target: &OwnedTarget,
-) -> [RgbaImage; 2] {
+fn paint_twice(host: &mut OffscreenHost, scene: &mut Scene, target: &OwnedTarget) -> [Image; 2] {
     [RgbaF32::WHITE, RgbaF32::hex(0xd23f7a)].map(|tile| {
         scene.tile = tile;
         let report = host.frame(target.as_target(), scene);
@@ -260,7 +256,7 @@ fn paint_twice(
         } else {
             FramePaint::Partial
         };
-        assert_eq!(report.paint(), want);
+        assert_eq!(report.paint, want);
         target.read_back()
     })
 }
@@ -416,7 +412,7 @@ fn a_screenshot_asked_before_the_loss_lands_after_it() {
             .chrome(Chrome::new(RgbaF32::hex(0xd23f7a)))
             .show(ui);
         if asked.borrow().is_none() {
-            *asked.borrow_mut() = ui.request_screenshot(Some(region));
+            *asked.borrow_mut() = ui.request_screenshot(Some(region)).ok();
         }
     };
     let size = UVec2::new(16, 12);
@@ -444,8 +440,10 @@ fn a_screenshot_asked_before_the_loss_lands_after_it() {
         .ui()
         .screenshot_taken(id)
         .expect("the ask lands from the new device");
-    let crop = imageops::crop_imm(&pixels, 2, 2, 8, 6).to_image();
-    assert_eq!(shot.image().pixels, crop.into_raw());
+    assert_eq!(
+        *shot.image(),
+        pixels.cropped(UVec2::new(2, 2), UVec2::new(8, 6))
+    );
 }
 
 /// A recovery onto a smaller device takes its limit: `max_image_dimension` reads 2048, the
@@ -474,7 +472,7 @@ fn a_recovery_onto_a_smaller_device_takes_its_limit() {
     assert_eq!(host.ui().max_image_dimension().unwrap().get(), 2048);
     assert_eq!(
         wide_handle.update(&wide),
-        Err(ImageTooLarge {
+        Err(ImageSizeError {
             size: wide.size,
             max_dimension: 2048,
         })

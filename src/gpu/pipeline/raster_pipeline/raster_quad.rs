@@ -194,48 +194,31 @@ const RASTER_QUAD_ATTRS: [wgpu::VertexAttribute; 6] = [
     vertex_attr(5, wgpu::VertexFormat::Uint32, offset_of!(RasterQuad, clip)),
 ];
 
-const SPUN_RASTER_QUAD_ATTRS: [wgpu::VertexAttribute; 8] = [
-    vertex_attr(
-        0,
-        wgpu::VertexFormat::Sint32x2,
-        offset_of!(SpunRasterQuad, quad.pos),
-    ),
-    vertex_attr(
-        1,
-        wgpu::VertexFormat::Uint16x2,
-        offset_of!(SpunRasterQuad, quad.dim),
-    ),
-    vertex_attr(
-        2,
-        wgpu::VertexFormat::Uint32x2,
-        offset_of!(SpunRasterQuad, quad.size),
-    ),
-    vertex_attr(
-        3,
-        wgpu::VertexFormat::Uint32,
-        offset_of!(SpunRasterQuad, quad.uv_and_kind),
-    ),
-    vertex_attr(
-        4,
-        wgpu::VertexFormat::Float16x4,
-        offset_of!(SpunRasterQuad, quad.color),
-    ),
-    vertex_attr(
-        7,
-        wgpu::VertexFormat::Uint32,
-        offset_of!(SpunRasterQuad, quad.clip),
-    ),
-    vertex_attr(
-        5,
+/// The flat quad's attributes at the same locations, past the spin's offset, then the pivot and
+/// the rotor, as `vs_spun` reads them.
+const SPUN_RASTER_QUAD_ATTRS: [wgpu::VertexAttribute; RASTER_QUAD_ATTRS.len() + 2] = {
+    let quad = offset_of!(SpunRasterQuad, quad) as u64;
+    let flat = RASTER_QUAD_ATTRS.len();
+    let mut attrs = [vertex_attr(
+        flat as u32,
         wgpu::VertexFormat::Float32x2,
         offset_of!(SpunRasterQuad, pivot),
-    ),
-    vertex_attr(
-        6,
+    ); RASTER_QUAD_ATTRS.len() + 2];
+    let mut at = 0;
+    while at < flat {
+        attrs[at] = wgpu::VertexAttribute {
+            offset: RASTER_QUAD_ATTRS[at].offset + quad,
+            ..RASTER_QUAD_ATTRS[at]
+        };
+        at += 1;
+    }
+    attrs[flat + 1] = vertex_attr(
+        flat as u32 + 1,
         wgpu::VertexFormat::Float32x2,
         offset_of!(SpunRasterQuad, rotor),
-    ),
-];
+    );
+    attrs
+};
 
 #[cfg(test)]
 mod tests {

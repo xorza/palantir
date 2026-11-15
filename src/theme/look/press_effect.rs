@@ -2,20 +2,20 @@
 
 use std::time::Duration;
 
-use crate::effect::press_input::PressInput;
 use crate::primitives::effect::effect_name::EffectName;
+use crate::primitives::effect::press_params::PressParams;
 use crate::primitives::paint::color::RgbaF32;
 
 /// The effect a themed widget draws over its chrome and under its content for each press, as
 /// Compose's theme supplies its `Indication` to every clickable: the effect, the colors it reads,
-/// and how long a press takes to grow in and to fade out ([`PressInput`]). Each scheme's theme
+/// and how long a press takes to grow in and to fade out ([`PressParams`]). Each scheme's theme
 /// holds its own, so one effect serves both schemes through the colors, and a theme transition
 /// blends them. Refused: the scheme in the effect's input, which flips once where a transition
 /// blends, and which no platform hands a shader (Android's `RippleDrawable` and Compose's ripple
 /// take their colors from the theme).
 ///
 /// A widget keeps at most [`Self::MAX_PRESSES`] live; a press past them starts none. A theme file
-/// names the effect by its string, which [`Ui::set_theme`](crate::Ui::set_theme) checks against
+/// names the effect by its string, which [`Ui::set_scheme_theme`](crate::Ui::set_scheme_theme) checks against
 /// the loaded effects; a theme transition snaps it, as two effects do not blend. A slot with none
 /// holds `None` ([`SlotDefaults::press`](crate::SlotDefaults::press)), so no press effect lacks
 /// its effect.
@@ -23,7 +23,7 @@ use crate::primitives::paint::color::RgbaF32;
 #[serde(deny_unknown_fields)]
 pub struct PressEffect {
     /// The color effect each press draws.
-    pub effect: EffectName<PressInput>,
+    pub effect: EffectName<PressParams>,
     /// The color the effect reads, linear.
     pub color: RgbaF32,
     /// A second color the effect reads, linear: the sparkles of

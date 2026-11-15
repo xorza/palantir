@@ -24,16 +24,17 @@ use crate::diagnostics::gpu_pass_stats::BatchKind;
 use crate::fmt;
 use crate::gpu::bench_gpu::{BenchGpu, Timing};
 use crate::host::harness::Harness;
-use crate::host::harness::harness_builder::Depth;
+use crate::host::harness::harness_builder::HarnessDepth;
 use crate::image_registry::image_handle::ImageHandle;
 use crate::primitives::geometry::corners::Corners;
+use crate::primitives::geometry::fit::Fit;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::layout::clip_mode::ClipMode;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::image::{Image, ImageFit};
+use crate::primitives::paint::image::Image;
 use crate::primitives::paint::stroke::Stroke;
 use crate::shape::Shape;
 use crate::shape::image_paint::ImagePaint;
@@ -194,11 +195,11 @@ impl ClipScene {
     fn record(&self, ui: &mut Ui) {
         Panel::zstack()
             .id_salt("clip-bench")
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 Panel::canvas()
                     .id_salt("clip-bench-cards")
-                    .size((Sizing::FILL, Sizing::FILL))
+                    .size(SizeSpec::FILL)
                     .transform(TranslateScale::from_translation(self.scroll))
                     .show(ui, |ui| {
                         for card in 0..CARDS {
@@ -207,7 +208,7 @@ impl ClipScene {
                     });
                 Panel::canvas()
                     .id_salt("clip-bench-counter")
-                    .size((Sizing::FILL, Sizing::FILL))
+                    .size(SizeSpec::FILL)
                     .show(ui, |ui| {
                         Text::new(fmt!(ui, "Frame {:08}", self.tick))
                             .id_salt("clip-bench-counter-text")
@@ -271,7 +272,7 @@ impl ClipScene {
             let thumb = Rect::new(row.max().x - row_h, row.min.y, row_h, row_h);
             ui.add_shape(
                 Shape::rect().at(thumb),
-                ImagePaint::new(self.thumb.clone()).fit(ImageFit::Fill),
+                ImagePaint::new(self.thumb.clone()).fit(Fit::Fill),
             );
             let points = [
                 Vec2::new(0.0, row_h * 0.8),
@@ -294,7 +295,7 @@ impl ClipScene {
 
 /// A window of the bench's surface and scale at `depth`, whose panels paint no theme chrome; it
 /// collects GPU stats where `stats` says.
-fn window(depth: Depth, stats: bool) -> Harness {
+fn window(depth: HarnessDepth, stats: bool) -> Harness {
     let mut window = Harness::builder(BENCH_SURFACE)
         .system_scale(BENCH_DPR)
         .swapchain_present()
@@ -315,7 +316,7 @@ struct WholeFrames {
 impl WholeFrames {
     fn new(gpu: &BenchGpu) -> Self {
         Self {
-            window: window(Depth::gpu(gpu.handles()), true),
+            window: window(HarnessDepth::gpu(gpu.handles()), true),
             odd: false,
         }
     }
@@ -327,7 +328,7 @@ impl WholeFrames {
         } else {
             RgbaF32::srgb(0.0, 0.0, 0.01)
         };
-        let paint = self.window.frame(|ui| scene.record(ui)).paint();
+        let paint = self.window.frame(|ui| scene.record(ui)).paint;
         let arm = scene.arm.label();
         assert_eq!(paint, FramePaint::Full, "clip scene {arm}");
         assert_eq!(
@@ -429,11 +430,11 @@ fn cpu_frames(
     case: &str,
 ) {
     group.bench_function(backend.case(case), |b| {
-        let mut h = window(Depth::Compose, false);
+        let mut h = window(HarnessDepth::Compose, false);
         let mut scene = ClipScene::new(h.ui(), arm);
         let mut step = || {
             scene.advance(frame);
-            let paint = h.frame(|ui| scene.record(ui)).paint();
+            let paint = h.frame(|ui| scene.record(ui)).paint;
             (paint, h.render_buffer().rounded_clips.len())
         };
         for _ in 0..SETTLE_FRAMES {
@@ -458,11 +459,11 @@ fn gpu_frames(
     };
     group.bench_function(backend.case(case), |b| {
         let gpu = backends.device(Timing::PassOnly);
-        let mut window = window(Depth::gpu(gpu.handles()), false);
+        let mut window = window(HarnessDepth::gpu(gpu.handles()), false);
         let mut scene = ClipScene::new(window.ui(), arm);
         let mut step = || {
             scene.advance(frame);
-            let paint = window.frame(|ui| scene.record(ui)).paint();
+            let paint = window.frame(|ui| scene.record(ui)).paint;
             gpu.wait();
             (paint, window.render_buffer().rounded_clips.len())
         };

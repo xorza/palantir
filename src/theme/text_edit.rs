@@ -5,7 +5,7 @@ use crate::animation::animation_spec::AnimationSpec;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
-use crate::primitives::input::interaction::response_state::ResponseState;
+use crate::primitives::input::interaction::response::Response;
 use crate::primitives::paint::border::Border;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::{RgbaF32, TEXT_CONTRAST};
@@ -23,9 +23,8 @@ use glam::Vec2;
 /// with disabled > active > hovered > normal precedence. The default `hovered`
 /// equals `normal`, so hover feedback is opt-in.
 ///
-/// State-independent fields (`caret`, `caret_width`, `placeholder`,
-/// `selection`, `padding`, `margin`) are flat on the theme. `padding`/`margin`
-/// apply when the builder didn't set them; an explicit zero overrides.
+/// State-independent inks and the caret width are flat on the theme; the padding and margin a
+/// builder leaves unset are its [`SlotDefaults`].
 #[derive(
     Clone,
     Debug,
@@ -45,7 +44,7 @@ pub struct TextEditTheme {
     pub caret: RgbaF32,
     /// Width of the caret rect in logical px, painted as a thin Overlay rect at the
     /// caret's prefix-x.
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
+    #[serde(deserialize_with = "crate::primitives::file::length")]
     pub caret_width: f32,
     /// Selection highlight fill, a wash behind the selected glyphs.
     pub selection: RgbaF32,
@@ -95,18 +94,12 @@ impl TextEditTheme {
             .with_border(Border::new(p.border_soft(), border_width));
         let selection = selection_wash(p);
         // `hovered` defaults to `normal`: no hover feedback out of the box.
-        let normal = WidgetLook {
-            chrome: normal_chrome,
-            text: TextStyleOverrides::NONE,
-        };
+        let normal = WidgetLook::new(normal_chrome);
         Self {
             looks: StatefulLook {
                 hovered: normal.clone(),
                 normal,
-                active: WidgetLook {
-                    chrome: focused_chrome,
-                    text: TextStyleOverrides::NONE,
-                },
+                active: WidgetLook::new(focused_chrome),
                 disabled: WidgetLook {
                     chrome: disabled_chrome,
                     text: TextStyleOverrides::NONE.with_color(p.text_disabled),
@@ -152,7 +145,7 @@ impl ThemeSlot for TextEditTheme {
 
     /// `active` = focused. Disabled beats focused, focused beats hovered.
     #[inline(always)]
-    fn look(&self, response: &ResponseState, _pick: ()) -> &WidgetLook {
+    fn look(&self, response: &Response, _pick: ()) -> &WidgetLook {
         self.looks.pick(response, Engagement::Focused)
     }
 

@@ -8,14 +8,16 @@ use crate::common::time::{self, MAX_ANIMATION_DT};
 use crate::damage::DamageBase;
 use crate::display::Display;
 use crate::display::frame_stamp::FrameStamp;
-use crate::primitives::input::policy::{InputPolicy, InputSignal};
+use crate::primitives::input::input_policy::{InputPolicy, InputSignal};
 use crate::primitives::math::domain::EPS;
-use crate::primitives::reduction::{Reduction, Reductions};
+use crate::primitives::reduction::Reductions;
 use crate::text::shaper::TextShaper;
 use crate::ui::app::RecordPass;
 use crate::ui::frame_report::FrameProcessing;
 use crate::ui::frame_runtime::wake::{Wake, WakeReasons};
+use crate::ui::resources::app_settings::ResolvedPreferences;
 use std::mem;
+use std::num::NonZeroU32;
 use std::time::Duration;
 
 /// The frames in a row a last pass may ask for a relayout before it counts as a loop. A real ask
@@ -41,7 +43,7 @@ pub(super) enum FramePlan {
 /// frame checks, so a move forces a record.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct RecordBaseline {
-    /// Bumped by every write to the shown theme (`Ui::set_theme`) and every change of the
+    /// Bumped by every write to the shown theme (`Ui::set_scheme_theme`) and every change of the
     /// shown scheme.
     pub(super) theme_epoch: u32,
     /// `TextShaper::font_epoch`, which a font load in any window sharing the shaper moves.
@@ -85,8 +87,8 @@ pub(crate) struct FrameRuntime {
     pub(super) dt: f32,
     /// Bumped once per [`WindowFrames::frame`](crate::ui::window_frames::WindowFrames::frame), before either record pass, so a
     /// settling pass cannot double-advance animation. Counts `PaintOnly`
-    /// frames too, unlike [`Self::record_frame_id`].
-    pub(super) render_frame_id: u64,
+    /// frames too, unlike [`Self::record_frame_idx`].
+    pub(super) render_frame_idx: u64,
     /// This frame's display and host-supplied monotonic time, set by [`Self::begin_frame`].
     pub(super) stamp: FrameStamp,
     /// Time and display from the previous frame, `None` before the first;
@@ -95,12 +97,12 @@ pub(crate) struct FrameRuntime {
     /// EMA of `1/raw_dt`; zero before a second timestamp. Uses unclamped wall
     /// time so stalls stay visible.
     pub(super) fps_ema: f32,
-    /// Full-record frames so far, published as [`crate::Ui::record_frame_id`].
+    /// Full-record frames so far, published as [`crate::Ui::record_frame_idx`].
     /// Bumped in [`Self::note_processing`], so inside a record pass it counts
     /// the record frames before this one: consecutive frames see consecutive
     /// values and both passes of one frame see the same one.
-    pub(super) record_frame_id: u64,
-    /// How many of [`Self::record_frame_id`]'s frames needed a settling second pass.
+    pub(super) record_frame_idx: u64,
+    /// How many of [`Self::record_frame_idx`]'s frames needed a settling second pass.
     /// Cumulative so a caller reads the delta across a gesture. `PaintOnly`
     /// frames are excluded from both halves of the ratio. Shown by the
     /// frame-stats overlay.
@@ -121,16 +123,10 @@ pub(crate) struct FrameRuntime {
     relayouts_carried: u8,
     /// The baseline the retained tree was last recorded under, `None` before the first record.
     recorded: Option<RecordBaseline>,
-    /// The reductions this frame runs under, resolved once at its start
-    /// ([`AppSettings::reductions`](crate::ui::resources::app_settings::AppSettings::reductions))
-    /// so a frame never mixes two: a preference written during a frame holds from the next.
-    pub(super) reductions: Reductions,
-    /// Whether this frame's value transitions run or snap, fixed with [`Self::reductions`]
-    /// ([`AppSettings::transitions`](crate::ui::resources::app_settings::AppSettings::transitions)).
-    pub(super) transitions: Reduction,
-    /// Whether this frame starts at most at 30 Hz, fixed with [`Self::reductions`]
-    /// ([`AppSettings::frame_rate`](crate::ui::resources::app_settings::AppSettings::frame_rate)).
-    pub(super) frame_rate: Reduction,
+    /// The preferences this frame runs under, resolved once at its start
+    /// ([`AppSettings::resolve`](crate::ui::resources::app_settings::AppSettings::resolve)) so a
+    /// frame never mixes two: a preference written during a frame holds from the next.
+    pub(super) preferences: ResolvedPreferences,
     /// The Ui time of the next frame's slot on the reduced frame-rate grid, which this frame's
     /// report hands the host; `None` while the frame rate is full.
     pub(super) earliest_repaint_at: Option<Duration>,
@@ -152,15 +148,15 @@ impl FrameRuntime {
         self.text_frame = Some(text.frame());
     }
 
-    /// Fold this frame's outcome into [`Self::record_frame_id`] and the settle tally.
+    /// Fold this frame's outcome into [`Self::record_frame_idx`] and the settle tally.
     /// Called once per [`WindowFrames::frame`](crate::ui::window_frames::WindowFrames::frame) after the pass count is known, so
     /// the overlay always reads both through the previous frame.
     pub(super) const fn note_processing(&mut self, processing: FrameProcessing) {
         match processing {
             FrameProcessing::PaintOnly => {}
-            FrameProcessing::SingleLayout => self.record_frame_id += 1,
+            FrameProcessing::SingleLayout => self.record_frame_idx += 1,
             FrameProcessing::DoubleLayout => {
-                self.record_frame_id += 1;
+                self.record_frame_idx += 1;
                 self.settle_frames += 1;
             }
         }
@@ -249,7 +245,7 @@ impl FrameRuntime {
     pub(super) fn advance_clock(&mut self, now: Duration) {
         let true_dt = now.saturating_sub(self.stamp.time).as_secs_f32();
         let raw_dt = true_dt.min(MAX_ANIMATION_DT);
-        if self.render_frame_id > 0 && true_dt > EPS {
+        if self.render_frame_idx > 0 && true_dt > EPS {
             let instant_fps = 1.0 / true_dt;
             self.fps_ema = if self.fps_ema == 0.0 {
                 instant_fps
@@ -259,7 +255,7 @@ impl FrameRuntime {
         }
         self.dt = raw_dt;
         self.stamp.time = now;
-        self.render_frame_id += 1;
+        self.render_frame_idx += 1;
     }
 
     /// Take this frame's slot on the reduced frame-rate grid, and hold the next a
@@ -275,7 +271,7 @@ impl FrameRuntime {
         let now = self.stamp.time;
         let refresh = self.stamp.display.refresh_millihertz;
         let slack = time::reduced_frame_slack(refresh);
-        self.earliest_repaint_at = self.frame_rate.is_reduced().then(|| {
+        self.earliest_repaint_at = self.preferences.frame_rate.is_reduced().then(|| {
             let slot = self
                 .earliest_repaint_at
                 .filter(|&held| (held.saturating_sub(slack)..=held).contains(&now))
@@ -349,7 +345,7 @@ impl FrameRuntime {
         &mut self,
         deadline: Duration,
         reasons: WakeReasons,
-        refresh_millihertz: Option<u32>,
+        refresh_millihertz: Option<NonZeroU32>,
     ) {
         let coalesce = time::coalesce_dt_for_refresh(refresh_millihertz);
         let near = |existing: Duration| existing.abs_diff(deadline) < coalesce;

@@ -26,13 +26,11 @@ use glam::Vec2;
 type Step = for<'a> fn(Popup<'a>, &'a PopupTheme) -> Popup<'a>;
 
 /// The theme's popup slot is a popup's last resort: its panel paints and its padding insets the
-/// body when the caller set neither, a `style` beats it, a default beats both, `Chrome::NONE`
-/// paints nothing, and the in-tree containers' `panel_chrome` never reaches a popup. Default-versus-explicit resolution
-/// is checked for every chrome widget in `widgets::tests`.
+/// body when the caller set neither, a `style` beats it, `Chrome::NONE` paints nothing, and the
+/// in-tree containers' `panel_chrome` never reaches a popup.
 #[test]
 fn the_theme_popup_slot_is_the_last_resort() {
     let theme_fill = RgbaF32::srgb(0.1, 0.2, 0.3);
-    let default_fill = RgbaF32::srgb(0.9, 0.1, 0.1);
     let theme_padding = Spacing::all(7.0);
     let id = WidgetId::from_hash("chrome-popup");
     let style_fill = RgbaF32::srgb(0.2, 0.7, 0.4);
@@ -41,14 +39,8 @@ fn the_theme_popup_slot_is_the_last_resort() {
         material: None,
         padding: Spacing::all(5.0),
     };
-    let cases: [(&str, Step, Option<RgbaF32>, Spacing); 6] = [
+    let cases: [(&str, Step, Option<RgbaF32>, Spacing); 4] = [
         ("neither", |p, _| p, Some(theme_fill), theme_padding),
-        (
-            "default only",
-            |p, _| p.default_chrome(Chrome::new(RgbaF32::srgb(0.9, 0.1, 0.1))),
-            Some(default_fill),
-            theme_padding,
-        ),
         ("none", |p, _| p.chrome(Chrome::NONE), None, theme_padding),
         (
             "own padding",
@@ -60,15 +52,6 @@ fn the_theme_popup_slot_is_the_last_resort() {
             "style",
             |p, s| p.style(s),
             Some(style_fill),
-            Spacing::all(5.0),
-        ),
-        (
-            "style and default",
-            |p, s| {
-                p.style(s)
-                    .default_chrome(Chrome::new(RgbaF32::srgb(0.9, 0.1, 0.1)))
-            },
-            Some(default_fill),
             Spacing::all(5.0),
         ),
     ];

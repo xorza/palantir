@@ -182,7 +182,7 @@ fn a_hue_change_repaints_the_whole_field() {
     frame(&mut h, id, &mut state);
     frame(&mut h, id, &mut state);
     state = state.with_hue(0.9);
-    let report = h.frame(|ui| {
+    let report = h.frame_recorded(|ui| {
         ColorField::new(&mut state).id(id).show(ui);
     });
     let field = h.rect(id).expect("the field was laid out");

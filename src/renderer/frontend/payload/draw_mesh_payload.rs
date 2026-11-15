@@ -23,17 +23,12 @@ pub(crate) struct DrawMeshPayload {
     pub(crate) tint: RgbaF16,
     pub(crate) vertices: Span,
     pub(crate) idxs: Span,
-    /// A paint animation's turn.
-    pub(crate) spin: Option<Spin>,
 }
 
 impl PaintPayload for DrawMeshPayload {
     /// This draw with alpha scaled by `by`, for the [`PaintSink`] gate.
     #[inline]
     fn faded(self, by: f32) -> Self {
-        if by == 1.0 {
-            return self;
-        }
         Self {
             tint: self.tint.faded(by),
             ..self
@@ -49,11 +44,7 @@ impl PaintPayload for DrawMeshPayload {
             || self.tint.is_noop()
     }
 
-    fn spin_mut(&mut self) -> &mut Option<Spin> {
-        &mut self.spin
-    }
-
-    fn paint(self, sink: &mut impl PaintSink) {
-        sink.mesh(self);
+    fn paint(self, spin: Option<Spin>, sink: &mut impl PaintSink) {
+        sink.mesh(self, spin);
     }
 }

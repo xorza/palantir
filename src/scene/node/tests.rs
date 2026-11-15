@@ -265,6 +265,6 @@ fn themed_bounds_yield_to_authored_ones() {
     panic_probe::assert_panics_with(domain::LENGTH_RULE, || {
         set().fill_padding(Spacing::all(-1.0));
     });
-    panic_probe::assert_panics_with(domain::GAP_RULE, || set().fill_gap(f32::NAN));
-    panic_probe::assert_panics_with(domain::GAP_RULE, || set().fill_line_gap(f32::NAN));
+    panic_probe::assert_panics_with(domain::LENGTH_LANE_RULE, || set().fill_gap(f32::NAN));
+    panic_probe::assert_panics_with(domain::LENGTH_LANE_RULE, || set().fill_line_gap(f32::NAN));
 }

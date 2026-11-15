@@ -1,7 +1,7 @@
 //! Builders for patterns the cross-driver tests share: chat-message HStacks, two-column grids with wrapping text, and the paragraph they wrap. Keep narrow; generalize on a third caller.
 
 use crate::internals::layout_rig::{GridTracks, NodeRecorder, TextRun};
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::SizeSpec;
 use crate::primitives::layout::track::Track;
 use crate::text::wrap::TextWrap;
 use crate::widget_core::configure::Configure;
@@ -37,19 +37,11 @@ pub(super) struct ChatMessage {
 impl ChatMessage {
     pub(super) fn record(self, rec: &mut NodeRecorder<'_>) {
         rec.node("column", Widget::vstack(), |rec| {
-            rec.node(
-                "row",
-                Widget::hstack().size((Sizing::FILL, Sizing::HUG)),
-                |rec| {
-                    rec.leaf("avatar", Widget::leaf().size((self.avatar_w, 40.0)));
-                    let message = TextRun::new(self.text, self.text_px, TextWrap::WrapWithOverflow);
-                    rec.text_leaf(
-                        "message",
-                        Widget::leaf().size((Sizing::FILL, Sizing::HUG)),
-                        message,
-                    );
-                },
-            );
+            rec.node("row", Widget::hstack().size(SizeSpec::FILL_W), |rec| {
+                rec.leaf("avatar", Widget::leaf().size((self.avatar_w, 40.0)));
+                let message = TextRun::new(self.text, self.text_px, TextWrap::WrapWithOverflow);
+                rec.text_leaf("message", Widget::leaf().size(SizeSpec::FILL_W), message);
+            });
         });
     }
 }

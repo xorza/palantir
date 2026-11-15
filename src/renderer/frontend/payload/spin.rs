@@ -1,4 +1,4 @@
-//! A paint animation's turn as a payload carries it: a pivot and an angle.
+//! A paint animation's turn as the gate hands a draw to the sink: a pivot and an angle.
 
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::math::libm_ext::LibmVec2;

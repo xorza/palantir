@@ -6,7 +6,7 @@ use crate::gpu::resource::effect_image_groups::{EffectImageGroups, EffectImages}
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::texel;
 use crate::gpu::texel::TargetSpec;
-use crate::image_registry::error::ImageTooLarge;
+use crate::image_registry::error::ImageSizeError;
 use crate::image_registry::image_store::ImageStore;
 use crate::image_registry::texture_limit::TextureLimit;
 use crate::primitives::identity::texture_id::TextureId;
@@ -143,15 +143,13 @@ fn create(gpu: &Gpu, binding: &TextureBinding, id: TextureId, size: UVec2) -> Im
     let raw_id = id.0;
     let texture_label = format!("palantir.image.tex.{raw_id:016x}");
     let bind_group_label = format!("palantir.image.tex.bg.{raw_id:016x}");
-    let texture = texel::texture_2d(
-        gpu,
-        TargetSpec {
-            label: &texture_label,
-            size,
-            format: wgpu::TextureFormat::Rgba8UnormSrgb,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-        },
-    );
+    let texture = TargetSpec {
+        label: &texture_label,
+        size,
+        format: wgpu::TextureFormat::Rgba8UnormSrgb,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+    }
+    .texture(gpu);
     let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
     let bind_group = binding.texture_group(gpu, &view, &bind_group_label);
     ImageTexture {
@@ -162,10 +160,10 @@ fn create(gpu: &Gpu, binding: &TextureBinding, id: TextureId, size: UVec2) -> Im
 }
 
 impl ImageStore for WgpuImageStore {
-    fn write(&self, id: TextureId, image: &Image) -> Result<(), ImageTooLarge> {
+    fn write(&self, id: TextureId, image: &Image) -> Result<(), ImageSizeError> {
         let mut attached = self.attached_mut();
         // Registration checks the device it ran on; a later device can be smaller.
-        TextureLimit::from_device(attached.gpu.max_texture_dim()).accepts(image.size)?;
+        TextureLimit::from_device(attached.gpu.max_texture_dimension()).accepts(image.size)?;
         let AttachedStore {
             gpu,
             binding,

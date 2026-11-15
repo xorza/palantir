@@ -2,7 +2,7 @@
 //! the body one of them reveals.
 
 use palantir::glam::UVec2;
-use palantir::{Configure, Expander, Panel, Sizing, Text, TextWrap, Ui};
+use palantir::{Configure, Expander, Panel, SizeSpec, Text, TextWrap, Ui};
 
 use crate::golden_name::GoldenName;
 
@@ -14,7 +14,7 @@ pub(crate) const SURFACE: UVec2 = UVec2::new(280, 124);
 pub(crate) fn scene(ui: &mut Ui) {
     Panel::vstack()
         .id_salt("well")
-        .size((Sizing::FILL, Sizing::HUG))
+        .size(SizeSpec::FILL_W)
         .padding(10.0)
         .gap(6.0)
         .show(ui, |ui| {
@@ -25,7 +25,7 @@ pub(crate) fn scene(ui: &mut Ui) {
                     Text::new("the body an open header shows")
                         .id_salt("body")
                         .text_wrap(TextWrap::WrapWithOverflow)
-                        .size((Sizing::FILL, Sizing::HUG))
+                        .size(SizeSpec::FILL_W)
                         .show(ui);
                 });
             Expander::new("Hidden").id_salt("closed").show(ui, |ui| {

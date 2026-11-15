@@ -14,7 +14,7 @@
 //! change lowers it; one that must rise is the regression to catch.
 
 use crate::harness::Audit;
-use palantir::{Configure, Panel, Sizing, Text, TextWrap, Ui};
+use palantir::{Configure, Panel, SizeSpec, Sizing, Text, TextWrap, Ui};
 use std::fmt::Write as _;
 use std::hint;
 use std::ops::Range;
@@ -153,7 +153,7 @@ fn changing_label_text_stays_flat() {
         step += 1;
         Panel::vstack()
             .id_salt("ticker-root")
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 for row in 0..ROWS {
                     buf.clear();
@@ -174,7 +174,7 @@ fn reinterned_text_alloc_free() {
         hint::black_box(label);
         Panel::vstack()
             .id_salt("intern-per-frame")
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |_ui| {});
     });
 }

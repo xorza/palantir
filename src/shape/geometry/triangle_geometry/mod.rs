@@ -28,6 +28,33 @@ pub(crate) struct PlacedTriangle {
 }
 
 impl PlacedTriangle {
+    /// The triangle whose dilation by `radius` rounds the sharp one at `corners` and keeps its
+    /// edges.
+    ///
+    /// Each edge moves in by the radius. Every edge line lies one inradius from the incenter, so
+    /// the move is the homothety about the incenter of ratio `1 - radius / inradius`, the inset
+    /// Inigo Quilez's rounded box takes before it subtracts the radius
+    /// (<https://iquilezles.org/articles/distfunctions2d/>). The radius clamps to the inradius,
+    /// where the centers meet at the incenter and the dilation is the incircle.
+    fn rounded(corners: [Vec2; 3], radius: f32) -> Self {
+        let [a, b, c] = corners;
+        let side_a = b.distance(c);
+        let side_b = c.distance(a);
+        let side_c = a.distance(b);
+        let perimeter = side_a + side_b + side_c;
+        let incenter = (a * side_a + b * side_b + c * side_c) / perimeter;
+        let inradius = (b - a).perp_dot(c - a).abs() / perimeter;
+        debug_assert!(inradius > 0.0, "`place` refuses a triangle with no area");
+        let radius = radius.min(inradius);
+        // `v + (incenter - v) * t` rather than a lerp from the incenter: at no radius it returns
+        // each corner bit for bit.
+        let t = radius / inradius;
+        Self {
+            centers: corners.map(|v| v + (incenter - v) * t),
+            radius,
+        }
+    }
+
     /// The shape's box: the centers' bounds grown by the radius. The AA fringe is added later in
     /// `cascade::paint_rect`, since it is half a physical pixel and this box is logical.
     pub(crate) fn bbox(self) -> Rect {
@@ -53,11 +80,7 @@ impl TriangleGeometry {
         if area_is_paint_empty(corners) {
             return None;
         }
-        let CornerCenters { points, radius } = CornerCenters::new(corners, self.radius);
-        Some(PlacedTriangle {
-            centers: points,
-            radius,
-        })
+        Some(PlacedTriangle::rounded(corners, self.radius))
     }
 
     /// Feed the geometry into a record's hash.
@@ -89,40 +112,6 @@ impl NanCheck for TriangleGeometry {
         self.corners.iter().any(|corner| corner.is_nan())
             || self.radius.is_nan()
             || self.placement.has_nan()
-    }
-}
-
-/// The triangle whose dilation by `radius` rounds a sharp one's corners and keeps its edges.
-///
-/// Each edge moves in by the radius. Every edge line lies one inradius from the incenter, so the
-/// move is the homothety about the incenter of ratio `1 - radius / inradius`, the inset Inigo
-/// Quilez's rounded box takes before it subtracts the radius
-/// (<https://iquilezles.org/articles/distfunctions2d/>). The radius clamps to the inradius,
-/// where the centers meet at the incenter and the dilation is the incircle.
-#[derive(Debug)]
-struct CornerCenters {
-    points: [Vec2; 3],
-    radius: f32,
-}
-
-impl CornerCenters {
-    fn new(corners: [Vec2; 3], radius: f32) -> Self {
-        let [a, b, c] = corners;
-        let side_a = b.distance(c);
-        let side_b = c.distance(a);
-        let side_c = a.distance(b);
-        let perimeter = side_a + side_b + side_c;
-        let incenter = (a * side_a + b * side_b + c * side_c) / perimeter;
-        let inradius = (b - a).perp_dot(c - a).abs() / perimeter;
-        debug_assert!(inradius > 0.0, "`place` refuses a triangle with no area");
-        let radius = radius.min(inradius);
-        // `v + (incenter - v) * t` rather than a lerp from the incenter: at no radius it returns
-        // each corner bit for bit.
-        let t = radius / inradius;
-        Self {
-            points: corners.map(|v| v + (incenter - v) * t),
-            radius,
-        }
     }
 }
 

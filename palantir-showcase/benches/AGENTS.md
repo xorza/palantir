@@ -68,7 +68,7 @@ RUN=(taskset -c 2 setarch -R)
 
 `cargo damage-sweep` times each way of repainting a frame's damage on this GPU and scores every
 setting of the merge budget, the rect cap and the promote rule against it; its reasons and its
-output are in `src/damage/sweep/mod.rs`.
+output are in `src/damage/bench/sweep/mod.rs`.
 
 ```sh
 cargo damage-sweep                            # every stage

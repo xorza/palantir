@@ -9,6 +9,7 @@ use crate::common::span::Span;
 use crate::host::winit::input::wheel_steps::WheelSteps;
 use crate::primitives::input::ime_preedit::ImePreedit;
 use crate::primitives::input::input_event::InputEvent;
+use crate::primitives::input::interaction::wheel_delta::WheelDelta;
 use crate::primitives::input::keyboard::key::Key;
 use crate::primitives::input::keyboard::key_text::KeyText;
 use crate::primitives::input::keyboard::modifiers::Modifiers;
@@ -153,11 +154,12 @@ fn wheel_lines(
             lane
         }
     };
-    InputEvent::ScrollLines {
+    InputEvent::Scroll(WheelDelta {
+        pixels: Vec2::ZERO,
         notches: turn(notches),
         lines: turn(travel.lines),
         pages: turn(travel.pages),
-    }
+    })
 }
 
 /// The fields of a winit key press that translation reads; a `KeyEvent`

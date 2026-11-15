@@ -2,11 +2,14 @@
 
 use crate::host::harness::Harness;
 use crate::internals::paint_capture::PaintCall;
+use crate::internals::panic_probe;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::line_style::LineCap;
 use crate::primitives::paint::stroke::Stroke;
+use crate::scene::forest::Forest;
+use crate::scene::layer::Layer;
 use crate::shape::Shape;
 use crate::shape::geometry::closed_geometry::PlacedClosed;
 use crate::shape::paint_animation::PaintAnimation;
@@ -20,7 +23,8 @@ use std::time::Duration;
 
 /// `add_shape` hands back the shape where the pair paints and `None` where it paints nothing, so
 /// no animation reaches a shape that was never recorded: a white rect and a text run paint; the
-/// same rect in a transparent fill, a rect of no width and empty text do not.
+/// same rect in a transparent fill, a rect of no width and empty text do not. With no node open,
+/// either kind panics.
 #[test]
 fn add_shape_returns_none_where_the_pair_paints_nothing() {
     let mut h = Harness::new(SURFACE);
@@ -28,10 +32,9 @@ fn add_shape_returns_none_where_the_pair_paints_nothing() {
         let rect = Shape::rect().at(Rect::new(0.0, 0.0, 8.0, 8.0));
         let thin = Shape::rect().at(Rect::new(0.0, 0.0, 0.0, 8.0));
         let font = GlyphFont::new(12.0);
-        let (label, empty) = (ui.intern("label"), ui.intern(""));
         assert!(ui.add_shape(rect, RgbaF32::WHITE).is_some(), "a white rect");
         assert!(
-            ui.add_shape(Shape::text(label, font), RgbaF32::WHITE)
+            ui.add_shape(Shape::text("label", font), RgbaF32::WHITE)
                 .is_some(),
             "a text run"
         );
@@ -44,11 +47,23 @@ fn add_shape_returns_none_where_the_pair_paints_nothing() {
             "a rect of no width"
         );
         assert!(
-            ui.add_shape(Shape::text(empty, font), RgbaF32::WHITE)
+            ui.add_shape(Shape::text("", font), RgbaF32::WHITE)
                 .is_none(),
             "empty text"
         );
     });
+    // An overlay opens no node of its own: a shape drawn straight in its body is refused before it
+    // records, the one that paints nothing as the one that paints.
+    for color in [RgbaF32::WHITE, RgbaF32::TRANSPARENT] {
+        let mut h = Harness::new(SURFACE);
+        panic_probe::assert_panics_with(Forest::NO_OPEN_NODE, || {
+            h.frame(|ui| {
+                ui.layer(Layer::Popup).at(Vec2::ZERO).show(|ui| {
+                    let _ = ui.add_shape(Shape::rect(), color);
+                });
+            });
+        });
+    }
 }
 
 /// A fractional alpha survives the whole path (encoder sample, sink gate, payload color lane):
@@ -77,8 +92,8 @@ fn a_fractional_alpha_reaches_the_encoded_fill() {
         .calls
         .iter()
         .filter_map(|call| match call {
-            PaintCall::Fill(p) => Some(RgbaF32::from(p.paint.fill.color).a),
-            PaintCall::Shadow(p) => Some(RgbaF32::from(p.shadow.color).a),
+            PaintCall::Fill(p, _) => Some(RgbaF32::from(p.paint.fill.color).a),
+            PaintCall::Shadow(p, _) => Some(RgbaF32::from(p.shadow.color).a),
             _ => None,
         })
         .collect();
@@ -112,8 +127,8 @@ fn a_turn_records_on_every_kind() {
         ) {
             shape.animate(quarter);
         }
-        let label = ui.intern("turned");
-        if let Some(shape) = ui.add_shape(Shape::text(label, GlyphFont::new(14.0)), RgbaF32::WHITE)
+        if let Some(shape) =
+            ui.add_shape(Shape::text("turned", GlyphFont::new(14.0)), RgbaF32::WHITE)
         {
             shape.animate(quarter);
         }
@@ -123,11 +138,11 @@ fn a_turn_records_on_every_kind() {
         .calls
         .iter()
         .filter_map(|call| match call {
-            PaintCall::Stroke(p) => Some(p.spin.is_some()),
-            PaintCall::Fill(p) => {
-                Some(matches!(p.geometry, PlacedClosed::Box(_)) && p.spin.is_some())
+            PaintCall::Stroke(_, spin) => Some(spin.is_some()),
+            PaintCall::Fill(p, spin) => {
+                Some(matches!(p.geometry, PlacedClosed::Box(_)) && spin.is_some())
             }
-            PaintCall::Text(p) => Some(p.spin.is_some()),
+            PaintCall::Text(_, spin) => Some(spin.is_some()),
             _ => None,
         })
         .collect();
@@ -148,8 +163,8 @@ fn a_turn_reaches_a_triangle_and_a_mesh() {
 
     let mut mesh = Mesh::with_capacity(3, 3);
     let vertices =
-        [Vec2::ZERO, Vec2::X * 8.0, Vec2::Y * 8.0].map(|pos| mesh.vertex(pos, RgbaF32::WHITE));
-    mesh.triangle(vertices[0], vertices[1], vertices[2]);
+        [Vec2::ZERO, Vec2::X * 8.0, Vec2::Y * 8.0].map(|pos| mesh.add_vertex(pos, RgbaF32::WHITE));
+    mesh.add_triangle(vertices[0], vertices[1], vertices[2]);
     let quarter = PaintAnimation::turn(0.25, 0.25);
 
     let mut h = Harness::mono(SURFACE);
@@ -178,8 +193,8 @@ fn a_turn_reaches_a_triangle_and_a_mesh() {
         .calls
         .iter()
         .find_map(|call| match call {
-            PaintCall::Fill(p) => match p.geometry {
-                PlacedClosed::Triangle(placed) => Some((placed.centers, p.spin)),
+            PaintCall::Fill(p, spin) => match p.geometry {
+                PlacedClosed::Triangle(placed) => Some((placed.centers, *spin)),
                 PlacedClosed::Box(_) => None,
             },
             _ => None,
@@ -200,7 +215,7 @@ fn a_turn_reaches_a_triangle_and_a_mesh() {
         .calls
         .iter()
         .find_map(|call| match call {
-            PaintCall::Mesh(p) => Some((p.spin, p.fit)),
+            PaintCall::Mesh(p, spin) => Some((*spin, p.fit)),
             _ => None,
         })
         .expect("the mesh encodes");

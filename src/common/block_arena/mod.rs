@@ -83,7 +83,7 @@ impl<T: Copy, const GRANULE: u32> BlockArena<T, GRANULE> {
         );
         debug_assert!(!self.is_free(span.start, class), "a block released twice");
         self.free_links[link_idx::<GRANULE>(span.start)] = self.free_heads[class];
-        self.free_heads[class] = Some(NonMaxU32::index(span.start as usize));
+        self.free_heads[class] = Some(NonMaxU32::from_idx(span.start as usize));
     }
 
     /// Whether the block at `start` is on `class`'s free list. Ends at the list's end, as a list has no cycle while [`Self::release`] refuses a free block.

@@ -4,7 +4,7 @@ use crate::internals::layout_rig::{LayoutRig, TextRun};
 use crate::layout::intrinsic::len_req::LenReq;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::axis::Axis;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::text::wrap::TextWrap;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::widget::Widget;
@@ -18,11 +18,7 @@ fn hug_parent_with_fill_children_hugs_to_content() {
     let mut rig = LayoutRig::new();
     rig.run(Size::new(800.0, 600.0), |rec| {
         rec.node("hug-parent", Widget::vstack(), |rec| {
-            rec.text_leaf(
-                "label",
-                Widget::leaf().size((Sizing::FILL, Sizing::HUG)),
-                HI,
-            );
+            rec.text_leaf("label", Widget::leaf().size(SizeSpec::FILL_W), HI);
         });
     });
     let content = rig.intrinsic("label", Axis::X, LenReq::MaxContent);
@@ -75,21 +71,13 @@ fn equal_weight_fill_siblings_split_fixed_parent_equally() {
 fn hug_node_in_canvas_fill_children_arrange_to_hug_width() {
     let mut rig = LayoutRig::new();
     rig.run(Size::new(1600.0, 800.0), |rec| {
-        rec.node(
-            "canvas",
-            Widget::canvas().size((Sizing::FILL, Sizing::FILL)),
-            |rec| {
-                rec.node("node", Widget::vstack().at((40.0, 40.0)), |rec| {
-                    rec.node(
-                        "row",
-                        Widget::hstack().size((Sizing::FILL, Sizing::HUG)),
-                        |rec| {
-                            rec.leaf("block", Widget::leaf().size((50.0, 20.0)));
-                        },
-                    );
+        rec.node("canvas", Widget::canvas().size(SizeSpec::FILL), |rec| {
+            rec.node("node", Widget::vstack().at((40.0, 40.0)), |rec| {
+                rec.node("row", Widget::hstack().size(SizeSpec::FILL_W), |rec| {
+                    rec.leaf("block", Widget::leaf().size((50.0, 20.0)));
                 });
-            },
-        );
+            });
+        });
     });
     assert_eq!(
         rig.rect("node").size.w,
@@ -106,7 +94,7 @@ fn hug_hstack_with_fill_spacer_hugs_to_label() {
     rig.run(Size::new(400.0, 100.0), |rec| {
         rec.node("root", Widget::hstack(), |rec| {
             rec.text_leaf("label", Widget::leaf(), HI);
-            rec.leaf("spacer", Widget::leaf().size((Sizing::FILL, Sizing::HUG)));
+            rec.leaf("spacer", Widget::leaf().size(SizeSpec::FILL_W));
         });
     });
     assert_eq!(rig.rect("root").size.w, 16.0);

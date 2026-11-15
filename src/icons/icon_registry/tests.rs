@@ -21,11 +21,11 @@ const B_ICONS: &[IconDefinition] = &[IconDefinition {
     tintable: false,
 }];
 
-fn a() -> Rc<IconTable> {
-    Rc::new(IconTable::baked(A_ICONS, b"a"))
+fn a() -> IconTable {
+    IconTable::baked(A_ICONS, b"a")
 }
-fn b() -> Rc<IconTable> {
-    Rc::new(IconTable::baked(B_ICONS, b"b"))
+fn b() -> IconTable {
+    IconTable::baked(B_ICONS, b"b")
 }
 
 fn drain(reg: &IconRegistry) -> Vec<IconSetId> {
@@ -34,32 +34,27 @@ fn drain(reg: &IconRegistry) -> Vec<IconSetId> {
     freed
 }
 
+/// Each load is a set of its own, as each image load is an image, identical tables included: two
+/// slots, each resolving its own table.
 #[test]
-fn reregistering_a_held_set_shares_one_owner_rather_than_taking_a_slot() {
+fn each_load_takes_a_set_of_its_own() {
     let reg = IconRegistry::default();
-    let (data_a, data_b) = (a(), b());
-    let set_a = reg.register(Rc::clone(&data_a));
-    let set_b = reg.register(Rc::clone(&data_b));
-    assert_eq!(
-        reg.resident_ids(),
-        vec![IconSetId::new(0, 0), IconSetId::new(1, 0)]
-    );
-
-    // Same allocation: same id, no second entry, so a per-frame loader does not grow the table.
-    let again = reg.register(Rc::clone(&data_a));
-    assert_eq!(again.handle(IconId::new(0)), set_a.handle(IconId::new(0)));
-    assert_eq!(reg.resident_ids().len(), 2);
-
-    drop(again);
-    assert!(drain(&reg).is_empty(), "a live clone still holds the set");
-    assert_eq!(
-        reg.get(set_a.handle(IconId::new(0)).icon.set).icons()[0].name,
-        "a"
-    );
-
-    // Identical data in a separate allocation is a separate set: keyed on identity.
+    let set_a = reg.register(a());
+    let set_b = reg.register(b());
     let twin = reg.register(a());
-    assert_eq!(reg.resident_ids().len(), 3);
+    let ids = [&set_a, &set_b, &twin].map(|set| set.handle(IconId::new(0)).icon.set);
+    assert_eq!(
+        ids,
+        [
+            IconSetId::new(0, 0),
+            IconSetId::new(1, 0),
+            IconSetId::new(2, 0)
+        ]
+    );
+    assert_eq!(reg.resident_ids(), ids);
+    assert_eq!(reg.get(ids[0]).icons()[0].name, "a");
+    assert_eq!(reg.get(ids[1]).icons()[0].name, "b");
+    assert_eq!(reg.get(ids[2]).icons()[0].name, "a");
     drop((set_a, set_b, twin));
 }
 

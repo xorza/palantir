@@ -1,13 +1,28 @@
 //! The shared handle to an app's `GpuPaint` callback.
 
 use crate::gpu::gpu_paint::GpuPaint;
-use std::cell::RefCell;
+use std::cell::{RefCell, RefMut};
 use std::fmt;
 use std::rc::Rc;
 
 /// The app's `GpuPaint` callback on its way to the backend. A wrapper so structs carrying it keep `derive(Debug)`; clone is an `Rc` bump.
 #[derive(Clone)]
-pub(crate) struct GpuPaintRef(pub(crate) Rc<RefCell<dyn GpuPaint>>);
+pub(crate) struct GpuPaintRef(Rc<RefCell<dyn GpuPaint>>);
+
+impl GpuPaintRef {
+    pub(crate) fn new(paint: Rc<RefCell<dyn GpuPaint>>) -> Self {
+        Self(paint)
+    }
+
+    /// The callback, for the backend to run.
+    ///
+    /// # Panics
+    ///
+    /// While the callback is borrowed already, as it is inside its own run.
+    pub(crate) fn borrow_mut(&self) -> RefMut<'_, dyn GpuPaint> {
+        self.0.borrow_mut()
+    }
+}
 
 impl fmt::Debug for GpuPaintRef {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

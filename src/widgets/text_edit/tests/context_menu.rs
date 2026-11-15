@@ -1,5 +1,7 @@
 use crate::clipboard::internals;
 use crate::widgets::text_edit::tests::*;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 /// Default context menu wires Cut / Copy / Paste / Clear against the host buffer, end to end; the menu auto-closes.
 #[test]
@@ -19,7 +21,7 @@ fn context_menu_cut_copy_paste_clear() {
     }
 
     fn open_menu_and_record(h: &mut Harness, buf: &mut String) {
-        Menu::open(h.ui_mut(), editor_id(), Vec2::new(20.0, 10.0));
+        Menu::open_at(h.ui_mut(), editor_id(), Vec2::new(20.0, 10.0));
         h.frame(|ui| body(ui, buf));
     }
 
@@ -124,7 +126,7 @@ fn clipboard_shortcuts_apply_keypresses() {
 
     let keys = FieldKeys::new(Clipboard::memory());
 
-    keys.clipboard.set_text("").unwrap();
+    keys.clipboard.set_text("");
     let mut text = String::from("hello");
     let mut state = EditState {
         caret: 4,
@@ -147,7 +149,7 @@ fn clipboard_shortcuts_apply_keypresses() {
     assert_eq!(state.caret, 4);
 
     // Non-primary modifier triggers nothing (raw Ctrl+C on macOS, Super+C elsewhere); reset and verify a no-op.
-    keys.clipboard.set_text("CLIP").unwrap();
+    keys.clipboard.set_text("CLIP");
     let mut text2 = String::from("hello");
     let mut state2 = EditState {
         caret: 4,
@@ -169,20 +171,40 @@ fn clipboard_shortcuts_apply_keypresses() {
     };
     assert_eq!(text2, typed, "non-primary must not paste");
 
-    let rejecting = FieldKeys::new(internals::rejecting());
+    // A system clipboard that refuses the copy leaves it in process, so a cut still cuts.
+    let refusing = internals::ScriptedState {
+        reject_writes: true,
+        ..internals::ScriptedState::default()
+    };
+    let refusing = FieldKeys::new(Clipboard::over_scripted(internals::Scripted(Rc::new(
+        RefCell::new(refusing),
+    ))));
+    let mut cut_text = String::from("hello");
+    let mut cut_state = EditState {
+        caret: 4,
+        selection: Some(1),
+        ..EditState::default()
+    };
+    refusing.apply(&mut cut_text, &mut cut_state, primary('x'));
+    assert_eq!(cut_text, "ho");
+    assert_eq!(refusing.clipboard.text().unwrap().as_deref(), Some("ell"));
+
+    // A clipboard that cannot answer is not empty: a system clipboard refusing every read, with
+    // nothing copied in process to answer for it.
+    let unreadable = internals::ScriptedState {
+        reject_reads: true,
+        ..internals::ScriptedState::default()
+    };
+    let rejecting = FieldKeys::new(Clipboard::over_scripted(internals::Scripted(Rc::new(
+        RefCell::new(unreadable),
+    ))));
     let mut rejected_text = String::from("hello");
     let mut rejected_state = EditState {
         caret: 4,
         selection: Some(1),
         ..EditState::default()
     };
-    rejecting.apply(&mut rejected_text, &mut rejected_state, primary('x'));
-    assert_eq!(rejected_text, "hello");
-    assert_eq!(rejected_state.caret, 4);
-    assert_eq!(rejected_state.selection, Some(1));
-    assert_eq!(rejected_state.history.undo_len(), 0);
-
-    // A clipboard that cannot answer is not empty: the paste is dropped whole and the selection stays.
+    // The paste is dropped whole and the selection stays.
     rejecting.apply(&mut rejected_text, &mut rejected_state, primary('v'));
     assert_eq!(rejected_text, "hello");
     assert_eq!(rejected_state.caret, 4);
@@ -212,7 +234,7 @@ fn paste_strips_newlines() {
 
     // End-to-end via Cmd/Ctrl+V: a multi-line clipboard lands as one space-separated line.
     let keys = FieldKeys::new(Clipboard::memory());
-    keys.clipboard.set_text("first\r\nsecond\nthird").unwrap();
+    keys.clipboard.set_text("first\r\nsecond\nthird");
     let mut text = String::new();
     let mut state = EditState::default();
     keys.apply(&mut text, &mut state, ctrl_press(Key::Char('v')));
@@ -224,7 +246,7 @@ fn paste_strips_newlines() {
 #[test]
 fn clipboard_shortcut_does_not_insert_char() {
     let keys = FieldKeys::new(Clipboard::memory());
-    keys.clipboard.set_text("").unwrap();
+    keys.clipboard.set_text("");
 
     let mut text = String::from("ab");
     let mut state = EditState {
@@ -295,7 +317,7 @@ fn open_menu_exclusively_owns_ordered_edit_shortcuts() {
         state.edit.caret = a.len();
         state.edit.selection = Some(0);
     });
-    Menu::open(h.ui_mut(), b_id, Vec2::new(200.0, 20.0));
+    Menu::open_at(h.ui_mut(), b_id, Vec2::new(200.0, 20.0));
     h.frame(|ui| {
         body(ui, &mut a, &mut b);
     });

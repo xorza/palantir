@@ -45,7 +45,7 @@ impl WindowConfig {
     ///
     /// # Panics
     ///
-    /// Panics unless both axes are [positive](crate::widget::domain::positive).
+    /// Panics unless both axes are [positive](crate::widget::domain::is_positive).
     #[track_caller]
     pub const fn with_inner_size(mut self, size: Size) -> Self {
         assert_window_size(size);

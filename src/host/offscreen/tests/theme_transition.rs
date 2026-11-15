@@ -59,7 +59,9 @@ fn a_transition_of_font_sizes_fits_one_page_and_evicts_nothing() {
             ..d
         },
     );
-    host.ui_mut().set_theme(ColorScheme::Dark, roomy).unwrap();
+    host.ui_mut()
+        .set_scheme_theme(ColorScheme::Dark, roomy)
+        .unwrap();
     let sizes: Vec<f32> = (0..24).map(|_| frame(&mut host)).collect();
     let moving = &sizes[..18];
     assert!(

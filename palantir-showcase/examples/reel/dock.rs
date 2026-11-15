@@ -1,8 +1,8 @@
 //! Slide 7's dock: three tabs in one pane, which a drag splits.
 
 use palantir::{
-    Configure, DockOperation, DockState, DockTabs, InternedStr, Panel, RgbaF32, Size, Sizing, Text,
-    Ui,
+    Configure, DockOperation, DockState, DockTabs, InternedStr, Panel, RgbaF32, Size, SizeSpec,
+    Text, Ui,
 };
 
 /// The dock's tabs.
@@ -46,7 +46,7 @@ impl DockTabs for Panes {
 
     fn body(&mut self, ui: &mut Ui, tab: Tab, _size: Option<Size>) {
         Panel::vstack()
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .padding(24.0)
             .show(ui, |ui| {
                 Text::new(tab.label())

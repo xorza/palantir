@@ -1,29 +1,22 @@
 //! Motion over time: `Ui::animate` value interpolation (easing bars), the drag lifecycle driving position (cards), and a paint animation's turn on every shape kind.
 
 use crate::made_image::MadeImage;
+use crate::scaffold;
 use crate::scaffold::api;
+use crate::scaffold::demo_cell::DemoCell;
+use crate::scaffold::kit::{Kit, Swatches};
+use crate::scaffold::knob::Knob;
+use crate::scaffold::section::Section;
 use crate::scaffold::tokens::M;
-use crate::support;
-use crate::support::DemoCell;
-use crate::support::{Kit, Knob, Section, Swatches};
-use palantir::LineCap;
-use palantir::LineJoin;
-use palantir::Paint;
-use palantir::Stroke;
 use palantir::glam::{UVec2, Vec2};
-use palantir::widget::AddedShape;
-use palantir::widget::IconPaint;
-use palantir::widget::ImagePaint;
-use palantir::widget::{
-    AnimationRequest, GlyphFont, Mesh, MotionRole, PaintAnimation, PaintRepeat, Shape,
-};
 use palantir::{
-    Align, Animated, AnimationSpec, Block, Border, Button, Chrome, Configure, Corners, Easing, Fit,
-    IconHandle, IconSet, IconTable, Image, ImageFit, Panel, Rect, RgbaF32, Sense, Shadow, Sizing,
-    Spinner, Text, TranslateScale, Ui, VAlign, WidgetId,
+    AddedShape, Animated, AnimationRequest, AnimationSpec, Block, Border, Button, Chrome,
+    Configure, Corners, Easing, Fit, GlyphFont, IconHandle, IconPaint, IconSet, IconTable, Image,
+    ImagePaint, LineCap, LineJoin, Mesh, MotionRole, Paint, PaintAnimation, PaintRepeat, Panel,
+    Rect, RgbaF32, Sense, Shadow, Shape, SizeSpec, Sizing, Spinner, Stroke, Text, TranslateScale,
+    Ui, VAlign, WidgetId,
 };
 use std::array;
-use std::rc::Rc;
 use std::time::Duration;
 
 #[derive(Debug)]
@@ -59,10 +52,10 @@ fn spinner(ui: &mut Ui, k: Kit) {
     Section::new("Spinner")
         .apis(&[api!(Spinner::new)])
         .show(ui, k, |ui| {
-            support::well(ui, k, |ui| {
+            scaffold::well(ui, k, |ui| {
                 Panel::hstack()
                     .gap(M.space.lg)
-                    .child_align(Align::v(VAlign::Center))
+                    .child_align(VAlign::Center)
                     .show(ui, |ui| {
                         Spinner::new().size(20.0).show(ui);
                         Spinner::new().size(32.0).show(ui);
@@ -132,20 +125,21 @@ struct TurnSources {
 
 impl TurnSources {
     fn load(ui: &mut Ui) -> Self {
-        ui.with_state::<Option<Self>, _>(turn_sources_id(), |ui, held| {
-            held.get_or_insert_with(|| {
-                let set = ui.load_icons(Rc::new(
+        ui.with_state_or_insert_with(
+            turn_sources_id(),
+            |ui| {
+                let set = ui.load_icons(
                     IconTable::from_svgs([("badge", TURN_ICON_SVG)])
                         .expect("the bundled icon is a readable SVG"),
-                ));
+                );
                 Self {
                     icon: set.by_name("badge").expect("bundled icon"),
                     image: MadeImage::new(ui, turn_image),
                     set,
                 }
-            })
-            .clone()
-        })
+            },
+            |_, held: &mut Self| held.clone(),
+        )
     }
 }
 
@@ -154,7 +148,7 @@ fn turn(ui: &mut Ui, k: Kit) {
     Section::new("Turn")
         .apis(&[api!(AddedShape::animate), api!(PaintAnimation::turn)])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "One paint animation turns each shape kind about its box's center, at paint \
@@ -168,11 +162,11 @@ fn turn(ui: &mut Ui, k: Kit) {
                 .with_motion(MotionRole::Essential);
             let source = Rect::new(20.0, 30.0, 60.0, 40.0);
             let mut mesh = Mesh::new();
-            let a = mesh.vertex(Vec2::new(15.0, 80.0), RgbaF32::srgb(1.0, 0.3, 0.3));
-            let b = mesh.vertex(Vec2::new(85.0, 80.0), RgbaF32::srgb(0.3, 1.0, 0.4));
-            let c = mesh.vertex(Vec2::new(50.0, 15.0), RgbaF32::srgb(0.3, 0.5, 1.0));
-            mesh.triangle(a, b, c);
-            support::tiles(ui, |ui| {
+            let a = mesh.add_vertex(Vec2::new(15.0, 80.0), RgbaF32::srgb(1.0, 0.3, 0.3));
+            let b = mesh.add_vertex(Vec2::new(85.0, 80.0), RgbaF32::srgb(0.3, 1.0, 0.4));
+            let c = mesh.add_vertex(Vec2::new(50.0, 15.0), RgbaF32::srgb(0.3, 0.5, 1.0));
+            mesh.add_triangle(a, b, c);
+            scaffold::tiles(ui, |ui| {
                 let cell = |ui: &mut Ui, label: &'static str, body: &mut dyn FnMut(&mut Ui)| {
                     DemoCell::new(label).size(120.0, 120.0).show(ui, k, |ui| {
                         Panel::zstack()
@@ -232,15 +226,15 @@ fn turn(ui: &mut Ui, k: Kit) {
                 cell(ui, "image", &mut |ui| {
                     if let Some(shape) = ui.add_shape(
                         Shape::rect().at(source),
-                        ImagePaint::new(sources.image.handle().clone()).fit(ImageFit::Fill),
+                        ImagePaint::new(sources.image.handle().clone()).fit(Fit::Fill),
                     ) {
                         shape.animate(spin);
                     }
                 });
                 cell(ui, "text", &mut |ui| {
-                    let label = ui.intern("Turning");
                     if let Some(shape) = ui.add_shape(
-                        Shape::text(label, GlyphFont::new(18.0)).at_origin(Vec2::new(18.0, 40.0)),
+                        Shape::text("Turning", GlyphFont::new(18.0))
+                            .at_origin(Vec2::new(18.0, 40.0)),
                         k.t.ink,
                     ) {
                         shape.animate(spin);
@@ -270,7 +264,7 @@ fn easing(ui: &mut Ui, k: Kit) {
             ),
         ])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "Each bar retargets on the same frame through Ui::animate, with an \
@@ -280,7 +274,7 @@ fn easing(ui: &mut Ui, k: Kit) {
                  reduced motion too, where a decorative one snaps to its end.",
             );
             ui.with_state::<Bars, _>(demo_id, |ui, s| {
-                support::row(ui, |ui| {
+                scaffold::row(ui, |ui| {
                     if Button::new().label("Toggle").show(ui).clicked() {
                         s.wide = !s.wide;
                         s.run = Some(Run {
@@ -306,7 +300,7 @@ fn easing(ui: &mut Ui, k: Kit) {
                 if t < 1.0 {
                     ui.request_repaint();
                 }
-                support::tiles(ui, |ui| {
+                scaffold::tiles(ui, |ui| {
                     for (label, easing) in [
                         ("linear", Easing::Linear),
                         ("out-cubic", Easing::OutCubic),
@@ -317,7 +311,7 @@ fn easing(ui: &mut Ui, k: Kit) {
                         });
                     }
                 });
-                support::well(ui, k, |ui| {
+                scaffold::well(ui, k, |ui| {
                     for bar in [
                         Bar {
                             key: "linear",
@@ -370,7 +364,7 @@ impl Bar {
         let bar = (Sizing::fixed(BAR_TRACK_W), Sizing::fixed(18.0));
         Panel::hstack()
             .id_salt(self.key)
-            .size((Sizing::FILL, Sizing::HUG))
+            .size(SizeSpec::FILL_W)
             .gap(M.space.md)
             .show(ui, |ui| {
                 // A full bar slides out of a clip by a transform: a width is layout, which lands
@@ -392,7 +386,7 @@ impl Bar {
                         Block::new()
                             .id(id)
                             .size(bar)
-                            .chrome(support::swatch_chrome(k.swatch.teal))
+                            .chrome(scaffold::swatch_chrome(k.swatch.teal))
                             .show(ui);
                     });
                 Text::new(self.label).style(&k.t.caption()).show(ui);
@@ -408,7 +402,7 @@ fn drag(ui: &mut Ui, k: Kit) {
     });
 
     Section::new("Drag").show(ui, k, |ui| {
-        support::note(
+        scaffold::note(
             ui,
             k,
             "Grab a card. Each card adds the drag delta to the position it had \
@@ -502,45 +496,4 @@ fn plot(ui: &mut Ui, k: Kit, easing: Easing, t: f32) {
             .corners(Corners::all(5.0)),
         k.swatch.orange,
     );
-}
-
-#[cfg(test)]
-mod tests {
-    use palantir::glam::UVec2;
-    use palantir::internals::headless_test_gpu;
-    use palantir::{ColorScheme, Depth, Harness, Palette, Ui};
-
-    use crate::pages::motion::{TurnSources, turn, turn_sources_id};
-    use crate::support::Kits;
-
-    /// A new device holds none of the turn demo's image, and the section's next frame fills it
-    /// again: the window paints as it did on the old device.
-    #[test]
-    fn a_new_device_gets_the_turn_image_again() {
-        let gpu = headless_test_gpu();
-        let k = Kits::default().kit(ColorScheme::Dark, &Palette::DARK);
-        let mut record = |ui: &mut Ui| turn(ui, k);
-        let mut h = Harness::builder(UVec2::new(1000, 600))
-            .depth(Depth::gpu(gpu.handles()))
-            .build();
-        h.frame(&mut record);
-        let before = h.read_back();
-        let image = h
-            .state::<Option<TurnSources>>(turn_sources_id())
-            .unwrap()
-            .as_ref()
-            .unwrap()
-            .image
-            .handle()
-            .clone();
-
-        h.recover(gpu.handles());
-        assert!(!image.is_resident());
-        h.frame(&mut record);
-        assert!(image.is_resident());
-        assert!(
-            h.read_back() == before,
-            "the section paints as before the new device"
-        );
-    }
 }

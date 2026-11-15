@@ -2,7 +2,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::clipboard::internals::{Scripted, ScriptedState};
-use crate::clipboard::{Clipboard, ClipboardUnavailable};
+use crate::clipboard::{Clipboard, ClipboardError};
 use crate::primitives::paint::image::Image;
 use glam::UVec2;
 use std::error;
@@ -12,7 +12,7 @@ fn memory_clipboards_roundtrip_and_are_isolated() {
     let first = Clipboard::memory();
     let second = Clipboard::memory();
 
-    first.set_text("clipboard-test-roundtrip-✓").unwrap();
+    first.set_text("clipboard-test-roundtrip-✓");
 
     assert_eq!(
         first.text().unwrap().as_deref(),
@@ -26,7 +26,7 @@ fn clones_share_one_clipboard() {
     let first = Clipboard::memory();
     let second = first.clone();
 
-    first.set_text("shared").unwrap();
+    first.set_text("shared");
 
     assert_eq!(second.text().unwrap().as_deref(), Some("shared"));
 }
@@ -34,7 +34,7 @@ fn clones_share_one_clipboard() {
 /// The error crosses the public surface, so it owes the impls a caller needs to box and print it.
 #[test]
 fn unavailable_reports_itself_as_an_error() {
-    let boxed: Box<dyn error::Error> = Box::new(ClipboardUnavailable);
+    let boxed: Box<dyn error::Error> = Box::new(ClipboardError);
     assert_eq!(boxed.to_string(), "no clipboard backend could answer");
 }
 
@@ -57,13 +57,10 @@ fn system_reads_without_text_answer_empty() {
     let cases = [
         (Ok(String::from("text")), Ok(String::from("text"))),
         (Err(arboard::Error::ContentNotAvailable), Ok(String::new())),
-        (
-            Err(arboard::Error::ClipboardOccupied),
-            Err(ClipboardUnavailable),
-        ),
+        (Err(arboard::Error::ClipboardOccupied), Err(ClipboardError)),
         (
             Err(arboard::Error::ClipboardNotSupported),
-            Err(ClipboardUnavailable),
+            Err(ClipboardError),
         ),
     ];
     for (read, expected) in cases {
@@ -78,7 +75,11 @@ fn failed_primary_write_holds_until_another_copy() {
     let clipboard = over(&primary);
     primary.borrow_mut().reject_writes = true;
 
-    clipboard.set_text("fresh").unwrap();
+    clipboard.set_text("fresh");
+    assert!(
+        clipboard.state.borrow().refusal_logged,
+        "the refusal is logged"
+    );
     assert_eq!(primary.borrow().reads, 1);
     assert_eq!(clipboard.text().unwrap().as_deref(), Some("fresh"));
     assert_eq!(clipboard.text().unwrap().as_deref(), Some("fresh"));
@@ -91,7 +92,11 @@ fn failed_primary_write_holds_until_another_copy() {
     assert_eq!(clipboard.text().unwrap().as_deref(), Some("later"));
 
     primary.borrow_mut().reject_writes = false;
-    clipboard.set_text("replacement").unwrap();
+    clipboard.set_text("replacement");
+    assert!(
+        clipboard.state.borrow().refusal_logged,
+        "once for the clipboard's life: a later refusal logs nothing"
+    );
     assert_eq!(primary.borrow().text, "replacement");
     assert_eq!(clipboard.text().unwrap().as_deref(), Some("replacement"));
 }
@@ -104,7 +109,7 @@ fn unread_primary_takes_its_next_answer_as_the_reference() {
     primary.borrow_mut().reject_writes = true;
     primary.borrow_mut().reject_reads = true;
 
-    clipboard.set_text("fresh").unwrap();
+    clipboard.set_text("fresh");
     assert_eq!(clipboard.text().unwrap().as_deref(), Some("fresh"));
 
     primary.borrow_mut().reject_reads = false;
@@ -120,7 +125,7 @@ fn unreadable_primary_answers_from_a_current_fallback() {
     let primary = primary("seen");
     let clipboard = over(&primary);
     primary.borrow_mut().reject_reads = true;
-    assert_eq!(clipboard.text(), Err(ClipboardUnavailable));
+    assert_eq!(clipboard.text(), Err(ClipboardError));
 
     primary.borrow_mut().reject_reads = false;
     assert_eq!(clipboard.text().unwrap().as_deref(), Some("seen"));
@@ -131,7 +136,7 @@ fn unreadable_primary_answers_from_a_current_fallback() {
     primary.borrow_mut().reject_reads = true;
     assert_eq!(clipboard.text().unwrap(), None);
 
-    clipboard.set_text("copied").unwrap();
+    clipboard.set_text("copied");
     assert_eq!(clipboard.text().unwrap().as_deref(), Some("copied"));
 }
 
@@ -145,29 +150,29 @@ fn an_image_copy_replaces_the_text_and_reads_back() {
 
     let memory = Clipboard::memory();
     assert_eq!(memory.image(), Ok(None), "empty");
-    memory.set_text("text").unwrap();
-    memory.set_image(&image).unwrap();
+    memory.set_text("text");
+    memory.set_image(&image);
     assert_eq!(memory.text().unwrap(), None);
     assert_eq!(memory.image(), Ok(Some(image.clone())));
     assert!(memory.buffer_has_image());
-    memory.set_text("text").unwrap();
+    memory.set_text("text");
     assert_eq!(memory.image(), Ok(None), "a text copy replaces it");
 
     let taking = primary("text");
     let clipboard = over(&taking);
-    clipboard.set_image(&image).unwrap();
+    clipboard.set_image(&image);
     assert_eq!(taking.borrow().image, Some(image.clone()));
     assert!(!clipboard.buffer_has_image(), "the primary holds it");
     assert_eq!(clipboard.text().unwrap(), None);
     assert_eq!(clipboard.image(), Ok(Some(image.clone())));
     taking.borrow_mut().reject_reads = true;
-    assert_eq!(clipboard.image(), Err(ClipboardUnavailable));
+    assert_eq!(clipboard.image(), Err(ClipboardError));
 
     let refusing = primary("stale");
     let clipboard = over(&refusing);
-    clipboard.set_text("copied").unwrap();
+    clipboard.set_text("copied");
     refusing.borrow_mut().reject_writes = true;
-    clipboard.set_image(&image).unwrap();
+    clipboard.set_image(&image);
     assert_eq!(refusing.borrow().image, None);
     assert!(clipboard.buffer_has_image(), "no primary took it");
     assert_eq!(clipboard.text().unwrap(), None);

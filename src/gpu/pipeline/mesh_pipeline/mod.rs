@@ -7,7 +7,7 @@
 use crate::common::span::Span;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::pipeline::clip_variant::ClipVariant;
-use crate::gpu::pipeline::instanced_pipeline::{InstancedPipeline, InstancedSpec, VariantTarget};
+use crate::gpu::pipeline::frame_variant::VariantTarget;
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use crate::gpu::resource::gpu_ctx::GpuCtx;
@@ -37,7 +37,11 @@ pub(crate) struct MeshBatch<'a> {
 
 #[derive(Debug)]
 pub(crate) struct MeshPipeline {
-    family: InstancedPipeline<MeshInstance>,
+    /// This frame's instances, uploaded each frame.
+    instances: DynamicBuffer<MeshInstance>,
+    shader: wgpu::ShaderModule,
+    /// The pipeline layout every format's pipelines build over.
+    layout: wgpu::PipelineLayout,
     vertex_buffer: DynamicBuffer<MeshVertex>,
     idx_buffer: DynamicBuffer<u32>,
 }
@@ -57,15 +61,9 @@ impl MeshPipeline {
     /// the main pass's shared one.
     pub(crate) fn new(gpu: &Gpu, layout: &wgpu::PipelineLayout) -> Self {
         Self {
-            family: InstancedPipeline::new(
-                gpu,
-                InstancedSpec {
-                    shader: Self::SHADER,
-                    layout,
-                    instances: "palantir.mesh.instances",
-                    capacity: 64,
-                },
-            ),
+            instances: DynamicBuffer::vertex(gpu, "palantir.mesh.instances", 64),
+            shader: Self::SHADER.module(gpu),
+            layout: layout.clone(),
             vertex_buffer: DynamicBuffer::vertex(gpu, "palantir.mesh.vertices", 256),
             idx_buffer: DynamicBuffer::idx(gpu, "palantir.mesh.indices", 1024),
         }
@@ -75,10 +73,15 @@ impl MeshPipeline {
     pub(super) fn ensure(&self, variant: &mut ClipVariant, gpu: &Gpu, target: VariantTarget) {
         variant.ensure(
             gpu,
-            target.clipping,
+            target.variant.clipping,
             &PipelineRecipe {
                 vertex_buffers: &[Some(VERTEX_LAYOUT), Some(INSTANCE_LAYOUT)],
-                ..self.family.recipe("palantir.mesh.pipeline", target.format)
+                ..PipelineRecipe::color(
+                    "palantir.mesh.pipeline",
+                    &self.shader,
+                    &self.layout,
+                    target.format,
+                )
             },
         );
     }
@@ -95,7 +98,7 @@ impl MeshPipeline {
         if !mesh_upload_required(vertices.len(), idxs.len(), instances.len()) {
             return;
         }
-        self.family.upload(ctx, instances);
+        self.instances.upload_instances(ctx, instances);
         self.vertex_buffer.upload_instances(ctx, vertices);
         self.idx_buffer.upload_instances(ctx, idxs);
     }
@@ -115,7 +118,7 @@ impl MeshPipeline {
     ) {
         rec.pipeline(pipeline);
         rec.vertex(0, &self.vertex_buffer.buffer);
-        rec.vertex(1, self.family.instances());
+        rec.vertex(1, &self.instances.buffer);
         rec.index(&self.idx_buffer.buffer, wgpu::IndexFormat::Uint32);
         for (offset, draw) in draws[items.range()].iter().enumerate() {
             if draw.idxs.len == 0 {

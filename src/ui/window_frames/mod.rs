@@ -12,7 +12,6 @@ use crate::common::tracy;
 use crate::damage::DamageBase;
 use crate::damage::engine::{DamageEngine, DamageInput};
 use crate::damage::frame_baseline::FrameBaseline;
-use crate::display;
 use crate::display::Display;
 use crate::display::frame_stamp::FrameStamp;
 use crate::gpu::wgpu_backend::render_stream::RenderStream;
@@ -26,7 +25,7 @@ use crate::scene::node::Node;
 use crate::scene::node::id_recipe::IdRecipe;
 use crate::ui::Ui;
 use crate::ui::app::{App, RecordPass};
-use crate::ui::frame_report::{FramePaint, FrameProcessing, FrameReport};
+use crate::ui::frame_report::{FramePaint, FrameProcessing, RecordedFrame};
 use crate::ui::frame_runtime::wake::WakeReasons;
 use crate::ui::frame_runtime::{FrameClassifyInput, FramePlan, RecordBaseline};
 use crate::ui::frame_stats_readout;
@@ -211,13 +210,8 @@ impl WindowFrames {
     }
 
     /// Drives one application frame: runs [`App::record`], and replays it for cold-start warmup, action input, or `request_relayout`. Paint-only frames skip it.
-    fn frame<T: App>(&mut self, stamp: FrameStamp, app: &mut T) -> FrameReport {
+    fn frame<T: App>(&mut self, stamp: FrameStamp, app: &mut T) -> RecordedFrame {
         tracy::zone!("WindowFrames::frame");
-        debug_assert!(
-            display::scale_factor_is_valid(stamp.display.scale_factor()),
-            "SystemScale's range keeps the product with any UserScale valid, got {}",
-            stamp.display.scale_factor(),
-        );
 
         let first_frame = self.is_first_frame();
         let plan = self.open_frame(stamp);
@@ -225,26 +219,26 @@ impl WindowFrames {
             FramePlan::PaintOnly => {
                 tracy::zone!("WindowFrames::frame.paint_only");
                 // Record payloads are not cleared: the live `tree.shapes` still index into them. PaintOnly skips `post_record`'s input cleanup, so under `OnDelta` an unrouted event can land here with the sticky arrival flag set.
-                self.ui.input.drain_per_frame_queues();
+                self.ui.input.clear_edges();
                 FrameProcessing::PaintOnly
             }
             FramePlan::FullRecord { .. } => self.record_frame(app),
         };
         self.ui.frame_runtime.note_processing(processing);
-        let report = self.close_frame(plan, processing);
+        let frame = self.close_frame(plan, processing);
         // With no prev snapshot every painting widget is new, so the first frame can only be
         // `Full`, and a retained-tree paint cannot be the first frame.
         debug_assert!(
-            !first_frame || report.paint() == FramePaint::Full,
+            !first_frame || frame.report().paint == FramePaint::Full,
             "first frame must repaint in full; got {:?}",
-            report.paint(),
+            frame.report().paint,
         );
         debug_assert!(
-            !first_frame || report.processing != FrameProcessing::PaintOnly,
+            !first_frame || frame.processing != FrameProcessing::PaintOnly,
             "first frame has no retained tree to paint from; got {:?}",
-            report.processing,
+            frame.processing,
         );
-        report
+        frame
     }
 
     /// The frame's entry: move the clock and the theme on, tick the text clock, and classify the
@@ -253,9 +247,7 @@ impl WindowFrames {
         let device_epoch = self.ui.resources.device().epoch();
         self.ui.frame_runtime.begin_frame(stamp);
         // Before the theme moves on, so a transition it starts reads this frame's motion.
-        self.ui.frame_runtime.reductions = self.ui.resources.settings().reductions();
-        self.ui.frame_runtime.transitions = self.ui.resources.settings().transitions();
-        self.ui.frame_runtime.frame_rate = self.ui.resources.settings().frame_rate();
+        self.ui.frame_runtime.preferences = self.ui.resources.settings().resolve();
         self.ui.advance_theme();
         if let Some(themes) = self.ui.window_theme.take_replaced() {
             let effects = self.ui.resources.effects();
@@ -273,7 +265,7 @@ impl WindowFrames {
             font_epoch: self.ui.resources.text().font_epoch(),
             effect_epoch: self.ui.resources.effects().epoch(),
             device_epoch,
-            reductions: self.ui.frame_runtime.reductions,
+            reductions: self.ui.frame_runtime.preferences.reductions,
         };
         let plan = self.ui.frame_runtime.take_frame_plan(FrameClassifyInput {
             display: stamp.display,
@@ -317,7 +309,7 @@ impl WindowFrames {
                     "action"
                 }
             );
-            self.ui.input.drain_per_frame_queues();
+            self.ui.input.clear_edges();
             let _ = self.record_pass(app, RecordPass::Second);
             // A modal that first recorded in pass B cancelled an overlay past the frame's last
             // pass: the next frame applies it.
@@ -340,7 +332,7 @@ impl WindowFrames {
 
     /// The frame's exit on every path: its damage, the next paint-animation wake, the clock's and
     /// the input's frame boundaries, and the report.
-    fn close_frame(&mut self, plan: FramePlan, processing: FrameProcessing) -> FrameReport {
+    fn close_frame(&mut self, plan: FramePlan, processing: FrameProcessing) -> RecordedFrame {
         let surface = self.ui.frame_runtime.stamp().display.logical_rect();
         let prev_time = self.ui.frame_runtime.prev_stamp.map(|s| s.time);
         let baseline = FrameBaseline {
@@ -383,11 +375,11 @@ impl WindowFrames {
         // Held events apply against this frame's cascade; what input owes the frame asks for it
         // here, since no host event will.
         let double_click = self.ui.double_click_interval();
-        if self.ui.input.next_frame(double_click) {
+        if self.ui.input.admit_held(double_click) {
             self.ui.frame_runtime.request_repaint();
         }
 
-        FrameReport {
+        RecordedFrame {
             repaint_requested: self.ui.frame_runtime.repaint_requested(),
             repaint_at: self.ui.frame_runtime.next_wake(),
             earliest_repaint_at: self.ui.frame_runtime.earliest_repaint_at,
@@ -403,9 +395,9 @@ impl WindowFrames {
     ///
     /// It runs against a **scratch [`Input`]** so that:
     ///
-    /// - nothing consumes the real queues (pass B's `drain_per_frame_queues` would discard a pre-frame click),
+    /// - nothing consumes the real queues (pass B's `Input::clear_edges` would discard a pre-frame click),
     /// - no watcher fires (`watch_*` bypasses hit-testing and would see pre-frame events twice),
-    /// - no press resolves focus against an empty hit index ([`FocusPolicy`](crate::primitives::input::policy::FocusPolicy) would read it as a press on nothing).
+    /// - no press resolves focus against an empty hit index ([`FocusPolicy`](crate::primitives::input::focus_policy::FocusPolicy) would read it as a press on nothing).
     ///
     /// The scratch starts with the real focus, and the real input keeps what the pass asked of it (`set_focus`, `clear_focus`, `withdraw_input_scope`). Afterwards the real input is restored and `pointer_pos` re-routed against the new cascade. Relayout/repaint requests are withdrawn, else frame 1 runs three record passes instead of two.
     ///
@@ -501,9 +493,9 @@ impl WindowFrames {
         self.layout.end_frame(removed);
         self.ui
             .memory
-            .sweep(removed, self.ui.frame_runtime.render_frame_id);
+            .sweep(removed, self.ui.frame_runtime.render_frame_idx);
 
-        self.ui.input.end_frame();
+        self.ui.input.settle();
     }
 }
 

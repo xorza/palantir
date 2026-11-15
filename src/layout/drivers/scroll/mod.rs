@@ -85,18 +85,11 @@ impl LayoutDriver for Scroll {
             ScrollChildLayout::Layered => ZStack::new(node).intrinsic(pass, content_query),
             ScrollChildLayout::Flow(main) => Stack::new(node, main).intrinsic(pass, content_query),
         };
-        IntrinsicRange {
-            min: if content_query.includes(LenReq::MinContent) {
-                content.min
-            } else {
-                0.0
-            },
-            max: if content_query.includes(LenReq::MaxContent) {
-                content.max
-            } else {
-                0.0
-            },
+        let mut range = IntrinsicRange::ZERO;
+        for (req, slot) in range.requested(content_query) {
+            *slot = content.get(req);
         }
+        range
     }
 }
 

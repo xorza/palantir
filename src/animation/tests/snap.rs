@@ -80,7 +80,7 @@ fn gradient_snap_clears_only_its_chrome_velocity() {
     use crate::primitives::geometry::corners::Corners;
     use crate::primitives::paint::border::Border;
     use crate::primitives::paint::brush::Brush;
-    use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
+    use crate::primitives::paint::brush::gradient::Gradient;
     use crate::primitives::paint::chrome::Chrome;
     use crate::primitives::paint::shadow::Shadow;
 
@@ -123,7 +123,7 @@ fn gradient_snap_clears_only_its_chrome_velocity() {
         "test setup must carry positive border velocity",
     );
 
-    let gradient: Brush = LinearGradient::horizontal([RgbaF32::BLACK, RgbaF32::WHITE]).into();
+    let gradient: Brush = Gradient::horizontal([RgbaF32::BLACK, RgbaF32::WHITE]).into();
     let target = Chrome {
         corners: Corners::ZERO,
         paint: Paint {
@@ -151,7 +151,7 @@ fn gradient_snap_clears_only_its_chrome_velocity() {
 #[test]
 fn gradient_snap_inside_look_repaints_only_until_numeric_fields_settle() {
     use crate::primitives::paint::brush::Brush;
-    use crate::primitives::paint::brush::gradient::radial_geometry::RadialGradient;
+    use crate::primitives::paint::brush::gradient::Gradient;
     use crate::primitives::paint::chrome::Chrome;
     use crate::theme::look::animated_look::AnimatedLook;
     use crate::theme::text_style::TextStyle;
@@ -161,7 +161,7 @@ fn gradient_snap_inside_look_repaints_only_until_numeric_fields_settle() {
         chrome: Chrome::new(RgbaF32::BLACK),
         text: TextStyle::stock(ColorScheme::Dark).with_color(RgbaF32::BLACK),
     };
-    let gradient: Brush = RadialGradient::centered([RgbaF32::BLACK, RgbaF32::WHITE]).into();
+    let gradient: Brush = Gradient::centered_radial([RgbaF32::BLACK, RgbaF32::WHITE]).into();
     let target = AnimatedLook {
         chrome: Chrome::new(gradient.clone()),
         text: TextStyle::stock(ColorScheme::Dark).with_color(RgbaF32::WHITE),
@@ -184,13 +184,13 @@ fn gradient_snap_inside_look_repaints_only_until_numeric_fields_settle() {
 
     let first = frame(&mut h, &start);
     assert_eq!(*first.a(), start);
-    assert!(!first.report().repaint_requested);
+    assert!(!first.recorded().repaint_requested);
 
     let tick = Duration::from_millis(16);
     let retarget = frame(h.advance(tick), &target);
     assert_eq!(retarget.a().chrome.paint.fill, gradient);
     assert_ne!(retarget.a().text.color, target.text.color);
-    assert!(retarget.report().repaint_requested);
+    assert!(retarget.recorded().repaint_requested);
 
     let mut last = None;
     let frames = h.settled(&mut |ui: &mut Ui| {
@@ -221,7 +221,7 @@ fn gradient_snap_inside_look_repaints_only_until_numeric_fields_settle() {
     let after_settle = frame(h.advance(tick), &target);
     assert_eq!(*after_settle.a(), target);
     assert!(
-        !after_settle.report().repaint_requested,
+        !after_settle.recorded().repaint_requested,
         "a settled look must not request a surplus repaint",
     );
 }

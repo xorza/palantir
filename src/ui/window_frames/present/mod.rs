@@ -11,7 +11,8 @@ use crate::damage::{Damage, DamageBase};
 use crate::display::Display;
 use crate::display::frame_stamp::FrameStamp;
 use crate::display::system_scale::SystemScale;
-use crate::gpu::frame::submission::{self, FrameOverlay, Route, Submission};
+use crate::gpu::device::gpu::Gpu;
+use crate::gpu::frame::submission::{FrameOverlay, Route, Submission};
 use crate::gpu::pipeline::quad_pipeline::cutout_placements::CutoutPlacing;
 use crate::gpu::pipeline::quad_pipeline::cutout_plan::Census;
 use crate::gpu::render_owner_id::RenderOwnerId;
@@ -26,13 +27,14 @@ use crate::renderer::render_plan::RenderPlan;
 use crate::renderer::repaint_scissors::RepaintScissors;
 use crate::renderer::row_table::RowTable;
 use crate::ui::app::App;
-use crate::ui::frame_report::FrameReport;
+use crate::ui::frame_report::RecordedFrame;
 use crate::ui::window_frames::WindowFrames;
 use crate::ui::window_frames::present::present_facts::{
     Escalation, PaintPath, PresentFacts, promote_share,
 };
 use crate::window::window_token::WindowToken;
 use glam::UVec2;
+use std::num::NonZeroU32;
 use std::time::Duration;
 
 /// What a window opens as: its token, the render owner its frames draw as, and how it presents.
@@ -71,7 +73,7 @@ impl TargetKey {
 pub(crate) struct FrameSpec {
     pub(crate) target: TargetKey,
     pub(crate) system_scale: SystemScale,
-    pub(crate) refresh_millihertz: Option<u32>,
+    pub(crate) refresh_millihertz: Option<NonZeroU32>,
     pub(crate) now: Duration,
 }
 
@@ -157,10 +159,10 @@ pub(crate) struct BuildCtx<'f, 'p> {
     pub(crate) frame: u64,
 }
 
-/// The CPU half's result: the report, and what the GPU half does.
+/// The CPU half's result: the frame recorded, and what the GPU half does.
 #[derive(Debug)]
 pub(crate) struct CpuFrame<'f> {
-    pub(crate) report: FrameReport,
+    pub(crate) recorded: RecordedFrame,
     pub(crate) built: BuiltFrame<'f>,
 }
 
@@ -239,9 +241,11 @@ impl WindowFrames {
     /// that read neither; a `Frame<'a>` context over the whole stack, which hides what each stage
     /// reads; a `HostCore` method per step, as a headless host holds its device beside its
     /// `HeadlessWindow`.
-    pub(crate) fn record<T: App>(&mut self, spec: FrameSpec, app: &mut T) -> FrameReport {
+    pub(crate) fn record<T: App>(&mut self, spec: FrameSpec, app: &mut T) -> RecordedFrame {
         tracy::zone!();
         self.note_target(&spec);
+        // What landed or was dropped since the last frame took its asks leaves room for this one's.
+        self.ui.host.window_requests.screenshots_owed = self.screenshots.len();
         let stamp = self.stamp(&spec);
         self.frame(stamp, app)
     }
@@ -250,10 +254,9 @@ impl WindowFrames {
     /// baseline, as no target exists to lose it, and drops the screenshots asked in it, as no
     /// device takes them: no image lands for them, as for an empty ask.
     pub(crate) fn finish_unpainted(&mut self) {
-        self.screenshots
-            .requests
-            .append(&mut self.ui.host.window_requests.screenshots);
+        self.ui.host.window_requests.screenshots.clear();
         self.screenshots.requests.clear();
+        self.ui.host.window_requests.screenshots_owed = self.screenshots.len();
         self.damage_base = DamageBase::Prev;
     }
 
@@ -272,7 +275,7 @@ impl WindowFrames {
             self.decide_backdrops(plan);
         }
         self.build(frontend, rows, plan);
-        self.backdrop_captures.settle(&frontend.buffer);
+        self.backdrop_captures.settle(frontend.buffer());
     }
 
     /// Drop from the backdrop ledger the results the shared backdrop atlas evicted from this
@@ -284,30 +287,31 @@ impl WindowFrames {
 
     /// Hand the next frame the oldest screenshot the device has finished, or none: the image is
     /// an edge of exactly that frame.
-    pub(crate) fn deliver_screenshot(&mut self, backend: &WgpuBackend) {
-        let landed = self.screenshots.take_landed(backend);
+    pub(crate) fn deliver_screenshot(&mut self, gpu: &Gpu) {
+        let landed = self.screenshots.take_landed(gpu);
         if landed.is_some() {
             self.ui.frame_runtime.request_repaint();
         }
         self.ui.host.window_frame.screenshot = landed.map(Box::new);
     }
 
-    /// Decide how the frame `report` describes reaches its target, and build its draw list. Seals
-    /// the [`BuiltFrame`]: a promoted or resynced Partial builds a Full list.
+    /// Decide how the frame `recorded` reaches its target, and build its draw list. Seals the
+    /// [`BuiltFrame`]: a promoted or resynced Partial builds a Full list.
     pub(crate) fn build_paint<'f>(
         &mut self,
         ctx: BuildCtx<'f, '_>,
-        mut report: FrameReport,
+        mut recorded: RecordedFrame,
     ) -> CpuFrame<'f> {
         tracy::zone!();
         #[cfg(feature = "internals")]
-        self.apply_forced(&mut report);
+        self.apply_forced(&mut recorded);
         self.screenshots
             .requests
             .append(&mut self.ui.host.window_requests.screenshots);
+        self.ui.host.window_requests.screenshots_owed = self.screenshots.len();
         let capturing = self.screenshots.is_capturing();
         if capturing {
-            report.plan = Some(report.plan.map_or(
+            recorded.plan = Some(recorded.plan.map_or(
                 RenderPlan {
                     clear: self.ui.theme().window_bg,
                     damage: Damage::Full,
@@ -315,7 +319,7 @@ impl WindowFrames {
                 RenderPlan::to_full,
             ));
         }
-        let built = if let Some(plan) = report.plan {
+        let built = if let Some(plan) = recorded.plan {
             let facts = PresentFacts {
                 strategy: self.strategy,
                 capturing,
@@ -345,9 +349,9 @@ impl WindowFrames {
         }
         // In the report, as an offscreen caller has no other sign that the window owes a frame.
         if self.screenshots.owes_frame() {
-            report.repaint_requested = true;
+            recorded.repaint_requested = true;
         }
-        CpuFrame { report, built }
+        CpuFrame { recorded, built }
     }
 
     /// Build the frame `first` paints: as it says when it can, else whole.
@@ -371,8 +375,8 @@ impl WindowFrames {
                 }
             }
         };
-        self.backdrop_captures.settle(&ctx.frontend.buffer);
-        fitted.path = self.capture_path(fitted.path, &ctx.frontend.buffer);
+        self.backdrop_captures.settle(ctx.frontend.buffer());
+        fitted.path = self.capture_path(fitted.path, ctx.frontend.buffer());
         debug_assert!(
             matches!(
                 (fitted.path.plan.damage, &fitted.scissors),
@@ -423,7 +427,7 @@ impl WindowFrames {
         // one refusal after a build, as the census reads what the frame draws.
         let census = self
             .stream
-            .plan_cutouts(&ctx.frontend.buffer, &scissors, &mut ctx.placing);
+            .plan_cutouts(ctx.frontend.buffer(), &scissors, &mut ctx.placing);
         if census != Census::Cur {
             return Err(Escalation::ByStrategy);
         }
@@ -442,7 +446,7 @@ impl WindowFrames {
         );
         self.build(ctx.frontend, ctx.placing.pool.rows_mut(), plan);
         let census = self.stream.plan_cutouts(
-            &ctx.frontend.buffer,
+            ctx.frontend.buffer(),
             &RepaintScissors::Full,
             &mut ctx.placing,
         );
@@ -471,10 +475,6 @@ impl WindowFrames {
                 rows,
             },
         );
-        self.ui
-            .memory
-            .gpu_views
-            .collect_live_targets(&mut frontend.buffer.live_targets);
     }
 
     /// Whether a partial frame on `route` cannot paint in the target it keeps its pixels in: only a
@@ -584,7 +584,7 @@ impl WindowFrames {
             frontend,
         } = job;
         debug_assert!(
-            route != Route::Direct || frontend.buffer.captured_area() == 0 || target.gives_copy(),
+            route != Route::Direct || frontend.buffer().captured_area() == 0 || target.gives_copy(),
             "a direct frame's captures copy out of the target"
         );
         debug_assert!(
@@ -594,7 +594,7 @@ impl WindowFrames {
             "a direct partial frame loads the target, which only a retained one keeps: a \
              swapchain image holds nothing at acquire"
         );
-        let buffer = &frontend.buffer;
+        let buffer = frontend.buffer();
         let debug_overlay = self.ui.debug_overlay();
         self.target_outlined = debug_overlay.damage_rect;
         backend.submit(
@@ -603,9 +603,10 @@ impl WindowFrames {
             Submission {
                 stats: &mut self.ui.host.gpu_pass_stats,
                 store: &self.ui.forest.record_store,
+                effects: self.ui.resources.effects(),
                 buffer,
                 gpu_views: &self.ui.memory.gpu_views,
-                clear: submission::frame_clear(plan.clear, buffer),
+                clear: buffer.frame_clear(plan.clear),
                 scissors: &scissors,
                 route,
                 overlay: FrameOverlay {
@@ -632,7 +633,7 @@ pub(crate) mod internals {
     use crate::display::system_scale::SystemScale;
     use crate::primitives::geometry::rect::Rect;
     use crate::renderer::render_plan::RenderPlan;
-    use crate::ui::frame_report::FrameReport;
+    use crate::ui::frame_report::RecordedFrame;
     use crate::ui::window_frames::WindowFrames;
     #[cfg(test)]
     use crate::ui::window_frames::present::present_facts::PaintPath;
@@ -686,13 +687,13 @@ pub(crate) mod internals {
             self.forced.changed.extend_from_slice(changed);
         }
 
-        /// Put the forced decision in `report`'s plan, and mark the backdrops its change left
+        /// Put the forced decision in `recorded`'s plan, and mark the backdrops its change left
         /// stale.
-        pub(crate) fn apply_forced(&mut self, report: &mut FrameReport) {
+        pub(crate) fn apply_forced(&mut self, recorded: &mut RecordedFrame) {
             let Some(damage) = self.forced.damage.take() else {
                 return;
             };
-            report.plan = Some(RenderPlan {
+            recorded.plan = Some(RenderPlan {
                 clear: self.ui.theme().window_bg,
                 damage,
             });

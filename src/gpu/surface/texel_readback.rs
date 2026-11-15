@@ -90,10 +90,8 @@ mod tests {
     use crate::gpu::device::gpu_wait::GpuWait;
     use crate::gpu::surface::texel_readback::TexelReadback;
     use crate::gpu::test_gpu::isolated_headless_test_gpu;
-    use crate::gpu::texel;
     use crate::gpu::texel::TargetSpec;
     use glam::UVec2;
-    use std::iter;
 
     /// A readback reads, unmaps and leaves its map idle, so the next read of the kept buffer
     /// maps it again and reads the texels written since: a 3 × 2 texture cleared to red, then
@@ -101,42 +99,20 @@ mod tests {
     #[test]
     fn a_kept_readback_reads_again_from_an_idle_map() {
         let gpu = isolated_headless_test_gpu();
-        let texture = texel::texture_2d(
-            &gpu,
-            TargetSpec {
-                label: "palantir.test.readback",
-                size: UVec2::new(3, 2),
-                format: wgpu::TextureFormat::Rgba8Unorm,
-                usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
-            },
-        );
-        let clear = |color: wgpu::Color| {
-            let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-            let mut encoder = gpu
-                .device
-                .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-            encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: None,
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
-                    depth_slice: None,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(color),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                ..Default::default()
-            });
-            gpu.queue.submit(iter::once(encoder.finish()));
-        };
+        let texture = TargetSpec {
+            label: "palantir.test.readback",
+            size: UVec2::new(3, 2),
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+        }
+        .texture(&gpu);
         let readback = TexelReadback::new(&gpu, &texture);
         let mut texels = Vec::new();
         for (color, texel) in [
             (wgpu::Color::RED, [255, 0, 0, 255]),
             (wgpu::Color::BLUE, [0, 0, 255, 255]),
         ] {
-            clear(color);
+            gpu.clear(&texture, color);
             assert_eq!(readback.read(&gpu, &texture, &mut texels), GpuWait::Done);
             assert_eq!(texels, texel.repeat(6));
             assert!(readback.staging.map().is_idle(), "unmapped and idle");

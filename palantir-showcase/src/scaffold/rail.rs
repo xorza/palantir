@@ -5,9 +5,9 @@
 
 use palantir::{
     Align, Axis, Button, ButtonTheme, Chrome, ColorScheme, Configure, Corners, FontWeight, Grid,
-    GridCell, Panel, Preference, RadioGroup, RadioLook, Reduction, Scroll, SegmentedTheme, Sizing,
-    SlotDefaults, Spacing, StatefulLook, Text, TextStyleOverrides, Theme, Tooltip, Track, Ui,
-    UiPreferences, VAlign, WidgetId, WidgetLook,
+    GridCell, Panel, Preference, RadioGroup, RadioLook, Reduction, Scroll, SegmentedTheme,
+    SizeSpec, Sizing, SlotDefaults, Spacing, StatefulLook, Text, TextStyleOverrides, Theme,
+    Tooltip, Track, Ui, UiPreferences, VAlign, WidgetId, WidgetLook,
 };
 
 use crate::scaffold::tokens::M;
@@ -43,7 +43,7 @@ pub(crate) fn show(ui: &mut Ui, t: Tokens, body: impl FnOnce(&mut Ui)) {
 pub(crate) fn block(ui: &mut Ui, body: impl FnOnce(&mut Ui)) {
     Panel::vstack()
         .auto_id()
-        .size((Sizing::FILL, Sizing::HUG))
+        .size(SizeSpec::FILL_W)
         .margin((0.0, 0.0, INSET, 0.0))
         .gap(M.space.sm)
         .show(ui, body);
@@ -62,7 +62,7 @@ pub(crate) fn label(ui: &mut Ui, t: Tokens, text: &'static str) {
 pub(crate) fn brand(ui: &mut Ui, t: Tokens, title: &'static str, subtitle: &'static str) {
     Panel::vstack()
         .id_salt("brand")
-        .size((Sizing::FILL, Sizing::HUG))
+        .size(SizeSpec::FILL_W)
         .padding((INSET, 0.0, INSET, 0.0))
         .gap(M.space.xxs)
         .show(ui, |ui| {
@@ -83,7 +83,7 @@ pub(crate) fn brand(ui: &mut Ui, t: Tokens, title: &'static str, subtitle: &'sta
 pub(crate) fn list(id: WidgetId) -> Scroll<'static> {
     Scroll::vertical()
         .id(id)
-        .size((Sizing::FILL, Sizing::FILL))
+        .size(SizeSpec::FILL)
         .overlay_bars()
         .padding((0.0, 0.0, INSET, 0.0))
         .gap(M.space.xxs)
@@ -104,7 +104,7 @@ impl Nav {
             text: TextStyleOverrides::NONE.with_color(t.ink),
         };
         let [rest, hovered, pressed] = PILL_TINT;
-        let unselected = theme.menu_bar.title.clone();
+        let unselected = theme.menu_bar.title.unselected.clone();
         Self {
             theme: ButtonTheme {
                 selected: StatefulLook {
@@ -116,7 +116,7 @@ impl Nav {
                 unselected,
                 defaults: SlotDefaults {
                     padding: Spacing::xy(INSET, 0.0),
-                    ..theme.menu_bar.defaults
+                    ..theme.menu_bar.title.defaults
                 },
             },
         }
@@ -147,7 +147,7 @@ pub(crate) fn preferences(ui: &mut Ui, t: Tokens) {
         .rows([Track::HUG; 5])
         .gap(NAME_GAP)
         .line_gap(M.space.sm)
-        .size((Sizing::FILL, Sizing::HUG))
+        .size(SizeSpec::FILL_W)
         .show(ui, |ui| preference_rows(ui, &Segmented::new(ui.theme(), t)));
 }
 
@@ -161,58 +161,68 @@ fn preference_rows(ui: &mut Ui, track: &Segmented) {
     };
     let scheme = track.row(
         ui,
-        0,
-        "Theme",
-        [
-            (Preference::System, "Auto"),
-            (Preference::Fixed(ColorScheme::Light), "Light"),
-            (Preference::Fixed(ColorScheme::Dark), "Dark"),
-        ],
-        held.scheme,
-        follows_scheme,
+        PreferenceRow {
+            row: 0,
+            label: "Theme",
+            choices: [
+                (Preference::System, "Auto"),
+                (Preference::Fixed(ColorScheme::Light), "Light"),
+                (Preference::Fixed(ColorScheme::Dark), "Dark"),
+            ],
+            current: held.scheme,
+            follows: follows_scheme,
+        },
     );
     let motion = track.row(
         ui,
-        1,
-        "Motion",
-        REDUCE,
-        held.motion,
-        if ui.is_power_reduced() {
-            "Follows the system, transitions snap under reduced power"
-        } else {
-            follows_reduction(ui.system_motion_reduced())
+        PreferenceRow {
+            row: 1,
+            label: "Motion",
+            choices: REDUCE,
+            current: held.motion,
+            follows: if ui.reductions().power.is_reduced() {
+                "Follows the system, transitions snap under reduced power"
+            } else {
+                follows_reduction(ui.system_reductions().motion.is_reduced())
+            },
         },
     );
     let transparency = track.row(
         ui,
-        2,
-        "Transparency",
-        REDUCE,
-        held.transparency,
-        if ui.is_power_reduced() {
-            "Follows the system, less now under reduced power"
-        } else {
-            follows_reduction(ui.system_transparency_reduced())
+        PreferenceRow {
+            row: 2,
+            label: "Transparency",
+            choices: REDUCE,
+            current: held.transparency,
+            follows: if ui.reductions().power.is_reduced() {
+                "Follows the system, less now under reduced power"
+            } else {
+                follows_reduction(ui.system_reductions().transparency.is_reduced())
+            },
         },
     );
     let power = track.row(
         ui,
-        3,
-        "Power",
-        REDUCE,
-        held.power,
-        follows_reduction(ui.system_power_reduced()),
+        PreferenceRow {
+            row: 3,
+            label: "Power",
+            choices: REDUCE,
+            current: held.power,
+            follows: follows_reduction(ui.system_reductions().power.is_reduced()),
+        },
     );
     let frame_rate = track.row(
         ui,
-        4,
-        "Frame rate",
-        REDUCE,
-        held.frame_rate,
-        if ui.is_power_reduced() {
-            "Follows the power, 30 Hz now"
-        } else {
-            "Follows the power, full now"
+        PreferenceRow {
+            row: 4,
+            label: "Frame rate",
+            choices: REDUCE,
+            current: held.frame_rate,
+            follows: if ui.reductions().power.is_reduced() {
+                "Follows the power, 30 Hz now"
+            } else {
+                "Follows the power, full now"
+            },
         },
     );
     ui.set_preferences(UiPreferences {
@@ -228,7 +238,7 @@ fn preference_rows(ui: &mut Ui, track: &Segmented) {
 /// under a "Reduce …" name, so the segment says what it does without the name.
 const REDUCE: [(Preference<Reduction>, &str); 3] = [
     (Preference::System, "Auto"),
-    (Preference::Fixed(Reduction::Full), "Full"),
+    (Preference::Fixed(Reduction::Unreduced), "Full"),
     (Preference::Fixed(Reduction::Reduced), "Less"),
 ];
 
@@ -246,6 +256,17 @@ const NAME_GAP: f32 = M.space.sm;
 /// A segment's height, inside the track's padding.
 const SEGMENT: f32 = 20.0;
 
+/// One preference's row on the rail's track: its grid row and label, the three choices with the
+/// text of each, the one held now, and the tooltip on the first, which follows the system.
+#[derive(Clone, Copy, Debug)]
+struct PreferenceRow<T> {
+    row: u16,
+    label: &'static str,
+    choices: [(T, &'static str); 3],
+    current: T,
+    follows: &'static str,
+}
+
 /// The preference rows' track: the stock segmented look at the caption size, with no padding in a
 /// segment, so the widest choice fits its third of the track.
 #[derive(Debug)]
@@ -259,12 +280,7 @@ impl Segmented {
         let mut style = theme.segmented.clone();
         let segment = &mut style.segment;
         for pack in [&mut segment.selected, &mut segment.unselected] {
-            for look in [
-                &mut pack.normal,
-                &mut pack.hovered,
-                &mut pack.active,
-                &mut pack.disabled,
-            ] {
+            for look in pack.each_mut() {
                 look.text = look.text.with_font_size(M.text.caption);
             }
         }
@@ -272,34 +288,32 @@ impl Segmented {
         Self { style, t }
     }
 
-    /// Grid row `row` of `label` beside a segment per choice, `current`'s checked; the choice
-    /// picked this frame, else `current`. The track is a radio group, so one Tab lands in it and
-    /// an arrow picks (WAI-ARIA APG, Radio Group). The first segment follows the system, and its
-    /// tooltip, `follows`, says what that shows now, as the segment alone cannot.
-    fn row<T: Copy + PartialEq>(
-        &self,
-        ui: &mut Ui,
-        row: u16,
-        label: &'static str,
-        choices: [(T, &'static str); 3],
-        current: T,
-        follows: &'static str,
-    ) -> T {
+    /// `spec`'s row: its label beside a segment per choice, its current one checked; the choice
+    /// picked this frame, else the current one. The track is a radio group, so one Tab lands in
+    /// it and an arrow picks (WAI-ARIA APG, Radio Group). The first segment follows the system,
+    /// and its tooltip says what that shows now, as the segment alone cannot.
+    fn row<T: Copy + PartialEq>(&self, ui: &mut Ui, spec: PreferenceRow<T>) -> T {
+        let PreferenceRow {
+            row,
+            label,
+            choices,
+            current,
+            follows,
+        } = spec;
         let mut next = current;
         Text::new(label)
             .id_salt(label)
             .style(&self.t.caption())
             .margin((INSET, 0.0, 0.0, 0.0))
             .grid_cell(GridCell::at(row, 0))
-            .align(Align::v(VAlign::Center))
+            .align(VAlign::Center)
             .show(ui);
         RadioGroup::new(&mut next)
-            .look(RadioLook::Segment)
-            .segmented_style(&self.style)
+            .look(RadioLook::Segment(Some(&self.style)))
             .axis(Axis::X)
             .id_salt((label, "track"))
             .grid_cell(GridCell::at(row, 1))
-            .size((Sizing::FILL, Sizing::HUG))
+            .size(SizeSpec::FILL_W)
             .show(ui, |ui, options| {
                 for (idx, (choice, text)) in choices.into_iter().enumerate() {
                     let segment = options

@@ -19,7 +19,7 @@ use crate::gpu::pipeline::pass_recorder::PassRecorder;
 use crate::gpu::pipeline::raster_pipeline::RasterPipelinePair;
 use crate::gpu::pipeline::raster_pipeline::raster_quad::{RasterQuad, SpunRasterQuad};
 use crate::gpu::raster::raster_atlas::packed_metadata::PackedMetadata;
-use crate::gpu::raster::raster_atlas::{Found, RasterAtlas, format_of};
+use crate::gpu::raster::raster_atlas::{Found, RasterAtlas, RasterRequest, format_of};
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use crate::gpu::resource::gpu_ctx::{GpuCtx, RowCopy};
 use crate::primitives::geometry::urect::URect;
@@ -32,18 +32,46 @@ use std::fmt::Debug;
 use std::hash::Hash;
 use std::ops::Range;
 
-/// Everything one tenant's pass settles at construction; the pipeline and shader
-/// belong to the [`RasterPipeline`](crate::gpu::pipeline::raster_pipeline::RasterPipeline).
-#[derive(Clone, Copy, Debug)]
-pub(super) struct RasterPassConfig {
+/// The tenants that raster into the pool, each with the names and the first capacity its pass
+/// takes; the pipeline and shader belong to the
+/// [`RasterPipeline`](crate::gpu::pipeline::raster_pipeline::RasterPipeline).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum RasterTenant {
+    Glyphs,
+    Icons,
+}
+
+impl RasterTenant {
+    const fn tenant(self) -> Tenant {
+        match self {
+            Self::Glyphs => Tenant::Glyphs,
+            Self::Icons => Tenant::Icons,
+        }
+    }
+
     /// Names the tenant in logs and GPU labels.
-    pub(super) label: &'static str,
-    pub(super) tenant: Tenant,
-    pub(super) vbuf: &'static str,
-    /// The turned quads' buffer label.
-    pub(super) spun_vbuf: &'static str,
-    /// Quads the vertex buffer holds before its first growth.
-    pub(super) initial_instances: usize,
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Glyphs => "palantir.text",
+            Self::Icons => "palantir.icon",
+        }
+    }
+
+    /// The flat and the turned quads' buffer labels.
+    const fn buffer_labels(self) -> [&'static str; 2] {
+        match self {
+            Self::Glyphs => ["palantir.text.vbuf", "palantir.text.spun_vbuf"],
+            Self::Icons => ["palantir.icon.vbuf", "palantir.icon.spun_vbuf"],
+        }
+    }
+
+    /// Quads the vertex buffer holds before its first growth: a page of text holds thousands.
+    const fn initial_instances(self) -> usize {
+        match self {
+            Self::Glyphs => 4096,
+            Self::Icons => 256,
+        }
+    }
 }
 
 /// What [`RasterPass::file`] made of a rasterized image: an entry, or the one failure a later
@@ -194,19 +222,20 @@ pub(super) struct RasterPass<K> {
 }
 
 impl<K: Copy + Eq + Hash + Debug> RasterPass<K> {
-    pub(super) fn new(gpu: &Gpu, config: RasterPassConfig) -> Self {
+    pub(super) fn new(gpu: &Gpu, tenant: RasterTenant) -> Self {
+        let [vbuf, spun_vbuf] = tenant.buffer_labels();
         Self {
-            atlas: RasterAtlas::new(config.tenant),
-            uploads: RasterUploads::new(config.label),
+            atlas: RasterAtlas::new(tenant.tenant()),
+            uploads: RasterUploads::new(tenant.label()),
             instances: Vec::new(),
             starts: Vec::new(),
-            vbuf: DynamicBuffer::vertex(gpu, config.vbuf, config.initial_instances),
+            vbuf: DynamicBuffer::vertex(gpu, vbuf, tenant.initial_instances()),
             spun: Vec::new(),
             cuts: Vec::new(),
             cut_starts: Vec::new(),
             // Turned quads are rare: start the buffer small.
-            spun_vbuf: DynamicBuffer::vertex(gpu, config.spun_vbuf, 16),
-            stem: config.label,
+            spun_vbuf: DynamicBuffer::vertex(gpu, spun_vbuf, 16),
+            stem: tenant.label(),
             starvation: Starvation::default(),
         }
     }
@@ -246,14 +275,13 @@ impl<K: Copy + Eq + Hash + Debug> RasterPass<K> {
             return Filed::Found(Found::Nothing);
         }
         let format = format_of(image.content);
-        match pool.allocate(format, self.atlas.tenant(), metadata.size.as_uvec2()) {
-            Ok(allocation) => {
-                self.uploads.push(format, allocation.placement, image.data);
-                Filed::Found(Found::Raster(self.atlas.insert_placed(
-                    key,
-                    allocation,
-                    metadata.bearing,
-                )))
+        match self
+            .atlas
+            .place(pool, key, RasterRequest { format, metadata })
+        {
+            Ok(placed) => {
+                self.uploads.push(format, placed.placement, image.data);
+                Filed::Found(Found::Raster(placed))
             }
             Err(AtlasError::Oversized { size, edge }) => {
                 self.atlas.counters.oversized.bump();
@@ -500,9 +528,9 @@ pub(crate) mod internals {
 mod tests {
     use crate::gpu::atlas::AtlasPool;
     use crate::gpu::atlas::atlas_format::AtlasFormat;
-    use crate::gpu::atlas::tenant::Tenant;
+
     use crate::gpu::raster::raster_atlas::Found;
-    use crate::gpu::raster::raster_pass::{Filed, RasterPass, RasterPassConfig, Starvation};
+    use crate::gpu::raster::raster_pass::{Filed, RasterPass, RasterTenant, Starvation};
     use crate::gpu::test_gpu::headless_test_gpu;
     use crate::primitives::paint::content_type::ContentType;
     use crate::primitives::paint::raster_image::RasterImage;
@@ -515,16 +543,7 @@ mod tests {
     #[test]
     fn an_image_files_on_a_page_or_as_drawing_nothing() {
         let gpu = headless_test_gpu();
-        let mut pass = RasterPass::<u16>::new(
-            &gpu,
-            RasterPassConfig {
-                label: "test",
-                tenant: Tenant::Glyphs,
-                vbuf: "test.vbuf",
-                spun_vbuf: "test.spun_vbuf",
-                initial_instances: 4,
-            },
-        );
+        let mut pass = RasterPass::<u16>::new(&gpu, RasterTenant::Glyphs);
         let mut pool = AtlasPool::uniform(32, 32, 0);
         let image = |content, size: UVec2, data| RasterImage {
             content,
@@ -543,7 +562,13 @@ mod tests {
             Some(image(ContentType::Mask, UVec2::new(10, 12), &mask)),
         ));
         assert_eq!(
-            (m.page, m.origin, m.size, m.bearing, m.content()),
+            (
+                m.placement.page,
+                m.placement.origin,
+                m.placement.size,
+                m.raster.bearing,
+                m.content()
+            ),
             (
                 0,
                 U16Vec2::ZERO,

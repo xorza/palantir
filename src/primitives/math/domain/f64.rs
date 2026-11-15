@@ -5,7 +5,7 @@ use std::ops::RangeInclusive;
 
 /// True if `v` is [`positive`]: finite and above zero.
 #[inline]
-pub const fn is_positive(v: f64) -> bool {
+pub(crate) const fn is_positive(v: f64) -> bool {
     v > 0.0 && v <= f64::MAX
 }
 
@@ -16,14 +16,14 @@ pub const fn is_positive(v: f64) -> bool {
 /// Panics unless [`is_positive`]`(v)`.
 #[inline]
 #[track_caller]
-pub const fn positive(v: f64) -> f64 {
+pub(crate) const fn positive(v: f64) -> f64 {
     assert!(is_positive(v), "{}", domain::POSITIVE_RULE);
     v
 }
 
 /// True if both ends of `r` are finite, in either order.
 #[inline]
-pub const fn is_range(r: &RangeInclusive<f64>) -> bool {
+pub(crate) const fn is_range(r: &RangeInclusive<f64>) -> bool {
     r.start().is_finite() && r.end().is_finite()
 }
 
@@ -35,14 +35,14 @@ pub const fn is_range(r: &RangeInclusive<f64>) -> bool {
 /// Panics unless [`is_range`]`(&r)`.
 #[inline]
 #[track_caller]
-pub const fn range(r: RangeInclusive<f64>) -> RangeInclusive<f64> {
+pub(crate) const fn range(r: RangeInclusive<f64>) -> RangeInclusive<f64> {
     assert!(is_range(&r), "{}", domain::RANGE_RULE);
     r
 }
 
 /// True if neither end of `r` is NaN; an end may be infinite, in either order.
 #[inline]
-pub const fn is_bounds(r: &RangeInclusive<f64>) -> bool {
+pub(crate) const fn is_bounds(r: &RangeInclusive<f64>) -> bool {
     !r.start().is_nan() && !r.end().is_nan()
 }
 
@@ -54,7 +54,7 @@ pub const fn is_bounds(r: &RangeInclusive<f64>) -> bool {
 /// Panics unless [`is_bounds`]`(&r)`.
 #[inline]
 #[track_caller]
-pub const fn bounds(r: RangeInclusive<f64>) -> RangeInclusive<f64> {
+pub(crate) const fn bounds(r: RangeInclusive<f64>) -> RangeInclusive<f64> {
     assert!(is_bounds(&r), "{}", domain::BOUNDS_RULE);
     let (start, end) = (*r.start(), *r.end());
     start.min(end)..=start.max(end)

@@ -1,0 +1,355 @@
+use crate::gpu::pipeline::shape_template::{
+    self, INDICES, Indices, TemplateIndices, point_count, triangle_count,
+};
+use crate::gpu::resource::shader_body::ShaderBody;
+use crate::primitives::wgsl::SHAPE_TEMPLATE;
+use crate::renderer::render_buffer::shape_form::ShapeForm;
+use crate::renderer::render_buffer::template_cover::TemplateCover;
+use std::collections::BTreeSet;
+
+/// A box's template is 4 rings of 5 triangles, 4 bands of 4 and an interior fan of 10, over
+/// 64 points: per corner a ring's 4 outer and 3 inner, per edge a hexagon, and 3 inner points
+/// a corner for the fan. A triangle's 3 rings, 3 bands and a fan of 7, over 21 + 18 + 9. A rim
+/// draws the rings and bands alone, the fan's triangles listed last: a box's 36 of 46, a
+/// triangle's 27 of 34, from past the box's 138 indices.
+#[test]
+fn each_form_draws_its_template_over_its_points() {
+    assert_eq!(triangle_count(4), 20 + 16 + 10);
+    assert_eq!(point_count(4), 28 + 24 + 12);
+    assert_eq!(triangle_count(3), 15 + 12 + 7);
+    assert_eq!(point_count(3), 21 + 18 + 9);
+    assert_eq!(
+        TemplateIndices::range(ShapeForm::Box, TemplateCover::Whole),
+        0..138
+    );
+    assert_eq!(
+        TemplateIndices::range(ShapeForm::Box, TemplateCover::Rim),
+        0..108
+    );
+    assert_eq!(
+        TemplateIndices::range(ShapeForm::Triangle, TemplateCover::Whole),
+        138..240
+    );
+    assert_eq!(
+        TemplateIndices::range(ShapeForm::Triangle, TemplateCover::Rim),
+        138..219
+    );
+}
+
+/// Each triangle names the points `palantir_template_vertex` lays out, every point once at
+/// least: a box's first ring triangle `(o_0, o_1, q_0)` is points 0, 1 and 4 (the inner
+/// chain follows the 4 outer points), its second `(q_0, o_1, q_1)` 4, 1 and 5; its first band
+/// triangle the hexagon's `O_e, O_next, I_next`, past the 28 ring points; its interior fan from
+/// point 52, past the 24 band points, the last triangle closing on 62 and 63.
+#[test]
+fn the_indices_name_every_point_of_the_template() {
+    let Indices { boxes, triangles } = &INDICES;
+    assert_eq!(boxes[..6], [0, 1, 4, 4, 1, 5]);
+    assert_eq!(boxes[3 * 20..3 * 20 + 3], [28, 29, 30]);
+    assert_eq!(boxes[3 * 36..3 * 36 + 3], [52, 53, 54]);
+    assert_eq!(boxes[3 * 45..], [52, 62, 63]);
+    for (indices, n) in [(&boxes[..], 4), (&triangles[..], 3)] {
+        let named: BTreeSet<u16> = indices.iter().copied().collect();
+        assert_eq!(named, (0..point_count(n) as u16).collect());
+    }
+}
+
+/// The template before it drew indexed: a vertex per triangle corner, its arc's directions by
+/// `acos` and `sin`. Kept as the reference the indexed template is held to.
+const BEFORE: &str = "
+fn before_arc_dir(na: vec2<f32>, nb: vec2<f32>, f: f32) -> vec2<f32> {
+if (f <= 0.0) { return na; }
+if (f >= 1.0) { return nb; }
+let sweep = acos(clamp(dot(na, nb), -1.0, 1.0));
+return (sin((1.0 - f) * sweep) * na + sin(f * sweep) * nb) / sin(sweep);
+}
+
+fn before_point(k: PalantirCorner, inradius: f32, kind: u32, j: u32, depth: f32) -> vec2<f32> {
+let segments = f32(PALANTIR_ARC_SEGMENTS);
+let m = (k.na + k.nb) / (1.0 + dot(k.na, k.nb));
+if (kind == PALANTIR_POINT_DEEP) { return k.c + max(k.r - depth, k.r - inradius) * m; }
+if (kind == PALANTIR_POINT_INNER) {
+    return k.c + max(k.r - depth, 0.0) * before_arc_dir(k.na, k.nb, f32(j) / segments);
+}
+let reach = k.r + PALANTIR_AA_HALF_WIDTH;
+if (j == 0u) { return k.c + reach * k.na; }
+if (j == PALANTIR_ARC_SEGMENTS + 1u) { return k.c + reach * k.nb; }
+let half_step = 0.5 * acos(clamp(dot(k.na, k.nb), -1.0, 1.0)) / segments;
+return k.c + (reach / cos(half_step)) * before_arc_dir(k.na, k.nb, (f32(j) - 0.5) / segments);
+}
+
+const BEFORE_HEXAGON = vec4<u32>(0x210u, 0x520u, 0x325u, 0x435u);
+
+fn before_vertex(s: PalantirShape, vi: u32, border_width: f32) -> PalantirTemplateVertex {
+let depth = border_width + PALANTIR_AA_HALF_WIDTH;
+let ring_triangles = 2u * PALANTIR_ARC_SEGMENTS + 1u;
+let tri = vi / 3u;
+let at = vi % 3u;
+let rings = s.n * ring_triangles;
+let bands = s.n * 4u;
+var out: PalantirTemplateVertex;
+var kind = PALANTIR_POINT_OUTER;
+var i = 0u;
+var j = 0u;
+var edge = 0u;
+if (tri < rings) {
+    out.region = PALANTIR_REGION_RING;
+    i = tri / ring_triangles;
+    let t = tri % ring_triangles;
+    let odd = t % 2u == 1u;
+    let inner = (odd && at != 1u) || (!odd && at == 2u);
+    kind = select(PALANTIR_POINT_OUTER, PALANTIR_POINT_INNER, inner);
+    j = t / 2u + u32(at == 1u || (odd && at == 2u));
+} else if (tri < rings + bands) {
+    out.region = PALANTIR_REGION_BAND;
+    edge = (tri - rings) / 4u;
+    let h = (BEFORE_HEXAGON[(tri - rings) % 4u] >> (4u * at)) & 0xfu;
+    let next = (edge + 1u) % s.n;
+    let first = h == 1u || h == 2u || h == 3u;
+    i = select(edge, next, first);
+    if (h <= 1u) {
+        kind = PALANTIR_POINT_OUTER;
+        j = select(PALANTIR_ARC_SEGMENTS + 1u, 0u, first);
+    } else if (h == 2u || h == 5u || palantir_shape_corner(s, i).r >= depth) {
+        kind = PALANTIR_POINT_INNER;
+        j = select(PALANTIR_ARC_SEGMENTS, 0u, first);
+    } else {
+        kind = PALANTIR_POINT_DEEP;
+    }
+} else {
+    out.region = PALANTIR_REGION_INTERIOR;
+    let fan = select(0u, tri - rings - bands + at, at > 0u);
+    i = fan / (PALANTIR_ARC_SEGMENTS + 1u);
+    j = fan % (PALANTIR_ARC_SEGMENTS + 1u);
+    kind = select(PALANTIR_POINT_DEEP, PALANTIR_POINT_INNER, palantir_shape_corner(s, i).r >= depth);
+}
+let k = palantir_shape_corner(s, i);
+out.pos = before_point(k, s.inradius, kind, j, depth);
+out.ring_r = k.r;
+if (out.region == PALANTIR_REGION_RING) {
+    out.geo = out.pos - k.c;
+} else if (out.region == PALANTIR_REGION_BAND) {
+    let e = palantir_shape_corner(s, edge);
+    out.geo = vec2<f32>(dot(out.pos - e.c, e.nb) - e.r, 0.0);
+} else {
+    out.geo = vec2<f32>(0.0);
+}
+return out;
+}
+
+@group(0) @binding(14) var<storage, read> probe_in: array<array<vec4<f32>, 5>>;
+@group(0) @binding(15) var<storage, read_write> probe_out: array<array<vec4<f32>, 4>>;
+@compute @workgroup_size(1)
+fn probe(@builtin(global_invocation_id) id: vec3<u32>) {
+let q = probe_in[id.x];
+var s: PalantirShape;
+s.n = u32(q[3].z);
+s.p0 = q[0].xy;
+s.p1 = q[0].zw;
+s.p2 = q[1].xy;
+s.p3 = q[1].zw;
+s.radius = q[2];
+s.inradius = q[3].x;
+let now = palantir_template_vertex(palantir_fill_outlines(s, q[3].y), u32(q[4].y));
+let then = before_vertex(s, u32(q[4].x), q[3].y);
+probe_out[id.x] = array<vec4<f32>, 4>(
+    vec4<f32>(f32(now.region), now.ring_r, now.pos),
+    vec4<f32>(now.geo, 0.0, 0.0),
+    vec4<f32>(f32(then.region), then.ring_r, then.pos),
+    vec4<f32>(then.geo, 0.0, 0.0),
+);
+}
+";
+
+/// Every vertex of the indexed template, on the GPU, against the template before it, a
+/// vertex per triangle corner with its arc's directions by `acos` and `sin`: the same region
+/// and arc radius, bit for bit, and the same point and distance within 2e-3 of the larger of
+/// 1 and the value. The tolerance is the reference's trigonometry: WGSL holds `sin` and `cos`
+/// to 2⁻¹¹ absolute and `acos` looser; an Apple GPU's lands within 2e-5 of the closed form
+/// and lavapipe's, in CI, 4.7e-4 off it at a triangle's corner. Over a rounded box
+/// with each corner its own radius, at a border its smaller corners are not deep enough for, a
+/// circle, a thin sharp box and a rounded triangle with and without a border.
+#[test]
+fn the_indexed_template_draws_the_triangles_it_drew_before() {
+    /// A shape as the template reads it, and the border it draws.
+    #[derive(Clone, Copy, Debug)]
+    struct Shape {
+        points: [f32; 8],
+        radius: [f32; 4],
+        inradius: f32,
+        border: f32,
+        corners: u32,
+    }
+    let rect = |w: f32, h: f32, radius: [f32; 4], border: f32| Shape {
+        points: [0.0, 0.0, w, 0.0, w, h, 0.0, h],
+        radius,
+        inradius: w.min(h) / 2.0,
+        border,
+        corners: 4,
+    };
+    // Inradius `2 · area / perimeter`: 8000 over 100 + 106.3 + 85.44.
+    let triangle = |border: f32| Shape {
+        points: [0.0, 0.0, 100.0, 0.0, 30.0, 80.0, 0.0, 0.0],
+        radius: [6.0, 3.0, 10.0, 0.0],
+        inradius: 27.42,
+        border,
+        corners: 3,
+    };
+    let shapes = [
+        rect(120.0, 80.0, [12.0, 0.0, 30.0, 4.0], 0.0),
+        rect(120.0, 80.0, [12.0, 0.0, 30.0, 4.0], 6.0),
+        rect(50.0, 50.0, [25.0; 4], 2.0),
+        rect(200.0, 10.0, [0.0; 4], 1.0),
+        triangle(0.0),
+        triangle(4.0),
+    ];
+    let mut inputs: Vec<[[f32; 4]; 5]> = Vec::new();
+    for shape in shapes {
+        let p = shape.points;
+        let indices: &[u16] = if shape.corners == 4 {
+            &INDICES.boxes
+        } else {
+            &INDICES.triangles
+        };
+        for (vi, &u) in indices.iter().enumerate() {
+            inputs.push([
+                [p[0], p[1], p[2], p[3]],
+                [p[4], p[5], p[6], p[7]],
+                shape.radius,
+                [shape.inradius, shape.border, shape.corners as f32, 0.0],
+                [vi as f32, f32::from(u), 0.0, 0.0],
+            ]);
+        }
+    }
+    let shader = ShaderBody {
+        label: "palantir.template",
+        wgsl: BEFORE,
+        includes: &[SHAPE_TEMPLATE],
+        constants: &[shape_template::CONSTANT],
+    };
+    let got: Vec<[[f32; 4]; 4]> = shader.probe("", &inputs);
+    for (input, [now, now_geo, then, then_geo]) in inputs.iter().zip(got) {
+        let at = (input[3], input[4][0]);
+        assert_eq!(now[..2], then[..2], "{at:?}: region and arc radius");
+        for (g, w) in now[2..]
+            .iter()
+            .chain(&now_geo[..2])
+            .zip(then[2..].iter().chain(&then_geo[..2]))
+        {
+            assert!(
+                (g - w).abs() <= 2e-3 * w.abs().max(1.0),
+                "{at:?}: {now:?} {now_geo:?} against {then:?} {then_geo:?}",
+            );
+        }
+    }
+}
+
+const OUTLINES_PROBE: &str = "
+@group(0) @binding(14) var<storage, read> probe_in: array<array<vec4<f32>, 4>>;
+@group(0) @binding(15) var<storage, read_write> probe_out: array<array<vec4<f32>, 2>>;
+@compute @workgroup_size(1)
+fn probe(@builtin(global_invocation_id) id: vec3<u32>) {
+let q = probe_in[id.x];
+var inner: PalantirShape;
+inner.n = 4u;
+inner.p0 = vec2<f32>(0.0, 0.0);
+inner.p1 = vec2<f32>(100.0, 0.0);
+inner.p2 = vec2<f32>(100.0, 60.0);
+inner.p3 = vec2<f32>(0.0, 60.0);
+inner.radius = vec4<f32>(10.0);
+inner.inradius = 30.0;
+var outer = inner;
+outer.p0 += q[1].xy;
+outer.p1 += q[1].xy;
+outer.p2 += q[1].xy;
+outer.p3 += q[1].xy;
+let v = palantir_template_vertex(
+    PalantirTemplateOutlines(inner, q[0].y, outer, q[0].z),
+    u32(q[0].x),
+);
+probe_out[id.x] = array<vec4<f32>, 2>(
+    vec4<f32>(f32(v.region), v.ring_r, v.pos),
+    vec4<f32>(v.geo, 0.0, 0.0),
+);
+}
+";
+
+/// A halo's outlines, on the GPU: a 100 × 60 box of radius 10 with its inner chain the
+/// antialiasing reach, 0.5, inside its edge and its outer chain 20 past it, each value
+/// hand-computed. The top-left corner's arc is centered at `(10, 10)` between the normals
+/// `(−1, 0)` and `(0, −1)`; its outer chain runs at 30 from the center: the ends at
+/// `(−20, 10)` and `(10, −20)`, and the two circumscribing points `2 · 30 / |s|² · s` out
+/// along `s = n + h`, `h` the bisector `(−1, −1)/√2`, `|s|² = 2 + √2`, which reach
+/// `(−20, 10 − 30(√2 − 1))` and its mirror. Its inner chain runs at `10 − 0.5`: `(0.5, 10)`,
+/// `10 − 9.5/√2` on both axes, `(10, 0.5)`. A ring's `geo` is the point from the center. The
+/// top band's outer ends lie 20 above the edge and its inner ones 0.5 below it, which its
+/// distance reads as 20 and −0.5. An outer outline moved by `(5, 3)` moves the outer chain
+/// alone.
+#[test]
+fn a_halos_outlines_place_its_chains() {
+    /// One point of the probe and what it should read.
+    #[derive(Clone, Copy, Debug)]
+    struct Case {
+        point: u32,
+        /// How far the outer outline moves from the inner.
+        shift: [f32; 2],
+        region: f32,
+        pos: [f32; 2],
+        geo: [f32; 2],
+    }
+    const RING: f32 = 2.0;
+    const BAND: f32 = 1.0;
+    let at = |point, shift, region, pos, geo| Case {
+        point,
+        shift,
+        region,
+        pos,
+        geo,
+    };
+    let quarter = 10.0 - 30.0 * (2f32.sqrt() - 1.0);
+    let inside = 10.0 - 9.5 / 2f32.sqrt();
+    let still = [0.0; 2];
+    let cases = [
+        at(0, still, RING, [-20.0, 10.0], [-30.0, 0.0]),
+        at(1, still, RING, [-20.0, quarter], [-30.0, quarter - 10.0]),
+        at(2, still, RING, [quarter, -20.0], [quarter - 10.0, -30.0]),
+        at(3, still, RING, [10.0, -20.0], [0.0, -30.0]),
+        at(4, still, RING, [0.5, 10.0], [-9.5, 0.0]),
+        at(5, still, RING, [inside; 2], [inside - 10.0; 2]),
+        at(6, still, RING, [10.0, 0.5], [0.0, -9.5]),
+        at(28, still, BAND, [10.0, -20.0], [20.0, 0.0]),
+        at(29, still, BAND, [90.0, -20.0], [20.0, 0.0]),
+        at(30, still, BAND, [90.0, 0.5], [-0.5, 0.0]),
+        at(33, still, BAND, [10.0, 0.5], [-0.5, 0.0]),
+        at(0, [5.0, 3.0], RING, [-15.0, 13.0], [-25.0, 3.0]),
+        at(4, [5.0, 3.0], RING, [0.5, 10.0], [-9.5, 0.0]),
+    ];
+    let inputs: Vec<[[f32; 4]; 4]> = cases
+        .iter()
+        .map(|c| {
+            [
+                [c.point as f32, 0.5, 20.0, 0.0],
+                [c.shift[0], c.shift[1], 0.0, 0.0],
+                [0.0; 4],
+                [0.0; 4],
+            ]
+        })
+        .collect();
+    let shader = ShaderBody {
+        label: "palantir.template",
+        wgsl: "",
+        includes: &[SHAPE_TEMPLATE],
+        constants: &[shape_template::CONSTANT],
+    };
+    let got: Vec<[[f32; 4]; 2]> = shader.probe(OUTLINES_PROBE, &inputs);
+    // Within 1e-5 of the larger of 1 and the value: the rounding of the f32 normalize and
+    // division, and of a GPU that compiles with fast math.
+    let near = |g: f32, w: f32| (g - w).abs() <= 1e-5 * w.abs().max(1.0);
+    for (c, [a, b]) in cases.iter().zip(got) {
+        assert_eq!([a[0], a[1]], [c.region, 10.0], "{c:?}: region, radius");
+        assert!(near(a[2], c.pos[0]), "{c:?}: x {}", a[2]);
+        assert!(near(a[3], c.pos[1]), "{c:?}: y {}", a[3]);
+        assert!(near(b[0], c.geo[0]), "{c:?}: geo x {}", b[0]);
+        assert!(near(b[1], c.geo[1]), "{c:?}: geo y {}", b[1]);
+    }
+}

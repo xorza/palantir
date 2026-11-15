@@ -5,12 +5,13 @@ use crate::bench::kind::{Kind, Scale};
 use crate::bench::scene::{BENCH_DPR, BENCH_SURFACE, Scene, SceneFrame};
 use crate::damage::Damage;
 use crate::host::harness::Harness;
-use crate::host::harness::harness_builder::Depth;
+use crate::host::harness::harness_builder::HarnessDepth;
 use crate::primitives::paint::brush::Brush;
-use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
+use crate::primitives::paint::brush::gradient::Gradient;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::renderer::render_plan::RenderPlan;
+use crate::ui::frame_report::FramePaint;
 use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
 use criterion::{Criterion, Throughput};
@@ -41,7 +42,7 @@ impl FillCase {
         let fill = match self {
             Self::Solid => Brush::Solid(RgbaF32::srgb(0.12, 0.24, 0.48)),
             Self::Gradient => {
-                LinearGradient::new(0.5, [RgbaF32::hex(0x1a1a2e), RgbaF32::hex(0x4c5cdb)]).into()
+                Gradient::linear(0.5, [RgbaF32::hex(0x1a1a2e), RgbaF32::hex(0x4c5cdb)]).into()
             }
         };
         Chrome::new(fill)
@@ -59,7 +60,7 @@ impl ChromeBench {
         Self {
             h: Harness::builder(PHYSICAL)
                 .mono()
-                .depth(Depth::Compose)
+                .depth(HarnessDepth::Compose)
                 .build(),
             start: Instant::now(),
         }
@@ -77,7 +78,7 @@ impl ChromeBench {
                     .show(ui);
             }
         });
-        if report.plan.is_none() {
+        if report.paint == FramePaint::Skip {
             self.h.paint_full();
         }
         self.h.render_buffer().quads.len()
@@ -123,15 +124,15 @@ pub(crate) fn atomic<S: Scene>(c: &mut Criterion) {
             let mut state = SceneFrame::<S>::default();
             let mut h = Harness::builder(BENCH_SURFACE)
                 .system_scale(BENCH_DPR)
-                .depth(Depth::Compose)
+                .depth(HarnessDepth::Compose)
                 .build();
             for _ in 0..SETTLE_FRAMES {
                 h.frame(|ui| state.record(ui));
             }
             state.tick += 1;
-            let report = h.frame(|ui| state.record(ui));
+            let recorded = h.frame_recorded(|ui| state.record(ui));
             let plan = if partial {
-                report.plan.expect("a tick paints")
+                recorded.plan.expect("a tick paints")
             } else {
                 RenderPlan {
                     clear: h.ui().theme().window_bg,

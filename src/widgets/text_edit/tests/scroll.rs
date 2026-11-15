@@ -1,4 +1,5 @@
 use crate::primitives::input::input_event::InputEvent;
+use crate::primitives::input::interaction::wheel_delta::WheelDelta;
 use crate::primitives::input::pointer::PointerButton;
 use crate::primitives::input::scroll_targets::ScrollTargets;
 use crate::widgets::block::Block;
@@ -226,11 +227,12 @@ fn wheel_pans_a_multiline_editor_and_the_caret_does_not_snap_it_back() {
     // A page per notch pans a page of the text's view, inside the padding, and not of the
     // 100 px box. The chrome's 1 px stroke folds into the 10 px padding, so the view is
     // 100 − 2 × 11 = 78: 0.875 × 78 = 68.25 against 78 − 40 = 38.
-    h.on_input(InputEvent::ScrollLines {
+    h.on_input(InputEvent::Scroll(WheelDelta {
         notches: Vec2::new(0.0, 1.0),
         lines: Vec2::ZERO,
         pages: Vec2::new(0.0, 1.0),
-    });
+        ..WheelDelta::ZERO
+    }));
     h.frame(|ui| body(ui, &mut buf));
     let paged = h
         .state::<TextEditState>(ed_id)
@@ -311,7 +313,7 @@ fn a_vertical_wheel_over_a_field_scrolls_the_page_behind_it() {
         },
     );
 
-    h.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 10.0)));
+    h.on_input(InputEvent::Scroll(WheelDelta::pixels(Vec2::new(0.0, 10.0))));
     h.frame(|ui| body(ui, &mut long));
     assert_eq!(
         h.state::<ScrollState>(page).unwrap().offset(),
@@ -327,7 +329,7 @@ fn a_vertical_wheel_over_a_field_scrolls_the_page_behind_it() {
     );
 
     // The page moved the field up 10 px, to y -10..30, so (50, 20) is still on it.
-    h.on_input(InputEvent::ScrollPixels(Vec2::new(30.0, 0.0)));
+    h.on_input(InputEvent::Scroll(WheelDelta::pixels(Vec2::new(30.0, 0.0))));
     h.frame(|ui| body(ui, &mut long));
     assert_eq!(
         h.state::<ScrollState>(page).unwrap().offset(),
@@ -376,7 +378,7 @@ fn a_lone_field_with_overflowing_text_pans_on_a_vertical_wheel() {
             y: None,
         },
     );
-    h.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 50.0)));
+    h.on_input(InputEvent::Scroll(WheelDelta::pixels(Vec2::new(0.0, 50.0))));
     h.frame(|ui| body(ui, &mut long));
     assert_eq!(
         h.state::<TextEditState>(ed_id)

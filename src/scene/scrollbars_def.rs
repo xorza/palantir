@@ -9,7 +9,6 @@ use crate::primitives::math::domain;
 use crate::primitives::math::float_hash::FloatHash;
 use crate::primitives::math::num::F32Px;
 use crate::scene::bar_geometry::BarGeometry;
-use crate::scene::tree::node_id::NodeId;
 use glam::Vec2;
 use std::hash::{Hash, Hasher};
 
@@ -86,11 +85,4 @@ impl ScrollbarsDef {
         self.bar_thickness.hash_visual(h);
         self.min_thumb.hash_visual(h);
     }
-}
-
-/// A [`ScrollbarsDef`] as the tree stores it, with the viewport resolved to the node; valid for the pass that resolved it.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct ResolvedScrollbarsDef {
-    pub(crate) def: ScrollbarsDef,
-    pub(crate) content: NodeId,
 }

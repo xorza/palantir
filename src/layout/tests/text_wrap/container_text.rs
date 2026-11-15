@@ -6,7 +6,7 @@ use crate::internals::paint_capture::PaintCall;
 use crate::layout::tests::support::PARAGRAPH;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::align::Align;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::primitives::layout::visibility::Visibility;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
@@ -42,7 +42,7 @@ fn container_text_is_paint_only_and_wraps_to_final_inner_width() {
         .calls
         .iter()
         .filter_map(|command| match command {
-            PaintCall::Text(payload) => Some(payload.text.key),
+            PaintCall::Text(payload, _) => Some(payload.text.key),
             _ => None,
         })
         .collect();
@@ -62,7 +62,7 @@ fn container_text_replays_at_its_width_and_reshapes_at_another() {
     let build = |ui: &mut Ui| {
         Panel::vstack()
             .id_salt("fill-container-text")
-            .size((Sizing::FILL, Sizing::HUG))
+            .size(SizeSpec::FILL_W)
             .padding(10.0)
             .show(ui, |ui| {
                 DirectText::PARAGRAPH.add(ui);
@@ -248,7 +248,7 @@ fn container_and_child_text_keep_independent_order_across_cache_hit() {
         .calls
         .iter()
         .filter_map(|command| match command {
-            PaintCall::Text(payload) => Some(payload.text.key),
+            PaintCall::Text(payload, _) => Some(payload.text.key),
             _ => None,
         })
         .collect();
@@ -280,7 +280,7 @@ fn container_and_child_text_keep_independent_order_across_cache_hit() {
         .calls
         .iter()
         .filter_map(|command| match command {
-            PaintCall::Text(payload) => Some(payload.text.key),
+            PaintCall::Text(payload, _) => Some(payload.text.key),
             _ => None,
         })
         .collect();
@@ -298,7 +298,7 @@ fn build_wrapping_container_text(ui: &mut Ui) -> ContainerTextScene {
     let mut child = None;
     let container = Panel::vstack()
         .id_salt("wrapping-container-text")
-        .size((Sizing::HUG, Sizing::HUG))
+        .size(SizeSpec::HUG)
         .padding(10.0)
         .show(ui, |ui| {
             DirectText::PARAGRAPH.add(ui);

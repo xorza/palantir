@@ -1,24 +1,25 @@
-//! The showcase chrome: a grouped nav rail and a titled page card, both
+//! The showcase's shell: a grouped nav rail and a titled page card, both
 //! driven by [`PAGES`], the single source of truth for each page's label,
 //! group, blurb, key hints, scrolling and builder.
 
 use palantir::{
     Align, App, Block, Border, Button, ButtonTheme, Checkbox, Chrome, Configure, Corners, EditEnd,
     FocusPolicy, FontFamily, Justify, Key, Palette, Panel, PopupTrigger, Preference, Reduction,
-    Scroll, Sense, Separator, Shortcut, ShortcutMods, Sizing, Text, TextEdit, TextWrap, Tooltip,
-    Ui, UiPreferences, UserScale, VAlign, Vsync, WidgetId, WindowConfig, WindowToken, fmt,
+    Scroll, Sense, Separator, Shortcut, ShortcutMods, SizeSpec, Sizing, Text, TextEdit, TextWrap,
+    Tooltip, Ui, UiPreferences, UserScale, VAlign, Vsync, WidgetId, WindowConfig, WindowToken, fmt,
 };
 
 use crate::app_state::AppState;
 use crate::appearance::{Appearance, SEEDS};
 use crate::job::Job;
 use crate::pages;
+use crate::scaffold::PAGE_GAP;
 use crate::scaffold::chip::Chip;
+use crate::scaffold::kit::{Kit, Kits};
 use crate::scaffold::rail;
 use crate::scaffold::rail::Nav;
 use crate::scaffold::tokens::M;
 use crate::scaffold::tokens::{MEASURE, Tokens};
-use crate::support::{Kit, Kits, PAGE_GAP};
 
 pub const MAIN_WINDOW: WindowToken = WindowToken(0);
 /// Optional second window mirroring the windows page's counter.
@@ -104,23 +105,23 @@ impl Page {
     fn header(&self, ui: &mut Ui, t: Tokens) {
         Panel::vstack()
             .id_salt(("header", self.label))
-            .size((Sizing::FILL, Sizing::HUG))
+            .size(SizeSpec::FILL_W)
             .gap(M.space.sm)
             .show(ui, |ui| {
                 Text::new(self.label).style(&t.title()).show(ui);
                 Text::new(self.blurb)
                     .style(&t.dim())
-                    .size((Sizing::FILL, Sizing::HUG))
+                    .size(SizeSpec::FILL_W)
                     .max_size((MEASURE, f32::INFINITY))
                     .text_wrap(TextWrap::WrapWithOverflow)
                     .show(ui);
                 if !self.keys.is_empty() {
                     Panel::wrap_hstack()
                         .id_salt("keys")
-                        .size((Sizing::FILL, Sizing::HUG))
+                        .size(SizeSpec::FILL_W)
                         .gap(M.space.xs)
                         .line_gap(M.space.xs)
-                        .child_align(Align::v(VAlign::Center))
+                        .child_align(VAlign::Center)
                         .show(ui, |ui| {
                             Text::new("keys")
                                 .style(&t.caption())
@@ -409,6 +410,9 @@ pub struct Shell {
     query: String,
     /// The open page was picked from the keyboard, so the rail scrolls its item into view.
     reveal: bool,
+    /// Whether the main window's `Ui` took [`Self::PREFERENCES`] yet, which its first record
+    /// sets.
+    preferences_set: bool,
 }
 
 impl Shell {
@@ -417,12 +421,12 @@ impl Shell {
 
     /// The picks the tour opens with: full motion, transparency and power, so each page shows its
     /// effects whole until a person picks less on the rail; the scheme and frame rate follow the
-    /// system. Each entry point sets them on its `Ui`, as an app sets the picks it saved.
-    pub const PREFERENCES: UiPreferences = UiPreferences {
+    /// system. The shell sets them on its first record, as an app sets the picks it saved.
+    const PREFERENCES: UiPreferences = UiPreferences {
         scheme: Preference::System,
-        motion: Preference::Fixed(Reduction::Full),
-        transparency: Preference::Fixed(Reduction::Full),
-        power: Preference::Fixed(Reduction::Full),
+        motion: Preference::Fixed(Reduction::Unreduced),
+        transparency: Preference::Fixed(Reduction::Unreduced),
+        power: Preference::Fixed(Reduction::Unreduced),
         frame_rate: Preference::System,
     };
 
@@ -436,7 +440,15 @@ impl Shell {
             kits: Kits::default(),
             query: String::new(),
             reveal: true,
+            preferences_set: false,
         }
+    }
+
+    /// The index of the page labelled `label`, ignoring case.
+    pub(crate) fn page_idx(label: &str) -> Option<usize> {
+        PAGES
+            .iter()
+            .position(|page| page.label.eq_ignore_ascii_case(label))
     }
 
     /// Each page's label, in the rail's order.
@@ -445,6 +457,10 @@ impl Shell {
     }
 
     fn build(&mut self, ui: &mut Ui) {
+        if !self.preferences_set {
+            ui.set_preferences(Self::PREFERENCES);
+            self.preferences_set = true;
+        }
         handle_shortcuts(ui);
         self.navigate(ui);
         // The focus page sets its own policy; every other page gets the default.
@@ -452,12 +468,10 @@ impl Shell {
         self.app.appearance.apply(ui);
         let k = self.kit(ui);
 
-        Panel::hstack()
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                self.rail(ui, k);
-                self.card(ui, k);
-            });
+        Panel::hstack().size(SizeSpec::FILL).show(ui, |ui| {
+            self.rail(ui, k);
+            self.card(ui, k);
+        });
 
         pages::windows::intercept(ui, k, &self.app.appearance);
         // An edit made in this frame builds its theme now; palantir asks for the frame that
@@ -529,7 +543,7 @@ impl Shell {
         let response = TextEdit::new(&mut self.query)
             .id(WidgetId::from_hash(SEARCH))
             .placeholder("Search pages  Ctrl+K")
-            .size((Sizing::FILL, Sizing::HUG))
+            .size(SizeSpec::FILL_W)
             .show(ui);
         match response.ended {
             Some(EditEnd::Submitted) => {
@@ -600,10 +614,16 @@ impl Shell {
     }
 
     /// The page, on the window's ground: its header, a rule, then the active page's body.
+    /// The body of the page at `page`, as its card records it.
+    pub(crate) fn page_body(page: usize, ui: &mut Ui, app: &mut AppState, k: Kit) {
+        (PAGES[page].build)(ui, app, k);
+    }
+
     fn card(&mut self, ui: &mut Ui, k: Kit) {
+        let active = self.active;
         let page = PAGES[self.active];
         Panel::vstack()
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .padding((M.space.xl, M.space.xl, M.space.sm, M.space.lg))
             .gap(M.space.xl)
             .show(ui, |ui| {
@@ -614,25 +634,25 @@ impl Shell {
                     Flow::Scroll => {
                         Scroll::vertical()
                             .id_salt(page.label)
-                            .size((Sizing::FILL, Sizing::FILL))
+                            .size(SizeSpec::FILL)
                             .overlay_bars()
                             // Keeps the overlay bar off the page's right edge.
                             .padding((0.0, 0.0, M.space.lg, 0.0))
                             .show(ui, |ui| {
                                 Panel::vstack()
-                                    .size((Sizing::FILL, Sizing::HUG))
+                                    .size(SizeSpec::FILL_W)
                                     .max_size((COLUMN, f32::INFINITY))
                                     .gap(PAGE_GAP)
-                                    .show(ui, |ui| (page.build)(ui, &mut self.app, k));
+                                    .show(ui, |ui| Self::page_body(active, ui, &mut self.app, k));
                             });
                     }
                     Flow::Fill => {
                         Panel::vstack()
                             .id_salt(page.label)
-                            .size((Sizing::FILL, Sizing::FILL))
+                            .size(SizeSpec::FILL)
                             .padding((0.0, 0.0, M.space.lg, 0.0))
                             .gap(PAGE_GAP)
-                            .show(ui, |ui| (page.build)(ui, &mut self.app, k));
+                            .show(ui, |ui| Self::page_body(active, ui, &mut self.app, k));
                     }
                 }
             });
@@ -648,7 +668,7 @@ impl App for Shell {
                 Panel::vstack()
                     .padding(M.space.lg)
                     .gap(M.space.md)
-                    .size((Sizing::FILL, Sizing::FILL))
+                    .size(SizeSpec::FILL)
                     .show(ui, |ui| pages::windows::shared(ui, k, &mut self.app));
             }
             _ => self.build(ui),
@@ -679,7 +699,7 @@ fn accent_row(ui: &mut Ui, k: Kit, look: &mut Appearance) {
     let mut picked = current;
     Panel::hstack()
         .id_salt("accents")
-        .size((Sizing::FILL, Sizing::HUG))
+        .size(SizeSpec::FILL_W)
         .justify(Justify::SpaceBetween)
         .show(ui, |ui| {
             let stock = (None, Palette::for_scheme(scheme).accent);
@@ -718,23 +738,22 @@ fn accent_id(idx: usize) -> WidgetId {
 /// re-lay-out under the pointer mid-drag.
 fn ui_scale_row(ui: &mut Ui, k: Kit) {
     let scale = ui.user_scale();
-    let step = ui.theme().menu_bar.title.clone();
+    let title = &ui.theme().menu_bar.title;
     let step = ButtonTheme {
-        selected: step.clone(),
-        unselected: step,
-        defaults: ui.theme().menu_bar.defaults,
+        selected: title.unselected.clone(),
+        ..title.clone()
     };
     let mut next = scale;
     Panel::hstack()
         .id_salt("ui scale")
-        .size((Sizing::FILL, Sizing::HUG))
+        .size(SizeSpec::FILL_W)
         .gap(M.space.xs)
-        .child_align(Align::v(VAlign::Center))
+        .child_align(VAlign::Center)
         .show(ui, |ui| {
             Text::new("UI scale")
                 .style(&k.t.caption())
                 .margin((rail::INSET, 0.0, 0.0, 0.0))
-                .size((Sizing::FILL, Sizing::HUG))
+                .size(SizeSpec::FILL_W)
                 .show(ui);
             if Button::new().style(&step).label("−").show(ui).clicked() {
                 next = scale.stepped_down();
@@ -761,7 +780,7 @@ fn diagnostics(ui: &mut Ui) {
     let trigger = Button::new()
         .id_salt("diagnostics")
         .label("Diagnostics ▾")
-        .size((Sizing::FILL, Sizing::HUG))
+        .size(SizeSpec::FILL_W)
         .show(ui);
     let mut overlay = ui.debug_overlay();
     let mut vsync_on = ui.vsync() == Vsync::On;
@@ -901,7 +920,7 @@ mod tests {
         assert_eq!(label(&shell), "Images", "Enter opens the first page found");
         assert_eq!(
             h.ui().focus(),
-            Some(PAGES[20].item_id()),
+            Some(PAGES[Shell::page_idx("Images").unwrap()].item_id()),
             "and focuses its item"
         );
         h.key(alt(Key::ArrowDown));
@@ -926,7 +945,8 @@ mod tests {
         assert_eq!(shell.query, "");
     }
 
-    /// Each preference row sets only its own preference, and the arrows step within one track.
+    /// The tour opens on its own picks, each preference row sets only its own, and the arrows
+    /// step within one track.
     #[test]
     fn a_pressed_segment_sets_its_rows_preference() {
         let mut h = Harness::builder(UVec2::new(1280, 800)).mono().build();
@@ -935,8 +955,8 @@ mod tests {
         let prefs = |h: &Harness| h.ui().preferences();
         assert_eq!(
             prefs(&h),
-            UiPreferences::default(),
-            "each follows the system"
+            Shell::PREFERENCES,
+            "the tour's picks, set on its first record"
         );
 
         h.click("Dark");
@@ -948,10 +968,8 @@ mod tests {
             prefs(&h),
             UiPreferences {
                 scheme: Preference::Fixed(ColorScheme::Dark),
-                motion: Preference::System,
                 transparency: Preference::Fixed(Reduction::Reduced),
-                power: Preference::System,
-                frame_rate: Preference::System,
+                ..Shell::PREFERENCES
             }
         );
 
@@ -960,7 +978,7 @@ mod tests {
         h.session(&mut shell).settle().expect("the frames settle");
         assert_eq!(
             h.ui().preferences().motion,
-            Preference::Fixed(Reduction::Full)
+            Preference::Fixed(Reduction::Unreduced)
         );
         h.key(Key::ArrowRight);
         h.session(&mut shell).settle().expect("the frames settle");
@@ -970,8 +988,7 @@ mod tests {
                 scheme: Preference::Fixed(ColorScheme::Dark),
                 motion: Preference::Fixed(Reduction::Reduced),
                 transparency: Preference::Fixed(Reduction::Reduced),
-                power: Preference::System,
-                frame_rate: Preference::System,
+                ..Shell::PREFERENCES
             }
         );
     }

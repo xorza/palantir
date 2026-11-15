@@ -8,10 +8,9 @@ use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::interaction::response::Response;
-use crate::primitives::input::interaction::response_state::ResponseState;
 use crate::primitives::input::sense::Sense;
-use crate::primitives::layout::align::{Align, VAlign};
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::align::VAlign;
+use crate::primitives::layout::sizing::SizeSpec;
 use crate::primitives::text::text_input::TextInput;
 use crate::shape::Shape;
 use crate::theme::expander::ExpanderTheme;
@@ -40,11 +39,12 @@ use std::rc::Rc;
 /// **The body does not record while closed**, so cross-frame rows inside it (a
 /// [`TextEdit`](crate::TextEdit)'s unsent edit, a [`Scroll`](crate::Scroll)'s
 /// offset) are swept; a section holding any wants [`Self::keep_body`], at the price
-/// of a full record every frame. The open flag lives in the state map on [`Self::header_id`] and
+/// of a full record every frame. The open flag lives in the state map on the header's id and
 /// is `false` until [`Self::start_open`] says otherwise, so an untouched closed section keeps no
 /// state row; [`Self::open`], [`Self::close`] and [`Self::is_open`] drive it from outside.
 ///
-/// Its parts are the header, [`Self::header_id`], with `arrow` and `label` under it, and the
+/// Its parts are the header, `id.with("header")`, the focusable click target that reports
+/// [`ExpanderResponse::response`], with `arrow` and `label` under it, and the
 /// body, `id.with("body")`, inside `id.with("body").with("reveal")`.
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
@@ -94,12 +94,6 @@ impl<'a> Expander<'a> {
         self
     }
 
-    /// The header of the expander `expander`: the focusable click target that holds the open
-    /// state and reports [`ExpanderResponse::response`].
-    pub fn header_id(expander: WidgetId) -> WidgetId {
-        expander.with("header")
-    }
-
     /// Record the header, and the body under it while open.
     pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> ExpanderResponse<R> {
         let theme = Rc::clone(ui.theme());
@@ -113,30 +107,20 @@ impl<'a> Expander<'a> {
             style: _,
         } = self;
 
-        widget.configure().default_size((Sizing::FILL, Sizing::HUG));
+        widget.configure().default_size(SizeSpec::FILL_W);
         let id = widget.resolve(ui);
-        let header_id = Self::header_id(id);
+        let header_id = id.with("header");
         let body_id = id.with("body");
         let stored = ui.state::<ExpanderState>(header_id).copied();
         let was_open = stored.map_or(start_open, |s| s.open);
         let height = stored.and_then(|s| s.height);
 
-        let mut pass = Pass {
-            header: Response {
-                id: header_id,
-                state: ResponseState::default(),
-            },
-            toggled: false,
-            openness: 0.0,
-            showing: false,
-            inner: None,
-        };
-        widget.record(ui, None, |ui| {
+        let pass = widget.record(ui, None, |ui| {
             let mut header = Widget::hstack()
                 .id(header_id)
-                .size((Sizing::FILL, Sizing::HUG))
+                .size(SizeSpec::FILL_W)
                 .gap(t.gap)
-                .child_align(Align::v(VAlign::Center))
+                .child_align(VAlign::Center)
                 .sense(Sense::CLICK)
                 .focusable(true);
             let state = header.activation_response(ui, Activation::Button);
@@ -176,14 +160,14 @@ impl<'a> Expander<'a> {
                     .show(ui);
             });
 
-            if showing || keep_body {
+            let inner = (showing || keep_body).then(|| {
                 // The body records whole inside a wrapper whose clip reveals it;
                 // laying it out at a fraction of its height would reflow its text
                 // each tween frame and clip its own rect, so no frame could measure
                 // the height the next clips against.
                 let mut reveal = Widget::vstack()
                     .id(body_id.with("reveal"))
-                    .size((Sizing::FILL, Sizing::HUG))
+                    .size(SizeSpec::FILL_W)
                     .margin(Spacing::new(t.indent, 0.0, 0.0, 0.0));
                 if !showing {
                     reveal = reveal.collapsed();
@@ -194,14 +178,17 @@ impl<'a> Expander<'a> {
                 }
                 let body_panel = Widget::vstack()
                     .id(body_id)
-                    .size((Sizing::FILL, Sizing::HUG))
+                    .size(SizeSpec::FILL_W)
                     .padding(t.body_padding);
-                pass.inner = Some(reveal.record(ui, None, |ui| body_panel.record(ui, None, body)));
+                reveal.record(ui, None, |ui| body_panel.record(ui, None, body))
+            });
+            Pass {
+                header: state,
+                toggled: activated,
+                openness,
+                showing,
+                inner,
             }
-            pass.header = state;
-            pass.toggled = activated;
-            pass.openness = openness;
-            pass.showing = showing;
         });
 
         let now_open = was_open != pass.toggled;
@@ -241,18 +228,18 @@ impl<'a> Expander<'a> {
 impl Expander<'static> {
     /// Open the expander `id`; its next `show` reveals the body.
     pub fn open(ui: &mut Ui, id: WidgetId) {
-        ui.with_state::<ExpanderState, _>(Self::header_id(id), |_, s| s.open = true);
+        ui.with_state::<ExpanderState, _>(id.with("header"), |_, s| s.open = true);
     }
 
     /// Close the expander `id`; its next `show` hides the body.
     pub fn close(ui: &mut Ui, id: WidgetId) {
-        ui.with_state::<ExpanderState, _>(Self::header_id(id), |_, s| s.open = false);
+        ui.with_state::<ExpanderState, _>(id.with("header"), |_, s| s.open = false);
     }
 
     /// Whether the expander `id` is open, as its last `show` or a call above left it. Allocates
     /// no row.
     pub fn is_open(ui: &Ui, id: WidgetId) -> bool {
-        ui.state::<ExpanderState>(Self::header_id(id))
+        ui.state::<ExpanderState>(id.with("header"))
             .is_some_and(|s| s.open)
     }
 }

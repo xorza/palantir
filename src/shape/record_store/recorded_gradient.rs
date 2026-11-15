@@ -1,8 +1,8 @@
 //! One interned gradient's retained content.
 
 use crate::primitives::packed::fill_axis::FillAxis;
-use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
+use crate::primitives::paint::fill_kind::FillKind;
 
 /// Retained gradient content. The physical atlas row is resolved while
 /// encoding because the shared atlas may evict rows between window frames.

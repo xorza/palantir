@@ -37,95 +37,97 @@ fn a_held_set_reads_as_its_chord_twin() {
     );
 }
 
+/// Which presses a chord matches. The command modifier matches either case of its letter and
+/// beside a held macOS Control; an extra or other modifier refuses it, and macOS Control refuses a
+/// bare key. A non-Latin layout reaches a command chord through the physical key, which neither
+/// an ASCII logical key nor a press without a command modifier consults.
 #[test]
-fn primary_modifier_matches() {
+fn a_chord_matches_by_its_modifiers_and_key() {
+    let press = |key: Key, mods: Modifiers, physical: Key, text: char| KeyPress {
+        key,
+        mods,
+        repeat: false,
+        physical,
+        text: KeyText::from_char(text),
+    };
+    let non_latin_z = |mods| press(Key::Char('ζ'), mods, Key::Char('z'), 'ζ');
     let cut = Shortcut::ctrl('X');
-    assert!(cut.matches(kp(primary_mod(), Key::Char('x'))));
-    assert!(cut.matches(kp(primary_mod(), Key::Char('X'))));
-    let with_mac_ctrl = primary_mod() | Modifiers::MAC_CTRL;
-    assert!(
-        cut.matches(kp(with_mac_ctrl, Key::Char('x'))),
-        "a held macOS Control must not break a chord that declares a command modifier",
-    );
-}
-
-#[test]
-fn non_latin_layout_matches_command_chord_via_physical_key() {
-    // A non-Latin layout reports physical Z as 'ζ'; the physical char 'z' recovers the chord.
     let undo = Shortcut::ctrl('Z');
-    let non_latin_z = KeyPress {
-        key: Key::Char('ζ'),
-        mods: primary_mod(),
-        repeat: false,
-        physical: Key::Char('z'),
-        text: KeyText::from_char('ζ'),
-    };
-    assert!(
-        undo.matches(non_latin_z),
-        "Cmd+Z fires on a non-Latin layout"
-    );
-
-    // The non-ASCII gate leaves ASCII layouts on the logical path: a Dvorak chord with an ASCII logical char never consults `physical`.
-    let dvorak_semicolon = KeyPress {
-        key: Key::Char(';'),
-        mods: primary_mod(),
-        repeat: false,
-        physical: Key::Char('z'), // physical Z position, but ';' under Dvorak
-        text: KeyText::from_char(';'),
-    };
-    assert!(
-        !undo.matches(dvorak_semicolon),
-        "an ASCII logical key never falls back to the physical position"
-    );
-}
-
-#[test]
-fn non_latin_fallback_requires_a_command_modifier() {
-    // No command modifier ⇒ no physical fallback (typing, not a chord).
-    let bare = Shortcut::key(Key::Char('z'));
-    let non_latin_z = KeyPress {
-        key: Key::Char('ζ'),
-        mods: Modifiers::NONE,
-        repeat: false,
-        physical: Key::Char('z'),
-        text: KeyText::from_char('ζ'),
-    };
-    assert!(!bare.matches(non_latin_z));
-}
-
-#[test]
-fn alt_alone_does_not_match_ctrl() {
-    let cut = Shortcut::ctrl('X');
-    // A non-command modifier must not satisfy a ctrl shortcut.
-    let alt = Modifiers::ALT;
-    assert!(!cut.matches(kp(alt, Key::Char('x'))));
-}
-
-#[test]
-fn extra_modifier_rejects_match() {
-    let cut = Shortcut::ctrl('A');
-    // Ctrl+Shift+A must not match plain Ctrl+A.
-    let mods = primary_shift_mod();
+    let cases = [
+        (
+            "command, lowercase",
+            cut,
+            kp(primary_mod(), Key::Char('x')),
+            true,
+        ),
+        (
+            "command, uppercase",
+            cut,
+            kp(primary_mod(), Key::Char('X')),
+            true,
+        ),
+        (
+            "command beside macOS Control",
+            cut,
+            kp(primary_mod() | Modifiers::MAC_CTRL, Key::Char('x')),
+            true,
+        ),
+        (
+            "Alt for the command",
+            cut,
+            kp(Modifiers::ALT, Key::Char('x')),
+            false,
+        ),
+        (
+            "an extra Shift",
+            Shortcut::ctrl('A'),
+            kp(primary_shift_mod(), Key::Char('A')),
+            false,
+        ),
+        (
+            "command and Shift",
+            Shortcut::new(ShortcutMods::CTRL | ShortcutMods::SHIFT, Key::Char('K')),
+            kp(primary_shift_mod(), Key::Char('K')),
+            true,
+        ),
+        (
+            "macOS Control on a bare letter",
+            Shortcut::key(Key::Char('z')),
+            kp(Modifiers::MAC_CTRL, Key::Char('z')),
+            false,
+        ),
+        (
+            "macOS Control on a bare Tab",
+            Shortcut::key(Key::Tab),
+            kp(Modifiers::MAC_CTRL, Key::Tab),
+            false,
+        ),
+        (
+            "non-Latin layout, command",
+            undo,
+            non_latin_z(primary_mod()),
+            true,
+        ),
+        (
+            "non-Latin layout, no command",
+            Shortcut::key(Key::Char('z')),
+            non_latin_z(Modifiers::NONE),
+            false,
+        ),
+        (
+            "Dvorak semicolon at physical Z",
+            undo,
+            press(Key::Char(';'), primary_mod(), Key::Char('z'), ';'),
+            false,
+        ),
+    ];
+    for (label, chord, key_press, matches) in cases {
+        assert_eq!(chord.matches(key_press), matches, "{label}");
+    }
     assert_eq!(
-        ShortcutMods::from_modifiers(mods),
+        ShortcutMods::from_modifiers(primary_shift_mod()),
         ShortcutMods::CTRL | ShortcutMods::SHIFT
     );
-    assert!(!cut.matches(kp(mods, Key::Char('A'))));
-    assert_eq!(cut.mods, ShortcutMods::CTRL);
-    // macOS Control plus a bare key is a chord, so a bare-key shortcut rejects it, as it does Ctrl or Alt.
-    let mac_ctrl = Modifiers::MAC_CTRL;
-    for key in [Key::Char('z'), Key::Tab] {
-        assert!(
-            !Shortcut::key(key).matches(kp(mac_ctrl, key)),
-            "{key:?} with macOS Control held must not match the bare key",
-        );
-    }
-}
-
-#[test]
-fn ctrl_shift_matches() {
-    let s = Shortcut::new(ShortcutMods::CTRL | ShortcutMods::SHIFT, Key::Char('K'));
-    assert!(s.matches(kp(primary_shift_mod(), Key::Char('K'))));
 }
 
 /// Every label on every platform, hand-written: macOS writes glyphs in its canonical order ⌥ ⇧ ⌘ with the primary modifier last and glyphs for the editing keys; Windows and Linux join names with `+` in the order Ctrl, Shift, Alt, then Win or Super. On macOS the Super key is Command, so `META` shows as ⌘, once even beside `CTRL`.
@@ -335,6 +337,35 @@ fn shortcuts_parse_from_text() {
     assert_eq!(parse("ctrl+"), Err(ParseShortcutError::NoKey));
     assert_eq!(parse("hyper+a"), Err(ParseShortcutError::Modifier));
     assert_eq!(parse("ctrl+banana"), Err(ParseShortcutError::Key));
+}
+
+/// Modifiers alone parse as a shortcut reads the ones before its key: each by each of its names,
+/// case-blind and trimmed, a repeat folding in; empty text, an empty name and an unknown one are
+/// refused.
+#[test]
+fn modifiers_parse_from_text() {
+    let parse = |text: &str| text.parse::<ShortcutMods>();
+    assert_eq!(parse("ctrl"), Ok(ShortcutMods::CTRL));
+    assert_eq!(parse("cmd"), Ok(ShortcutMods::CTRL));
+    assert_eq!(
+        parse(" Shift + ALT "),
+        Ok(ShortcutMods::SHIFT | ShortcutMods::ALT)
+    );
+    assert_eq!(parse("meta"), parse("super"));
+    assert_eq!(parse("win"), Ok(ShortcutMods::META));
+    assert_eq!(parse("shift+shift"), Ok(ShortcutMods::SHIFT));
+    for refused in ["", "ctrl+", "+shift", "hyper"] {
+        assert_eq!(
+            parse(refused),
+            Err(ParseShortcutError::Modifier),
+            "{refused:?}"
+        );
+    }
+    assert_eq!(
+        "ctrl+shift+z".parse::<Shortcut>().map(|s| s.mods),
+        parse("ctrl+shift"),
+        "a shortcut's modifiers are their own parse"
+    );
 }
 
 /// A Windows or Linux label parses back to its shortcut, for every key a label names and every

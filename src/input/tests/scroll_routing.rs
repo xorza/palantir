@@ -2,6 +2,7 @@ use crate::host::harness::Harness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::input_event::InputEvent;
 use crate::primitives::input::interaction::scroll_delta::ScrollDelta;
+use crate::primitives::input::interaction::wheel_delta::WheelDelta;
 use crate::primitives::input::sense::Sense;
 use crate::primitives::input::zoom_factor::ZoomFactor;
 use crate::primitives::layout::sizing::Sizing;
@@ -32,7 +33,7 @@ fn route_across_two_targets(second_delta: bool) -> [ScrollDelta; 2] {
     h.scroll_pixels(Vec2::new(50.0, 50.0), Vec2::new(2.0, 3.0));
     h.hover(Vec2::new(150.0, 50.0));
     if second_delta {
-        h.on_input(InputEvent::scroll_lines(Vec2::new(4.0, 5.0)));
+        h.on_input(InputEvent::Scroll(WheelDelta::notches(Vec2::new(4.0, 5.0))));
     }
 
     h.frame_value(|ui| {
@@ -51,7 +52,7 @@ fn scroll_deltas_stay_with_their_event_time_targets() {
         without_second,
         [
             ScrollDelta {
-                pixels: Vec2::new(2.0, 3.0),
+                wheel: WheelDelta::pixels(Vec2::new(2.0, 3.0)),
                 ..ScrollDelta::default()
             },
             ScrollDelta::default(),
@@ -64,12 +65,11 @@ fn scroll_deltas_stay_with_their_event_time_targets() {
         with_second,
         [
             ScrollDelta {
-                pixels: Vec2::new(2.0, 3.0),
+                wheel: WheelDelta::pixels(Vec2::new(2.0, 3.0)),
                 ..ScrollDelta::default()
             },
             ScrollDelta {
-                lines: Vec2::new(4.0, 5.0),
-                notches: Vec2::new(4.0, 5.0),
+                wheel: WheelDelta::notches(Vec2::new(4.0, 5.0)),
                 ..ScrollDelta::default()
             },
         ],
@@ -92,7 +92,7 @@ fn pointer_leave_after_scroll_keeps_the_pending_target_delta() {
     assert_eq!(
         observed,
         ScrollDelta {
-            pixels: Vec2::new(7.0, 11.0),
+            wheel: WheelDelta::pixels(Vec2::new(7.0, 11.0)),
             ..ScrollDelta::default()
         },
     );
@@ -147,8 +147,8 @@ fn nested_scroll_panels_route_to_innermost_under_pointer() {
     let [inner_d, outer_d] = h.frame_value(|ui| {
         build(ui);
         [
-            ui.input().scroll_delta_for(inner_id).pixels,
-            ui.input().scroll_delta_for(outer_id).pixels,
+            ui.input().scroll_delta_for(inner_id).wheel.pixels,
+            ui.input().scroll_delta_for(outer_id).wheel.pixels,
         ]
     });
     assert_eq!(inner_d, Vec2::new(0.0, 5.0));
@@ -177,8 +177,8 @@ fn scroll_delta_zero_for_non_target() {
     let [target, bystander] = h.frame_value(|ui| {
         build(ui);
         [
-            ui.input().scroll_delta_for(scroller).pixels,
-            ui.input().scroll_delta_for(other).pixels,
+            ui.input().scroll_delta_for(scroller).wheel.pixels,
+            ui.input().scroll_delta_for(other).wheel.pixels,
         ]
     });
     assert_eq!(target, Vec2::new(0.0, 9.0), "the widget under the pointer");
@@ -199,11 +199,11 @@ fn pointer_left_clears_scroll_target() {
     h.frame(build);
     h.hover(Vec2::new(50.0, 50.0));
     h.pointer_left();
-    h.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 5.0)));
+    h.on_input(InputEvent::Scroll(WheelDelta::pixels(Vec2::new(0.0, 5.0))));
     let id = WidgetId::from_hash("scroller");
     let d = h.frame_value(|ui| {
         build(ui);
-        ui.input().scroll_delta_for(id).pixels
+        ui.input().scroll_delta_for(id).wheel.pixels
     });
     assert_eq!(
         d,
@@ -235,7 +235,7 @@ fn scroll_over_inert_area_is_not_delivered_to_a_later_target() {
 
     let delivered = h.frame_value(|ui| {
         build(ui);
-        ui.input().scroll_delta_for(id).pixels
+        ui.input().scroll_delta_for(id).wheel.pixels
     });
     assert_eq!(
         delivered,
@@ -265,7 +265,7 @@ fn sense_scroll_routes_scroll_but_not_pinch() {
         ui.response_for(id).scroll
     });
     assert_eq!(
-        scroll.pixels,
+        scroll.wheel.pixels,
         Vec2::new(0.0, 9.0),
         "Sense::SCROLL must receive wheel/touchpad scroll deltas",
     );
@@ -297,7 +297,7 @@ fn sense_pinch_routes_pinch_but_not_scroll() {
         ui.response_for(id).scroll
     });
     assert_eq!(
-        scroll.pixels,
+        scroll.wheel.pixels,
         Vec2::ZERO,
         "Sense::PINCH alone (no SCROLL) must NOT receive wheel/touchpad \
          scroll deltas",

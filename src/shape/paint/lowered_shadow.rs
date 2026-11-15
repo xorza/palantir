@@ -1,11 +1,11 @@
 //! A shadow lowered to its GPU-wire form.
 
 use crate::primitives::geometry::rect::Rect;
-use crate::primitives::geometry::size::Size;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::packed::half_simd::F16x4;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::shadow::Shadow;
+use crate::primitives::paint::shadow::ShadowKind;
 use glam::Vec2;
 use std::hash;
 
@@ -65,13 +65,9 @@ impl LoweredShadow {
         self.inset_flag != 0
     }
 
-    /// Owner-local paint bbox: a drop shadow is the offset source inflated by its [halo](ShadowGeometry::halo), an inset
-    /// one stays inside the source. `local_rect = None` means the source covers the owner.
-    pub(crate) fn paint_rect_local(self, local_rect: Option<Rect>, owner_size: Size) -> Rect {
-        let source = local_rect.unwrap_or(Rect {
-            min: Vec2::ZERO,
-            size: owner_size,
-        });
+    /// The rect it paints for a box covering `source`: a drop shadow is the offset source
+    /// inflated by its [halo](ShadowGeometry::halo), an inset one stays inside the source.
+    pub(crate) fn paint_rect(self, source: Rect) -> Rect {
         if self.inset() {
             return source;
         }
@@ -98,7 +94,7 @@ impl LoweredShadow {
                 shadow.blur,
                 shadow.spread,
             ]),
-            inset_flag: u16::from(shadow.inset),
+            inset_flag: u16::from(shadow.kind == ShadowKind::Inset),
         }
     }
 }

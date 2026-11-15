@@ -128,7 +128,7 @@ impl Node {
         self.margin = Some(value);
     }
 
-    /// Fills a field only where the caller stayed silent, through the checked writer above. Named `fill_`, not `default_`, which [`ThemeDefaults`](crate::widget_core::configure::ThemeDefaults) owns. A default also yields to the *other* bound the caller set: a themed minimum above an authored maximum is clamped down.
+    /// Fills a field only where the caller stayed silent, through the checked writer above. Named `fill_`, not `default_`, which [`ConfigureDefaults`](crate::widget_core::configure::ConfigureDefaults) owns. A default also yields to the *other* bound the caller set: a themed minimum above an authored maximum is clamped down.
     ///
     /// Every `fill_` checks its value first, so a bad default panics at its call site whether
     /// or not the caller set the field.
@@ -193,7 +193,7 @@ impl Node {
     #[inline]
     #[track_caller]
     pub(crate) fn fill_gap(&mut self, gap: f32) {
-        domain::gap(gap);
+        domain::length_lane(gap);
         if self.gaps.gap().is_none() {
             self.gaps.set_gap(gap);
         }
@@ -205,7 +205,7 @@ impl Node {
     #[inline]
     #[track_caller]
     pub(crate) fn fill_line_gap(&mut self, gap: f32) {
-        domain::gap(gap);
+        domain::length_lane(gap);
         if self.gaps.line_gap().is_none() {
             self.gaps.set_line_gap(gap);
         }
@@ -214,13 +214,13 @@ impl Node {
     /// Fills each axis of `align` the caller left `Auto`, leaving the other alone.
     #[inline]
     pub(crate) const fn fill_align(&mut self, value: Align) {
-        self.align = filled(self.align, value);
+        self.align = self.align.or(value);
     }
 
     /// Fills each axis of `child_align` the caller left `Auto`, leaving the other alone.
     #[inline]
     pub(crate) const fn fill_child_align(&mut self, value: Align) {
-        self.child_align = filled(self.child_align, value);
+        self.child_align = self.child_align.or(value);
     }
 
     /// Takes over `from`'s placement (position in the parent and Tab order) and whether the slot
@@ -363,19 +363,6 @@ impl Node {
 /// `value` capped at `cap`, keeping a NaN `value` for the bound check that follows (`f32::min` would drop it).
 const fn at_most(value: f32, cap: f32) -> f32 {
     if value > cap { cap } else { value }
-}
-
-/// `set` with each `Auto` axis taken from `fallback`.
-const fn filled(set: Align, fallback: Align) -> Align {
-    let h = match set.halign() {
-        HAlign::Auto => fallback.halign(),
-        set => set,
-    };
-    let v = match set.valign() {
-        VAlign::Auto => fallback.valign(),
-        set => set,
-    };
-    Align::new(h, v)
 }
 
 #[inline]

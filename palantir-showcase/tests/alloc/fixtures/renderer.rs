@@ -9,20 +9,13 @@
 //!
 //! No device, so the budget is strict zero; real-adapter cost is
 //! `gates::on_gpu`'s.
-#![expect(
-    clippy::disallowed_methods,
-    reason = "a demo of the crate, whose frames owe no two systems the same bits"
-)]
-
 use crate::fixtures::parked_icons::ParkedIcons;
 use crate::harness;
 use crate::harness::Audit;
-use palantir::Stroke;
 use palantir::glam::Vec2;
-use palantir::widget::IconPaint;
-use palantir::widget::{Mesh, Shape};
 use palantir::{
-    Block, Chrome, Configure, FramePaint, Grid, Panel, RgbaF32, Sizing, Track, TranslateScale, Ui,
+    Block, Chrome, Configure, FramePaint, Grid, IconPaint, Mesh, Panel, RgbaF32, Shape, SizeSpec,
+    Stroke, Track, TranslateScale, Ui,
 };
 
 /// Distinct nudge positions: more than one so damage is full every frame, few
@@ -51,7 +44,7 @@ fn frontend_audit(mut scene: impl FnMut(&mut Ui)) {
             let report = frontend.frame(|ui| {
                 Panel::zstack()
                     .auto_id()
-                    .size((Sizing::FILL, Sizing::FILL))
+                    .size(SizeSpec::FILL)
                     .transform(TranslateScale::from_translation(Vec2::new(
                         step as f32,
                         0.0,
@@ -59,7 +52,7 @@ fn frontend_audit(mut scene: impl FnMut(&mut Ui)) {
                     .show(ui, |ui| scene(ui));
             });
             // A small scene repaints partially, still encoding every shape the nudge moved.
-            assert_ne!(report.paint(), FramePaint::Skip, "the frame repaints");
+            assert_ne!(report.paint, FramePaint::Skip, "the frame repaints");
         });
 }
 
@@ -72,7 +65,7 @@ fn many_rects_compose_alloc_free() {
             .auto_id()
             .cols([Track::FILL; 16])
             .rows([Track::FILL; 16])
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 for r in 0..16u16 {
                     for c in 0..16u16 {
@@ -98,7 +91,7 @@ fn polyline_static_alloc_free() {
     frontend_audit(move |ui| {
         Panel::vstack()
             .auto_id()
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 ui.add_shape(Shape::polyline(&points), Stroke::new(RgbaF32::WHITE, 2.0));
             });
@@ -112,16 +105,16 @@ fn polyline_static_alloc_free() {
 fn mesh_static_alloc_free() {
     let mesh = {
         let mut m = Mesh::with_capacity(3, 3);
-        let a = m.vertex(Vec2::new(0.0, 0.0), RgbaF32::WHITE);
-        let b = m.vertex(Vec2::new(100.0, 0.0), RgbaF32::WHITE);
-        let c = m.vertex(Vec2::new(50.0, 100.0), RgbaF32::WHITE);
-        m.triangle(a, b, c);
+        let a = m.add_vertex(Vec2::new(0.0, 0.0), RgbaF32::WHITE);
+        let b = m.add_vertex(Vec2::new(100.0, 0.0), RgbaF32::WHITE);
+        let c = m.add_vertex(Vec2::new(50.0, 100.0), RgbaF32::WHITE);
+        m.add_triangle(a, b, c);
         m
     };
     frontend_audit(move |ui| {
         Panel::vstack()
             .auto_id()
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 ui.add_shape(Shape::mesh(&mesh), RgbaF32::WHITE);
             });
@@ -133,8 +126,7 @@ fn mesh_static_alloc_free() {
 /// backend, which this frontend never runs (`gates::on_gpu`'s scale ramp
 /// reaches them).
 ///
-/// The set is a [`ParkedIcons`]: `IconRegistry::register` finds the live `IconSet` and clones
-/// it, and a second slot would show here first.
+/// The set is a [`ParkedIcons`], loaded at the first frame and held, so a settled frame loads none.
 #[test]
 fn many_icons_compose_alloc_free() {
     let mut icons = ParkedIcons::new();
@@ -145,7 +137,7 @@ fn many_icons_compose_alloc_free() {
             .auto_id()
             .cols([Track::FILL; 20])
             .rows([Track::FILL; 10])
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 for r in 0..10u16 {
                     for c in 0..20u16 {

@@ -7,16 +7,15 @@
     reason = "test fixtures cast non-negative sizes, coordinates, indices and color channels"
 )]
 
-use palantir::Fit;
 use palantir::glam::{UVec2, Vec2};
-use palantir::widget::{Mesh, Shape};
-use palantir::{Block, Chrome, Configure, FontFamily, Panel, RgbaF32, Sizing, Text, Ui};
+use palantir::{
+    Block, Chrome, Configure, Fit, FontFamily, IconPaint, Mesh, Panel, RgbaF32, Shape, Sizing,
+    SrgbaU8, Stroke, Text, Ui,
+};
 
 use crate::fixtures;
 use crate::fixtures::icon;
 use crate::visual_rig::VisualRig;
-use palantir::Stroke;
-use palantir::widget::IconPaint;
 
 const RAMP: [u8; 7] = [5, 8, 10, 16, 26, 32, 48];
 const COL: f32 = 20.0;
@@ -81,15 +80,14 @@ fn ramp(ui: &mut Ui) {
 
 #[test]
 fn a_dark_ramp_reads_back_as_authored() {
-    let img = VisualRig::new()
-        .size(SURFACE)
+    let img = VisualRig::new(SURFACE)
         .clear(RgbaF32::BLACK)
         .frame(ramp)
         .image;
     for (i, v) in RAMP.into_iter().enumerate() {
         let x = i as u32 * COL as u32;
-        let want = [v, v, v, 255];
-        let at = |dx: u32, y: f32| img.get_pixel(x + dx, y as u32 + 5).0;
+        let want = SrgbaU8::rgb(v, v, v);
+        let at = |dx: u32, y: f32| img.texel(UVec2::new(x + dx, y as u32 + 5));
         assert_eq!(
             at(10, BLOCK_Y),
             want,
@@ -112,8 +110,8 @@ fn a_dark_ramp_reads_back_as_authored() {
         );
         let brightest = (x..x + COL as u32)
             .flat_map(|px| (TEXT_Y as u32..LINE_Y as u32 - 4).map(move |py| (px, py)))
-            .map(|(px, py)| img.get_pixel(px, py).0)
-            .max_by_key(|p| p[0])
+            .map(|(px, py)| img.texel(UVec2::new(px, py)))
+            .max_by_key(|p| p.r)
             .unwrap();
         assert_eq!(brightest, want, "a glyph colored #{v:02x}{v:02x}{v:02x}");
     }

@@ -4,8 +4,9 @@ use crate::primitives::math::domain::is_invisible;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::border::Border;
 use crate::primitives::paint::brush::Brush;
-use crate::primitives::paint::brush::gradient::{Gradient, GradientGeometry};
+use crate::primitives::paint::brush::gradient::Gradient;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::primitives::paint::material::Material;
 use crate::primitives::paint::material::material_paint::MaterialPaint;
 use crate::primitives::paint::shadow::Shadow;
@@ -23,10 +24,10 @@ use palantir_derive::{Animatable, Lerp};
 ///
 /// Plain data, so arithmetic may pass through values no widget takes. A widget's `chrome` and a
 /// shape check it where it enters and panic unless every color is a
-/// [color](crate::widget::domain::color), gradient angles are
-/// [angles](crate::widget::domain::angle), centers and the shadow's offset and spread
-/// [offsets](crate::widget::domain::offset), the border width, radial radii and the shadow's blur
-/// [lengths](crate::widget::domain::length). Every value but the border width packs into an f16 lane, so it is a [lane](crate::widget::domain::lane) too.
+/// [color](crate::widget::domain::is_color), gradient angles are
+/// [angles](crate::widget::domain::is_angle), centers and the shadow's offset and spread
+/// [offsets](crate::widget::domain::is_offset), the border width, radial radii and the shadow's blur
+/// [lengths](crate::widget::domain::is_length). Every value but the border width packs into an f16 lane, so it is a [lane](crate::widget::domain::is_lane) too.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, Lerp, Animatable)]
 #[serde(deny_unknown_fields)]
 #[must_use]
@@ -156,12 +157,16 @@ impl From<RgbaF32> for Paint {
     }
 }
 
+/// A plain fill of `color`, decoded from sRGB bytes.
+impl From<SrgbaU8> for Paint {
+    fn from(color: SrgbaU8) -> Self {
+        Self::from(Brush::from(color))
+    }
+}
+
 /// A plain fill of `gradient`.
-impl<G: GradientGeometry> From<Gradient<G>> for Paint
-where
-    Brush: From<Gradient<G>>,
-{
-    fn from(gradient: Gradient<G>) -> Self {
+impl From<Gradient> for Paint {
+    fn from(gradient: Gradient) -> Self {
         Self::from(Brush::from(gradient))
     }
 }

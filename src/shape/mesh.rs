@@ -13,7 +13,7 @@ use crate::shape::sealed;
 /// A colored triangle mesh, its vertices logical px from its rect's top-left: the owner's
 /// arranged rect or [`Self::at`] a rect of its own, its vertices fit into it by [`Self::fit`]. A
 /// tint that multiplies its colors is its paint ([`Ui::add_shape`](crate::Ui::add_shape)).
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 #[must_use]
 pub struct MeshShape<'a> {
     pub(crate) mesh: &'a Mesh,
@@ -32,7 +32,7 @@ impl<'a> MeshShape<'a> {
     ///
     /// # Panics
     ///
-    /// Panics unless every component of `rect` is an [offset](crate::widget::domain::offset).
+    /// Panics unless every component of `rect` is an [offset](crate::widget::domain::is_offset).
     #[track_caller]
     pub const fn at(mut self, rect: Rect) -> Self {
         rect.validate();
@@ -59,7 +59,7 @@ impl sealed::DrawWith<RgbaF32> for MeshShape<'_> {
 
     /// # Panics
     ///
-    /// Unless the tint is a [color](crate::widget::domain::color).
+    /// Unless the tint is a [color](crate::widget::domain::is_color).
     #[track_caller]
     fn check(&self, tint: &RgbaF32) {
         let _ = domain::color(*tint);

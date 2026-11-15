@@ -2,8 +2,8 @@
 
 /// What an animation's motion tells the person, which decides whether it runs while motion is
 /// reduced; each animation says its own, as only its author knows: a paint animation through
-/// [`PaintAnimation::with_motion`](crate::widget::PaintAnimation::with_motion), a value
-/// transition through [`AnimationRequest::with_motion`](crate::widget::AnimationRequest::with_motion).
+/// [`PaintAnimation::with_motion`](crate::PaintAnimation::with_motion), a value
+/// transition through [`AnimationRequest::with_motion`](crate::AnimationRequest::with_motion).
 /// One role for both, as a turn and a moving bar tell the person alike.
 ///
 /// WCAG 2.3.3 lets motion that is essential to what the content says stay on under that
@@ -15,7 +15,7 @@
 pub enum MotionRole {
     /// Motion that only decorates. While motion is reduced a value transition snaps to its
     /// target, a single paint pass paints its end value
-    /// ([`PaintRepeat::Held`](crate::widget::PaintRepeat::Held)) and a repeating one paints as if
+    /// ([`PaintRepeat::Held`](crate::PaintRepeat::Held)) and a repeating one paints as if
     /// unanimated. Under reduced power with motion that follows the system a transition snaps, and
     /// a paint loop runs on, at 30 Hz where the frame rate is reduced.
     #[default]

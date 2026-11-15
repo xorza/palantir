@@ -23,19 +23,19 @@ pub(crate) struct TextShapeInput<'a> {
     pub(crate) text_hash: ContentHash,
     pub(crate) font: ShapingFont,
     pub(crate) wrap: TextWrap,
-    /// From `Shape::Text.align`; with wrap on, cosmic-text bakes per-line offsets into the shaped buffer,
+    /// From `TextShape::align`; with wrap on, cosmic-text bakes per-line offsets into the shaped buffer,
     /// so it must reach `TextSystem::measure` and `TextShapeKey`.
     pub(crate) halign: HAlign,
 }
 
 impl<'a> TextShapeInput<'a> {
-    /// `TextShape::is_noop` drops empty runs before recording, so the boundary is asserted, not handled.
+    /// The record drops an empty run, so the boundary is asserted, not handled.
     pub(crate) fn shape_request(&self) -> TextShapeRequest<'a> {
         TextShapeRequest::for_key(
             self.text,
             TextShapeKey::unbounded(self.text_hash, self.font),
         )
-        .expect("a recorded text run has bytes — `TextShape::is_noop` drops the empty one")
+        .expect("a recorded text run has bytes: the record drops an empty one")
     }
 
     /// Every text shape on a leaf: the one walk behind `MeasureOp::leaf` and `intrinsic::leaf`.

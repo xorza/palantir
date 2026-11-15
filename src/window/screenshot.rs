@@ -61,7 +61,7 @@ impl Screenshot {
     }
 
     /// Physical pixels per logical pixel when the frame was painted.
-    pub const fn scale(&self) -> f32 {
+    pub const fn scale_factor(&self) -> f32 {
         self.scale
     }
 

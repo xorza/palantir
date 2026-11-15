@@ -5,7 +5,7 @@ use crate::primitives::paint::chrome::Chrome;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::response::InnerResponse;
+use crate::widget_core::inner_response::InnerResponse;
 use crate::widget_core::widget::Widget;
 use std::rc::Rc;
 
@@ -66,20 +66,6 @@ impl<Rows, Cols> Grid<Rows, Cols> {
         self
     }
 
-    /// Paint `chrome` unless the caller set one; for wrappers that theme a widget after the caller's setters. An explicit [`Self::chrome`] wins either order.
-    ///
-    /// # Panics
-    ///
-    /// Panics unless `chrome` holds the kinds [`Chrome`] lists.
-    #[track_caller]
-    pub const fn default_chrome(mut self, chrome: Chrome) -> Self {
-        chrome.validate();
-        if self.chrome.is_none() {
-            self.chrome = Some(chrome);
-        }
-        self
-    }
-
     /// Record the grid and its `body`; children name their slot with [`Configure::grid_cell`].
     pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> InnerResponse<R>
     where
@@ -106,7 +92,7 @@ impl<Rows, Cols> Configure for Grid<Rows, Cols> {
 
 #[cfg(test)]
 mod tests {
-    use crate::primitives::math::domain::MAX_GAP;
+    use crate::primitives::packed::half_simd::F16x4;
     use crate::widget_core::configure::Configure;
     use crate::widgets::grid::Grid;
 
@@ -117,8 +103,8 @@ mod tests {
         assert_eq!(configured.widget.authored().line_gap(), Some(3.0));
         assert_eq!(configured.widget.authored().gap(), Some(5.0));
 
-        let edge = Grid::new().line_gap(MAX_GAP).gap(0.0);
-        assert_eq!(edge.widget.authored().line_gap(), Some(MAX_GAP));
+        let edge = Grid::new().line_gap(F16x4::MAX_LANE).gap(0.0);
+        assert_eq!(edge.widget.authored().line_gap(), Some(F16x4::MAX_LANE));
         assert_eq!(edge.widget.authored().gap(), Some(0.0));
     }
 }

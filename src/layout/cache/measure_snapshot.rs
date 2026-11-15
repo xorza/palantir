@@ -3,8 +3,8 @@
 
 use crate::common::content_hash::ContentHash;
 use crate::common::span::Span;
-use crate::layout::cache;
 use crate::layout::cache::node_arenas::NodeArenas;
+use crate::layout::measure_columns;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::{WidgetId, WidgetIdMap};
@@ -15,7 +15,7 @@ use crate::text::shaped_text::ShapedText;
 /// One cacheable subtree's place in a [`MeasureSnapshot`]: what it was
 /// measured as, and the spans of its rows in each arena.
 #[derive(Clone, Copy, Debug)]
-pub(super) struct ArenaSnapshot {
+pub(super) struct SubtreeDesc {
     pub(super) subtree_hash: ContentHash,
     pub(super) available: Size,
     pub(super) nodes: Span,
@@ -48,7 +48,7 @@ impl SubtreeKey {
     pub(crate) fn matches(self, other: Self) -> bool {
         self.widget_id == other.widget_id
             && self.subtree_hash == other.subtree_hash
-            && cache::same_offer(self.available, other.available)
+            && measure_columns::same_offer(self.available, other.available)
     }
 }
 
@@ -57,23 +57,23 @@ pub(crate) struct MeasureSnapshot {
     pub(super) nodes: NodeArenas,
     pub(super) tracks: Vec<f32>,
     pub(super) text_shapes: Vec<ShapedText>,
-    pub(super) snapshots: WidgetIdMap<u32>,
-    pub(super) descs: Vec<ArenaSnapshot>,
+    pub(super) desc_by_id: WidgetIdMap<u32>,
+    pub(super) descs: Vec<SubtreeDesc>,
     pub(super) desc_widget_ids: Vec<WidgetId>,
-    /// The `desc_widget_ids` [`Self::snapshots`] was built for. Held beside the
+    /// The `desc_widget_ids` [`Self::desc_by_id`] was built for. Held beside the
     /// map so both travel through `end_frame`'s swap: the map is reusable exactly
     /// when a capture into this struct yields the same sequence. Compared whole,
     /// one `memcmp`. Refused: a 64-bit fold of the sequence, whose collision
     /// handed a capture another sequence's indices.
-    snapshots_ids: Vec<WidgetId>,
+    desc_by_id_ids: Vec<WidgetId>,
 }
 
 impl MeasureSnapshot {
     /// Empty everything, retained descriptor map included.
     pub(super) fn forget_all(&mut self) {
         self.clear_capture();
-        self.snapshots.clear();
-        self.snapshots_ids.clear();
+        self.desc_by_id.clear();
+        self.desc_by_id_ids.clear();
     }
 
     /// Empty the captured columns, keeping the descriptor map.
@@ -87,22 +87,22 @@ impl MeasureSnapshot {
 
     /// The descriptor captured for `widget_id`'s subtree, if any.
     #[inline]
-    pub(super) fn desc(&self, widget_id: WidgetId) -> Option<&ArenaSnapshot> {
-        let idx = *self.snapshots.get(&widget_id)? as usize;
+    pub(super) fn desc(&self, widget_id: WidgetId) -> Option<&SubtreeDesc> {
+        let idx = *self.desc_by_id.get(&widget_id)? as usize;
         Some(&self.descs[idx])
     }
 
-    /// Rebuild `snapshots` unless the capture produced the id sequence the
+    /// Rebuild `desc_by_id` unless the capture produced the id sequence the
     /// retained map was built for. Returns whether it rebuilt.
-    pub(super) fn refresh_snapshots(&mut self) -> bool {
-        if self.snapshots_ids == self.desc_widget_ids {
+    pub(super) fn refresh_desc_by_id(&mut self) -> bool {
+        if self.desc_by_id_ids == self.desc_widget_ids {
             return false;
         }
-        self.snapshots.clear();
+        self.desc_by_id.clear();
         for (desc, widget_id) in self.desc_widget_ids.iter().copied().enumerate() {
-            self.snapshots.insert(widget_id, desc as u32);
+            self.desc_by_id.insert(widget_id, desc as u32);
         }
-        self.snapshots_ids.clone_from(&self.desc_widget_ids);
+        self.desc_by_id_ids.clone_from(&self.desc_widget_ids);
         true
     }
 }
@@ -123,19 +123,19 @@ mod tests {
         let capture = |snapshot: &mut MeasureSnapshot, ids: &[WidgetId]| {
             snapshot.desc_widget_ids.clear();
             snapshot.desc_widget_ids.extend_from_slice(ids);
-            snapshot.refresh_snapshots()
+            snapshot.refresh_desc_by_id()
         };
         assert!(capture(&mut snapshot, &[a, b, c]));
         assert!(!capture(&mut snapshot, &[a, b, c]), "the same sequence");
         assert!(capture(&mut snapshot, &[b, a, c]), "reordered");
         assert_eq!(
-            [a, b, c].map(|id| snapshot.snapshots.get(&id).copied()),
+            [a, b, c].map(|id| snapshot.desc_by_id.get(&id).copied()),
             [Some(1), Some(0), Some(2)]
         );
         assert!(capture(&mut snapshot, &[b, a]), "one fewer");
-        assert_eq!(snapshot.snapshots.get(&c), None);
+        assert_eq!(snapshot.desc_by_id.get(&c), None);
         snapshot.forget_all();
         assert!(!capture(&mut snapshot, &[]));
-        assert!(snapshot.snapshots.is_empty());
+        assert!(snapshot.desc_by_id.is_empty());
     }
 }

@@ -2,8 +2,8 @@
 //! an eviction reaching it, its keys forgotten, and the expiry of its empty entries.
 
 use super::*;
-use crate::gpu::raster::raster_atlas::packed_metadata::PackedMetadata;
-use glam::{IVec2, U16Vec2, UVec2};
+use crate::gpu::atlas::atlas_handle::{AtlasHandle, Placement};
+use glam::{I16Vec2, IVec2, U16Vec2, UVec2};
 
 /// The atlas is generic over its key, so its tests use the cheapest one that
 /// satisfies the bounds; nothing depends on what a key means.
@@ -27,8 +27,13 @@ fn insert(
     format: AtlasFormat,
     size: UVec2,
 ) -> SlotPlacement {
-    let allocation: Allocation = pool.allocate(format, atlas.tenant(), size).unwrap();
-    atlas.insert_placed(key, allocation, I16Vec2::new(1, 2))
+    let metadata = PackedMetadata {
+        size: size.as_u16vec2(),
+        bearing: I16Vec2::new(1, 2),
+    };
+    atlas
+        .place(pool, key, RasterRequest { format, metadata })
+        .unwrap()
 }
 
 #[test]
@@ -93,16 +98,24 @@ fn a_raster_is_found_where_the_pool_holds_it() {
     assert_eq!(
         mask,
         SlotPlacement {
-            handle: mask.handle,
-            page: 0,
-            origin: U16Vec2::ZERO,
-            size: U16Vec2::new(10, 12),
-            bearing: I16Vec2::new(1, 2),
+            raster: PlacedRaster {
+                handle: mask.raster.handle,
+                bearing: I16Vec2::new(1, 2),
+            },
+            placement: Placement {
+                page: 0,
+                origin: U16Vec2::ZERO,
+                size: U16Vec2::new(10, 12),
+            },
         }
     );
     assert_eq!(mask.content(), ContentType::Mask);
     assert_eq!(
-        (color.page, color.origin, color.content()),
+        (
+            color.placement.page,
+            color.placement.origin,
+            color.content()
+        ),
         (0, U16Vec2::ZERO, ContentType::Color)
     );
     assert_eq!(atlas.find(&mut pool, &key(1)), Some(Found::Raster(mask)));
@@ -115,7 +128,9 @@ fn a_raster_is_found_where_the_pool_holds_it() {
 /// With every mask page full of glyphs no frame drew this frame or the last, two icons evict two
 /// of them. The glyph tenant learns of one at its lookup, which misses and drops the key, and of
 /// the other at its drain; both count, both handles read as stale in the pool, so a run that
-/// named either replays nothing, and the other two glyphs stay.
+/// named either replays nothing, and the other two glyphs stay. A key filed in the slot the
+/// lookup freed, before the drain, stays: the eviction's tag names the slot, whose raster is no
+/// longer the evicted one.
 #[test]
 fn an_eviction_reaches_its_tenant() {
     let mut pool = pool();
@@ -134,11 +149,17 @@ fn an_eviction_reaches_its_tenant() {
         None,
         "evicted, found at the lookup"
     );
+    glyphs.insert_unplaced(key(9), 2);
     glyphs.drop_evicted(&mut pool);
-    assert_eq!(glyphs.cached_len(), 2);
+    assert_eq!(
+        glyphs.find(&mut pool, &key(9)),
+        Some(Found::Nothing),
+        "filed in the freed slot, kept"
+    );
+    assert_eq!(glyphs.cached_len(), 3);
     assert_eq!(glyphs.counters.evictions.count(), 2);
     for placement in &held[..2] {
-        assert_eq!(pool.stamp(placement.handle), None);
+        assert_eq!(pool.stamp(placement.raster.handle), None);
     }
     for (id, placement) in (2..4).zip(&held[2..]) {
         assert_eq!(
@@ -172,7 +193,7 @@ fn forget_gives_its_rasters_back_to_the_pool() {
     assert_eq!(live(&pool), 16 + 64);
     icons.forget(&mut pool, |&id| id == key(1));
     assert_eq!(live(&pool), 16);
-    assert_eq!(pool.placement(gone.handle), None);
+    assert_eq!(pool.placement(gone.raster.handle), None);
     assert_eq!(icons.cached_len(), 1);
     assert_eq!(icons.find(&mut pool, &key(1)), Some(Found::Raster(kept)));
 }
@@ -185,13 +206,15 @@ fn a_drained_ticket_retires_only_its_own_stale_empty() {
     let placed = AtlasSlot::Placed(PlacedRaster {
         handle: AtlasHandle {
             format: AtlasFormat::R8,
-            idx: 0,
-            generation: 0,
+            key: SlabKey {
+                idx: 0,
+                generation: 0,
+            },
         },
         bearing: I16Vec2::ZERO,
     });
     let unplaced = |last_use| AtlasSlot::Unplaced { last_use };
-    let mut slots = vec![
+    let slots = [
         unplaced(1),    // 1 + 121 = 122 <= 1024 -> reclaimed
         unplaced(903),  // 903 + 121 = 1024 <= 1024 -> reclaimed
         unplaced(904),  // 904 + 121 = 1025 > 1024 -> re-filed
@@ -199,29 +222,31 @@ fn a_drained_ticket_retires_only_its_own_stale_empty() {
         placed,         // placed -> the pool's to reclaim
     ];
     let mut cache = FxHashMap::default();
-    for i in 0..slots.len() as u32 {
-        cache.insert(key(i as u16 + 1), i);
+    let mut entries = GenSlab::new();
+    for (i, slot) in slots.into_iter().enumerate() {
+        let key = key(i as u16 + 1);
+        cache.insert(key, entries.insert(RasterEntry { slot, key }));
     }
-    let mut free = Vec::new();
     let mut slab = Slab {
         cache: &mut cache,
-        slots: &mut slots,
-        free: &mut free,
+        entries: &mut entries,
     };
 
-    assert_eq!(slab.retire_unallocated(key(1), 1024), None);
-    assert_eq!(slab.retire_unallocated(key(2), 1024), None);
+    assert_eq!(slab.retire_unplaced(key(1), 1024), None);
+    assert_eq!(slab.retire_unplaced(key(2), 1024), None);
     assert_eq!(
-        slab.retire_unallocated(key(3), 1024),
+        slab.retire_unplaced(key(3), 1024),
         Some(1025),
         "an entry still inside its window is re-filed for its own deadline",
     );
-    assert_eq!(slab.retire_unallocated(key(4), 1024), Some(1145));
+    assert_eq!(slab.retire_unplaced(key(4), 1024), Some(1145));
     assert_eq!(
-        slab.retire_unallocated(key(5), 1024),
+        slab.retire_unplaced(key(5), 1024),
         None,
         "a placed entry is not this wheel's business",
     );
+    // A second ticket for a reclaimed key is a no-op, making an early or duplicate fire safe.
+    assert_eq!(slab.retire_unplaced(key(1), 1024), None);
 
     assert!(
         !cache.contains_key(&key(1)),
@@ -231,16 +256,7 @@ fn a_drained_ticket_retires_only_its_own_stale_empty() {
     assert!(cache.contains_key(&key(3)), "one frame short of the window");
     assert!(cache.contains_key(&key(4)), "fresh empty survives");
     assert!(cache.contains_key(&key(5)), "placed entry is untouched");
-    // Reclaimed slab slots are handed back for reuse, in ticket order.
-    assert_eq!(free, [0, 1]);
-
-    // A second ticket for a reclaimed key is a no-op, making an early or
-    // duplicate fire safe.
-    let mut slab = Slab {
-        cache: &mut cache,
-        slots: &mut slots,
-        free: &mut free,
-    };
-    assert_eq!(slab.retire_unallocated(key(1), 1024), None);
-    assert_eq!(free, [0, 1]);
+    // Reclaimed slab slots are vacant, and the kept ones hold their entries.
+    let vacant: Vec<bool> = (0..5).map(|idx| entries.at(idx).is_none()).collect();
+    assert_eq!(vacant, [true, true, false, false, false]);
 }

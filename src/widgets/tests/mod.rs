@@ -1,21 +1,18 @@
-//! Rules the bundled widgets keep alike, as no trait holds them in step: chrome defaults here,
+//! Rules the bundled widgets keep alike, as no trait holds them in step: chrome checks here,
 //! `style` setters, and what a hostile theme file renders as.
 
 mod deferred_commit;
+mod responses;
 mod style_override;
 mod theme_file_values;
+mod widget_core;
 
 use crate::host::harness::Harness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::primitives::input::interaction::response::Response;
-use crate::primitives::input::interaction::response_state::ResponseState;
-use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::math::lerp::Lerp;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
-use crate::scene::layer::Layer;
-use crate::shape::paint::lowered_brush::LoweredBrush;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
@@ -23,224 +20,17 @@ use crate::widgets::grid::Grid;
 use crate::widgets::menu::Menu;
 use crate::widgets::modal::Modal;
 use crate::widgets::panel::Panel;
-use crate::widgets::popup::Popup;
-use crate::widgets::popup::popup_trigger::PopupTrigger;
 use crate::widgets::scroll::Scroll;
-use crate::widgets::tooltip::Tooltip;
 use glam::{UVec2, Vec2};
-use std::time::Duration;
 
 const SURFACE: UVec2 = UVec2::new(400, 300);
 const ID: &str = "chrome-default";
-
-#[derive(Clone, Copy, Debug)]
-enum SetterOrder {
-    DefaultOnly,
-    ExplicitOnly,
-    ExplicitThenDefault,
-    DefaultThenExplicit,
-}
-
-const DEFAULT_FILL: RgbaF32 = RgbaF32::new(0.9, 0.1, 0.1, 1.0);
-const EXPLICIT_FILL: RgbaF32 = RgbaF32::new(0.1, 0.1, 0.9, 1.0);
-
-impl SetterOrder {
-    fn apply<W>(self, w: W, chrome: fn(W, Chrome) -> W, default: fn(W, Chrome) -> W) -> W {
-        let d = Chrome::new(DEFAULT_FILL);
-        let e = Chrome::new(EXPLICIT_FILL);
-        match self {
-            Self::DefaultOnly => default(w, d),
-            Self::ExplicitOnly => chrome(w, e),
-            Self::ExplicitThenDefault => default(chrome(w, e), d),
-            Self::DefaultThenExplicit => chrome(default(w, d), e),
-        }
-    }
-
-    const fn want(self) -> RgbaF32 {
-        match self {
-            Self::DefaultOnly => DEFAULT_FILL,
-            _ => EXPLICIT_FILL,
-        }
-    }
-}
-
-fn hovered_trigger() -> Response {
-    Response {
-        id: WidgetId::from_hash("chrome-trigger"),
-        state: ResponseState {
-            rect: Some(Rect::new(20.0, 20.0, 40.0, 20.0)),
-            pointer_over: true,
-            ..ResponseState::default()
-        },
-    }
-}
-
-#[derive(Debug)]
-struct Kind {
-    name: &'static str,
-    record: fn(&mut Ui, SetterOrder),
-    chrome_node: fn() -> WidgetId,
-    layer: Layer,
-}
 
 fn own_id() -> WidgetId {
     WidgetId::from_hash(ID)
 }
 
-/// Every widget with `chrome(chrome)` has `default_chrome(chrome)`; the default fills in only
-/// where the caller set no chrome, in either call order.
-#[test]
-fn default_chrome_yields_to_an_explicit_one_on_every_chrome_widget() {
-    let kinds = [
-        Kind {
-            name: "Block",
-            record: |ui, c| {
-                c.apply(
-                    Block::new().id(own_id()),
-                    Block::chrome,
-                    Block::default_chrome,
-                )
-                .show(ui);
-            },
-            chrome_node: own_id,
-            layer: Layer::Main,
-        },
-        Kind {
-            name: "Panel",
-            record: |ui, c| {
-                c.apply(
-                    Panel::vstack().id(own_id()),
-                    Panel::chrome,
-                    Panel::default_chrome,
-                )
-                .show(ui, |_| {});
-            },
-            chrome_node: own_id,
-            layer: Layer::Main,
-        },
-        Kind {
-            name: "Grid",
-            record: |ui, c| {
-                c.apply(Grid::new().id(own_id()), Grid::chrome, Grid::default_chrome)
-                    .show(ui, |_| {});
-            },
-            chrome_node: own_id,
-            layer: Layer::Main,
-        },
-        Kind {
-            name: "Scroll",
-            record: |ui, c| {
-                c.apply(
-                    Scroll::vertical().id(own_id()),
-                    Scroll::chrome,
-                    Scroll::default_chrome,
-                )
-                .show(ui, |_| {});
-            },
-            chrome_node: || own_id().with("viewport"),
-            layer: Layer::Main,
-        },
-        Kind {
-            name: "Popup",
-            record: |ui, c| {
-                c.apply(
-                    Popup::new()
-                        .anchor(Anchor::at_point(Vec2::new(20.0, 20.0)))
-                        .id(own_id()),
-                    Popup::chrome,
-                    Popup::default_chrome,
-                )
-                .show(ui, |_| {});
-            },
-            chrome_node: own_id,
-            layer: Layer::Popup,
-        },
-        Kind {
-            name: "PopupTrigger",
-            record: |ui, c| {
-                let trigger = hovered_trigger();
-                PopupTrigger::open(ui, trigger.id);
-                c.apply(
-                    PopupTrigger::on(&trigger),
-                    PopupTrigger::chrome,
-                    PopupTrigger::default_chrome,
-                )
-                .show(ui, |_| {});
-            },
-            chrome_node: || hovered_trigger().id.with("popup"),
-            layer: Layer::Popup,
-        },
-        Kind {
-            name: "Modal",
-            record: |ui, c| {
-                c.apply(
-                    Modal::new().id(own_id()),
-                    Modal::chrome,
-                    Modal::default_chrome,
-                )
-                .show(ui, |_| {});
-            },
-            chrome_node: || own_id().with("panel"),
-            layer: Layer::Modal,
-        },
-        Kind {
-            name: "Tooltip",
-            record: |ui, c| {
-                let trigger = hovered_trigger();
-                c.apply(
-                    Tooltip::on(&trigger, "tip").delay(Duration::ZERO),
-                    Tooltip::chrome,
-                    Tooltip::default_chrome,
-                )
-                .show(ui);
-            },
-            chrome_node: || hovered_trigger().id.with("bubble"),
-            layer: Layer::Tooltip,
-        },
-        Kind {
-            name: "Menu",
-            record: |ui, c| {
-                c.apply(Menu::for_id(own_id()), Menu::chrome, Menu::default_chrome)
-                    .show(ui, |_| {});
-            },
-            chrome_node: || Menu::menu_id(own_id()),
-            layer: Layer::Menu,
-        },
-    ];
-    let cases = [
-        SetterOrder::DefaultOnly,
-        SetterOrder::ExplicitOnly,
-        SetterOrder::ExplicitThenDefault,
-        SetterOrder::DefaultThenExplicit,
-    ];
-    for kind in &kinds {
-        for case in cases {
-            let mut h = Harness::mono(SURFACE);
-            Menu::open(h.ui_mut(), own_id(), Vec2::new(20.0, 20.0));
-            // Two frames: the tooltip turns visible the frame after the pointer settles.
-            h.frame(|ui| (kind.record)(ui, case));
-            h.frame(|ui| (kind.record)(ui, case));
-            let node = h
-                .node_of((kind.chrome_node)())
-                .unwrap_or_else(|| panic!("{}: chrome node recorded", kind.name));
-            assert_eq!(node.plane.layer, kind.layer, "{}", kind.name);
-            let fill = h
-                .ui()
-                .tree(kind.layer)
-                .chrome(node.node)
-                .unwrap_or_else(|| panic!("{} {case:?}: paints chrome", kind.name))
-                .fill;
-            let want = case.want().to_f16();
-            assert!(
-                matches!(fill, LoweredBrush::Solid(got) if got == want),
-                "{} {case:?}: {fill:?}, want {want:?}",
-                kind.name,
-            );
-        }
-    }
-}
-
-/// Chrome values are checked where they enter a widget through either setter: NaN fill, negative border
+/// Chrome values are checked where they enter a widget: NaN fill, negative border
 /// width, a NaN or negative corner and NaN shadow blur each panic with their kind's rule. The
 /// corner constructors refuse both, so the corners come from blends, which can make them.
 #[test]
@@ -293,7 +83,7 @@ fn chrome_setters_check_the_chrome() {
     ];
     for (rule, chrome) in bad {
         panic_probe::assert_panics_with(rule, || Panel::vstack().chrome(chrome.clone()));
-        panic_probe::assert_panics_with(rule, || Block::new().default_chrome(chrome.clone()));
+        panic_probe::assert_panics_with(rule, || Block::new().chrome(chrome.clone()));
     }
 }
 
@@ -322,7 +112,7 @@ fn widget_setters_check_their_kinds() {
 
     const NAN_RED: RgbaF32 = RgbaF32::new(f32::NAN, 0.0, 0.0, 1.0);
     let length_cases: [fn(f32); 3] = [
-        |v| drop(Spinner::new().width(v)),
+        |v| drop(Spinner::new().stroke_width(v)),
         |v| drop(Text::new("t").font_size(v)),
         |v| {
             let mut buf = String::new();
@@ -352,7 +142,7 @@ fn widget_setters_check_their_kinds() {
         |c| drop(Spinner::new().color(c)),
         |c| drop(Separator::horizontal().color(c)),
         |c| drop(Text::new("t").color(c)),
-        |c| drop(Modal::new().scrim(c)),
+        |c| drop(Modal::new().scrim(Chrome::new(c))),
         |c| {
             let mut buf = String::new();
             drop(TextEdit::new(&mut buf).color(c));
@@ -422,7 +212,7 @@ fn widget_setters_check_their_kinds() {
             let state = DockState::new(0_u32);
             let mut operations = Vec::new();
             drop(
-                DockView::new(WidgetId::from_hash("kinds.dock"), &state, &mut operations)
+                DockView::emitting(WidgetId::from_hash("kinds.dock"), &state, &mut operations)
                     .min_pane(f32::NAN),
             );
         },
@@ -438,7 +228,7 @@ fn widget_setters_check_their_kinds() {
         let state = DockState::new(0_u32);
         let mut operations = Vec::new();
         drop(
-            DockView::new(WidgetId::from_hash("kinds.dock"), &state, &mut operations)
+            DockView::emitting(WidgetId::from_hash("kinds.dock"), &state, &mut operations)
                 .edge_fraction(fraction),
         );
     };
@@ -466,7 +256,7 @@ fn widget_setters_check_their_kinds() {
         },
         || {
             let mut h = Harness::mono(SURFACE);
-            Menu::open(
+            Menu::open_at(
                 h.ui_mut(),
                 WidgetId::from_hash("m"),
                 Vec2::new(f32::NAN, 0.0),
@@ -488,7 +278,7 @@ fn widget_setters_check_their_kinds() {
         let mut h = Harness::mono(SURFACE);
         h.ui_mut()
             .layer(Layer::Popup)
-            .fixed_at(Vec2::new(f32::NAN, 0.0))
+            .at(Vec2::new(f32::NAN, 0.0))
             .show(|_| {});
     });
     panic_probe::assert_panics_with(domain::EXTENT_RULE, || {
@@ -511,9 +301,9 @@ fn widget_setters_check_their_kinds() {
 /// `Debug` text shows a NaN in any field).
 #[test]
 fn coercing_inputs_at_their_worst_paint_no_nan() {
-    use crate::primitives::layout::sizing::Sizing;
+    use crate::primitives::layout::sizing::{SizeSpec, Sizing};
     use crate::primitives::layout::track::Track;
-    use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
+    use crate::primitives::paint::brush::gradient::Gradient;
     use crate::primitives::paint::brush::gradient::stops::Stop;
     use crate::primitives::paint::color::color_coords::ColorCoords;
     use crate::primitives::paint::color::color_model::ColorModel;
@@ -535,26 +325,26 @@ fn coercing_inputs_at_their_worst_paint_no_nan() {
     let mut h = Harness::mono(UVec2::new(800, 1200));
     let mut ratio = f32::NAN;
     let gone = "gone";
-    let (mut stale, mut empty, mut page, mut no_page) = (&gone, &gone, 9_usize, 0_usize);
+    let (mut stale, mut empty, mut page, mut no_page) = (gone, gone, 9_usize, 0_usize);
     let mut slid = f64::NAN;
     let mut dragged = f64::NAN;
     let mut coords = ColorCoords::new(ColorModel::Okhsv, f32::NAN, f32::INFINITY, f32::NAN);
-    let gradient = LinearGradient::horizontal([
+    let gradient = Gradient::horizontal([
         Stop::new(f32::NAN, RgbaF32::WHITE),
         Stop::new(f32::INFINITY, RgbaF32::BLACK),
     ]);
     let mut scene = |ui: &mut Ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("worst"))
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 ProgressBar::new(f32::NAN).show(ui);
                 ProgressBar::new(f32::INFINITY).show(ui);
                 Splitter::row(&mut ratio)
                     .size((Sizing::fixed(200.0), Sizing::fixed(40.0)))
                     .show(ui, |_, _| {});
-                ComboBox::new(&mut stale, &OPTIONS).show(ui);
-                ComboBox::new(&mut empty, &[]).show(ui);
+                ComboBox::new(&mut stale, OPTIONS).show(ui);
+                ComboBox::new(&mut empty, []).show(ui);
                 TabbedView::new(&mut page, &OPTIONS)
                     .size((Sizing::fixed(200.0), Sizing::fixed(60.0)))
                     .show(ui, |ui, i| {
@@ -566,7 +356,7 @@ fn coercing_inputs_at_their_worst_paint_no_nan() {
                     .show(ui, |_, _| {});
                 let items = [TabItem::new(TabKey::of(1), ui.intern("one"))];
                 TabStrip::new(&items)
-                    .selected(5)
+                    .selected_idx(5)
                     .show(ui, |ui, chip| chip.show_label(ui));
                 Slider::new(&mut slid, 10.0..=0.0).show(ui);
                 DragValue::new(&mut dragged).range(5.0..=-5.0).show(ui);
@@ -603,7 +393,7 @@ fn coercing_inputs_at_their_worst_paint_no_nan() {
     let paint = format!("{:?}", h.encode_paint());
     assert!(!paint.contains("NaN"), "a NaN reached paint");
     assert_eq!(
-        (*stale, *empty, page, no_page),
+        (stale, empty, page, no_page),
         ("gone", "gone", 9, 0),
         "no binding was written back"
     );
@@ -685,7 +475,7 @@ fn a_scoped_widget_takes_its_keys_under_an_enclosing_scope() {
     assert!(on, "Checkbox");
 
     let mut open = false;
-    press(Expander::header_id(id), Key::Enter, |ui| {
+    press(id.with("header"), Key::Enter, |ui| {
         under_root(ui, |ui| {
             Expander::new("x").id(id).show(ui, |_| {});
         });
@@ -694,16 +484,16 @@ fn a_scoped_widget_takes_its_keys_under_an_enclosing_scope() {
     assert!(open, "Expander");
 
     let options = ["a", "b"];
-    let mut picked = &options[0];
+    let mut picked = options[0];
     let mut listed = false;
     press(id, Key::ArrowDown, |ui| {
         under_root(ui, |ui| {
-            ComboBox::new(&mut picked, &options).id(id).show(ui);
+            ComboBox::new(&mut picked, options).id(id).show(ui);
         });
         listed |= ComboBoxList::is_open(ui, id);
     });
     assert!(
-        listed && *picked == "a",
+        listed && picked == "a",
         "ComboBox: Down opens the list and picks nothing"
     );
 

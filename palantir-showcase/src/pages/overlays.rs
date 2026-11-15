@@ -3,14 +3,16 @@
 use std::time::Duration;
 
 use crate::appearance::Appearance;
+use crate::scaffold;
 use crate::scaffold::api;
+use crate::scaffold::dialog::Dialog;
+use crate::scaffold::kit::Kit;
+use crate::scaffold::section::Section;
 use crate::scaffold::tokens::M;
-use crate::support;
-use crate::support::{Dialog, Kit, Section};
 use palantir::{
     Align, Anchor, AnchorAlign, Axis, Block, Button, Checkbox, Configure, Justify, Key, Menu,
     MenuBar, MenuItem, MenuSeparator, MenuTheme, Modal, Panel, Popup, PopupTrigger, Response,
-    Sense, Shortcut, Sizing, Slider, Spacing, Text, Theme, Tooltip, Ui, WidgetId, fmt,
+    Sense, Shortcut, SizeSpec, Sizing, Slider, Spacing, Text, Theme, Tooltip, Ui, WidgetId, fmt,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -71,7 +73,7 @@ fn material_section(ui: &mut Ui, k: Kit) {
     Section::new("Frosted glass")
         .apis(&[api!(Theme::dress_floats)])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "Menus, combo lists, popups, the picker, tooltips and the modal float on frosted \
@@ -88,14 +90,14 @@ fn popup_section(ui: &mut Ui, k: Kit, s: &mut State) {
     Section::new("Popup")
         .apis(&[api!(PopupTrigger::on), api!(PopupTrigger::is_open)])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "A panel dropped below its trigger on the Popup layer, above and outside the \
                  main tree. A second click, an outside press or Escape closes it.",
             );
-            support::well(ui, k, |ui| {
-                support::row(ui, |ui| {
+            scaffold::well(ui, k, |ui| {
+                scaffold::row(ui, |ui| {
                     let trigger = Button::new().label("Edit ▾").show(ui);
                     let menu = &ui.theme().menu;
                     let (padding, gap, width) = (menu.padding, menu.gap, menu.min_width);
@@ -111,7 +113,7 @@ fn popup_section(ui: &mut Ui, k: Kit, s: &mut State) {
                                 }
                             }
                         });
-                    support::readout(ui, k, "picked", s.choice.unwrap_or("—"));
+                    scaffold::readout(ui, k, "picked", s.choice.unwrap_or("—"));
                 });
             });
         });
@@ -121,14 +123,14 @@ fn anchor_section(ui: &mut Ui, k: Kit, s: &mut State) {
     Section::new("Anchors")
         .apis(&[api!(Anchor::below), api!(Anchor::with_align)])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "Where a popup sits against a rect: the side, and how it lines up along that \
                  side. This one lets outside clicks pass through, so it stays open while you \
                  change the controls.",
             );
-            support::radio_row(ui, &mut s.side, |ui, options| {
+            scaffold::radio_row(ui, &mut s.side, |ui, options| {
                 for (value, label) in [
                     (Side::Below, "below"),
                     (Side::Above, "above"),
@@ -138,8 +140,8 @@ fn anchor_section(ui: &mut Ui, k: Kit, s: &mut State) {
                     options.option(value).label(label).show(ui);
                 }
             });
-            support::row(ui, |ui| {
-                support::radio_row(ui, &mut s.align, |ui, options| {
+            scaffold::row(ui, |ui| {
+                scaffold::radio_row(ui, &mut s.align, |ui, options| {
                     for (value, label) in [
                         (AnchorAlign::Start, "Start"),
                         (AnchorAlign::Center, "Center"),
@@ -159,7 +161,7 @@ fn anchor_section(ui: &mut Ui, k: Kit, s: &mut State) {
                 .show(ui, |ui| {
                     let target = Block::new()
                         .size((Sizing::fixed(140.0), Sizing::fixed(48.0)))
-                        .chrome(support::swatch_chrome(k.swatch.teal))
+                        .chrome(scaffold::swatch_chrome(k.swatch.teal))
                         .show(ui);
                     if s.anchored
                         && let Some(rect) = target.rect
@@ -186,19 +188,19 @@ fn modal_section(ui: &mut Ui, k: Kit, s: &mut State, look: &Appearance) {
     Section::new("Modal")
         .apis(&[api!(Modal::new), api!(Ui::close_overlay)])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "A modal dims the window and takes every pointer. Escape or a click on the \
                  barrier closes it, and Tab stays inside it — see the focus & keyboard page \
                  for the focus side.",
             );
-            support::well(ui, k, |ui| {
-                support::row(ui, |ui| {
+            scaffold::well(ui, k, |ui| {
+                scaffold::row(ui, |ui| {
                     if Button::new().label("Delete all…").show(ui).clicked() {
                         s.asking = true;
                     }
-                    support::readout(ui, k, "last answer", s.answer.unwrap_or("—"));
+                    scaffold::readout(ui, k, "last answer", s.answer.unwrap_or("—"));
                 });
             });
         });
@@ -237,15 +239,15 @@ fn tooltip_section(ui: &mut Ui, k: Kit, s: &mut State) {
             api!(Tooltip::when_disabled),
         ])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "Set the delay and the wrap width, then hover. A disabled widget shows no \
                  tooltip unless it opts in. Once one shows, the next within a second skips its \
                  delay — sweep along the lower row.",
             );
-            support::well(ui, k, |ui| {
-                support::row(ui, |ui| {
+            scaffold::well(ui, k, |ui| {
+                scaffold::row(ui, |ui| {
                     let r = Button::new().label("hover me").show(ui);
                     Tooltip::on(
                         &r,
@@ -270,7 +272,7 @@ fn tooltip_section(ui: &mut Ui, k: Kit, s: &mut State) {
                     let width = fmt!(ui, "{:.0} px", s.tip_width);
                     Text::new(width).style(&k.t.mono(k.t.ink)).show(ui);
                 });
-                support::row(ui, |ui| {
+                scaffold::row(ui, |ui| {
                     let r = Button::new().label("disabled").disabled(true).show(ui);
                     Tooltip::on(&r, "Never shown: a disabled trigger skips its tooltip.").show(ui);
 
@@ -282,7 +284,7 @@ fn tooltip_section(ui: &mut Ui, k: Kit, s: &mut State) {
                         .when_disabled(true)
                         .show(ui);
                 });
-                support::row(ui, |ui| {
+                scaffold::row(ui, |ui| {
                     for (label, tip) in [
                         ("one", "Hover, then move to the next item within a second."),
                         ("two", "This one showed at once — the warmup window."),
@@ -302,31 +304,31 @@ fn context_menu_section(ui: &mut Ui, k: Kit, s: &mut State) {
     Section::new("Context menu")
         .apis(&[api!(Menu::context), api!(MenuItem::shortcut)])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "Right-click the button or either surface. An item click, an outside click or \
                  Escape closes the menu, and ↑ ↓ walk its items. The right surface's menu \
                  has a looser theme.",
             );
-            support::row(ui, |ui| {
+            scaffold::row(ui, |ui| {
                 let trigger = Button::new().label("right-click me").show(ui);
                 DemoMenu {
                     trigger: &trigger,
                     style: None,
                 }
                 .show(ui, &mut s.action);
-                support::readout(ui, k, "last action", s.action.unwrap_or("—"));
+                scaffold::readout(ui, k, "last action", s.action.unwrap_or("—"));
             });
             let roomy = s.roomy.get_or_insert_with(|| roomy_menu_theme(ui));
-            support::tiles(ui, |ui| {
+            scaffold::tiles(ui, |ui| {
                 for (label, roomy) in [("default theme", None), ("roomy theme", Some(&*roomy))] {
                     let surface = Panel::zstack()
                         .id_salt(label)
                         .size((Sizing::fixed(260.0), Sizing::fixed(90.0)))
                         .child_align(Align::CENTER)
                         .sense(Sense::CLICK)
-                        .chrome(support::raised_chrome(k))
+                        .chrome(scaffold::raised_chrome(k))
                         .show(ui, |ui| {
                             Text::new(label).style(&k.t.caption()).show(ui);
                         })
@@ -345,14 +347,14 @@ fn menu_bar_section(ui: &mut Ui, k: Kit, s: &mut State) {
     Section::new("Menu bar")
         .apis(&[api!(MenuBar::new)])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "Click a title to open its menu. While one is open, moving onto another title \
                  opens that one, and ← → move between the menus.",
             );
-            support::well(ui, k, |ui| {
-                support::row(ui, |ui| {
+            scaffold::well(ui, k, |ui| {
+                scaffold::row(ui, |ui| {
                     MenuBar::new().show(ui, |bar| {
                         for (title, rows) in [
                             ("File", ["New", "Open…", "Save"]),
@@ -368,7 +370,7 @@ fn menu_bar_section(ui: &mut Ui, k: Kit, s: &mut State) {
                             });
                         }
                     });
-                    support::readout(ui, k, "last action", s.action.unwrap_or("—"));
+                    scaffold::readout(ui, k, "last action", s.action.unwrap_or("—"));
                 });
             });
         });
@@ -398,9 +400,7 @@ impl DemoMenu<'_> {
     /// Records the menu, writing the clicked item's label to `action`.
     fn show(self, ui: &mut Ui, action: &mut Option<&'static str>) {
         let Self { trigger, style } = self;
-        let mut menu = Menu::context(trigger)
-            .size((Sizing::HUG, Sizing::HUG))
-            .style(style);
+        let mut menu = Menu::context(trigger).size(SizeSpec::HUG).style(style);
         if style.is_some() {
             menu = menu.min_size((260.0, 0.0)).max_size((320.0, 280.0));
         }

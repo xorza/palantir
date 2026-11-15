@@ -1,14 +1,18 @@
 //! [`MoveDraw`]: a list's moves drawn onto their destination page, one instanced draw a run of a
 //! source and a destination, as WebRender's `ps_copy` moves texture-cache items.
 
+use crate::gpu::atlas::AtlasPool;
 use crate::gpu::atlas::atlas_format::{AtlasFormat, PerFormat};
 use crate::gpu::atlas::atlas_textures::texture_format;
-use crate::gpu::atlas::page_list::Move;
+use crate::gpu::atlas::page_list::{MAX_PAGES, Move};
 use crate::gpu::device::gpu::Gpu;
+use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
+use crate::gpu::resource::gpu_ctx::GpuCtx;
 use crate::gpu::resource::pipeline_recipe::{self, PipelineRecipe, vertex_attr};
 use crate::gpu::resource::shader_body::ShaderBody;
 use crate::gpu::resource::texture_binding::{self, Filtering};
 use std::mem::offset_of;
+use std::ops::Range;
 
 /// One move as the draw reads it: its origin on the source page, its origin on the destination
 /// page, its size, in texels, and the destination page's edge, which places it in clip space.
@@ -86,8 +90,8 @@ fn fs(in: MoveOut) -> @location(0) vec4<f32> {
 };
 
 /// The draw that moves a list's items: its shader, the source's layout, a pipeline for each list's
-/// format, built on the first move of that list, the buffer every run of a submission writes its
-/// rectangles into, each at its own place, and the scratch one run's rectangles gather in.
+/// format, built on the first move of that list, and a commit's rectangles, every run's one after
+/// another in a buffer that decays as per-frame scratch does (`src/gpu/AGENTS.md`, GPU memory).
 #[derive(Debug)]
 pub(crate) struct MoveDraw {
     shader: wgpu::ShaderModule,
@@ -95,19 +99,20 @@ pub(crate) struct MoveDraw {
     pipeline_layout: wgpu::PipelineLayout,
     /// By [`AtlasFormat`].
     pipelines: PerFormat<Option<wgpu::RenderPipeline>>,
-    /// Grown to the most rectangles one submission moved, and kept: its bound is the moves of the
-    /// largest commit, a purge's, which a list's items bound.
-    rects: Option<wgpu::Buffer>,
-    /// The bytes of `rects` the runs since [`Self::begin`] took.
-    used: u64,
-    /// One run's rectangles, kept across runs.
-    run_rects: Vec<MoveRect>,
+    /// The commit's rectangles, written once ahead of its runs.
+    rects: DynamicBuffer<MoveRect>,
+    /// The commit's rectangles as [`Self::stage`] gathers them, kept across commits.
+    staged: Vec<MoveRect>,
+    /// Where each run's rectangles lie in `rects`, by list and destination page; `None` where no
+    /// move of the commit lands there.
+    runs: PerFormat<[Option<Range<u32>>; MAX_PAGES]>,
 }
 
-/// One run of moves a draw records: from `source` onto `dest`, a page of `format`.
+/// One run of moves a draw records: from `source` onto `dest`, page `page` of `format`'s list.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct MoveRun<'a> {
     pub(crate) format: AtlasFormat,
+    pub(crate) page: usize,
     pub(crate) source: &'a wgpu::TextureView,
     pub(crate) dest: &'a wgpu::TextureView,
 }
@@ -122,49 +127,63 @@ impl MoveDraw {
             });
         Self {
             shader: SHADER.module(gpu),
-            pipeline_layout: pipeline_recipe::pipeline_layout(
-                gpu,
-                "palantir.atlas.move.pl",
-                &[Some(&layout)],
-            ),
+            pipeline_layout: gpu.pipeline_layout("palantir.atlas.move.pl", &[Some(&layout)]),
             layout,
             pipelines: PerFormat::default(),
-            rects: None,
-            used: 0,
-            run_rects: Vec::new(),
+            rects: DynamicBuffer::vertex(gpu, "palantir.atlas.move.rects", 16),
+            staged: Vec::new(),
+            runs: PerFormat::default(),
         }
     }
 
-    /// Start a submission's runs: each [`Self::record`] after takes the next place in the
-    /// rectangles' buffer, as the queue writes every run's before the submission draws any.
-    pub(crate) const fn begin(&mut self) {
-        self.used = 0;
+    /// Gather the rectangles of every move `pool`'s lists wait to commit, a run a destination
+    /// page, in the moves' order, and write them through `ctx` ahead of the runs that read them; a
+    /// commit with no move writes nothing, and the buffer steps down with the window.
+    pub(crate) fn stage(&mut self, ctx: &mut GpuCtx<'_>, pool: &AtlasPool) {
+        self.staged.clear();
+        for format in AtlasFormat::ALL {
+            let list = pool.list(format);
+            for page in 0..MAX_PAGES {
+                let start = self.staged.len();
+                for &m in list
+                    .moves()
+                    .iter()
+                    .filter(|m| usize::from(m.to.page) == page)
+                {
+                    let edge = list
+                        .page(page)
+                        .expect("a move lands on an open page")
+                        .edge();
+                    self.staged.push(MoveRect::of(m, edge));
+                }
+                let end = self.staged.len();
+                self.runs[format][page] = (end > start).then(|| {
+                    u32::try_from(start).expect("a commit's moves fit u32")
+                        ..u32::try_from(end).expect("a commit's moves fit u32")
+                });
+            }
+        }
+        self.rects.upload_instances(ctx, &self.staged);
     }
 
-    /// Record `run` of `rects` on `encoder`: one pass over its destination, which keeps the page's
-    /// other texels, and one instanced draw. The source's group is made for the run, as moves come
-    /// only on the frames a drain runs.
+    /// Record `run`, which [`Self::stage`] gathered, on `encoder`: one pass over its destination,
+    /// which keeps the page's other texels, and one instanced draw. The source's group is made for
+    /// the run, as moves come only on the frames a drain runs.
     pub(crate) fn record(
         &mut self,
         gpu: &Gpu,
         encoder: &mut wgpu::CommandEncoder,
         run: MoveRun<'_>,
-        rects: impl IntoIterator<Item = MoveRect>,
     ) {
-        self.run_rects.clear();
-        self.run_rects.extend(rects);
-        self.record_run(gpu, encoder, run);
-    }
-
-    /// [`Self::record`] of the rectangles gathered in `run_rects`.
-    fn record_run(&mut self, gpu: &Gpu, encoder: &mut wgpu::CommandEncoder, run: MoveRun<'_>) {
         let MoveRun {
             format,
+            page,
             source,
             dest,
         } = run;
-        let rects = self.run_rects.as_slice();
-        debug_assert!(!rects.is_empty(), "a run moves an item");
+        let rects = self.runs[format][page]
+            .clone()
+            .expect("a recorded run was staged");
         let pipeline = self.pipelines[format].get_or_insert_with(|| {
             PipelineRecipe {
                 vertex_buffers: &[Some(pipeline_recipe::vertex_layout(
@@ -192,27 +211,6 @@ impl MoveDraw {
                 resource: wgpu::BindingResource::TextureView(source),
             }],
         });
-        let bytes = size_of_val(rects) as u64;
-        let fits = self
-            .rects
-            .as_ref()
-            .is_some_and(|buffer| self.used + bytes <= buffer.size());
-        if !fits {
-            // The runs recorded before keep the buffer they read until the submission is done.
-            let size = (self.used + bytes).next_power_of_two();
-            self.rects = Some(gpu.device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("palantir.atlas.move.rects"),
-                size,
-                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            }));
-            self.used = 0;
-        }
-        let instances = self.rects.as_ref().expect("made above");
-        let at = self.used;
-        gpu.queue
-            .write_buffer(instances, at, bytemuck::cast_slice(rects));
-        self.used += bytes;
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("palantir.atlas.move.pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -231,10 +229,40 @@ impl MoveDraw {
         });
         pass.set_pipeline(pipeline);
         pass.set_bind_group(0, &group, &[]);
-        pass.set_vertex_buffer(0, instances.slice(at..at + bytes));
-        pass.draw(
-            0..4,
-            0..u32::try_from(rects.len()).expect("a run's moves fit u32"),
+        // The run's place in the buffer is its slice, not a first instance, which OpenGL ES has
+        // no draw call for.
+        let bytes = |at: u32| u64::from(at) * size_of::<MoveRect>() as u64;
+        pass.set_vertex_buffer(
+            0,
+            self.rects
+                .buffer
+                .slice(bytes(rects.start)..bytes(rects.end)),
         );
+        pass.draw(0..4, 0..rects.end - rects.start);
+    }
+}
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use crate::gpu::atlas::atlas_format::{AtlasFormat, PerFormat};
+    use crate::gpu::atlas::atlas_textures::move_draw::{MoveDraw, MoveRect};
+    use crate::gpu::resource::gpu_ctx::GpuCtx;
+
+    impl MoveDraw {
+        /// Stage `rects` through `ctx` as the next commit's one run, onto page 0 of `format`'s
+        /// list, as a bench moves rectangles no pool planned.
+        pub(crate) fn stage_run(
+            &mut self,
+            ctx: &mut GpuCtx<'_>,
+            format: AtlasFormat,
+            rects: &[MoveRect],
+        ) {
+            self.staged.clear();
+            self.staged.extend_from_slice(rects);
+            self.runs = PerFormat::default();
+            self.runs[format][0] =
+                Some(0..u32::try_from(rects.len()).expect("a run's moves fit u32"));
+            self.rects.upload_instances(ctx, &self.staged);
+        }
     }
 }

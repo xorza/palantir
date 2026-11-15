@@ -1,9 +1,13 @@
+use crate::cascade::blur_plan::BlurPlan;
+use crate::cascade::blur_plan::internals::{mirror, reference_tent};
 use crate::common::expiry_window::EXPIRY_FRAMES;
 use crate::gpu::backdrop::backdrop_blur::{
-    BackdropBlur, BlurJob, BlurParams, JobLayout, LEVEL_FORMAT, ResidualLoop, ResultTarget, grown,
+    BackdropBlur, BlurJob, BlurParams, JobLayout, LEVEL_FORMAT, LevelsExtent, ResidualLoop,
+    ResultTarget,
 };
 use crate::gpu::device::pass_traffic::PassTraffic;
 use crate::gpu::pipeline::effect_pipeline::backdrop_groups::ResultTexture;
+use crate::gpu::resource::decaying_texture::Extent;
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::test_gpu::{TestGpu, headless_test_gpu};
 use crate::gpu::texel;
@@ -11,9 +15,7 @@ use crate::gpu::texel::TargetFormat;
 use crate::internals::srgb_reference;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::math::libm_ext::Libm;
-use crate::shape::paint::blur_plan::BlurPlan;
-use crate::shape::paint::blur_plan::internals::{mirror, reference_tent};
-use glam::UVec2;
+use glam::{IVec2, UVec2};
 use half::f16;
 use std::mem::offset_of;
 use std::ops::Range;
@@ -123,12 +125,7 @@ fn reference(plan: BlurPlan, pixels: &[[u8; 4]]) -> [Plane; 4] {
 
 /// Run `jobs` over the capture `pixels`, into a `dest_size` destination read back whole. The
 /// capture takes the jobs' format: `Rgba32Float` holds each byte's linear value.
-fn blur(
-    gpu: &TestGpu,
-    pixels: &[[u8; 4]],
-    jobs: &mut [BlurJob],
-    dest_size: UVec2,
-) -> Vec<[f32; 4]> {
+fn blur(gpu: &TestGpu, pixels: &[[u8; 4]], jobs: &[BlurJob], dest_size: UVec2) -> Vec<[f32; 4]> {
     let residual = ResidualLoop::of(&gpu.device.adapter_info());
     blur_with(gpu, residual, pixels, jobs, dest_size)
 }
@@ -138,7 +135,7 @@ fn blur_with(
     gpu: &TestGpu,
     residual: ResidualLoop,
     pixels: &[[u8; 4]],
-    jobs: &mut [BlurJob],
+    jobs: &[BlurJob],
     dest_size: UVec2,
 ) -> Vec<[f32; 4]> {
     let mut engine = BackdropBlur::with_loop(gpu, TextureBinding::new(gpu).sampler(), residual);
@@ -150,12 +147,12 @@ fn blur_on(
     gpu: &TestGpu,
     engine: &mut BackdropBlur,
     pixels: &[[u8; 4]],
-    jobs: &mut [BlurJob],
+    jobs: &[BlurJob],
     dest_size: UVec2,
 ) -> Vec<[f32; 4]> {
     let format = jobs[0].format;
     engine.capture_view(gpu, format, SURFACE);
-    let capture = &engine.captures[0].target.texture;
+    let capture = &engine.captures[0].target().texture;
     let linear: Vec<[f32; 4]> = pixels
         .iter()
         .map(|px| {
@@ -239,7 +236,6 @@ fn whole(plan: BlurPlan, dest_origin: UVec2, format: TargetFormat) -> BlurJob {
         dest: ResultTexture::Page(0),
         dest_origin,
         footprint: URect::new(0, 0, SURFACE.x, SURFACE.y),
-        layout: JobLayout::default(),
     }
 }
 
@@ -256,7 +252,7 @@ fn whole_of(plan: BlurPlan, surface: UVec2) -> BlurJob {
 }
 
 /// Lay `jobs` out on `engine` as one batch, as a frame of them does, with nothing encoded.
-fn prepare_on(gpu: &TestGpu, engine: &mut BackdropBlur, jobs: &mut [BlurJob]) {
+fn prepare_on(gpu: &TestGpu, engine: &mut BackdropBlur, jobs: &[BlurJob]) {
     gpu.frame(|ctx| {
         let all = 0..jobs.len();
         engine.prepare(
@@ -282,14 +278,14 @@ fn the_shared_textures_expire_after_idle() {
         engine
             .captures
             .iter()
-            .map(|c| texel::size(&c.target.texture))
+            .map(|c| texel::size(&c.target().texture))
             .collect::<Vec<_>>()
     };
     let large = UVec2::new(600, 400);
-    prepare_on(&gpu, &mut engine, &mut [whole_of(plan, large)]);
+    prepare_on(&gpu, &mut engine, &[whole_of(plan, large)]);
     assert_eq!(capture(&engine), [UVec2::new(768, 512)]);
     for _ in 1..EXPIRY_FRAMES {
-        prepare_on(&gpu, &mut engine, &mut [whole_of(plan, SURFACE)]);
+        prepare_on(&gpu, &mut engine, &[whole_of(plan, SURFACE)]);
     }
     assert_eq!(
         capture(&engine),
@@ -297,17 +293,22 @@ fn the_shared_textures_expire_after_idle() {
         "its window read it"
     );
     for _ in 0..EXPIRY_FRAMES {
-        prepare_on(&gpu, &mut engine, &mut [whole_of(plan, SURFACE)]);
+        prepare_on(&gpu, &mut engine, &[whole_of(plan, SURFACE)]);
     }
     assert_eq!(capture(&engine), [UVec2::splat(256)], "stepped down");
-    assert!(engine.levels.is_some() && engine.scratch.is_some());
-    let scratch = texel::size(&engine.scratch.as_ref().unwrap().texture);
+    assert_eq!(
+        engine.slots[0].params.source_max,
+        IVec2::splat(255),
+        "the frame that stepped it down bounds its reads by the texture it binds",
+    );
+    assert!(engine.levels.get().is_some() && engine.scratch.get().is_some());
+    let scratch = texel::size(&engine.scratch.get().unwrap().texture);
     assert_eq!(scratch, UVec2::splat(256), "the scratch steps down too");
     for _ in 0..EXPIRY_FRAMES {
-        prepare_on(&gpu, &mut engine, &mut []);
+        prepare_on(&gpu, &mut engine, &[]);
     }
     assert!(capture(&engine).is_empty(), "no frame read a capture");
-    assert!(engine.levels.is_none() && engine.scratch.is_none());
+    assert!(engine.levels.get().is_none() && engine.scratch.get().is_none());
 }
 
 /// The GPU passes match the reference arithmetic on every texel the job writes, its apron
@@ -326,7 +327,7 @@ fn the_passes_match_the_reference_arithmetic() {
         let plan = BlurPlan::new(sigma);
         let job = whole(plan, UVec2::new(3, 5), format);
         let dest = job.dest_rect();
-        let got = blur(&gpu, &pixels, &mut [job], dest.max());
+        let got = blur(&gpu, &pixels, &[job], dest.max());
         let want = reference(plan, &pixels);
         let tolerance = f64::from(plan.levels() + 2) * 2f64.libm_powi(-11);
         let apron = i64::from(plan.apron());
@@ -362,7 +363,7 @@ fn the_residuals_loops_write_the_same_texels() {
         let job = whole(BlurPlan::new(sigma), UVec2::new(3, 5), format);
         let size = job.dest_rect().max();
         let bits = |residual| {
-            blur_with(&gpu, residual, &pixels, &mut [job], size)
+            blur_with(&gpu, residual, &pixels, &[job], size)
                 .into_iter()
                 .map(|texel| texel.map(f32::to_bits))
                 .collect::<Vec<_>>()
@@ -405,7 +406,7 @@ fn a_larger_region_gives_a_backdrops_texels_bit_for_bit() {
             ..big
         };
         let dest = big.dest_rect().union(small.dest_rect());
-        let got = blur(&gpu, &pixels, &mut [big, small], dest.max());
+        let got = blur(&gpu, &pixels, &[big, small], dest.max());
         let width = dest.max().x;
         let apron = plan.apron();
         for y in backdrop.min.y..backdrop.max().y {
@@ -441,41 +442,24 @@ fn blur_params_lie_as_the_shader_reads_them() {
     );
 }
 
-/// A texture grows each short edge to the next whole granule, 300 → 512 and 10 → 256, keeps an
-/// edge it already holds, 512 for 520 × 10 grows to 768 × 256, never shrinks, and stops at the
-/// ceiling, 16 300 → 16 384 rather than 16 384's next granule.
-#[test]
-fn a_texture_grows_by_whole_granules_up_to_the_ceiling() {
-    let ceiling = 16_384;
-    for (have, want, grows_to) in [
-        (UVec2::ZERO, UVec2::new(300, 10), UVec2::new(512, 256)),
-        (
-            UVec2::new(512, 256),
-            UVec2::new(520, 10),
-            UVec2::new(768, 256),
-        ),
-        (UVec2::new(768, 768), UVec2::new(1, 1), UVec2::new(768, 768)),
-        (
-            UVec2::ZERO,
-            UVec2::new(16_300, 256),
-            UVec2::new(16_384, 256),
-        ),
-    ] {
-        assert_eq!(grown(have, want, ceiling), grows_to, "{have} for {want}");
-    }
+/// What [`blur_batches`] gives: every texel of each destination page the jobs name, from page 0,
+/// rows of `width` texels, each page the size that holds every job's texels; and where the blur
+/// laid each job out.
+#[derive(Debug)]
+struct Blurred {
+    pages: Vec<Vec<[f32; 4]>>,
+    layouts: Vec<JobLayout>,
 }
 
 /// Blur `jobs` over `color` in `batches`, each batch's captures copied before its passes, as the
-/// main pass breaks, on a device whose passes move `traffic`; every texel of each destination page
-/// the jobs name, from page 0, rows of `width` texels, each page the size that holds every job's
-/// texels.
+/// main pass breaks, on a device whose passes move `traffic`.
 fn blur_batches(
     gpu: &TestGpu,
     color: &wgpu::Texture,
-    jobs: &mut [BlurJob],
+    jobs: &[BlurJob],
     batches: &[Range<usize>],
     traffic: PassTraffic,
-) -> Vec<Vec<[f32; 4]>> {
+) -> Blurred {
     let page_of = |dest: ResultTexture| match dest {
         ResultTexture::Page(page) => usize::from(page),
         ResultTexture::Scratch(_) => unreachable!("a test blurs into pages"),
@@ -513,16 +497,19 @@ fn blur_batches(
     gpu.frame(|ctx| {
         engine.prepare(ctx, jobs, batches.iter().cloned(), None);
         for batch in batches {
-            for job in &jobs[batch.clone()] {
-                engine.copy_capture(ctx.encoder, job, color);
+            for at in batch.clone() {
+                engine.copy_capture(ctx.encoder, at, color);
             }
-            engine.encode(ctx.encoder, &jobs[batch.clone()], |dest| ResultTarget {
+            engine.encode(ctx.encoder, batch.clone(), |dest| ResultTarget {
                 texture: &dests[page_of(dest)],
                 view: &views[page_of(dest)],
             });
         }
     });
-    dests.iter().map(|dest| read_f16(gpu, dest)).collect()
+    Blurred {
+        pages: dests.iter().map(|dest| read_f16(gpu, dest)).collect(),
+        layouts: engine.laid.iter().map(|laid| laid.layout).collect(),
+    }
 }
 
 /// A backdrop's job copies only its footprint, into a capture and levels that start at the first
@@ -570,7 +557,6 @@ fn a_backdrop_blurs_from_its_footprint_alone() {
         region: plan.region(footprint, LARGE).unwrap(),
         dest: ResultTexture::Page(0),
         dest_origin: UVec2::ZERO,
-        layout: JobLayout::default(),
     };
     let backdrop_job = |plan: BlurPlan, backdrop: URect| {
         let reach = UVec2::splat(plan.reach());
@@ -602,18 +588,15 @@ fn a_backdrop_blurs_from_its_footprint_alone() {
             dest_origin: UVec2::new(0, whole.dest_rect().max().y),
             ..backdrop_job(plan, backdrop)
         };
-        let mut jobs = [whole, alone];
-        let got =
-            blur_batches(&gpu, &color, &mut jobs, &[0..1, 1..2], PassTraffic::Drawn).remove(0);
-        let [whole, alone] = jobs;
-        assert_eq!(
-            alone.layout.capture_origin, alone.footprint.min,
-            "σ {sigma}"
-        );
-        assert_ne!(alone.layout.capture_origin, UVec2::ZERO, "σ {sigma}");
+        let jobs = [whole, alone];
+        let mut blurred = blur_batches(&gpu, &color, &jobs, &[0..1, 1..2], PassTraffic::Drawn);
+        let got = blurred.pages.remove(0);
+        let laid = blurred.layouts[1];
+        assert_eq!(laid.capture_origin, alone.footprint.min, "σ {sigma}");
+        assert_ne!(laid.capture_origin, UVec2::ZERO, "σ {sigma}");
         if let Some(past_first) = plan.levels().checked_sub(1) {
             let first = alone.region.min << u32::from(past_first);
-            assert_eq!(alone.layout.levels_origin, first, "σ {sigma}");
+            assert_eq!(laid.levels_origin, first, "σ {sigma}");
             assert_ne!(first.min_element(), 0, "σ {sigma}");
         }
         let w = width(&jobs);
@@ -634,18 +617,19 @@ fn a_backdrop_blurs_from_its_footprint_alone() {
         dest_origin: UVec2::new(0, shallow.dest_rect().max().y),
         ..deep
     };
-    let mut apart = [shallow, deep];
-    let got_apart =
-        blur_batches(&gpu, &color, &mut apart, &[0..1, 1..2], PassTraffic::Drawn).remove(0);
-    let mut together = [shallow, deep];
+    let apart = [shallow, deep];
+    let got_apart = blur_batches(&gpu, &color, &apart, &[0..1, 1..2], PassTraffic::Drawn)
+        .pages
+        .remove(0);
+    let together = [shallow, deep];
     #[expect(
         clippy::single_range_in_vec_init,
         reason = "one batch of both jobs, not the jobs' indices"
     )]
-    let got_together =
-        blur_batches(&gpu, &color, &mut together, &[0..2], PassTraffic::Drawn).remove(0);
-    let levels_origin = together[0].layout.levels_origin;
-    assert_eq!(levels_origin, together[1].layout.levels_origin, "one batch");
+    let mut blurred = blur_batches(&gpu, &color, &together, &[0..2], PassTraffic::Drawn);
+    let got_together = blurred.pages.remove(0);
+    let levels_origin = blurred.layouts[0].levels_origin;
+    assert_eq!(levels_origin, blurred.layouts[1].levels_origin, "one batch");
     // Level 1 starts at the shallow backdrop's region, (50, 40) − 22 halved: (14, 9); and at the
     // deep one's times 4: (5, 1) · 4 = (20, 4). The batch's levels start at the smaller, (14, 4),
     // floored to a multiple of 4: (12, 4).
@@ -664,7 +648,7 @@ fn a_backdrop_blurs_from_its_footprint_alone() {
     // The deep job of the same batch on a page of its own, at the same texels: the down pass
     // writes each page in a pass of its own, each job's texels as one destination holds them, and
     // the first page keeps none of the deep job's.
-    let mut paged = [
+    let paged = [
         shallow,
         BlurJob {
             dest: ResultTexture::Page(1),
@@ -675,8 +659,11 @@ fn a_backdrop_blurs_from_its_footprint_alone() {
         clippy::single_range_in_vec_init,
         reason = "one batch of both jobs, not the jobs' indices"
     )]
-    let got_paged = blur_batches(&gpu, &color, &mut paged, &[0..2], PassTraffic::Drawn);
-    let drawn_places = paged.map(|job| job.layout.scratch_origin);
+    let Blurred {
+        pages: got_paged,
+        layouts,
+    } = blur_batches(&gpu, &color, &paged, &[0..2], PassTraffic::Drawn);
+    let drawn_places: Vec<UVec2> = layouts.iter().map(|laid| laid.scratch_origin).collect();
     assert_eq!(
         backdrop_texels(&got_paged[0], w, paged[0], left),
         backdrop_texels(&got_together, w, together[0], left),
@@ -701,7 +688,10 @@ fn a_backdrop_blurs_from_its_footprint_alone() {
         clippy::single_range_in_vec_init,
         reason = "one batch of both jobs, not the jobs' indices"
     )]
-    let got_staged = blur_batches(&gpu, &color, &mut paged, &[0..2], PassTraffic::WholeTarget);
+    let Blurred {
+        pages: got_staged,
+        layouts,
+    } = blur_batches(&gpu, &color, &paged, &[0..2], PassTraffic::WholeTarget);
     assert!(
         got_staged == got_paged,
         "the staged pages read back as the drawn ones"
@@ -713,7 +703,7 @@ fn a_backdrop_blurs_from_its_footprint_alone() {
     assert_eq!(shallow.region.size, UVec2::new(27, 26));
     assert_eq!(shallow.dest_rect().size, UVec2::new(31, 30));
     assert_eq!(drawn_places, [UVec2::ZERO, UVec2::new(0, 28)]);
-    let staged_places = paged.map(|job| job.layout.scratch_origin);
+    let staged_places: Vec<UVec2> = layouts.iter().map(|laid| laid.scratch_origin).collect();
     assert_eq!(staged_places, [UVec2::ZERO, UVec2::new(0, 32)]);
 }
 
@@ -735,19 +725,21 @@ fn a_batch_past_the_scratch_runs_in_rounds() {
     };
     let size = second.dest_rect().max();
     let run = |edge: u16| {
-        let mut jobs = [first, second];
+        let jobs = [first, second];
         let mut engine = BackdropBlur::new(&gpu, TextureBinding::new(&gpu).sampler());
         engine.cap(u32::from(edge));
-        let got = blur_on(&gpu, &mut engine, &pixels, &mut jobs, size);
-        let scratch = texel::size(&engine.scratch.as_ref().unwrap().texture);
+        let got = blur_on(&gpu, &mut engine, &pixels, &jobs, size);
+        let scratch = texel::size(&engine.scratch.get().unwrap().texture);
         assert!(
             scratch.max_element() <= u32::from(edge),
             "{scratch} past {edge}"
         );
-        (
-            jobs.map(|job| (job.layout.scratch_round, job.layout.scratch_origin)),
-            got,
-        )
+        let places: Vec<(u32, UVec2)> = engine
+            .laid
+            .iter()
+            .map(|laid| (laid.layout.scratch_round, laid.layout.scratch_origin))
+            .collect();
+        (places, got)
     };
     let (one, got_one) = run(128);
     assert_eq!(one, [(0, UVec2::ZERO), (0, UVec2::new(0, 64))]);
@@ -762,4 +754,23 @@ fn a_batch_past_the_scratch_runs_in_rounds() {
         got_two[..half] == got_two[half..],
         "the jobs blur the same pixels"
     );
+}
+
+/// Levels hold a need only with as many levels and as many texels of level 1; growing takes the
+/// larger count and rounds level 1 so its last mip divides it: 300 × 10 over 3 levels takes
+/// 512 × 256, a whole number of 4-texel mips, and a need of 2 levels over held 3 keeps 3.
+#[test]
+fn levels_grow_to_the_larger_count_and_hold_by_both() {
+    let levels = |x, y, mips| LevelsExtent {
+        first: UVec2::new(x, y),
+        mips,
+    };
+    let held = LevelsExtent::NONE.grown(levels(300, 10, 3), 16_384);
+    assert_eq!(held, levels(512, 256, 3));
+    assert!(held.holds(levels(512, 256, 3)));
+    assert!(held.holds(levels(100, 100, 2)));
+    assert!(!held.holds(levels(100, 100, 4)), "one level more");
+    assert!(!held.holds(levels(513, 10, 1)), "one texel wider");
+    assert_eq!(held.grown(levels(10, 10, 2), 16_384), held);
+    assert_eq!(held.union(levels(600, 1, 1)), levels(600, 256, 3));
 }

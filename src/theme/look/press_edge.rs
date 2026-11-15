@@ -2,11 +2,11 @@
 
 use glam::Vec2;
 
-use crate::primitives::input::interaction::button_phase::ButtonPhase;
-use crate::primitives::input::interaction::response_state::ResponseState;
+use crate::primitives::input::interaction::pointer_button_phase::PointerButtonPhase;
+use crate::primitives::input::interaction::response::Response;
 
 /// What the primary button does on a widget this frame, as its press effect follows it, points in
-/// logical px from the widget's top-left. One case for each [`ButtonPhase`].
+/// logical px from the widget's top-left. One case for each [`PointerButtonPhase`].
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum PressEdge {
     /// No press is on the widget: one still held ends here, as when the widget was disabled under
@@ -23,17 +23,17 @@ pub(crate) enum PressEdge {
 
 impl PressEdge {
     /// The edge `state` shows.
-    pub(crate) fn of(state: &ResponseState) -> Self {
+    pub(crate) fn of(state: &Response) -> Self {
         let center = state
             .layout_rect
             .map_or(Vec2::ZERO, |rect| Vec2::new(rect.size.w, rect.size.h) * 0.5);
         match state.left.phase {
-            ButtonPhase::Idle => Self::Idle,
-            ButtonPhase::Down { .. } => Self::Pressed {
+            PointerButtonPhase::Idle => Self::Idle,
+            PointerButtonPhase::Down { .. } => Self::Pressed {
                 point: state.pointer_local.unwrap_or(center),
             },
-            ButtonPhase::Held => Self::Held,
-            ButtonPhase::Up { .. } => Self::Released { center },
+            PointerButtonPhase::Held => Self::Held,
+            PointerButtonPhase::Up { .. } => Self::Released { center },
         }
     }
 

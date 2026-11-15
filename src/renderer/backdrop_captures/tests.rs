@@ -1,17 +1,18 @@
+use crate::cascade::blur_plan::BlurPlan;
 use crate::cascade::plane_backdrop::PlaneBackdrop;
 use crate::damage::dirty_backdrops::DirtyBackdrops;
 use crate::display::Display;
 use crate::host::harness::Harness;
-use crate::host::harness::harness_builder::Depth;
+use crate::host::harness::harness_builder::HarnessDepth;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::identity::backdrop_key::BackdropKey;
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::SizeSpec;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
 use crate::renderer::backdrop_captures::{
-    BackdropCaptures, BackdropDamage, BackdropTicket, Settled,
+    BackdropCaptures, BackdropDamage, BackdropTicket, Settled, TicketResult,
 };
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::backdrop_row::BackdropRow;
@@ -19,7 +20,6 @@ use crate::renderer::render_buffer::backdrop_row::BackdropSource::{
     self, Capture, Clear, Held, Hidden,
 };
 use crate::shape::Shape;
-use crate::shape::paint::blur_plan::BlurPlan;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
@@ -47,12 +47,8 @@ fn backdrop(i: u32, footprint: URect, sigma: f32) -> PlaneBackdrop {
         footprint.size.y as f32,
     );
     PlaneBackdrop {
-        key: key(i),
-        row: i,
-        paint_row: i,
-        rect,
         plan: BlurPlan::new(sigma),
-        footprint: rect,
+        ..PlaneBackdrop::fixture(key(i), i, rect)
     }
 }
 
@@ -93,7 +89,7 @@ fn frame(
     buffer
         .backdrops
         .extend(tickets.iter().enumerate().map(|(i, ticket)| {
-            let source = match (ticket.captures, drawn) {
+            let source = match (ticket.is_new(), drawn) {
                 (false, _) => Held,
                 (true, Drawn::Captured) => Capture {
                     barrier: i as u32 + 1,
@@ -109,7 +105,7 @@ fn frame(
             }
         }));
     captures.settle(&buffer);
-    tickets.iter().map(|ticket| ticket.captures).collect()
+    tickets.iter().map(|ticket| ticket.is_new()).collect()
 }
 
 /// A backdrop captures when it is new, dirty, on a whole frame, or when its held capture does not
@@ -264,7 +260,7 @@ fn a_backdrop_captures_when_its_held_capture_does_not_serve() {
         partial,
     );
     let inside = captures.tickets()[0].expect("on the surface");
-    assert!(!inside.captures);
+    assert_eq!(inside.result, TicketResult::Held);
     assert_eq!(
         inside.capture.region,
         plan.region(at(37), SURFACE).unwrap(),
@@ -353,7 +349,7 @@ fn more_captures_than_a_partial_frame_holds_overflow() {
             .tickets()
             .iter()
             .flatten()
-            .all(|ticket| ticket.captures),
+            .all(|ticket| ticket.is_new()),
         "every backdrop of a whole frame captures"
     );
 }
@@ -388,18 +384,18 @@ fn a_backdrop_whose_key_moves_takes_a_new_result() {
         move |ui: &mut Ui| {
             Panel::zstack()
                 .id(WidgetId::from_hash("scene"))
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| {
                     Panel::canvas()
                         .id(WidgetId::from_hash("under"))
-                        .size((Sizing::FILL, Sizing::FILL))
+                        .size(SizeSpec::FILL)
                         .show(ui, |ui| {
                             let square = Rect::new(42.0, 42.0, 4.0, 4.0);
                             ui.add_shape(Shape::rect().at(square), RgbaF32::WHITE);
                         });
                     Panel::canvas()
                         .id(WidgetId::from_hash("moved"))
-                        .size((Sizing::FILL, Sizing::FILL))
+                        .size(SizeSpec::FILL)
                         .show(ui, |ui| {
                             if lead {
                                 let lead = Rect::new(0.0, 0.0, 4.0, 4.0);
@@ -417,7 +413,7 @@ fn a_backdrop_whose_key_moves_takes_a_new_result() {
     let red = RgbaF32::srgb(1.0, 0.2, 0.1);
     let mut h = Harness::builder(UVec2::new(200, 200))
         .mono()
-        .depth(Depth::Compose)
+        .depth(HarnessDepth::Compose)
         .build();
     let sources = |h: &Harness| -> Vec<(u32, BackdropSource)> {
         h.render_buffer()

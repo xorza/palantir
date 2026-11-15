@@ -289,15 +289,14 @@ fn the_schedule_follows_each_acquire_outcome() {
     use crate::host::winit::window::present_schedule::{
         AcquireOutcome as O, PresentDecision, PresentSchedule, Wake,
     };
-    use crate::ui::frame_report::{FrameProcessing, FrameReport};
+    use crate::ui::frame_report::{FramePaint, FrameReport};
     use glam::UVec2;
 
     let report = |repaint_requested, repaint_at| FrameReport {
         repaint_requested,
         repaint_at,
         earliest_repaint_at: None,
-        plan: None,
-        processing: FrameProcessing::SingleLayout,
+        paint: FramePaint::Skip,
     };
     let due = Duration::from_secs(2);
     let ms = Duration::from_millis;

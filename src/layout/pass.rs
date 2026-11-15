@@ -9,12 +9,13 @@
 
 use crate::common::span::Span;
 use crate::layout::axis_slot::NodeSlot;
-use crate::layout::cache::Arranged;
+use crate::layout::cache::ArrangedRows;
 use crate::layout::cache::measure_snapshot::SubtreeKey;
-use crate::layout::drivers::grid::grid_ctx::GridCtx;
+use crate::layout::drivers;
+use crate::layout::drivers::grid::grid_track_store::GridTrackStore;
 use crate::layout::drivers::stack::stack_scratch::StackScratch;
 use crate::layout::drivers::wrapstack::WrapScratch;
-use crate::layout::drivers::{DriverOp, LayoutDriver, OutsideInputOp};
+use crate::layout::drivers::{DriverOp, LayoutDriver};
 use crate::layout::engine::LayoutEngine;
 use crate::layout::intrinsic::intrinsic_pass::IntrinsicPass;
 use crate::layout::intrinsic::intrinsic_range::IntrinsicRange;
@@ -124,11 +125,10 @@ impl LayoutPass<'_> {
         self.engine.scratch.measure.floor[node.idx()]
     }
 
-    /// Grid's per-depth track scratch and durable hug pool, handed back whole because
-    /// `grid` disjoint-borrows the halves in one expression.
+    /// The grids' track state for the pass.
     #[inline]
-    pub(super) const fn grid_mut(&mut self) -> &mut GridCtx {
-        &mut self.engine.scratch.grid
+    pub(super) const fn grid_tracks_mut(&mut self) -> &mut GridTrackStore {
+        &mut self.engine.scratch.grid.track_state
     }
 
     #[inline]
@@ -160,10 +160,7 @@ impl LayoutPass<'_> {
         let start = node.idx();
         self.engine.scratch.local[start] = anchor;
         let end = self.input.tree.subtree_end_of(start);
-        self.out.rect[start..end].fill(Rect {
-            min: self.origin + anchor,
-            size: Size::ZERO,
-        });
+        collapse(&mut self.out.rect[start..end], self.origin + anchor);
     }
 
     /// This node's arranged rect, as `arrange` left it.
@@ -206,9 +203,10 @@ impl LayoutPass<'_> {
         // is still measured (a text leaf shapes its run). The container-text pass in
         // `LayoutEngine::run` is the opposite: its runs are paint-only.
         if layout.meta.visibility().is_collapsed() {
-            self.engine.scratch.measure.desired[node.idx()] = Size::ZERO;
-            self.engine.scratch.measure.floor[node.idx()] = Size::ZERO;
-            self.engine.scratch.measure.stable_from[node.idx()] = Size::ZERO;
+            self.engine
+                .scratch
+                .measure
+                .set_measured(node.idx(), Measured::ZERO);
             return Measured::ZERO;
         }
 
@@ -259,9 +257,10 @@ impl LayoutPass<'_> {
         }
         .resolve(|inner_avail| self.measure_dispatch(node, layout, inner_avail));
 
-        self.engine.scratch.measure.desired[node.idx()] = measured.size;
-        self.engine.scratch.measure.floor[node.idx()] = measured.floor;
-        self.engine.scratch.measure.stable_from[node.idx()] = measured.stable_from;
+        self.engine
+            .scratch
+            .measure
+            .set_measured(node.idx(), measured);
 
         measured
     }
@@ -297,12 +296,7 @@ impl LayoutPass<'_> {
         self.engine.scratch.local[node.idx()] = slot.min;
         let rendered = place(self.origin, slot, layout.margin);
         let mode = LayoutMode::from(layout.meta);
-        let slot_pure = OutsideInputOp {
-            tree,
-            layout: self.out,
-        }
-        .dispatch(node, mode)
-        .is_none();
+        let slot_pure = drivers::outside_input(tree, self.out, node).is_none();
         if slot_pure && self.replay_arranged(node, rendered) {
             return;
         }
@@ -343,7 +337,7 @@ impl LayoutPass<'_> {
         let start = node.idx();
         let end = tree.subtree_end_of(start);
         let engine = &mut *self.engine;
-        let Arranged { rects, locals } = engine.cache.arranged(base.idx(), end - start);
+        let ArrangedRows { rects, locals } = engine.cache.arranged(base.idx(), end - start);
         if rects[0].size != rendered.size {
             return false;
         }
@@ -379,10 +373,7 @@ impl LayoutPass<'_> {
             let local = locals[i - start];
             let sub_end = tree.subtree_end_of(i);
             if layout.meta.visibility().is_collapsed() {
-                dst[i - start..sub_end - start].fill(Rect {
-                    min: parent + local,
-                    size: Size::ZERO,
-                });
+                collapse(&mut dst[i - start..sub_end - start], parent + local);
                 i = sub_end;
                 continue;
             }
@@ -522,4 +513,12 @@ impl DriverOp for ArrangeOp<'_, '_> {
     }
 
     fn leaf(self, _node: NodeId) {}
+}
+
+/// The rects of a collapsed subtree, `rects`: each of no size, at its slot's corner `min`.
+fn collapse(rects: &mut [Rect], min: Vec2) {
+    rects.fill(Rect {
+        min,
+        size: Size::ZERO,
+    });
 }

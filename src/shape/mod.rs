@@ -1,5 +1,5 @@
 //! Shapes from authoring to record: geometry builders and the paints a shape takes, the per-tree
-//! record buffer, the payload store they lower into, their paint animations, and lowering.
+//! record buffer, the payload store they lower into, and their paint animations.
 
 #![expect(
     private_interfaces,
@@ -8,13 +8,13 @@
 
 pub(crate) mod arc;
 pub(crate) mod circle;
+pub(crate) mod closed_shape;
 pub(crate) mod curve;
 pub(crate) mod draw;
 pub(crate) mod effect_paint;
 pub(crate) mod geometry;
 pub(crate) mod icon_paint;
 pub(crate) mod image_paint;
-pub(crate) mod lower;
 pub(crate) mod mesh;
 pub(crate) mod paint;
 pub(crate) mod paint_animation;
@@ -32,7 +32,7 @@ use crate::primitives::geometry::mesh::Mesh;
 use crate::primitives::geometry::quadratic_bezier::QuadraticBezier;
 use crate::primitives::math::domain;
 use crate::primitives::math::domain::vec2;
-use crate::primitives::text::interned_str::InternedStr;
+use crate::primitives::text::text_input::TextInput;
 use crate::shape::arc::ArcShape;
 use crate::shape::circle::CircleShape;
 use crate::shape::curve::{CurvePath, CurveShape};
@@ -50,8 +50,8 @@ use glam::Vec2;
 /// - A rect takes anything `Into<`[`Paint`](crate::Paint)`>`: the paint, or a color, a brush, a
 ///   gradient, a border or a shadow as that part alone; a
 ///   [`MaterialPaint`](crate::MaterialPaint), or a [`Material`](crate::Material) alone; an
-///   [`EffectPaint`](crate::widget::EffectPaint); an [`ImagePaint`](crate::widget::ImagePaint);
-///   an [`IconPaint`](crate::widget::IconPaint). An image's rect clips it by its corners; an icon
+///   [`EffectPaint`](crate::EffectPaint); an [`ImagePaint`](crate::ImagePaint);
+///   an [`IconPaint`](crate::IconPaint). An image's rect clips it by its corners; an icon
 ///   takes a square-cornered rect, as its pipeline clips to no corners.
 /// - A circle takes anything `Into<Paint>`, a `MaterialPaint` or a `Material` as a round box, a
 ///   [`Stroke`](crate::Stroke) as a
@@ -115,7 +115,7 @@ impl Shape {
     ///
     /// # Panics
     ///
-    /// Panics unless both are [angles](crate::widget::domain::angle).
+    /// Panics unless both are [angles](crate::widget::domain::is_angle).
     #[track_caller]
     pub const fn arc(start_angle: f32, sweep: f32) -> ArcShape {
         ArcShape::new(domain::angle(start_angle), domain::angle(sweep))
@@ -125,7 +125,7 @@ impl Shape {
     ///
     /// # Panics
     ///
-    /// Panics unless every corner is an [offset](crate::widget::domain::offset).
+    /// Panics unless every corner is an [offset](crate::widget::domain::is_offset).
     #[track_caller]
     pub const fn triangle(a: Vec2, b: Vec2, c: Vec2) -> TriangleShape {
         TriangleShape::new(vec2::offset(a), vec2::offset(b), vec2::offset(c))
@@ -135,7 +135,7 @@ impl Shape {
     ///
     /// # Panics
     ///
-    /// Panics unless every point is an [offset](crate::widget::domain::offset).
+    /// Panics unless every point is an [offset](crate::widget::domain::is_offset).
     #[track_caller]
     pub const fn line(a: Vec2, b: Vec2) -> CurveShape {
         let (a, b) = (vec2::offset(a), vec2::offset(b));
@@ -179,9 +179,11 @@ impl Shape {
 
     /// A shaped text run in `font`, single-line, top-left.
     ///
-    /// `text` comes from [`crate::Ui::intern`] or [`crate::Ui::fmt`]. An unusable font (size or leading not finite and above the UI epsilon) shapes nothing.
-    pub const fn text(text: InternedStr, font: GlyphFont) -> TextShape {
-        TextShape::new(text, font)
+    /// `text` is borrowed, owned, or a handle from [`crate::Ui::intern`] or [`crate::Ui::fmt`]; the
+    /// record copies borrowed and owned text into the frame's arena, as a widget's text is. An
+    /// unusable font (size or leading not finite and above the UI epsilon) shapes nothing.
+    pub fn text<'a>(text: impl Into<TextInput<'a>>, font: GlyphFont) -> TextShape<'a> {
+        TextShape::new(text.into(), font)
     }
 
     /// A colored triangle `mesh`, its vertices logical px from its rect's top-left.
@@ -192,7 +194,43 @@ impl Shape {
 
 #[cfg(test)]
 pub(crate) mod internals {
+    use crate::effect::effect_registry::EffectRegistry;
+    use crate::image_registry::ImageRegistry;
+    use crate::image_registry::image_handle::ImageHandle;
+    use crate::primitives::identity::texture_id::TextureId;
+    use crate::primitives::paint::color::RgbaF32;
+    use crate::primitives::paint::image::Image;
+    use crate::primitives::reduction::Reductions;
+    use crate::shape::record::ShapeRecord;
+    use crate::shape::record_store::{RecordStore, Resolve};
     use crate::shape::sealed::DrawWith;
+    use glam::UVec2;
+
+    /// The record `shape` and `paint` lower to in `store` as [`Ui::add_shape`](crate::Ui::add_shape)
+    /// records them, under no reductions, no effects and a clear theme fallback; `None` where
+    /// they paint nothing.
+    pub(crate) fn record<S: DrawWith<P>, P>(
+        store: &mut RecordStore,
+        (shape, paint): (S, P),
+    ) -> Option<ShapeRecord> {
+        let effects = EffectRegistry::default();
+        let resolve = Resolve {
+            effects: &effects,
+            reductions: Reductions::NONE,
+            material_fallback: RgbaF32::TRANSPARENT,
+        };
+        let paint = S::prepare(paint);
+        store.record(shape.draw(&paint), resolve)
+    }
+
+    /// A handle to a blank `width` × 1 image, in a registry of its own.
+    pub(crate) fn image_handle(width: u32) -> ImageHandle {
+        ImageHandle::new(
+            TextureId(1),
+            &Image::from_srgba8(UVec2::new(width, 1), vec![0; width as usize * 4]).unwrap(),
+            ImageRegistry::default(),
+        )
+    }
 
     /// `paint` prepared and checked against `shape` as `Ui::add_shape` does, handed back
     /// prepared.

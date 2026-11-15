@@ -6,6 +6,7 @@ pub(crate) mod brush;
 pub(crate) mod chrome;
 pub(crate) mod color;
 pub(crate) mod content_type;
+pub(crate) mod fill_kind;
 pub(crate) mod image;
 pub(crate) mod line_style;
 pub(crate) mod lut_row;

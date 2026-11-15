@@ -1,10 +1,10 @@
 //! The four-state look pack (normal, hovered, active, disabled) every state-styled widget theme is built from.
 
-use crate::primitives::input::interaction::response_state::ResponseState;
+use crate::primitives::input::interaction::response::Response;
 use crate::theme::look::WidgetLook;
 use crate::theme::look::engagement::Engagement;
 
-/// The four-state look pack of state-styled widget themes. `active` is the widget's *engaged* state (pressed for Button / Toggle / MenuItem, focused for TextEdit), named to [`Self::pick`] as an [`Engagement`] so precedence is uniform. A field of [`crate::ButtonTheme`], [`crate::TextEditTheme`], [`crate::MenuItemTheme`]; [`crate::ToggleTheme`] keeps one per checked state.
+/// The four-state look pack of state-styled widget themes. `active` is the widget's *engaged* state (pressed for Button / Toggle / MenuItem, focused for TextEdit), named to [`Self::pick`] as an [`Engagement`] so precedence is uniform. A theme with one look per state holds one, as [`crate::TextEditTheme`] does; one with a look per selection or check state holds one for each, as [`crate::ButtonTheme`] and [`crate::ToggleTheme`] do.
 // Not `Copy` because `WidgetLook` isn't.
 #[derive(
     Clone,
@@ -29,18 +29,18 @@ pub struct StatefulLook {
 }
 
 impl StatefulLook {
-    /// Pick precedence: disabled > active > hovered > normal, all read from `state`; `engagement` names the state that counts as active.
+    /// Pick precedence: disabled > active > hovered > normal, all read from `response`; `engagement` names the state that counts as active.
     #[inline(always)]
-    pub const fn pick(&self, state: &ResponseState, engagement: Engagement) -> &WidgetLook {
+    pub const fn pick(&self, response: &Response, engagement: Engagement) -> &WidgetLook {
         let engaged = match engagement {
-            Engagement::Pressed => state.pressed(),
-            Engagement::Focused => state.focused,
+            Engagement::Pressed => response.is_pressed(),
+            Engagement::Focused => response.focused,
         };
-        if state.disabled {
+        if response.disabled {
             &self.disabled
         } else if engaged {
             &self.active
-        } else if state.hovered() {
+        } else if response.hovered() {
             &self.hovered
         } else {
             &self.normal

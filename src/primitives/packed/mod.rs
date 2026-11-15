@@ -2,6 +2,5 @@
 //! the fill words a quad reads.
 
 pub(crate) mod fill_axis;
-pub(crate) mod fill_kind;
 pub(crate) mod half_simd;
 pub(crate) mod serde;

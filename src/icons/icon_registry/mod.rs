@@ -5,7 +5,7 @@ use crate::icons::icon_table::IconTable;
 use crate::primitives::identity::icon_set_id::IconSetId;
 use std::cell::RefCell;
 use std::fmt;
-use std::rc::{Rc, Weak};
+use std::rc::Rc;
 
 /// RAII core of an [`IconSet`]: its [`Drop`] is the whole unload path. When the last clone goes the id is queued, and the next [`IconRegistry::drain_released`] frees the slot and tells the backend to forget it.
 pub(crate) struct IconSetToken {
@@ -47,8 +47,6 @@ struct Slot {
     generation: u16,
     /// Held for the backend, which resolves a set from an id; dropped at the drain.
     table: Option<Rc<IconTable>>,
-    /// The live [`IconSetToken`] over this slot; two owners would free it on the first drop.
-    token: Weak<IconSetToken>,
 }
 
 #[derive(Debug, Default)]
@@ -72,27 +70,16 @@ pub(crate) struct IconRegistry {
 }
 
 impl IconRegistry {
-    /// Load `table` and return the [`IconSet`] that keeps it resident.
-    ///
-    /// Registering an allocation a live `IconSet` covers returns a clone of it, so loading every frame from a held `Rc` costs one refcount bump. Resident sets are scanned linearly for that match, so load a handful.
+    /// Load `table` and return the [`IconSet`] that keeps it resident: each load is a set of its
+    /// own, as each [`Ui::load_image`](crate::Ui::load_image) is an image, so a caller loads once
+    /// and holds the set. Refused: a scan for a set already loaded from one allocation, a second
+    /// owner of a slot that a caller holding the set makes needless.
     ///
     /// # Panics
     ///
     /// Panics past 65 536 sets resident at once.
-    pub(crate) fn register(&self, table: Rc<IconTable>) -> IconSet {
+    pub(crate) fn register(&self, table: IconTable) -> IconSet {
         let mut inner = self.inner.borrow_mut();
-        let resident = inner.slots.iter().find_map(|slot| {
-            let held = slot.table.as_ref()?;
-            if !Rc::ptr_eq(held, &table) {
-                return None;
-            }
-            // A slot whose token has gone is released but not yet drained; it can't be shared, so a fresh slot is taken while the drain frees that one.
-            slot.token.upgrade()
-        });
-        if let Some(token) = resident {
-            return IconSet::from_token(token);
-        }
-
         let slot = if let Some(slot) = inner.free.pop() {
             slot
         } else {
@@ -101,20 +88,17 @@ impl IconRegistry {
             inner.slots.push(Slot {
                 generation: 0,
                 table: None,
-                token: Weak::new(),
             });
             slot
         };
         let id = IconSetId::new(slot, inner.slots[usize::from(slot)].generation);
-        let token = Rc::new(IconSetToken {
+        let table = Rc::new(table);
+        inner.slots[usize::from(slot)].table = Some(Rc::clone(&table));
+        IconSet::from_token(Rc::new(IconSetToken {
             id,
-            table: Rc::clone(&table),
+            table,
             shared: Rc::clone(&self.inner),
-        });
-        let row = &mut inner.slots[usize::from(slot)];
-        row.table = Some(table);
-        row.token = Rc::downgrade(&token);
-        IconSet::from_token(token)
+        }))
     }
 
     /// The set behind `id`.
@@ -168,13 +152,15 @@ pub(crate) mod internals {
     use crate::primitives::identity::icon_set_id::IconSetId;
 
     impl IconRegistry {
-        /// The id of every set an [`IconSet`](crate::IconSet) still holds, by slot.
+        /// The id of every set an [`IconSet`](crate::IconSet) still holds, by slot: loaded, and
+        /// not released since.
         pub(crate) fn resident_ids(&self) -> Vec<IconSetId> {
             let inner = self.inner.borrow();
             (0u16..)
                 .zip(&inner.slots)
-                .filter(|(_, row)| row.token.strong_count() > 0)
+                .filter(|(_, row)| row.table.is_some())
                 .map(|(slot, row)| IconSetId::new(slot, row.generation))
+                .filter(|id| !inner.released.contains(id))
                 .collect()
         }
     }

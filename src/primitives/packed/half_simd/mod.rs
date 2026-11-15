@@ -6,7 +6,7 @@
 //!
 //! - **A lane holds ±65504, and nothing packs past it.** A value someone authors is refused where
 //!   it enters unless it rounds to a finite f16 ([`F16x4::fits_lane`]): [`domain::lane`] on top
-//!   of its own kind, [`domain::gap`], [`domain::color`], `Spacing`'s constructors and
+//!   of its own kind, [`domain::length_lane`], [`domain::color`], `Spacing`'s constructors and
 //!   `Corners::validate`. The rule is the rounding, not `<= 65504`, so a check of a packed lane,
 //!   as `Corners` makes where a widget takes plain chrome data, agrees with one of the f32 before
 //!   it. A value the crate derives from valid ones (a tween's overshoot, a sum, a scale to
@@ -18,7 +18,7 @@
 //!   both, which would either panic on a tween or quietly clamp what a caller typed.
 //!
 //! [`domain::lane`]: crate::primitives::math::domain::lane
-//! [`domain::gap`]: crate::primitives::math::domain::gap
+//! [`domain::length_lane`]: crate::primitives::math::domain::length_lane
 //! [`domain::color`]: crate::primitives::math::domain::color
 
 #[cfg(target_arch = "aarch64")]

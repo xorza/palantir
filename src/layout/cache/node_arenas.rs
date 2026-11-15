@@ -7,7 +7,7 @@ use crate::primitives::geometry::size::Size;
 use glam::Vec2;
 
 /// Every captured tree's per-node columns, appended in pre-order and layer
-/// order; an [`ArenaSnapshot`](crate::layout::cache::measure_snapshot::ArenaSnapshot)
+/// order; an [`SubtreeDesc`](crate::layout::cache::measure_snapshot::SubtreeDesc)
 /// names its subtree's rows by span.
 #[derive(Debug, Default)]
 pub(super) struct NodeArenas {

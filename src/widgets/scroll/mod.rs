@@ -14,7 +14,6 @@ use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::interaction::response::Response;
-use crate::primitives::input::interaction::response_state::ResponseState;
 use crate::primitives::input::interaction::scroll_delta::page_step;
 use crate::primitives::input::keyboard::modifiers::Modifiers;
 use crate::primitives::input::sense::Sense;
@@ -32,7 +31,7 @@ use crate::theme::scrollbar::ScrollbarTheme;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::response::InnerResponse;
+use crate::widget_core::inner_response::InnerResponse;
 use crate::widget_core::widget::Widget;
 use crate::widgets::axis_keys::{AxisEnd, AxisKeys};
 use crate::widgets::scroll::bars::{BarMode, Bars};
@@ -233,18 +232,19 @@ impl<'a> Scroll<'a> {
     ///
     /// # Panics
     ///
-    /// Panics unless both axes of `delta` are [offsets](crate::widget::domain::offset).
+    /// Panics unless both axes of `delta` are [offsets](crate::widget::domain::is_offset).
     #[track_caller]
     pub fn pan_by(mut self, delta: Vec2) -> Self {
         self.pan_request += vec2::offset(delta);
         self
     }
 
-    /// Pan, on the frame this is shown, by the least distance that brings `child`'s last-frame
-    /// rect into the viewport on each panned axis, as the web's `scrollIntoView({block:
-    /// "nearest"})` and Qt's `ensureWidgetVisible` do: none while it is in view, and its start
-    /// at the viewport's start when it is larger. Goes through [`Self::pan_by`]'s clamp, and
-    /// does nothing before `child` has a rect.
+    /// Pan, on the frame this is shown, to bring `child`'s last-frame rect into the viewport on
+    /// each panned axis, as the web's `scrollIntoView({block: "nearest"})` and Qt's
+    /// `ensureWidgetVisible` do: none while it is in view or covers the viewport, else the edge
+    /// it crosses aligns with the viewport's, or its other edge when it is longer than the
+    /// viewport. Goes through
+    /// [`Self::pan_by`]'s clamp, and does nothing before `child` has a rect.
     pub const fn reveal(mut self, child: WidgetId) -> Self {
         self.reveal = Some(child);
         self
@@ -285,7 +285,7 @@ impl<'a> Scroll<'a> {
     ///
     /// # Panics
     ///
-    /// Panics unless every edge is a [length](crate::widget::domain::length).
+    /// Panics unless every edge is a [length](crate::widget::domain::is_length).
     #[track_caller]
     pub fn content_margin(mut self, m: impl Into<Spacing>) -> Self {
         let m = m.into();
@@ -368,14 +368,14 @@ impl<'a> Scroll<'a> {
     /// into a zoom factor (positive `notches.y` zooms out) and suppresses the pan.
     /// `pivot` resolves only when a step lands, falling back to the viewport center
     /// when the pointer is off the widget or there is no rect yet.
-    fn read_input(&self, ui: &Ui, response: &ResponseState, viewport: Size) -> ScrollInput {
+    fn read_input(&self, ui: &Ui, response: &Response, viewport: Size) -> ScrollInput {
         // Line step for wheel to pixel conversion, from the theme's default text size.
         let line_px = ui.theme().text.font().line_height;
         let scroll = response.scroll;
         let pan_raw = scroll.pan(line_px, viewport);
         // A theme with no line metric contributes no notches.
         let notches_per_px = domain::share_of(1.0, line_px);
-        let notches = scroll.notches + scroll.pixels * notches_per_px;
+        let notches = scroll.wheel.notches + scroll.wheel.pixels * notches_per_px;
         // `CTRL` is the primary command modifier: Cmd on macOS, Ctrl elsewhere.
         let mods = ui.peek_modifiers();
         let wheel_zooms = self.zoom.is_some_and(|cfg| match cfg.modifier() {
@@ -420,7 +420,7 @@ impl<'a> Scroll<'a> {
         id.with("viewport")
     }
 
-    fn measure(&self, ui: &Ui, id: WidgetId, response: &ResponseState) -> ScrollGeometry {
+    fn measure(&self, ui: &Ui, id: WidgetId, response: &Response) -> ScrollGeometry {
         let theme = self.bars_theme(ui);
         let start = ui.state::<ScrollState>(id).copied().unwrap_or_default();
         let viewport_id = Self::viewport_id(id);
@@ -503,11 +503,8 @@ impl<'a> Scroll<'a> {
         // The caller's salt names the outer wrapper but the arriving node is the
         // viewport, and the wrappers need the id first: resolve here, outer takes it later.
         // Through `Widget::response`, so a scroll disabled this frame reads no wheel.
-        let snapshot = self.widget.response(ui);
-        let Response {
-            id,
-            state: response,
-        } = snapshot;
+        let response = self.widget.response(ui);
+        let id = response.id;
         // Input routes by `Sense::SCROLL` on the outer ZStack, so wheel over the gutter pans.
         let scroll_id = Self::viewport_id(id);
 
@@ -542,9 +539,9 @@ impl<'a> Scroll<'a> {
                 if !self.axes.pans(axis) {
                     return 0.0;
                 }
-                reveal_pan(
-                    axis.main_v(content),
-                    axis.main(rect.size) * zoom,
+                let start = axis.main_v(content);
+                scroll_state::reveal_pan(
+                    start..start + axis.main(rect.size) * zoom,
                     axis.main_v(offset),
                     axis.main(viewport),
                 )
@@ -553,7 +550,7 @@ impl<'a> Scroll<'a> {
         }
         let input = self.read_input(ui, &response, geometry.bounds().viewport);
         let bars = (self.bar_mode != BarMode::Hidden)
-            .then(|| Bars::read(ui, &snapshot, self.bars_theme(ui)));
+            .then(|| Bars::read(ui, &response, self.bars_theme(ui)));
 
         let state = ui.with_state::<ScrollState, _>(id, |_, state| {
             state.focus_seen = focus;
@@ -594,11 +591,8 @@ impl<'a> Scroll<'a> {
         InnerResponse {
             // Eager: the caller usually reads a field, and only `focused` can change in the body.
             response: Response {
-                id,
-                state: ResponseState {
-                    focused: ui.focus() == Some(id),
-                    ..response
-                },
+                focused: ui.focus() == Some(id),
+                ..response
             },
             inner: inner_value,
         }
@@ -621,7 +615,7 @@ impl FocusedScroll {
     /// Note `scroll`, which holds focus this frame, and whether it was the innermost to hold
     /// it the frame before.
     fn innermost(ui: &mut Ui, scroll: WidgetId) -> bool {
-        let frame = ui.render_frame_id();
+        let frame = ui.render_frame_idx();
         ui.with_singleton::<Self, _>(|_, focused| {
             if focused.frame != frame {
                 focused.last = focused.cur.take();
@@ -647,21 +641,6 @@ impl Scroll<'_> {
         self.chrome = Some(chrome);
         self
     }
-
-    /// Paint `chrome` unless the caller set one. An explicit [`Self::chrome`]
-    /// wins in either order.
-    ///
-    /// # Panics
-    ///
-    /// Panics unless `chrome` holds the kinds [`Chrome`] lists.
-    #[track_caller]
-    pub const fn default_chrome(mut self, chrome: Chrome) -> Self {
-        chrome.validate();
-        if self.chrome.is_none() {
-            self.chrome = Some(chrome);
-        }
-        self
-    }
 }
 
 impl Scroll<'_> {
@@ -677,7 +656,7 @@ impl Scroll<'_> {
     ///
     /// # Panics
     ///
-    /// Panics unless both axes of `offset` are [offsets](crate::widget::domain::offset).
+    /// Panics unless both axes of `offset` are [offsets](crate::widget::domain::is_offset).
     #[track_caller]
     pub fn set_offset(ui: &mut Ui, id: WidgetId, offset: Vec2) {
         let offset = vec2::offset(offset);
@@ -696,25 +675,11 @@ impl Scroll<'_> {
     ///
     /// # Panics
     ///
-    /// Panics unless `zoom` is [positive](crate::widget::domain::positive).
+    /// Panics unless `zoom` is [positive](crate::widget::domain::is_positive).
     #[track_caller]
     pub fn set_zoom(ui: &mut Ui, id: WidgetId, zoom: f32) {
         let zoom = domain::positive(zoom);
         ui.with_state::<ScrollState, _>(id, |_, state| state.set_zoom(zoom));
-    }
-}
-
-/// The pan on one axis that brings a span starting at `start`, `len` long, into a view at
-/// `offset`, `view` long: none while it is in view, and its start at the view's when it is
-/// larger.
-fn reveal_pan(start: f32, len: f32, offset: f32, view: f32) -> f32 {
-    let end = start + len;
-    if start < offset || len > view {
-        start - offset
-    } else if end > offset + view {
-        end - (offset + view)
-    } else {
-        0.0
     }
 }
 

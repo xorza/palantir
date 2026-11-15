@@ -234,12 +234,12 @@ fn max_capped_fill_uses_resolved_alignment() {
     for axis in [Axis::X, Axis::Y] {
         let cases = match axis {
             Axis::X => [
-                (Align::h(HAlign::Center), 60.0),
-                (Align::h(HAlign::Right), 120.0),
+                (Align::from(HAlign::Center), 60.0),
+                (Align::from(HAlign::Right), 120.0),
             ],
             Axis::Y => [
-                (Align::v(VAlign::Center), 60.0),
-                (Align::v(VAlign::Bottom), 120.0),
+                (Align::from(VAlign::Center), 60.0),
+                (Align::from(VAlign::Bottom), 120.0),
             ],
         };
         for driver in ALIGNED_DRIVERS {
@@ -362,16 +362,12 @@ fn a_hidden_child_keeps_its_slot() {
 fn a_collapsed_child_drops_its_fill_weight() {
     let mut rig = LayoutRig::new();
     rig.run(Size::new(400.0, 100.0), |rec| {
-        rec.node(
-            "row",
-            Widget::hstack().size((Sizing::FILL, Sizing::HUG)),
-            |rec| {
-                let fill = |weight| Widget::leaf().size((Sizing::fill(weight), Sizing::HUG));
-                rec.leaf("a", fill(1.0));
-                rec.leaf("gone", fill(3.0).collapsed());
-                rec.leaf("b", fill(1.0));
-            },
-        );
+        rec.node("row", Widget::hstack().size(SizeSpec::FILL_W), |rec| {
+            let fill = |weight| Widget::leaf().size((Sizing::fill(weight), Sizing::HUG));
+            rec.leaf("a", fill(1.0));
+            rec.leaf("gone", fill(3.0).collapsed());
+            rec.leaf("b", fill(1.0));
+        });
     });
     let (a, b) = (rig.rect("a"), rig.rect("b"));
     assert_eq!((a.min.x, a.size.w), (0.0, 200.0));

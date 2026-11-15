@@ -97,12 +97,20 @@ pub(super) trait DriverOp: Sized {
     }
 }
 
+/// What node `node`'s driver read from outside its subtree to arrange it, laid out as `layout`,
+/// which its rects depend on beside its slot; `None` for most
+/// ([`LayoutDriver::outside_input`]).
+pub(crate) fn outside_input(tree: &Tree, layout: &PlaneLayout, node: NodeId) -> Option<Size> {
+    let mode = LayoutMode::from(tree.records.layout()[node.idx()].meta);
+    OutsideInputOp { tree, layout }.dispatch(node, mode)
+}
+
 /// What the driver `mode` names read from outside its subtree to arrange it
 /// ([`LayoutDriver::outside_input`]).
 #[derive(Debug)]
-pub(super) struct OutsideInputOp<'a> {
-    pub(super) tree: &'a Tree,
-    pub(super) layout: &'a PlaneLayout,
+struct OutsideInputOp<'a> {
+    tree: &'a Tree,
+    layout: &'a PlaneLayout,
 }
 
 impl DriverOp for OutsideInputOp<'_> {
@@ -127,9 +135,10 @@ mod tests {
     use crate::primitives::layout::axis::Axis;
     use crate::primitives::layout::layout_mode::{GridDefId, LayoutMode};
     use crate::primitives::layout::scroll_axes::ScrollAxes;
-    use crate::scene::scrollbars_def::{ResolvedScrollbarsDef, ScrollbarsDef};
+    use crate::scene::scrollbars_def::ScrollbarsDef;
     use crate::scene::tree::Tree;
     use crate::scene::tree::node_id::NodeId;
+    use crate::scene::tree::resolved_scrollbars_def::ResolvedScrollbarsDef;
     use glam::Vec2;
 
     /// `Scrollbars` is the sole driver reading outside its subtree: it answers its viewport's

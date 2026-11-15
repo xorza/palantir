@@ -6,7 +6,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::math::float_hash::FloatHash;
 use crate::primitives::math::nan::NanCheck;
-use glam::Vec2;
+use crate::shape::geometry;
 use std::hash::Hasher as _;
 
 /// A point shape's rect, the owner's arranged rect where `None`, and the fit its points take in
@@ -27,10 +27,7 @@ impl PointPlacement {
     /// The map that fits points spanning `extent` into the placement's rect in an owner of
     /// `owner_size`, owner-local.
     pub(crate) fn map(self, extent: Rect, owner_size: Size) -> FitMap {
-        let rect = self.local_rect.unwrap_or(Rect {
-            min: Vec2::ZERO,
-            size: owner_size,
-        });
+        let rect = geometry::layout_rect(self.local_rect, owner_size);
         self.fit.map(extent, rect)
     }
 

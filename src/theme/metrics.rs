@@ -4,7 +4,8 @@ use crate::animation::animation_spec::AnimationSpec;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::material::{InkBound, Material, fallback_alpha};
+use crate::primitives::paint::material::Material;
+use crate::primitives::paint::material::ink_bound::{InkBound, fallback_alpha};
 use glam::Vec2;
 
 /// The type, spacing, rounding, line, shadow, float material and transition steps of a theme, as
@@ -48,13 +49,13 @@ pub struct Metrics {
 #[serde(deny_unknown_fields)]
 pub struct TextSteps {
     /// Secondary text and dense surfaces: a tooltip, a caption over a group, a field's help.
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::font_size")]
+    #[serde(deserialize_with = "crate::primitives::file::font_size")]
     pub caption: f32,
     /// The ambient text every widget reads: a button's label, a menu row, a field.
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::font_size")]
+    #[serde(deserialize_with = "crate::primitives::file::font_size")]
     pub body: f32,
     /// A heading: a pane's or a dialog's title.
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::font_size")]
+    #[serde(deserialize_with = "crate::primitives::file::font_size")]
     pub title: f32,
 }
 
@@ -63,22 +64,22 @@ pub struct TextSteps {
 #[serde(deny_unknown_fields)]
 pub struct SpaceSteps {
     /// The densest rows: a subtitle under its title, a chip's vertical inset.
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
+    #[serde(deserialize_with = "crate::primitives::file::length")]
     pub xxs: f32,
     /// Inside a dense cluster: a control's vertical inset, a menu's padding, the gap between tabs.
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
+    #[serde(deserialize_with = "crate::primitives::file::length")]
     pub xs: f32,
     /// Between siblings: a field's horizontal inset, a row's vertical inset, a label's gap.
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
+    #[serde(deserialize_with = "crate::primitives::file::length")]
     pub sm: f32,
     /// A button's and a row's horizontal inset.
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
+    #[serde(deserialize_with = "crate::primitives::file::length")]
     pub md: f32,
     /// A dragged chip's distance below the pointer.
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
+    #[serde(deserialize_with = "crate::primitives::file::length")]
     pub lg: f32,
     /// A modal's padding and a menu row's shortcut gutter.
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
+    #[serde(deserialize_with = "crate::primitives::file::length")]
     pub xl: f32,
 }
 
@@ -87,16 +88,16 @@ pub struct SpaceSteps {
 #[serde(deny_unknown_fields)]
 pub struct RadiusSteps {
     /// A glyph-sized shape: a dock's drop preview.
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
+    #[serde(deserialize_with = "crate::primitives::file::length")]
     pub mark: f32,
     /// A field, a button, a menu row, a tooltip, a checkbox.
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
+    #[serde(deserialize_with = "crate::primitives::file::length")]
     pub control: f32,
     /// A tab chip and the ghost a dragged tab leaves.
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
+    #[serde(deserialize_with = "crate::primitives::file::length")]
     pub card: f32,
     /// A menu, a popup and a modal; over [`Self::control`], so a row's chip nests in the panel's corner.
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
+    #[serde(deserialize_with = "crate::primitives::file::length")]
     pub float: f32,
 }
 
@@ -105,13 +106,13 @@ pub struct RadiusSteps {
 #[serde(deny_unknown_fields)]
 pub struct StrokeSteps {
     /// A rule or a border, a field's included.
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
+    #[serde(deserialize_with = "crate::primitives::file::length")]
     pub hairline: f32,
     /// A field's caret, a drop preview, a small glyph's stroke.
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
+    #[serde(deserialize_with = "crate::primitives::file::length")]
     pub fine: f32,
     /// The focus ring, a tab's cap and caret, a check mark.
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
+    #[serde(deserialize_with = "crate::primitives::file::length")]
     pub line: f32,
 }
 
@@ -121,10 +122,10 @@ pub struct StrokeSteps {
 #[serde(deny_unknown_fields)]
 pub struct ShadowGeometry {
     /// Shift in logical pixels.
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::offset2")]
+    #[serde(deserialize_with = "crate::primitives::file::offset2")]
     pub offset: Vec2,
     /// Gaussian σ in logical pixels, half CSS's `blur-radius`.
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
+    #[serde(deserialize_with = "crate::primitives::file::length")]
     pub blur: f32,
 }
 
@@ -140,7 +141,7 @@ pub struct FloatMaterial {
     /// luminance bounds and its fallback give way to each float's.
     pub material: Material,
     /// The alpha of the surface's fill over the material; a fraction, and 1 shows nothing through.
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::fraction")]
+    #[serde(deserialize_with = "crate::primitives::file::fraction")]
     pub fill_alpha: f32,
 }
 
@@ -220,20 +221,6 @@ impl MaterialRefusal {
 }
 
 impl Metrics {
-    /// Dress `panel` and its slot's `material`, a surface over the others whose dimmest ink is
-    /// `ink`, in [`Self::float_material`]; left as they are without one, or where the material
-    /// cannot hold `ink`.
-    pub(crate) fn dress_float(
-        &self,
-        panel: &mut Chrome,
-        material: &mut Option<Material>,
-        ink: RgbaF32,
-    ) {
-        if let Some(float) = &self.float_material {
-            float.try_dress(panel, material, ink).ok();
-        }
-    }
-
     /// The inset of a row a pointer picks from: a menu item, a menu-bar title, a tab and the ghost
     /// a dragged tab leaves are one row.
     pub(crate) fn row_padding(&self) -> Spacing {

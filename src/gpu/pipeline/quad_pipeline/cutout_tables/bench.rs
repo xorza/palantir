@@ -42,7 +42,7 @@ pub(crate) fn atomic(c: &mut Criterion, backends: &Backends) {
                     page_edge: edge,
                     soft_bytes: 1 << 30,
                 }),
-                ..PoolConfig::of_device(gpu.gpu.max_texture_dim().get(), PassTraffic::Drawn)
+                ..PoolConfig::of_device(gpu.gpu.max_texture_dimension().get(), PassTraffic::Drawn)
             });
             let shader = QuadPipeline::SHADER.module(&gpu.gpu);
             let mut tables = CutoutTables::new(&gpu.gpu, &shader);
@@ -70,7 +70,12 @@ pub(crate) fn atomic(c: &mut Criterion, backends: &Backends) {
             let mut belt = UploadStaging::new(&gpu.gpu.device, 1 << 16);
             let handles = gpu.handles();
             // The pool's page, made once: the bake alone is timed.
-            timer.time(gpu, |encoder| textures.commit(&handles, encoder, &mut pool));
+            timer.time(gpu, |encoder| {
+                let mut ctx = GpuCtx::new(&handles, &mut belt, encoder, 0);
+                textures.commit(&mut ctx, &mut pool);
+                belt.finish();
+            });
+            belt.recall();
             assert_eq!(
                 textures
                     .page_texture(AtlasFormat::R8, 0)

@@ -18,21 +18,21 @@ use crate::bench::case_group::CaseGroup;
 use crate::bench::fixture;
 use crate::bench::kind::{Kind, Scale};
 use crate::bench::scene::{Scene, SceneFrame};
+use crate::cascade::blur_plan::BlurPlan;
 use crate::display::system_scale::SystemScale;
 use crate::gpu::bench_gpu::{BenchGpu, Timing};
 use crate::gpu::surface::owned_target::OwnedTarget;
 use crate::host::harness::Harness;
-use crate::host::harness::harness_builder::Depth;
+use crate::host::harness::harness_builder::HarnessDepth;
 use crate::host::offscreen::OffscreenHost;
 use crate::primitives::geometry::rect::Rect;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
 use crate::primitives::paint::material::lens::Lens;
 use crate::primitives::paint::material::material_paint::MaterialPaint;
 use crate::primitives::paint::paint::Paint;
 use crate::shape::Shape;
-use crate::shape::paint::blur_plan::BlurPlan;
 use crate::ui::Ui;
 use crate::ui::frame_report::FramePaint;
 use crate::widget_core::configure::Configure;
@@ -57,23 +57,23 @@ impl<S: Scene> State<S> {
     fn record(&mut self, ui: &mut Ui) {
         Panel::zstack()
             .id_salt("backdrop-capture-bench")
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 self.frame.scroll = Vec2::new(self.scroll, 0.0);
                 self.frame.record(ui);
                 Panel::hstack()
                     .id_salt("backdrop-capture-bench-row")
-                    .size((Sizing::FILL, Sizing::FILL))
+                    .size(SizeSpec::FILL)
                     .show(ui, |ui| {
                         Panel::canvas()
                             .id_salt("backdrop-capture-bench-backdrop")
-                            .size((Sizing::FILL, Sizing::FILL))
+                            .size(SizeSpec::FILL)
                             .show(ui, |ui| {
                                 ui.add_shape(Shape::rect(), Material::blur(SIGMA));
                             });
                         Panel::canvas()
                             .id_salt("backdrop-capture-bench-rest")
-                            .size((Sizing::FILL, Sizing::FILL))
+                            .size(SizeSpec::FILL)
                             .show(ui, |_| {});
                     });
             });
@@ -115,7 +115,7 @@ impl WholeFrames {
             RgbaF32::srgb(0.0, 0.0, 0.01)
         };
         let mut app = record;
-        let paint = self.host.frame(target.as_target(), &mut app).paint();
+        let paint = self.host.frame(target.as_target(), &mut app).paint;
         assert_eq!(
             paint,
             FramePaint::Full,
@@ -139,7 +139,7 @@ fn capture<S: Scene>(c: &mut Criterion, backends: &Backends, backend: Backend) {
             let mut frame = || {
                 state.scroll = (state.scroll + 1.0) % 64.0;
                 frames.frame(gpu, &target, |ui| state.record(ui));
-                let times = frames.host.ui().gpu_pass_stats().last_backdrops();
+                let times = frames.host.ui().gpu_pass_stats().backdrops;
                 times.captures
             };
             fixture::settle_timestamps(&mut frame);
@@ -214,7 +214,7 @@ fn composite(c: &mut Criterion, backends: &Backends, backend: Backend) {
                     frames.frame(gpu, &target, |ui| {
                         Panel::canvas()
                             .id_salt("backdrop-composite-bench")
-                            .size((Sizing::FILL, Sizing::FILL))
+                            .size(SizeSpec::FILL)
                             .show(ui, |ui| {
                                 ui.add_shape(
                                     Shape::rect().at(Rect::new(10.0, 10.0, 100.0, 100.0)),
@@ -228,7 +228,7 @@ fn composite(c: &mut Criterion, backends: &Backends, backend: Backend) {
                     // The main pass spans the backdrop's capture and blur, which `backdrop_capture`
                     // and `backdrop_blur` time.
                     let stats = host.ui().gpu_pass_stats();
-                    let backdrop = stats.last_backdrops();
+                    let backdrop = stats.backdrops;
                     let between = backdrop.captures? + backdrop.blurs?;
                     Some(stats.last_pass()? - between)
                 };
@@ -339,12 +339,12 @@ impl<S: Scene> MaterialFrame<S> {
         };
         Panel::zstack()
             .id_salt("backdrop-frame")
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 self.frame.record(ui);
                 Panel::canvas()
                     .id_salt("backdrop-frame-backdrops")
-                    .size((Sizing::FILL, Sizing::FILL))
+                    .size(SizeSpec::FILL)
                     .show(ui, |ui| {
                         ui.add_shape(
                             Shape::rect().at(Rect::new(300.0, 20.0, 12.0, 12.0)),
@@ -376,14 +376,14 @@ pub(crate) fn integration<S: Scene>(c: &mut Criterion, backends: &Backends) {
                     Backend::Cpu => {
                         let mut h = Harness::builder(FRAME_SURFACE)
                             .system_scale(FRAME_DPR)
-                            .depth(Depth::Compose)
+                            .depth(HarnessDepth::Compose)
                             .build();
                         let start = Instant::now();
                         let mut state = MaterialFrame::<S>::default();
                         let mut frame = || {
                             state.n += 1;
                             h.at(start.elapsed());
-                            h.frame(|ui| state.record(look, arm, ui)).paint()
+                            h.frame(|ui| state.record(look, arm, ui)).paint
                         };
                         for _ in 0..4 {
                             frame();
@@ -426,7 +426,7 @@ impl BackdropHost {
             .host
             .set_system_scale(FRAME_DPR)
             .frame(self.target.as_target(), &mut record)
-            .paint();
+            .paint;
         gpu.wait();
         (paint, self.host.backdrop_blurs())
     }
@@ -602,12 +602,12 @@ const fn scroll<S>(frame: &mut SceneFrame<S>, n: u32) {
 fn over<S: Scene>(fixture: &mut SceneFrame<S>, ui: &mut Ui, backdrops: impl FnOnce(&mut Ui)) {
     Panel::zstack()
         .id_salt("backdrop-scene")
-        .size((Sizing::FILL, Sizing::FILL))
+        .size(SizeSpec::FILL)
         .show(ui, |ui| {
             fixture.record(ui);
             Panel::canvas()
                 .id_salt("backdrop-scene-backdrops")
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, backdrops);
         });
 }
@@ -638,17 +638,17 @@ fn pair<S: Scene>(fixture: &mut SceneFrame<S>, ui: &mut Ui, gap: f32) {
 fn first<S: Scene>(fixture: &mut SceneFrame<S>, ui: &mut Ui) {
     Panel::zstack()
         .id_salt("backdrop-first")
-        .size((Sizing::FILL, Sizing::FILL))
+        .size(SizeSpec::FILL)
         .show(ui, |ui| {
             Panel::canvas()
                 .id_salt("backdrop-first-background")
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| {
                     ui.add_shape(Shape::rect(), RgbaF32::srgb(0.12, 0.13, 0.16));
                 });
             Panel::hstack()
                 .id_salt("backdrop-first-row")
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| {
                     Panel::canvas()
                         .id_salt("backdrop-first-sidebar")

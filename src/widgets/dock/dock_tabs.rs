@@ -52,6 +52,6 @@ pub struct DockTabMenu<'a, T> {
     pub tab: T,
     /// Its pane.
     pub group: TabGroupId,
-    /// Where an item's operation goes; drained by the application's queue or [`DockView::run`](crate::DockView::run).
+    /// Where an item's operation goes; drained by the application's queue or an applying [`DockView`](crate::DockView).
     pub operations: &'a mut Vec<DockOperation<T>>,
 }

@@ -159,7 +159,7 @@ fn an_outside_close_gives_the_keys_back_and_each_kind_keeps_its_row() {
     };
     let menu = Drive {
         name: "menu",
-        open: |ui| Menu::open(ui, trigger_id(), Vec2::new(200.0, 150.0)),
+        open: |ui| Menu::open_at(ui, trigger_id(), Vec2::new(200.0, 150.0)),
         close: |ui| Menu::close(ui, trigger_id()),
         is_open: |ui| Menu::is_open(ui, trigger_id()),
     };

@@ -13,7 +13,7 @@ use crate::layout::plane_layout::PlaneLayout;
 use crate::primitives::geometry::rect::Rect;
 use crate::renderer::repaint_scissors;
 use crate::text::shaped_text::ShapedText;
-use crate::ui::frame_report::FrameReport;
+use crate::ui::frame_report::RecordedFrame;
 use std::cmp;
 use std::mem;
 
@@ -27,20 +27,20 @@ pub(crate) struct Oracle {
 }
 
 impl Oracle {
-    /// Run every oracle against the frame `h` just ran, which produced `report`.
+    /// Run every oracle against the frame `h` just ran, recorded as `recorded`.
     ///
     /// # Panics
     ///
     /// Panics, naming the node or row, when a retained result differs
     /// from its cold counterpart or the damage misses a changed row.
-    pub(crate) fn check_frame(&mut self, h: &Harness, report: &FrameReport) {
+    pub(crate) fn check_frame(&mut self, h: &Harness, recorded: &RecordedFrame) {
         assert_layout_matches_cold(h, "the retained layout");
         assert_cascade_matches_cold(h);
-        self.check_damage(h, report);
+        self.check_damage(h, recorded);
     }
 
     /// Rows in one frame and not the other, and overlaps whose paint order flipped, must sit inside the painted damage; compared per owner as a multiset of `(hash, screen)`.
-    fn check_damage(&mut self, h: &Harness, report: &FrameReport) {
+    fn check_damage(&mut self, h: &Harness, recorded: &RecordedFrame) {
         self.cur.clear();
         h.ui()
             .cascade()
@@ -48,7 +48,7 @@ impl Oracle {
         if self.primed {
             let surface = h.ui().display().logical_rect();
             let margin = repaint_scissors::cull_margin(h.ui().display().scale_factor());
-            let damage: Vec<Rect> = match report.plan.as_ref().map(|plan| &plan.damage) {
+            let damage: Vec<Rect> = match recorded.plan.as_ref().map(|plan| &plan.damage) {
                 None => Vec::new(),
                 Some(Damage::Full) => vec![surface],
                 Some(Damage::Partial(collapsed)) => collapsed

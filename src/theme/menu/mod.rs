@@ -6,7 +6,7 @@ use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::material::Material;
 use crate::theme::menu::menu_item::MenuItemTheme;
-use crate::theme::metrics::Metrics;
+use crate::theme::metrics::{FloatMaterial, MaterialRefusal, Metrics};
 use crate::theme::palette::Palette;
 use crate::theme::separator::SeparatorTheme;
 
@@ -42,13 +42,13 @@ pub struct MenuTheme {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub material: Option<Material>,
     /// Padding inside the container, around the items.
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::padding")]
+    #[serde(deserialize_with = "crate::primitives::file::padding")]
     pub padding: Spacing,
     /// Floor for the container width.
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
+    #[serde(deserialize_with = "crate::primitives::file::length")]
     pub min_width: f32,
     /// Vertical gutter between rows. `0.0` stacks them flush, like native menus.
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
+    #[serde(deserialize_with = "crate::primitives::file::length")]
     pub gap: f32,
     /// Per-row visuals. See [`MenuItemTheme`].
     pub item: MenuItemTheme,
@@ -61,7 +61,6 @@ impl MenuTheme {
     /// [`MenuItemTheme`] and the menu [`SeparatorTheme`].
     pub fn from_parts(p: &Palette, m: &Metrics) -> Self {
         let item = MenuItemTheme::from_parts(p, m);
-        let ink = item.shortcut;
         let mut theme = Self {
             panel: p.popup_panel(m),
             material: None,
@@ -71,7 +70,14 @@ impl MenuTheme {
             item,
             separator: SeparatorTheme::menu(p, m),
         };
-        m.dress_float(&mut theme.panel, &mut theme.material, ink);
+        if let Some(float) = &m.float_material {
+            theme.try_dress(float).ok();
+        }
         theme
+    }
+
+    /// Dress the panel in `float`, held for the rows' shortcut ink, the dimmest a menu paints.
+    pub(super) fn try_dress(&mut self, float: &FloatMaterial) -> Result<(), MaterialRefusal> {
+        float.try_dress(&mut self.panel, &mut self.material, self.item.shortcut)
     }
 }

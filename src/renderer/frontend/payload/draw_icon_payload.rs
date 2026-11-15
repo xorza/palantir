@@ -16,17 +16,12 @@ pub(crate) struct DrawIconPayload {
     pub(crate) tint: RgbaF16,
     /// Draw a color icon as its own luminance.
     pub(crate) desaturate: bool,
-    /// A paint animation's turn.
-    pub(crate) spin: Option<Spin>,
 }
 
 impl PaintPayload for DrawIconPayload {
     /// This draw with alpha scaled by `by`, for the [`PaintSink`] gate.
     #[inline]
     fn faded(self, by: f32) -> Self {
-        if by == 1.0 {
-            return self;
-        }
         Self {
             tint: self.tint.faded(by),
             ..self
@@ -39,11 +34,7 @@ impl PaintPayload for DrawIconPayload {
         self.rect.is_paint_empty() || self.tint.is_noop()
     }
 
-    fn spin_mut(&mut self) -> &mut Option<Spin> {
-        &mut self.spin
-    }
-
-    fn paint(self, sink: &mut impl PaintSink) {
-        sink.icon(self);
+    fn paint(self, spin: Option<Spin>, sink: &mut impl PaintSink) {
+        sink.icon(self, spin);
     }
 }

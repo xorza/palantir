@@ -5,7 +5,7 @@ use crate::primitives::input::key_class::KeyFilter;
 use crate::primitives::input::keyboard::key::Key;
 use crate::primitives::input::sense::Sense;
 use crate::primitives::layout::anchor::Anchor;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::SizeSpec;
 use crate::scene::layer::Layer;
 use crate::ui::Ui;
 use crate::widget_core::click_outside::ClickOutside;
@@ -57,13 +57,12 @@ pub struct OverlaySpec {
 
 /// One overlay's turn on a layer, from stamping its root until it closes.
 /// [`Popup`](crate::Popup), [`Modal`](crate::Modal) and [`Tooltip`](crate::Tooltip)
-/// share this lifecycle; two steps have ordering constraints (see [`Self::record`],
-/// [`Self::finish`]). A claim silences the layers strictly *below* its own, never
-/// its own body, so a `TextEdit` in a popup keeps the keyboard.
+/// share this lifecycle; [`Self::record`] has the ordering constraints. A claim silences the
+/// layers strictly *below* its own, never its own body, so a `TextEdit` in a popup keeps the
+/// keyboard.
 ///
-/// A custom overlay follows the same order: [`Self::claim`] with the root before
-/// recording, [`Self::record`] the body, then [`Self::finish`] with its response,
-/// which withdraws on the frame it closes.
+/// A custom overlay follows the same order: [`Self::claim`] with the root before recording,
+/// then [`Self::record`] the body, which withdraws the scope on the frame it closes.
 #[derive(Debug)]
 pub struct OverlayScope {
     owner: WidgetId,
@@ -85,7 +84,13 @@ impl OverlayScope {
     /// A light-dismiss overlay a modal cancels this pass records collapsed, with no barrier
     /// and no claim, so its last pass paints nothing and takes no input, and it reports
     /// [`OverlayClose::Dismissed`].
+    ///
+    /// # Panics
+    ///
+    /// For a `spec.layer` of [`Layer::Main`], which is no overlay ([`Ui::layer`]).
+    #[track_caller]
     pub fn claim(ui: &mut Ui, spec: OverlaySpec, root: &mut Widget) -> Self {
+        assert!(spec.layer != Layer::Main, "{}", Layer::MAIN_IS_NO_OVERLAY);
         let owner = root.resolve(ui);
         let opened = ui.response_for(owner).rect.is_none();
         let dismissible = matches!(spec.barrier, Barrier::Surface(_, ClickOutside::Dismiss));
@@ -133,7 +138,13 @@ impl OverlayScope {
     /// runs in reverse, so the body still wins); it senses all four pointer
     /// interactions so pan, scroll and pinch cannot leak to the host, and only
     /// `Sense::CLICK` dismisses.
-    pub fn record<R>(&self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> OverlayResponse<R> {
+    ///
+    /// An overlay that closed gives its scope back here, so no close path keeps owning input.
+    /// **The current pass is unaffected**: scope paths resolve against a cascade a frame old, so
+    /// merely ceasing to record would keep owning input one more frame and swallow the click
+    /// where it was. Takes `self`, so the claim is spent. Refused: a `finish` call after it, which
+    /// a caller that forgets keeps the scope a frame.
+    pub fn record<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> OverlayResponse<R> {
         let OverlaySpec {
             layer,
             anchor,
@@ -145,9 +156,9 @@ impl OverlayScope {
             ui.layer(layer).show(|ui| {
                 Widget::leaf()
                     .id(id)
-                    .size((Sizing::FILL, Sizing::FILL))
+                    .size(SizeSpec::FILL)
                     .sense(Sense::ABSORB_POINTER)
-                    .show(ui, None, |_| {});
+                    .record(ui, None, |_| {});
             });
         }
         let dismisses = barrier.click_outside() == Some(ClickOutside::Dismiss);
@@ -166,17 +177,21 @@ impl OverlayScope {
         let requested = ui.overlays().leave();
         let dismissed =
             self.cancelled || (dismisses && (escape_pressed || self.barrier_clicked(ui)));
+        let close = OverlayClose::of(requested, dismissed);
+        if close.is_some() && barrier.click_outside().is_some() {
+            ui.withdraw_input_scope(self.owner);
+        }
         OverlayResponse {
             id: self.owner,
             opened: self.opened,
-            close: OverlayClose::of(requested, dismissed),
+            close,
             inner,
         }
     }
 
     /// Whether a press landed on the barrier rather than the body; all four
     /// pointer interactions are absorbed, so a secondary press counts (see
-    /// `ResponseState::any_clicked`).
+    /// `Response::any_clicked`).
     fn barrier_clicked(&self, ui: &Ui) -> bool {
         let id = match self.spec.barrier {
             Barrier::None => return false,
@@ -185,17 +200,6 @@ impl OverlayScope {
         };
         ui.response_for(id).any_clicked()
     }
-
-    /// End the turn with `response`: an overlay that closed gives its scope back, so no close
-    /// path keeps owning input. **The current pass is unaffected**: scope paths resolve against
-    /// a cascade a frame old, so merely ceasing to record would keep owning input one more frame
-    /// and swallow the click where it was. Takes `self`, so the claim is spent.
-    pub fn finish<R>(self, ui: &mut Ui, response: OverlayResponse<R>) -> OverlayResponse<R> {
-        if response.closed() && self.spec.barrier.click_outside().is_some() {
-            ui.withdraw_input_scope(self.owner);
-        }
-        response
-    }
 }
 
 #[cfg(test)]
@@ -203,7 +207,7 @@ mod tests {
     use crate::host::harness::Harness;
     use crate::primitives::identity::widget_id::WidgetId;
     use crate::primitives::input::keyboard::key::Key;
-    use crate::primitives::layout::sizing::Sizing;
+    use crate::primitives::layout::sizing::SizeSpec;
     use crate::scene::layer::Layer;
     use crate::ui::Ui;
     use crate::widget_core::click_outside::ClickOutside;
@@ -218,7 +222,7 @@ mod tests {
     fn overlay(ui: &mut Ui, click_outside: ClickOutside, close: bool) -> OverlayResponse<()> {
         let mut root = Widget::zstack()
             .id(WidgetId::from_hash("test.overlay"))
-            .size((Sizing::FILL, Sizing::FILL));
+            .size(SizeSpec::FILL);
         let spec = OverlaySpec {
             layer: Layer::Modal,
             anchor: None,

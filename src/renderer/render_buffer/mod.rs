@@ -3,7 +3,7 @@
 use crate::display::Display;
 use crate::display::frame_stamp::FrameStamp;
 use crate::primitives::identity::backdrop_keys::BackdropKeys;
-use crate::primitives::identity::texture_id::TextureId;
+use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::render_buffer::backdrop_row::{BackdropRow, BackdropSource};
 use crate::renderer::render_buffer::curve_instance::CurveInstance;
@@ -28,6 +28,7 @@ pub(crate) mod curve_kind;
 pub(crate) mod draw_run;
 pub(crate) mod effect_draw_row;
 pub(crate) mod fill_form;
+pub(crate) mod gpu_fill;
 pub(crate) mod icon_draw_row;
 pub(crate) mod image_draw_row;
 pub(crate) mod image_flags;
@@ -58,8 +59,6 @@ pub(crate) struct RenderBuffer {
     pub(crate) images: Soa<ImageDrawRow>,
     /// `GpuView` off-screen targets of this frame, one per composited view row, filled by the composer from each image draw's `ClosedImage::view`. The backend repaints one only when its stamp changed.
     pub(crate) frame_targets: Vec<RenderTargetDraw>,
-    /// Every `GpuView` recorded this frame, painted or not: the backend's retention roster. An undamaged view leaves [`Self::frame_targets`] but stays here, keeping its texture alive.
-    pub(crate) live_targets: Vec<TextureId>,
     pub(crate) icons: Vec<IconDrawRow>,
     /// Effect rows, SoA, one rounded-rect draw per row; each instance's parameters are words of
     /// [`RecordStore::effect_params`](crate::shape::record_store::RecordStore::effect_params).
@@ -95,7 +94,6 @@ impl RenderBuffer {
             runs: Vec::new(),
             images: Soa::default(),
             frame_targets: Vec::new(),
-            live_targets: Vec::new(),
             icons: Vec::new(),
             effects: Soa::default(),
             curves: Vec::new(),
@@ -107,6 +105,13 @@ impl RenderBuffer {
             display: Display::default(),
             time: Duration::ZERO,
         }
+    }
+
+    /// The opaque clear a frame of this buffer paints: the override a root quad folded in, else
+    /// the plan's `plan_clear`, made opaque. Resolved once, where the submission is built.
+    pub(crate) fn frame_clear(&self, plan_clear: RgbaF32) -> RgbaF16 {
+        let clear = self.clear_override.map_or(plan_clear, RgbaF32::from);
+        RgbaF32 { a: 1.0, ..clear }.to_f16()
     }
 
     /// Reset every per-frame column (capacity retained) and stamp viewport, scale and time from `stamp`.
@@ -132,7 +137,6 @@ impl RenderBuffer {
     pub(crate) fn frame_views(&self) -> FrameViews<'_> {
         FrameViews {
             draws: &self.frame_targets,
-            live: &self.live_targets,
             display_scale: self.display.scale_factor(),
         }
     }

@@ -1,20 +1,25 @@
 //! App-written effects: a background, the two stock press ripples, a ring past a card's edge and
 //! water over a picture, each a WGSL `fn effect` the page loads once.
 
+use crate::scaffold;
+use crate::scaffold::CELL_PADDING;
 use crate::scaffold::api;
-use crate::support;
-use crate::support::{CELL_PADDING, DemoCell, Kit, Section};
+use crate::scaffold::demo_cell::DemoCell;
+use crate::scaffold::kit::Kit;
+use crate::scaffold::section::Section;
 use palantir::glam::Vec2;
-use palantir::widget::EffectPaint;
-use palantir::widget::{GlyphFont, PaintAnimation, PaintRepeat, Shape};
 use palantir::{
-    BackdropEffect, Button, ButtonTheme, Configure, Corners, EffectError, EffectName, EffectParams,
-    EffectSource, Panel, PressEffect, PressInput, Rect, ReducedPaint, RgbaF32, Sizing, Ui,
+    BackdropEffect, BackdropReach, Button, ButtonTheme, Configure, Corners, EffectError,
+    EffectName, EffectPaint, EffectParams, EffectSource, GlyphFont, PaintAnimation, PaintRepeat,
+    Panel, PressEffect, PressParams, Rect, ReducedEffect, RgbaF32, Shape, SizeSpec, Ui,
 };
 use std::time::Duration;
 
 /// [`Ui::load_effect`] for the background's parameters, which its chip names.
 type LoadSky = fn(&Ui, EffectName<Sky>, EffectSource<Sky>) -> Result<(), EffectError>;
+/// [`EffectSource::reach`] over the water's parameters.
+type WaterReach = fn(WaterSource, fn(&Water) -> BackdropReach) -> WaterSource;
+type WaterSource = EffectSource<Water, BackdropEffect>;
 
 /// The size of a demo cell.
 const CELL: f32 = 260.0;
@@ -72,11 +77,11 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
             api!(EffectPaint::new as fn(EffectName<Sky>, Sky) -> EffectPaint<Sky>),
             api!(
                 EffectSource::power_saver
-                    as fn(EffectSource<Sky>, ReducedPaint<Sky>) -> EffectSource<Sky>
+                    as fn(EffectSource<Sky>, ReducedEffect<Sky>) -> EffectSource<Sky>
             ),
         ])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "Two colors swept by crossing waves, read from the effect's time. It holds still \
@@ -98,11 +103,11 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
     Section::new("Press ripples")
         .apis(&[
             api!(type PressEffect),
-            api!(EffectName::RIPPLE as EffectName<PressInput>),
-            api!(EffectName::SPARKLE as EffectName<PressInput>),
+            api!(EffectName::RIPPLE as EffectName<PressParams>),
+            api!(EffectName::SPARKLE as EffectName<PressParams>),
         ])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "A theme slot names the effect each press draws, over the chrome and inside its \
@@ -133,7 +138,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
                     exit: Duration::from_millis(375),
                 },
             );
-            support::row(ui, |ui| {
+            scaffold::row(ui, |ui| {
                 Button::new()
                     .id_salt("flat")
                     .label("flat ripple")
@@ -154,7 +159,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
             EffectPaint::outside as fn(EffectPaint<Ring>, f32) -> EffectPaint<Ring>
         )])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "A halo paints outside its shape alone: the glow runs 28 px out from the card, \
@@ -162,7 +167,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
             );
             DemoCell::new("ring").size(CELL, CELL).show(ui, k, |ui| {
                 Panel::canvas()
-                    .size((Sizing::FILL, Sizing::FILL))
+                    .size(SizeSpec::FILL)
                     .show(ui, |ui| ring(ui, k));
             });
         });
@@ -176,25 +181,19 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
                         Water,
                     ) -> EffectPaint<Water, BackdropEffect>
             ),
-            api!(
-                EffectPaint::max_sample_offset
-                    as fn(
-                        EffectPaint<Water, BackdropEffect>,
-                        f32,
-                    ) -> EffectPaint<Water, BackdropEffect>
-            ),
+            api!(EffectSource::reach as WaterReach),
         ])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "A backdrop effect reads what is painted under it. Rings run out from the center \
                  and bend the picture along their slope, reading up to 6 px past each pixel, the \
-                 largest offset the paint declares.",
+                 reach its source reads from the paint's amplitude.",
             );
             DemoCell::new("water").size(CELL, CELL).show(ui, k, |ui| {
                 Panel::canvas()
-                    .size((Sizing::FILL, Sizing::FILL))
+                    .size(SizeSpec::FILL)
                     .show(ui, |ui| water(ui, k));
             });
         });
@@ -209,10 +208,16 @@ fn load(ui: &Ui) {
         ui.load_effect(DUSK, EffectSource::new(include_str!("dusk.wgsl"))),
         ui.load_effect(
             AURORA,
-            EffectSource::new(include_str!("aurora.wgsl")).power_saver(ReducedPaint::Effect(DUSK)),
+            EffectSource::new(include_str!("aurora.wgsl")).power_saver(ReducedEffect::Other(DUSK)),
         ),
         ui.load_effect(RING, EffectSource::new(include_str!("ring.wgsl"))),
-        ui.load_effect(WATER, EffectSource::new(include_str!("water.wgsl"))),
+        // The waves bend each read up to their amplitude past the rect, so the capture reaches
+        // as far.
+        ui.load_effect(
+            WATER,
+            EffectSource::new(include_str!("water.wgsl"))
+                .reach(|water: &Water| BackdropReach::Px(water.amplitude)),
+        ),
     ];
     for load in loads {
         load.expect("the page's effects meet the contract");
@@ -226,7 +231,7 @@ const RING_LOOP_S: u64 = 6;
 const WATER_LOOP_S: u64 = 4;
 
 /// A clock that loops every `period_s` seconds, for an effect that reads only its time.
-fn looping(period_s: u64) -> PaintAnimation {
+const fn looping(period_s: u64) -> PaintAnimation {
     PaintAnimation::clock()
         .with_period(Duration::from_secs(period_s))
         .with_repeat(PaintRepeat::Forever)
@@ -271,9 +276,8 @@ fn ring(ui: &mut Ui, k: Kit) {
         shape.animate(looping(RING_LOOP_S));
     }
     ui.add_shape(Shape::rect().at(card).corners(corners), k.t.raised);
-    let label = ui.intern("ring");
     ui.add_shape(
-        Shape::text(label, GlyphFont::new(18.0))
+        Shape::text("ring", GlyphFont::new(18.0))
             .at_origin(Vec2::new(card.min.x + 16.0, card.min.y + 32.0)),
         k.t.ink,
     );
@@ -289,9 +293,8 @@ fn water(ui: &mut Ui, k: Kit) {
             *color,
         );
     }
-    let label = ui.intern("water");
     ui.add_shape(
-        Shape::text(label, GlyphFont::new(40.0)).at_origin(Vec2::new(size * 0.22, size * 0.55)),
+        Shape::text("water", GlyphFont::new(40.0)).at_origin(Vec2::new(size * 0.22, size * 0.55)),
         k.t.ink,
     );
     let backdrop = Rect::new(size * 0.1, size * 0.1, size * 0.8, size * 0.8);
@@ -306,8 +309,7 @@ fn water(ui: &mut Ui, k: Kit) {
                 pad0: 0.0,
                 pad1: 0.0,
             },
-        )
-        .max_sample_offset(WATER_AMPLITUDE),
+        ),
     ) {
         shape.animate(looping(WATER_LOOP_S));
     }

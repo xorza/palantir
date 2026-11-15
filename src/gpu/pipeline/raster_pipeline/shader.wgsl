@@ -96,9 +96,9 @@ struct SpunIn {
     @location(2) size: vec2<u32>,
     @location(3) uv_and_kind: u32,
     @location(4) color: vec4<f32>,
-    @location(5) pivot: vec2<f32>,
-    @location(6) rotor: vec2<f32>,
-    @location(7) chain: u32,
+    @location(5) chain: u32,
+    @location(6) pivot: vec2<f32>,
+    @location(7) rotor: vec2<f32>,
 }
 
 // `VertexOut`'s fields, then the quad's own unturned frame: the position

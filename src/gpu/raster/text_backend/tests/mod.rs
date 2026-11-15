@@ -7,7 +7,7 @@ use crate::gpu::atlas::AtlasPool;
 use crate::gpu::atlas::atlas_format::AtlasFormat;
 use crate::gpu::atlas::tenant::Tenant;
 use crate::gpu::pipeline::raster_pipeline::raster_quad::RasterQuad;
-use crate::gpu::raster::raster_atlas::internals::unallocated_dies_at;
+use crate::gpu::raster::raster_atlas::internals::unplaced_dies_at;
 use crate::gpu::raster::raster_pass::RasterDraw;
 use crate::gpu::raster::text_backend::TextBackend;
 use crate::gpu::raster::text_backend::encode::cache::{ENCODED_CACHE_KEEP_FRAMES, EncodedGlyph};
@@ -188,7 +188,7 @@ fn a_cached_run_replays_its_moved_glyphs_where_they_moved() {
     for _ in 0..16 {
         let icon = rig
             .pool
-            .allocate(AtlasFormat::R8, Tenant::Icons, UVec2::splat(32))
+            .allocate(AtlasFormat::R8, Tenant::Icons.owner(), UVec2::splat(32))
             .unwrap()
             .handle;
         icons.push(icon);
@@ -535,9 +535,9 @@ fn swept_empty_glyph_reinserts() {
     rig.tick();
 
     // The space was rasterized on display frame 0, so its ticket falls due at
-    // `unallocated_dies_at(0)`; advance one frame past it with text frames that
+    // `unplaced_dies_at(0)`; advance one frame past it with text frames that
     // never touch the space.
-    while rig.pool.frame() < unallocated_dies_at(0) + 1 {
+    while rig.pool.frame() < unplaced_dies_at(0) + 1 {
         rig.frame(1.0, &[&[]]);
         rig.tick();
     }

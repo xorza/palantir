@@ -2,8 +2,8 @@
 
 use crate::gpu::atlas::page_slots::PageSlots;
 use crate::gpu::pipeline::clip_variant::Clipping;
-use crate::gpu::pipeline::quad_pipeline::cutout_plan::ShadowEntry;
 use crate::gpu::pipeline::quad_pipeline::quad_draw::QuadDraw;
+use crate::gpu::pipeline::quad_pipeline::quad_draw::ShadowEntry;
 use crate::gpu::test_gpu::headless_test_gpu;
 use crate::gpu::texel::TargetFormat;
 use crate::host::offscreen::OffscreenHost;

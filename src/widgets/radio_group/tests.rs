@@ -1,6 +1,7 @@
 use crate::host::harness::Harness;
 use crate::internals::panic_probe;
 use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::keyboard::key::Key;
 use crate::primitives::input::keyboard::modifiers::Modifiers;
@@ -20,7 +21,7 @@ enum Pick {
 }
 
 const PICKS: [Pick; 3] = [Pick::A, Pick::B, Pick::C];
-const LOOKS: [RadioLook; 2] = [RadioLook::Pip, RadioLook::Segment];
+const LOOKS: [RadioLook<'static>; 2] = [RadioLook::Pip(None), RadioLook::Segment(None)];
 
 fn group() -> WidgetId {
     WidgetId::from_hash("group")
@@ -39,7 +40,7 @@ struct Rows {
 }
 
 /// A Tab stop, the group of the three picks in `look`, and another Tab stop, in record order.
-fn record(ui: &mut Ui, look: RadioLook, disabled: bool, cur: &mut Option<Pick>) -> Rows {
+fn record(ui: &mut Ui, look: RadioLook<'_>, disabled: bool, cur: &mut Option<Pick>) -> Rows {
     let mut rows = Rows {
         rects: [None; 3],
         changed: [false; 3],
@@ -75,7 +76,7 @@ fn record(ui: &mut Ui, look: RadioLook, disabled: bool, cur: &mut Option<Pick>) 
 }
 
 /// A harness two frames into the scene, so last frame's options are known.
-fn settled(look: RadioLook, cur: &mut Option<Pick>) -> Harness {
+fn settled(look: RadioLook<'_>, cur: &mut Option<Pick>) -> Harness {
     let mut h = Harness::mono(UVec2::new(400, 200));
     for _ in 0..2 {
         h.frame(|ui| {
@@ -307,4 +308,40 @@ fn an_option_refuses_an_id_of_its_own() {
                 });
         });
     });
+}
+
+/// Each look reads the slot its variant carries, and the theme's while that is `None`: the pip's
+/// gap between box and label, the segment track's inset before the first segment. The theme and
+/// each override hold distinct values, so no look reads the other's slot or the wrong source.
+#[test]
+fn each_look_reads_its_own_slot_over_the_themes() {
+    let mut h = Harness::mono(UVec2::new(400, 200));
+    h.ui_mut().theme_mut().radio.gap = 5.0;
+    h.ui_mut().theme_mut().segmented.track_padding = Spacing::all(3.0);
+    let mut pip = h.ui().theme().radio.clone();
+    pip.gap = 17.0;
+    let mut segment = h.ui().theme().segmented.clone();
+    segment.track_padding = Spacing::all(11.0);
+
+    let measure = |h: &mut Harness, look: RadioLook<'_>| {
+        let mut cur = Some(Pick::A);
+        h.frame(|ui| {
+            record(ui, look, false, &mut cur);
+        });
+        match look {
+            RadioLook::Pip(_) => {
+                let label = h.rect(option(0).with("label")).expect("label arranged");
+                let pip = h.rect(option(0).with("box")).expect("box arranged");
+                label.min.x - pip.max().x
+            }
+            RadioLook::Segment(_) => {
+                let first = h.rect(option(0)).expect("segment arranged");
+                first.min.x - h.rect(group()).expect("group arranged").min.x
+            }
+        }
+    };
+    assert_eq!(measure(&mut h, RadioLook::Pip(None)), 5.0);
+    assert_eq!(measure(&mut h, RadioLook::Pip(Some(&pip))), 17.0);
+    assert_eq!(measure(&mut h, RadioLook::Segment(None)), 3.0);
+    assert_eq!(measure(&mut h, RadioLook::Segment(Some(&segment))), 11.0);
 }

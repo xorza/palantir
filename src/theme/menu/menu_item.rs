@@ -2,7 +2,7 @@
 
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::spacing::Spacing;
-use crate::primitives::input::interaction::response_state::ResponseState;
+use crate::primitives::input::interaction::response::Response;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::theme::look::WidgetLook;
@@ -37,7 +37,7 @@ pub struct MenuItemTheme {
     /// its label's ink.
     pub shortcut: RgbaF32,
     /// Minimum gutter between the label and its shortcut hint (the row is `SpaceBetween`).
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
+    #[serde(deserialize_with = "crate::primitives::file::length")]
     pub gap: f32,
     /// Spacing and transition spec; `margin` is `ZERO` since [`MenuTheme::gap`](crate::MenuTheme::gap) spaces rows.
     pub defaults: SlotDefaults,
@@ -50,10 +50,10 @@ impl MenuItemTheme {
     pub fn from_parts(p: &Palette, m: &Metrics) -> Self {
         // Hover is one surface step brighter (`element_mid`), as `ButtonTheme::subtle`; `active` keeps it
         // since a click closes the menu. The chip radius stays under the panel's so it nests in the corner.
-        let hovered = WidgetLook {
-            chrome: Chrome::rounded(p.element_mid, Corners::all(m.radius.control)),
-            text: TextStyleOverrides::NONE,
-        };
+        let hovered = WidgetLook::new(Chrome::rounded(
+            p.element_mid,
+            Corners::all(m.radius.control),
+        ));
         let unselected = StatefulLook {
             normal: WidgetLook::default(),
             active: hovered.clone(),
@@ -91,12 +91,10 @@ impl MenuItemTheme {
 impl ThemeSlot for MenuItemTheme {
     type Pick = Selection;
 
-    fn look(&self, response: &ResponseState, selection: Selection) -> &WidgetLook {
-        let pack = match selection {
-            Selection::Unselected => &self.unselected,
-            Selection::Selected => &self.selected,
-        };
-        pack.pick(response, Engagement::Pressed)
+    fn look(&self, response: &Response, selection: Selection) -> &WidgetLook {
+        selection
+            .pack(&self.unselected, &self.selected)
+            .pick(response, Engagement::Pressed)
     }
 
     fn defaults(&self) -> SlotDefaults {

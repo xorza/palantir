@@ -1,8 +1,8 @@
 //! A polyline lowered to its segment and joint instances, in scratch kept across frames.
 
-use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
+use crate::primitives::paint::fill_kind::FillKind;
 use crate::primitives::paint::line_style::{LineCap, LineJoin};
 use crate::renderer::frontend::composer::geometry;
 use crate::renderer::render_buffer::clip_chain::ClipChain;

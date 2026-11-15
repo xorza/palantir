@@ -14,9 +14,9 @@
 mod backdrop;
 mod on_gpu;
 
-use palantir::FramePaint;
 use palantir::bench::scene::{BENCH_DPR, BENCH_SURFACE};
-use palantir::{App, Depth, Harness};
+use palantir::{App, Harness, HarnessDepth};
+use palantir::{FramePaint, FrameReport};
 use palantir_showcase::{MAIN_WINDOW, Shell};
 
 use crate::harness::Audit;
@@ -34,25 +34,33 @@ fn full_tree_cpu_frame_alloc_free() {
     for page in 0..Shell::PAGE_COUNT {
         println!("page {page}");
         let mut shell = Shell::open(page);
-        let mut frontend = Harness::builder(BENCH_SURFACE)
-            .system_scale(BENCH_DPR)
-            .depth(Depth::Compose)
-            .build();
         let mut recorded = 0;
-        Audit::new()
-            .warmup(WARMUP_FRAMES)
-            .frames(MEASURE_FRAMES)
-            .run_frames(|| {
-                let report = frontend.frame(|ui| {
-                    recorded += 1;
-                    shell.record(MAIN_WINDOW, ui);
-                });
-                if report.paint() == FramePaint::Skip {
-                    frontend.paint_full();
-                }
-            });
+        audit_compose_frames(|frontend| {
+            frontend.frame(|ui| {
+                recorded += 1;
+                shell.record(MAIN_WINDOW, ui);
+            })
+        });
         // A page with a paint-only animation, as Materials and Motion, records in its first frames
         // alone, and the window audits its paint.
         assert!(recorded > 0, "page {page} recorded no frame");
     }
+}
+
+/// `frame` audited on a composing harness at the bench surface, [`WARMUP_FRAMES`] warmed, then
+/// [`MEASURE_FRAMES`] measured; a frame that records nothing is painted whole, so every measured
+/// frame composes.
+fn audit_compose_frames(mut frame: impl FnMut(&mut Harness) -> FrameReport) {
+    let mut frontend = Harness::builder(BENCH_SURFACE)
+        .system_scale(BENCH_DPR)
+        .depth(HarnessDepth::Compose)
+        .build();
+    Audit::new()
+        .warmup(WARMUP_FRAMES)
+        .frames(MEASURE_FRAMES)
+        .run_frames(|| {
+            if frame(&mut frontend).paint == FramePaint::Skip {
+                frontend.paint_full();
+            }
+        });
 }

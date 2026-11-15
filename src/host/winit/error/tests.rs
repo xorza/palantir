@@ -1,7 +1,7 @@
 use std::error::Error;
 
-use crate::gpu::error::{GpuRequestError, SurfaceError, UnmetRequirements};
-use crate::host::winit::error::{HostDisconnected, WinitHostError};
+use crate::gpu::error::{DeviceRequirementsError, GpuRequestError, SurfaceError};
+use crate::host::winit::error::{HostHandleError, WinitHostError};
 use crate::window::window_token::WindowToken;
 use winit::error;
 
@@ -18,7 +18,7 @@ fn host_errors_preserve_sources_and_explain_capability_failures() {
     );
 
     // A device request failing during the first window's open reads as a device failure; it hands on its cause, not itself, so chain printers never repeat a sentence.
-    let unmet = UnmetRequirements::Limit {
+    let unmet = DeviceRequirementsError::Limit {
         name: "max_immediate_size",
         required: 16,
         available: 8,
@@ -72,10 +72,10 @@ fn host_errors_preserve_sources_and_explain_capability_failures() {
 #[test]
 fn host_disconnected_reports_the_loss_and_costs_nothing_to_return() {
     // Returned by value during shutdown, so no payload.
-    assert_eq!(size_of::<HostDisconnected>(), 0);
+    assert_eq!(size_of::<HostHandleError>(), 0);
 
     // The message names the consequence (work was thrown away), not just "event loop exited".
-    let err = HostDisconnected;
+    let err = HostHandleError;
     assert_eq!(
         err.to_string(),
         "host event loop has exited; the scheduled work was not delivered"

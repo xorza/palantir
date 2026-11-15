@@ -1,10 +1,10 @@
 //! One backdrop as damage, the backdrop ledger and the encoder see it.
 
+use crate::cascade::blur_plan::BlurPlan;
 use crate::display::Display;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::identity::backdrop_key::BackdropKey;
-use crate::shape::paint::blur_plan::BlurPlan;
 
 /// A backdrop of one plane: who it is, where it stands in paint order, its blur, and the screen it
 /// reads.
@@ -47,5 +47,28 @@ impl PlaneBackdrop {
             self.footprint.max() * scale,
         ))
         .clamp_to(URect::new(0, 0, surface.x, surface.y))
+    }
+}
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use crate::cascade::blur_plan::BlurPlan;
+    use crate::cascade::plane_backdrop::PlaneBackdrop;
+    use crate::primitives::geometry::rect::Rect;
+    use crate::primitives::identity::backdrop_key::BackdropKey;
+
+    impl PlaneBackdrop {
+        /// Backdrop `key` at row `row` over `rect`, standing at its own row, at σ 1, its footprint
+        /// the rect: the base of a test's or a bench's literal, which sets what it varies.
+        pub(crate) fn fixture(key: BackdropKey, row: u32, rect: Rect) -> Self {
+            Self {
+                key,
+                row,
+                paint_row: row,
+                rect,
+                plan: BlurPlan::new(1.0),
+                footprint: rect,
+            }
+        }
     }
 }

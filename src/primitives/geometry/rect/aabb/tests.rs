@@ -32,13 +32,10 @@ fn bounds_fold_points_and_any_nan_poisons_them() {
     ];
     for (label, points, want) in cases {
         let slice = Aabb::of(&points);
-        let stream = Aabb::of_iter(points.iter().copied());
         if let Some(rect) = want {
             assert_eq!(slice, rect, "{label}");
-            assert_eq!(stream, rect, "{label}: stream");
         } else {
             assert!(slice.has_nan(), "{label}: {slice:?}");
-            assert!(stream.has_nan(), "{label}: stream {stream:?}");
         }
     }
 }

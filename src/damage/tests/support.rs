@@ -24,7 +24,7 @@ pub(super) const DISPLAY: Display = Display {
 
 /// Run one frame of `f` and return its damage, or `None` when it skips; the previous output is told valid, so damage is incremental.
 pub(super) fn frame(h: &mut Harness, f: impl FnMut(&mut Ui)) -> Option<Damage> {
-    h.frame(f).plan.map(|plan| plan.damage)
+    h.frame_recorded(f).plan.map(|plan| plan.damage)
 }
 
 /// [`frame`] with the previous output lost, as after a failed present.

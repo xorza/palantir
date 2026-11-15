@@ -180,8 +180,10 @@ impl PaintRectCtx<'_> {
                 let screen = if row.shadow.is_noop() {
                     visible_rect
                 } else {
-                    let chrome_local =
-                        owner_local.union(row.shadow.paint_rect_local(None, layout_rect.size));
+                    let chrome_local = owner_local.union(row.shadow.paint_rect(Rect {
+                        min: Vec2::ZERO,
+                        size: layout_rect.size,
+                    }));
                     chrome.to_screen(chrome_local, parent_clip)
                 };
                 span.push(screen, row.hash);
@@ -316,13 +318,17 @@ impl PaintRectCtx<'_> {
                         shape_clip,
                     ),
                     // Bounded by the rect the encoder draws, which overflows the base under
-                    // `ImageFit::Natural`.
+                    // `Fit::Natural`.
                     ShapeRecord::Closed {
                         geometry: ClosedGeometry::Box(geometry),
-                        paint: ClosedPaint::Image { source, fit, .. },
+                        paint:
+                            ClosedPaint::Image {
+                                source, placement, ..
+                            },
                     } => shape.to_screen(
                         spun_if_animated(
-                            fit.resolve(geometry.place(layout_rect.size).rect, source.intrinsic())
+                            placement
+                                .resolve(geometry.place(layout_rect.size).rect, source.intrinsic())
                                 .rect,
                             idx,
                         ),
@@ -332,7 +338,7 @@ impl PaintRectCtx<'_> {
                     // physical antialiasing reach its stages draw, as a triangle's is.
                     ShapeRecord::Closed {
                         geometry: ClosedGeometry::Box(geometry),
-                        paint: ClosedPaint::Effect { outside, .. },
+                        paint: ClosedPaint::Effect { read, .. },
                     } => clip_screen(
                         shape
                             .to_screen(
@@ -340,7 +346,7 @@ impl PaintRectCtx<'_> {
                                     geometry
                                         .place(layout_rect.size)
                                         .rect
-                                        .inflated(outside.unwrap_or(0.0)),
+                                        .inflated(read.halo_reach()),
                                     idx,
                                 ),
                                 None,

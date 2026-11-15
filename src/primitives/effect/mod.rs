@@ -4,3 +4,5 @@
 pub(crate) mod effect_kind;
 pub(crate) mod effect_name;
 pub(crate) mod effect_params;
+pub(crate) mod effect_types;
+pub(crate) mod press_params;

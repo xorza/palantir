@@ -23,13 +23,13 @@ use crate::host::host_core::HostCore;
 use crate::host::host_device::HostDevice;
 use crate::host::winit::frame_summary::FrameSummary;
 use crate::host::winit::input::translator::{PointerTrace, Translator};
-use crate::host::winit::native;
 use crate::host::winit::remote::remote_end::RemoteEnd;
-use crate::host::winit::remote::{LoseTask, QueryTask, ShotAsk};
+use crate::host::winit::user_event::{LoseTask, QueryTask, ShotAsk};
 use crate::host::winit::window::applied_levels::{AppliedLevels, ImeChange};
 use crate::host::winit::window::present_schedule::{AcquireOutcome, PresentSchedule, Wake};
 use crate::host::winit::window::visibility::Visibility;
 use crate::host::winit::window_set::Paced;
+use crate::host::winit::{native, platform};
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::input::input_event::InputEvent;
@@ -42,6 +42,7 @@ use crate::window::window_commands::WindowCommands;
 use crate::window::window_frame_state::WindowFacts;
 use crate::window::window_placement::WindowPlacement;
 use std::mem;
+use std::num::NonZeroU32;
 
 /// What only the windowing system can answer, held until an event that can change
 /// it. Each field is an X11 round trip and `current_monitor` allocates, which
@@ -54,7 +55,7 @@ pub(super) struct SystemFacts {
     /// Whether the window fills its screen, as the macOS green button makes it; like
     /// maximized, a size the window does not return to.
     fullscreen: bool,
-    refresh_millihertz: Option<u32>,
+    refresh_millihertz: Option<NonZeroU32>,
 }
 
 impl SystemFacts {
@@ -176,7 +177,7 @@ impl Window {
             levels: AppliedLevels::new(decorations),
             visibility: Visibility::default(),
             schedule: PresentSchedule::default(),
-            translator: Translator::new(PLATFORM),
+            translator: Translator::new(PLATFORM, platform::wheel_steps),
             clock: RealtimeClock::new(),
             input_epoch: Instant::now(),
             maximized_stale: false,
@@ -290,7 +291,8 @@ impl Window {
             refresh_millihertz: self
                 .window
                 .current_monitor()
-                .and_then(|monitor| monitor.refresh_rate_millihertz()),
+                .and_then(|monitor| monitor.refresh_rate_millihertz())
+                .and_then(NonZeroU32::new),
         };
         self.system_facts = Some(facts);
         facts
@@ -396,13 +398,13 @@ impl Window {
             };
             let HostCore { cpu, device } = core;
             let frame = device.frame(cpu, &mut self.frames, spec, app);
-            let summary = self
-                .remote
-                .after_frame(self.frames.ui(), &frame.report, app.is_busy());
-            let ran_app = frame.report.processing.ran_app();
+            let summary =
+                self.remote
+                    .after_frame(self.frames.ui(), &frame.recorded.report(), app.is_busy());
+            let ran_app = frame.recorded.processing.ran_app();
             let slack = time::reduced_frame_slack(facts.refresh_millihertz);
             self.earliest_redraw_at = frame
-                .report
+                .recorded
                 .earliest_repaint_at
                 .map(|slot| self.clock.deadline(slot.saturating_sub(slack)));
             self.next = self.present(device, frame);
@@ -418,13 +420,13 @@ impl Window {
     }
 
     fn present(&mut self, device: &mut HostDevice, frame: CpuFrame<'_>) -> FramePresent {
-        let CpuFrame { report, built } = frame;
+        let CpuFrame { recorded, built } = frame;
         let outcome = if device.will_submit(&built) {
             self.acquire_and_present(device, built)
         } else {
             AcquireOutcome::Skipped
         };
-        let decision = self.schedule.after(outcome, &report);
+        let decision = self.schedule.after(outcome, &recorded.report());
         if decision.rebuild {
             if let AcquireOutcome::Suboptimal(_) = outcome {
                 tracing::warn!("surface acquire: suboptimal");

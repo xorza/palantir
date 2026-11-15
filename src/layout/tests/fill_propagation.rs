@@ -4,7 +4,7 @@
 use crate::internals::layout_rig::{GridTracks, LayoutRig, NodeRecorder, TextRun};
 use crate::layout::tests::support::{PARAGRAPH, two_hug_cols_with_wrap};
 use crate::primitives::geometry::size::Size;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::primitives::layout::track::Track;
 use crate::text::wrap::TextWrap;
 use crate::widget_core::configure::Configure;
@@ -48,7 +48,7 @@ fn fill_positioners_pass_finite_avail_so_nested_grid_constrains() {
     for (label, positioner) in [("zstack", Widget::zstack()), ("canvas", Widget::canvas())] {
         let mut rig = LayoutRig::new();
         rig.run(Size::new(200.0, 400.0), |rec| {
-            let outer = positioner.size((Sizing::FILL, Sizing::FILL));
+            let outer = positioner.size(SizeSpec::FILL);
             rec.node("positioner", outer, |rec| {
                 two_hug_cols_with_wrap(rec, PARAGRAPH);
             });
@@ -68,10 +68,7 @@ fn hug_zstack_does_not_recursively_size_to_fill_child() {
     rig.run(Size::new(800.0, 600.0), |rec| {
         rec.node("row", Widget::hstack(), |rec| {
             rec.node("hug-z", Widget::zstack(), |rec| {
-                rec.leaf(
-                    "fill-child",
-                    Widget::leaf().size((Sizing::FILL, Sizing::FILL)),
-                );
+                rec.leaf("fill-child", Widget::leaf().size(SizeSpec::FILL));
                 rec.leaf("fixed-child", Widget::leaf().size((60.0, 40.0)));
             });
         });
@@ -101,7 +98,7 @@ fn fill_grid_fill_col_wraps_text_under_constrained_width() {
     let mut rig = LayoutRig::new();
     rig.run(Size::new(200.0, 400.0), |rec| {
         rec.node("column", Widget::vstack(), |rec| {
-            let grid = Widget::grid().size((Sizing::FILL, Sizing::HUG));
+            let grid = Widget::grid().size(SizeSpec::FILL_W);
             label_value_rows(rec, grid, &[("Label:", PARAGRAPH)]);
         });
     });
@@ -119,9 +116,9 @@ fn fill_grid_fill_col_wraps_text_under_constrained_width() {
 fn vstack_section_with_hug_grid_and_fill_col_wrap_does_not_collapse() {
     let mut rig = LayoutRig::new();
     rig.run(Size::new(400.0, 600.0), |rec| {
-        let section = Widget::vstack().size((Sizing::FILL, Sizing::HUG));
+        let section = Widget::vstack().size(SizeSpec::FILL_W);
         rec.node("section", section, |rec| {
-            let grid = Widget::grid().size((Sizing::FILL, Sizing::HUG));
+            let grid = Widget::grid().size(SizeSpec::FILL_W);
             let rows = [
                 (
                     "Title:",
@@ -151,9 +148,9 @@ fn hug_zstack_with_nested_grid_wrap_does_not_collapse() {
     rig.run(Size::new(400.0, 600.0), |rec| {
         let column = Widget::vstack().size((Sizing::fixed(400.0), Sizing::HUG));
         rec.node("column", column, |rec| {
-            let hug_z = Widget::zstack().size((Sizing::FILL, Sizing::HUG));
+            let hug_z = Widget::zstack().size(SizeSpec::FILL_W);
             rec.node("hug-z", hug_z, |rec| {
-                let grid = Widget::grid().size((Sizing::FILL, Sizing::HUG));
+                let grid = Widget::grid().size(SizeSpec::FILL_W);
                 let value = "the quick brown fox jumps over the lazy dog \
                              pack my box with five dozen liquor jugs";
                 label_value_rows(rec, grid, &[("Label:", value)]);

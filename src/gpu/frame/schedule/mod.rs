@@ -5,11 +5,19 @@
 #[cfg(feature = "internals")]
 pub(crate) mod bench;
 
-use crate::gpu::frame::frame_passes::ColorLoad;
 use crate::primitives::geometry::urect::URect;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::draw_run::DrawRun;
 use std::fmt;
+
+/// What a main pass does with the color target's pixels before it paints.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ColorLoad {
+    /// Clear to the frame's clear color: the first pass of a whole frame.
+    Clear,
+    /// Keep them: a partial frame, or a pass after a break.
+    Load,
+}
 
 /// One step of the schedule: what to do, not how.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -155,7 +163,7 @@ impl PassState<'_> {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
-    use crate::gpu::frame::frame_passes::ColorLoad;
+    use crate::gpu::frame::schedule::ColorLoad;
     use crate::gpu::frame::schedule::{RenderStep, RunSpan, Schedule};
     use crate::primitives::geometry::urect::URect;
     use crate::renderer::render_buffer::RenderBuffer;

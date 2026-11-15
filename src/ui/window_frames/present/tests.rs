@@ -9,7 +9,7 @@ use crate::gpu::render_owner_id::RenderOwners;
 use crate::gpu::texel::TargetFormat;
 use crate::renderer::frontend::Frontend;
 use crate::ui::app::App;
-use crate::ui::frame_report::FrameReport;
+use crate::ui::frame_report::RecordedFrame;
 use crate::ui::resources::UiResources;
 use crate::ui::window_frames::WindowFrames;
 use crate::ui::window_frames::present::{
@@ -52,7 +52,11 @@ fn new_frames(token: WindowToken, shared: &UiResources, config: FramesConfig) ->
 
 impl WindowFrames {
     /// [`Self::build_paint`] on placements of its own, as a test with no held cutouts builds.
-    fn build_alone<'f>(&mut self, frontend: &'f mut Frontend, report: FrameReport) -> CpuFrame<'f> {
+    fn build_alone<'f>(
+        &mut self,
+        frontend: &'f mut Frontend,
+        recorded: RecordedFrame,
+    ) -> CpuFrame<'f> {
         let ctx = BuildCtx {
             frontend,
             placing: CutoutPlacing {
@@ -61,7 +65,7 @@ impl WindowFrames {
             },
             frame: 0,
         };
-        self.build_paint(ctx, report)
+        self.build_paint(ctx, recorded)
     }
 
     /// A painted frame's CPU half under `stamp`, with no target noted and no device.
@@ -71,8 +75,8 @@ impl WindowFrames {
         stamp: FrameStamp,
         app: &mut T,
     ) -> CpuFrame<'f> {
-        let report = self.frame(stamp, app);
-        self.build_alone(frontend, report)
+        let recorded = self.frame(stamp, app);
+        self.build_alone(frontend, recorded)
     }
 }
 
@@ -90,10 +94,10 @@ const fn spec(physical: UVec2, system_scale: f32) -> FrameSpec {
 
 mod present_mode_tests {
     use crate::damage::Damage;
+    use crate::damage::bench::sweep::policy::{Decision, FrameFacts, Policy};
+    use crate::damage::bench::sweep::scenario::catalog;
+    use crate::damage::bench::sweep::stage::Stage;
     use crate::damage::region::{DamageRegion, MergePolicy};
-    use crate::damage::sweep::policy::{Decision, FrameFacts, Policy};
-    use crate::damage::sweep::scenario::catalog;
-    use crate::damage::sweep::stage::Stage;
     use crate::gpu::frame::submission::Route;
     use crate::primitives::geometry::rect::Rect;
     use crate::primitives::paint::color::RgbaF32;
@@ -319,17 +323,20 @@ mod output_validity_tests {
     use crate::primitives::paint::color::RgbaF32;
     use crate::renderer::frontend::Frontend;
     use crate::renderer::render_plan::RenderPlan;
+    use crate::ui::app::RecordPass;
     use crate::ui::window_frames::WindowFrames;
     use crate::ui::window_frames::present::screenshot_lane::PendingScreenshot;
     use crate::ui::window_frames::present::tests::{config, spec};
     use crate::ui::window_frames::present::{BuiltFrame, FrameSpec, PresentStrategy};
+    use crate::window::error::ScreenshotRefusal;
     use crate::window::screenshot::{ScreenshotId, ScreenshotRequest};
+    use std::ops::Range;
     use std::time::Duration;
 
     use crate::damage::{Damage, DamageBase};
 
     use crate::ui::Ui;
-    use crate::ui::frame_report::{FrameProcessing, FrameReport};
+    use crate::ui::frame_report::{FrameProcessing, RecordedFrame};
     use crate::ui::resources::UiResources;
     use crate::window::vsync::Vsync;
     use crate::window::window_commands::WindowCommands;
@@ -420,8 +427,8 @@ mod output_validity_tests {
         assert_eq!(frames.drain_window_output(&mut commands).vsync, Vsync::Off);
     }
 
-    fn report(plan: Option<RenderPlan>) -> FrameReport {
-        FrameReport {
+    fn recorded(plan: Option<RenderPlan>) -> RecordedFrame {
+        RecordedFrame {
             repaint_requested: false,
             repaint_at: None,
             earliest_repaint_at: None,
@@ -465,7 +472,7 @@ mod output_validity_tests {
         };
         let rescaled = FrameSpec {
             system_scale: SystemScale::new(2.0).unwrap(),
-            refresh_millihertz: Some(120_000),
+            refresh_millihertz: std::num::NonZeroU32::new(120_000),
             now: Duration::from_secs(1),
             ..uncopyable
         };
@@ -502,7 +509,7 @@ mod output_validity_tests {
             config(PresentStrategy::BackbufferCopy, true),
         );
         let mut asked = None;
-        let mut app = |ui: &mut Ui| asked = ui.request_screenshot(None);
+        let mut app = |ui: &mut Ui| asked = ui.request_screenshot(None).ok();
         let _ = frames.record(spec(UVec2::new(100, 80), 1.0), &mut app);
         assert!(asked.is_some());
         assert!(!frames.output_valid(), "a first target discards the base");
@@ -513,6 +520,52 @@ mod output_validity_tests {
         assert!(frames.output_valid());
         assert_eq!(frames.ui.window_requests().screenshots.len(), 0);
         assert_eq!(frames.screenshots.requests.len(), 0);
+    }
+
+    /// A window owes at most `MAX_PENDING_SCREENSHOTS`, 8, images: asks a built frame took count
+    /// against the next frame's until a frame lands or drops them, and a region asked again in
+    /// one frame takes no room.
+    #[test]
+    fn screenshot_asks_past_the_bound_are_refused_until_room_frees() {
+        let shared = UiResources::isolated_mono();
+        let mut frontend = Frontend::for_test();
+        let mut frames = frames(WindowToken(1), &shared);
+        // 6 of 8 in the first frame; the repeat takes the first's id.
+        let first = ask_regions(&mut frames, 0..6);
+        assert!(first[..6].iter().all(Result::is_ok), "{first:?}");
+        assert_eq!(first[6], first[0]);
+        let _ = frames.build_alone(&mut frontend, recorded(None));
+        assert_eq!(frames.screenshots.len(), 6, "a built frame takes its asks");
+
+        // 2 fit beside the 6 owed; the third is refused.
+        let second = ask_regions(&mut frames, 10..13);
+        assert!(second[..2].iter().all(Result::is_ok), "{second:?}");
+        assert_eq!(second[2], Err(ScreenshotRefusal::Full));
+        assert_eq!(second[3], second[0], "a repeat is no new ask");
+
+        // A frame below paint drops what the window owed, which frees the room at once.
+        frames.finish_unpainted();
+        assert_eq!(frames.screenshots.len(), 0);
+        let third = ask_regions(&mut frames, 20..28);
+        assert!(third.iter().all(Result::is_ok), "{third:?}");
+    }
+
+    /// One frame whose first pass asks for the regions `asks` names, then the first again, and
+    /// what each ask got.
+    fn ask_regions(
+        frames: &mut WindowFrames,
+        asks: Range<usize>,
+    ) -> Vec<Result<ScreenshotId, ScreenshotRefusal>> {
+        let region = |idx: usize| Some(Rect::new(idx as f32, 0.0, 1.0, 1.0));
+        let mut got = Vec::new();
+        let mut app = |ui: &mut Ui| {
+            if ui.record_pass() == RecordPass::First {
+                got.extend(asks.clone().map(|idx| ui.request_screenshot(region(idx))));
+                got.push(ui.request_screenshot(region(asks.start)));
+            }
+        };
+        let _ = frames.record(spec(UVec2::new(100, 80), 1.0), &mut app);
+        got
     }
 
     /// A built frame dropped unsubmitted, as a failed acquire or a lost device leaves it, leaves
@@ -561,7 +614,7 @@ mod output_validity_tests {
         frames.damage_base = DamageBase::Prev;
         let paint = frames.build_alone(
             &mut frontend,
-            report(Some(RenderPlan {
+            recorded(Some(RenderPlan {
                 clear: RgbaF32::BLACK,
                 damage: Damage::Full,
             })),
@@ -579,14 +632,14 @@ mod output_validity_tests {
         // without one has no submit, so a still frame's precondition is set here.
         frames.damage_base = DamageBase::Prev;
 
-        let skip = frames.build_alone(&mut frontend, report(None));
+        let skip = frames.build_alone(&mut frontend, recorded(None));
         assert!(matches!(skip.built, BuiltFrame::Still));
         assert!(
             frames.output_valid(),
             "a still frame preserves valid target pixels"
         );
         assert!(
-            !skip.report.repaint_requested,
+            !skip.recorded.repaint_requested,
             "a still frame asks for nothing"
         );
 
@@ -600,18 +653,18 @@ mod output_validity_tests {
             },
             scale: 1.0,
         });
-        let waiting = frames.build_alone(&mut frontend, report(None));
+        let waiting = frames.build_alone(&mut frontend, recorded(None));
         assert!(matches!(waiting.built, BuiltFrame::Still));
         assert!(
-            waiting.report.repaint_requested,
+            waiting.recorded.repaint_requested,
             "a pending screenshot asks for the next frame"
         );
         frames.screenshots.pending.clear();
-        let landed = frames.build_alone(&mut frontend, report(None));
-        assert!(!landed.report.repaint_requested);
+        let landed = frames.build_alone(&mut frontend, recorded(None));
+        assert!(!landed.recorded.repaint_requested);
 
         frames.strategy = PresentStrategy::BackbufferCopy;
-        let skip_copy = frames.build_alone(&mut frontend, report(None));
+        let skip_copy = frames.build_alone(&mut frontend, recorded(None));
         assert!(matches!(skip_copy.built, BuiltFrame::CopyBackbuffer));
         assert!(
             !frames.output_valid(),
@@ -734,7 +787,7 @@ mod record_store_tests {
                 .show(ui, |ui| {
                     ui.add_shape(Shape::mesh(self.mesh), RgbaF32::WHITE);
                     ui.add_shape(
-                        Shape::polyline(self.points).per_point(self.colors),
+                        Shape::polyline(self.points).point_colors(self.colors),
                         Stroke::new(RgbaF32::WHITE, 3.0),
                     );
                     let label = ui.intern(self.label);
@@ -876,7 +929,7 @@ mod record_store_tests {
         assert_eq!(snapshot(&window_a), retained);
 
         let paint_only = window_a.paint_at(&mut frontend, display, &mut app_a);
-        assert_eq!(paint_only.report.processing, FrameProcessing::PaintOnly);
+        assert_eq!(paint_only.recorded.processing, FrameProcessing::PaintOnly);
         assert_eq!(snapshot(&window_a), retained);
     }
 }
@@ -970,7 +1023,7 @@ mod cutout_census_tests {
     use crate::gpu::pipeline::quad_pipeline::cutout_placements::{CutoutPlacements, CutoutPlacing};
     use crate::gpu::render_owner_id::RenderOwners;
     use crate::primitives::geometry::rect::Rect;
-    use crate::primitives::layout::sizing::Sizing;
+    use crate::primitives::layout::sizing::SizeSpec;
     use crate::primitives::paint::chrome::Chrome;
     use crate::primitives::paint::color::RgbaF32;
     use crate::primitives::paint::shadow::Shadow;
@@ -1010,7 +1063,7 @@ mod cutout_census_tests {
         let mut app = |ui: &mut Ui| {
             Panel::canvas()
                 .id_salt("cards")
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| {
                     for card in 0..cards.get() {
                         ui.add_shape(
@@ -1085,13 +1138,13 @@ mod screenshot_tests {
     use crate::display::system_scale::SystemScale;
     use std::cell::Cell;
 
+    use crate::primitives::paint::image::Image;
     use glam::{UVec2, Vec2};
-    use image::imageops;
 
     use crate::gpu::test_gpu::headless_test_gpu;
     use crate::gpu::texel::TargetFormat;
     use crate::host::harness::Harness;
-    use crate::host::harness::harness_builder::Depth;
+    use crate::host::harness::harness_builder::HarnessDepth;
     use crate::primitives::geometry::rect::Rect;
     use crate::primitives::geometry::size::Size;
     use crate::primitives::paint::chrome::Chrome;
@@ -1099,6 +1152,7 @@ mod screenshot_tests {
     use crate::ui::Ui;
     use crate::widget_core::configure::Configure;
     use crate::widgets::block::Block;
+    use crate::window::error::ScreenshotRefusal;
     use crate::window::screenshot::{Screenshot, ScreenshotId};
 
     /// 64 × 48 physical pixels: logical 64 × 48 at scale 1, 32 × 24 at scale 2.
@@ -1134,7 +1188,7 @@ mod screenshot_tests {
             let window = Harness::builder(PHYSICAL)
                 .system_scale(SystemScale::new(scale).unwrap())
                 .mono()
-                .depth(Depth::Gpu {
+                .depth(HarnessDepth::Gpu {
                     gpu: gpu.handles(),
                     format: TargetFormat::new(format),
                 })
@@ -1171,7 +1225,7 @@ mod screenshot_tests {
                     .chrome(Chrome::new(RgbaF32::hex(0x2f6fd0)))
                     .show(ui);
                 if let Frame::Asking(region) = frame {
-                    asked.set(ui.request_screenshot(region));
+                    asked.set(ui.request_screenshot(region).ok());
                 }
             };
             let repaint = self.window.frame(&mut app).repaint_requested;
@@ -1183,7 +1237,7 @@ mod screenshot_tests {
         }
 
         /// The target's pixels; the scene is still, so every frame leaves the same ones.
-        fn target(&self) -> image::RgbaImage {
+        fn target(&self) -> Image {
             self.window.read_back()
         }
 
@@ -1230,9 +1284,9 @@ mod screenshot_tests {
             let shot = scene.capture(None);
             let image = shot.image();
             assert_eq!(image.size(), PHYSICAL, "{format:?}");
-            assert_eq!(shot.scale(), 1.0);
+            assert_eq!(shot.scale_factor(), 1.0);
             assert_eq!(shot.region(), Rect::new(0.0, 0.0, 64.0, 48.0));
-            assert_eq!(image.pixels, scene.target().into_raw(), "{format:?}");
+            assert_eq!(*image, scene.target(), "{format:?}");
             reference.get_or_insert(shot);
         }
         let float = Scene::new(wgpu::TextureFormat::Rgba16Float, 1.0).capture(None);
@@ -1271,9 +1325,8 @@ mod screenshot_tests {
             assert_eq!(shot.region(), clamped);
             let image = shot.image();
             assert_eq!(image.size(), size, "{region:?}");
-            assert_eq!(shot.scale(), 2.0);
-            let crop = imageops::crop_imm(&target, min.x, min.y, size.x, size.y).to_image();
-            assert_eq!(image.pixels, crop.into_raw(), "{region:?}");
+            assert_eq!(shot.scale_factor(), 2.0);
+            assert_eq!(*image, target.cropped(min, size), "{region:?}");
             // A BGRA target's region is copied and swapped, a float one's blitted at the
             // region's own size: both read as the sRGB one.
             for (format, other) in &mut others {
@@ -1287,7 +1340,7 @@ mod screenshot_tests {
         };
         assert_eq!(
             scene.window.ui_mut().request_screenshot(Some(empty)),
-            None,
+            Err(ScreenshotRefusal::EmptyRegion),
             "an empty region asks nothing"
         );
     }
@@ -1301,7 +1354,7 @@ mod screenshot_tests {
             scene.frame(Frame::Still);
         }
         let shot = scene.capture(None);
-        assert_eq!(shot.image().pixels, scene.target().into_raw());
+        assert_eq!(*shot.image(), scene.target());
     }
 
     /// Two regions asked in one frame are two images, each landing in a frame of its own under
@@ -1354,7 +1407,7 @@ mod escalation_tests {
     use crate::gpu::pipeline::quad_pipeline::cutout_placements::{CutoutPlacements, CutoutPlacing};
     use crate::primitives::geometry::rect::Rect;
     use crate::primitives::identity::backdrop_key::BackdropKey;
-    use crate::primitives::layout::sizing::Sizing;
+    use crate::primitives::layout::sizing::SizeSpec;
     use crate::primitives::paint::color::RgbaF32;
     use crate::primitives::paint::material::Material;
     use crate::renderer::frontend::Frontend;
@@ -1411,7 +1464,7 @@ mod escalation_tests {
     fn bars(ui: &mut Ui, count: u32) {
         Panel::canvas()
             .id_salt("backdrops")
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 for i in 0..count {
                     ui.add_shape(
@@ -1512,12 +1565,12 @@ mod escalation_tests {
         frames.compose(&mut frontend, &mut rows, bands(1));
 
         let held = frontend
-            .buffer
+            .buffer()
             .backdrops
             .iter()
             .filter(|row| row.source == BackdropSource::Held)
             .count();
-        assert_eq!(frontend.buffer.backdrops.len(), 10);
+        assert_eq!(frontend.buffer().backdrops.len(), 10);
         assert_eq!(held, 0);
     }
 
@@ -1677,7 +1730,7 @@ mod escalation_tests {
 mod capture_path_tests {
     use crate::gpu::frame::submission::Route;
     use crate::primitives::geometry::rect::Rect;
-    use crate::primitives::layout::sizing::Sizing;
+    use crate::primitives::layout::sizing::SizeSpec;
     use crate::primitives::paint::color::RgbaF32;
     use crate::primitives::paint::material::Material;
     use crate::renderer::frontend::Frontend;
@@ -1716,7 +1769,7 @@ mod capture_path_tests {
         let mut app = |ui: &mut Ui| {
             Panel::canvas()
                 .id_salt("backdrops")
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| {
                     ui.add_shape(
                         Shape::rect().at(Rect::new(0.0, 0.0, 4.0, 4.0)),

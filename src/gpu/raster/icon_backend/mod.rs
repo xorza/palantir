@@ -11,13 +11,12 @@
 
 use crate::gpu::atlas::AtlasPool;
 use crate::gpu::atlas::atlas_textures::AtlasTextures;
-use crate::gpu::atlas::tenant::Tenant;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
 use crate::gpu::pipeline::raster_pipeline::RasterPipelinePair;
 use crate::gpu::pipeline::raster_pipeline::raster_quad::RasterQuad;
 use crate::gpu::raster::raster_atlas::Found;
-use crate::gpu::raster::raster_pass::{Filed, RasterPass, RasterPassConfig};
+use crate::gpu::raster::raster_pass::{Filed, RasterPass, RasterTenant};
 use crate::gpu::resource::gpu_ctx::GpuCtx;
 use crate::icons::icon_raster_key::IconRasterKey;
 use crate::icons::icon_rasterizer::IconRasterizer;
@@ -36,16 +35,7 @@ pub(crate) struct IconBackend {
 impl IconBackend {
     pub(crate) fn new(gpu: &Gpu, icons: IconRegistry) -> Self {
         Self {
-            pass: RasterPass::new(
-                gpu,
-                RasterPassConfig {
-                    label: "palantir.icon",
-                    tenant: Tenant::Icons,
-                    vbuf: "palantir.icon.vbuf",
-                    spun_vbuf: "palantir.icon.spun_vbuf",
-                    initial_instances: 256,
-                },
-            ),
+            pass: RasterPass::new(gpu, RasterTenant::Icons),
             rasterizer: IconRasterizer::default(),
             icons,
         }

@@ -8,9 +8,10 @@ mod plane_ctx;
 
 use crate::damage::Damage;
 use crate::primitives::geometry::rect::Rect;
+use crate::renderer::backdrop_captures::BackdropTicket;
 use crate::renderer::frontend::encoder::cull_region::CullRegion;
 use crate::renderer::frontend::encoder::gradient_resolver::GradientResolver;
-use crate::renderer::frontend::encoder::plane_ctx::PlaneCtx;
+use crate::renderer::frontend::encoder::plane_ctx::{EncodeFrame, PlaneCtx};
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::{BuildPlan, FrameScene};
 use crate::renderer::repaint_scissors;
@@ -54,7 +55,7 @@ impl Encoder {
                     scene
                         .backdrops()
                         .zip(tickets)
-                        .filter(|(_, ticket)| ticket.is_some_and(|ticket| ticket.captures))
+                        .filter(|(_, ticket)| ticket.is_some_and(BackdropTicket::is_new))
                         .map(|(backdrop, _)| backdrop.footprint),
                 );
                 Some(CullRegion {
@@ -67,26 +68,27 @@ impl Encoder {
         let mut gradients = self
             .gradients
             .begin(scene.forest.record_store.gradients.records.as_slice(), rows);
+        let frame = EncodeFrame {
+            damage_filter,
+            damage_cull_margin,
+            viewport,
+            now,
+        };
         let mut first_backdrop = 0;
         for (plane, tree) in scene.forest.trees.iter_paint_order() {
-            let plane_cascades = &scene.cascade.planes[plane];
-            let backdrops = plane_cascades.backdrops.as_slice();
-            let plane_tickets = &tickets[first_backdrop..first_backdrop + backdrops.len()];
-            first_backdrop += backdrops.len();
+            let cascade = &scene.cascade.planes[plane];
+            let backdrops = cascade.backdrops.len();
+            let plane_tickets = &tickets[first_backdrop..first_backdrop + backdrops];
+            first_backdrop += backdrops;
             let mut ctx = PlaneCtx {
                 tree,
                 layout: &scene.layout[plane],
-                cascade_inputs: plane_cascades.cascade_inputs.as_slice(),
-                subtree_paint_rects: plane_cascades.subtree_paint_rects.as_slice(),
+                cascade,
+                frame,
                 gradients: &mut gradients,
                 paint_animation_cursor: tree.paint_animations.cursor(),
-                damage_filter,
-                backdrops,
                 tickets: plane_tickets,
                 next_backdrop: 0,
-                damage_cull_margin,
-                viewport,
-                now,
             };
             for root in &tree.roots {
                 ctx.encode_node(root.first_node, out);

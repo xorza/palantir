@@ -185,7 +185,7 @@ impl TextStyle {
 #[serde(deny_unknown_fields)]
 #[serde(remote = "TextStyle")]
 struct UncheckedTextStyle {
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::font_size")]
+    #[serde(deserialize_with = "crate::primitives::file::font_size")]
     font_size: f32,
     color: RgbaF32,
     line_height_factor: f32,

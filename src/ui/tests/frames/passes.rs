@@ -9,6 +9,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::input_event::InputEvent;
 use crate::primitives::input::interaction::response::Response;
+use crate::primitives::input::interaction::wheel_delta::WheelDelta;
 use crate::primitives::input::keyboard::key::Key;
 use crate::primitives::input::pointer::PointerButton;
 use crate::primitives::input::sense::Sense;
@@ -40,7 +41,7 @@ fn a_relayout_ask_counts_in_its_own_pass() {
     ] {
         let mut h = Harness::cold(SURFACE);
         let mut pass = 0;
-        let report = h.frame(|ui| {
+        let report = h.frame_recorded(|ui| {
             if asking.contains(&pass) {
                 ui.request_relayout();
             }
@@ -78,12 +79,12 @@ fn cascade_visible_to_relayout_pass() {
         match pass.get() {
             0 => {
                 // Pass A: no cascade yet; triggers pass B.
-                pass_a_rect.set(resp.state.rect);
+                pass_a_rect.set(resp.rect);
                 ui.request_relayout();
             }
             1 => {
                 // Pass B: `response_for` returns pass A's arranged rect.
-                pass_b_rect.set(resp.state.rect);
+                pass_b_rect.set(resp.rect);
             }
             _ => unreachable!("relayout capped at one retry per frame"),
         }
@@ -170,7 +171,7 @@ fn frame_pass_count_matches_action_trigger() {
         (
             "scroll",
             |h| {
-                h.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 10.0)));
+                h.on_input(InputEvent::Scroll(WheelDelta::pixels(Vec2::new(0.0, 10.0))));
             },
             1,
         ),
@@ -182,7 +183,7 @@ fn frame_pass_count_matches_action_trigger() {
         prime(&mut h);
 
         let count = Cell::new(0u32);
-        let render_frame_before = h.ui().frame_runtime.render_frame_id;
+        let render_frame_before = h.ui().frame_runtime.render_frame_idx;
         let _ = h.frame(|ui| {
             count.set(count.get() + 1);
             build_target(ui);
@@ -195,9 +196,9 @@ fn frame_pass_count_matches_action_trigger() {
         );
         // The render frame id bumps once per `frame`, so pass B's anim ticks see pass A's id.
         assert_eq!(
-            h.ui().frame_runtime.render_frame_id,
+            h.ui().frame_runtime.render_frame_idx,
             render_frame_before + 1,
-            "{label}: render_frame_id must bump once per frame (passes: {expected})",
+            "{label}: render_frame_idx must bump once per frame (passes: {expected})",
         );
     }
 }
@@ -272,7 +273,7 @@ fn a_click_reads_in_the_first_pass_and_the_second_has_no_edge() {
     h.release(PointerButton::Left);
 
     app.reads.clear();
-    let report = h.frame_app(&mut app);
+    let report = h.frame_app_recorded(&mut app);
     assert_eq!(
         app.reads,
         [(RecordPass::First, true), (RecordPass::Second, false)],
@@ -281,7 +282,7 @@ fn a_click_reads_in_the_first_pass_and_the_second_has_no_edge() {
 
     app.reads.clear();
     h.ui_mut().request_repaint();
-    let report = h.frame_app(&mut app);
+    let report = h.frame_app_recorded(&mut app);
     assert_eq!(app.reads, [(RecordPass::First, false)]);
     assert_eq!(report.processing, FrameProcessing::SingleLayout);
 }
@@ -472,7 +473,8 @@ fn a_first_pass_sees_input_that_arrived_after_a_quiescent_pass() {
     impl App for Probe {
         fn record(&mut self, _win: WindowToken, ui: &mut Ui) {
             let response = ui.response_for(self.id);
-            self.seen.push(response.pressed() && response.pointer_over);
+            self.seen
+                .push(response.is_pressed() && response.pointer_over);
             Button::new().id(self.id).size(40.0).show(ui);
         }
     }
@@ -512,12 +514,12 @@ impl App for CountingApp {
             RecordPass::Warmup => assert_eq!(ui.peek_pointer_pos(), None, "a scratch input"),
             RecordPass::First => {
                 assert_eq!(ui.peek_pointer_pos(), self.expected_pointer);
-                assert_eq!(ui.record_frame_id(), self.frames_begun, "one id per frame");
+                assert_eq!(ui.record_frame_idx(), self.frames_begun, "one id per frame");
                 self.frames_begun += 1;
             }
             RecordPass::Second => {
                 assert_eq!(
-                    ui.record_frame_id() + 1,
+                    ui.record_frame_idx() + 1,
                     self.frames_begun,
                     "the first's id"
                 );
@@ -540,7 +542,7 @@ fn app_lifecycle_follows_frame_plan_and_each_pass_names_itself() {
     h.hover(pointer);
     app.expected_pointer = Some(pointer);
 
-    let processing = h.frame_app(&mut app).processing;
+    let processing = h.frame_app_recorded(&mut app).processing;
     assert_eq!(processing, FrameProcessing::SingleLayout);
     assert_eq!(app.passes, [RecordPass::Warmup, RecordPass::First]);
 
@@ -549,7 +551,7 @@ fn app_lifecycle_follows_frame_plan_and_each_pass_names_itself() {
     h.ui_mut().request_repaint();
     let processing = h
         .at(Duration::from_millis(16))
-        .frame_app(&mut app)
+        .frame_app_recorded(&mut app)
         .processing;
     assert_eq!(processing, FrameProcessing::DoubleLayout);
     assert_eq!(app.passes, [RecordPass::First, RecordPass::Second]);
@@ -560,7 +562,7 @@ fn app_lifecycle_follows_frame_plan_and_each_pass_names_itself() {
         .schedule_wake(Duration::from_millis(32), WakeReasons::ANIMATION, None);
     let processing = h
         .at(Duration::from_millis(32))
-        .frame_app(&mut app)
+        .frame_app_recorded(&mut app)
         .processing;
     assert_eq!(processing, FrameProcessing::PaintOnly);
     assert_eq!(app.passes, [], "paint-only frame skips record");
@@ -654,7 +656,7 @@ fn a_watch_from_the_first_pass_outlives_a_second_pass() {
         let mut app = WatchProbe { reads_key };
         h.frame_app(&mut app);
         h.ui_mut().request_repaint();
-        let report = h.frame_app(&mut app);
+        let report = h.frame_app_recorded(&mut app);
         assert_eq!(report.processing, FrameProcessing::DoubleLayout);
         app.reads_key = then_reads;
         h.ui_mut().request_repaint();
@@ -772,7 +774,7 @@ fn a_theme_or_font_move_records_where_an_animation_frame_would_only_paint() {
         h.ui_mut()
             .frame_runtime
             .schedule_wake(at, WakeReasons::ANIMATION, None);
-        h.at(at).frame(record).processing
+        h.at(at).frame_recorded(record).processing
     };
     assert_eq!(
         animation_frame(&mut h),
@@ -781,7 +783,7 @@ fn a_theme_or_font_move_records_where_an_animation_frame_would_only_paint() {
     );
 
     h.ui_mut()
-        .set_theme(ColorScheme::Dark, support::still_theme(ColorScheme::Dark))
+        .set_scheme_theme(ColorScheme::Dark, support::still_theme(ColorScheme::Dark))
         .unwrap();
     assert_ne!(
         animation_frame(&mut h),

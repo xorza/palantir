@@ -31,24 +31,26 @@ pub(crate) mod separator;
 pub(crate) mod slider;
 pub(crate) mod spinner;
 pub(crate) mod splitter;
-pub(crate) mod tab_strip_focus;
 pub(crate) mod tabs;
 pub(crate) mod text_edit;
 pub(crate) mod text_style;
 pub(crate) mod text_style_overrides;
 pub(crate) mod toggle;
-pub(crate) mod toggle_kind;
 pub(crate) mod tooltip;
 
 use crate::animation::animation_spec::AnimationSpec;
-use crate::effect::press_input::PressInput;
+use crate::effect::effect_registry::{EffectRegistry, MaterialFit};
+use crate::primitives::effect::effect_kind::ColorEffect;
 use crate::primitives::effect::effect_name::EffectName;
+use crate::primitives::effect::effect_types::EffectTypes;
+use crate::primitives::effect::press_params::PressParams;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::layout::clip_mode::ClipMode;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::material::{Material, fallback_alpha};
+use crate::primitives::paint::material::Material;
+use crate::primitives::paint::material::ink_bound::fallback_alpha;
 use crate::theme::button::ButtonTheme;
 use crate::theme::close_shown::CloseShown;
 use crate::theme::color_picker::ColorPickerTheme;
@@ -56,6 +58,7 @@ use crate::theme::color_scheme::ColorScheme;
 use crate::theme::combo_box::ComboBoxTheme;
 use crate::theme::dock::DockTheme;
 use crate::theme::drag_value::DragValueTheme;
+use crate::theme::error::ThemeEffectError;
 use crate::theme::expander::ExpanderTheme;
 use crate::theme::focus_ring::FocusRingTheme;
 use crate::theme::look::press_effect::PressEffect;
@@ -77,7 +80,6 @@ use crate::theme::text_edit::TextEditTheme;
 use crate::theme::text_style::TextStyle;
 use crate::theme::text_style_overrides::TextStyleOverrides;
 use crate::theme::toggle::ToggleTheme;
-use crate::theme::toggle_kind::ToggleKind;
 use crate::theme::tooltip::TooltipTheme;
 use ::serde::de::Error as _;
 use glam::Vec2;
@@ -165,12 +167,12 @@ pub struct Theme {
     pub window_bg: RgbaF32,
     /// What the box of a [`Material`] that names no fallback of its own paints in place of its
     /// fill while transparency is reduced
-    /// ([`MaterialFallback::ThemeSurface`](crate::MaterialFallback::ThemeSurface)): in a theme from
+    /// ([`BackdropFallback::ThemeSurface`](crate::BackdropFallback::ThemeSurface)): in a theme from
     /// parts the popup panel's fill at the least alpha that holds [`Palette::text`] at 4.5:1 over
     /// any page, opaque where none does, so the box reads as the theme's float surface,
     /// translucent and readable.
     pub material_fallback: RgbaF32,
-    /// The spec a change to this theme runs under, whether [`Ui::set_theme`](crate::Ui::set_theme)
+    /// The spec a change to this theme runs under, whether [`Ui::set_scheme_theme`](crate::Ui::set_scheme_theme)
     /// or a turn of the scheme brought it, as CSS reads the new values of `transition-*`
     /// (<https://www.w3.org/TR/css-transitions-1/>). [`AnimationSpec::THEME`] in a stock theme. A
     /// blend holds one end's, so read it from [`Ui::scheme_theme`](crate::Ui::scheme_theme).
@@ -185,7 +187,7 @@ pub struct Theme {
     pub panel_clip: ClipMode,
 }
 
-/// One text-bearing slot of a theme, as [`ThemeWalk::for_each_text`] hands it over: a whole style, or a look's overrides folded onto [`Theme::text`].
+/// One text-bearing slot of a theme, as [`ThemeWalk::each_text_mut`] hands it over: a whole style, or a look's overrides folded onto [`Theme::text`].
 #[derive(Debug)]
 pub(crate) enum ThemeText<'a> {
     Style(&'a mut TextStyle),
@@ -199,9 +201,10 @@ pub(crate) enum ThemeTextRef<'a> {
     Overrides(&'a TextStyleOverrides),
 }
 
-/// A theme part's text, press and material slots: [`Self::for_each_text`] visits each text slot,
-/// beside the same slot of `other` when one is given, [`Self::each_text`] reads them, and
-/// [`Self::each_press`] and [`Self::each_material`] each press and material slot, in field order.
+/// A theme part's text, press and material slots: [`Self::each_text`] reads each text slot,
+/// [`Self::each_text_mut`] writes it, [`Self::zip_text_mut`] writes it beside the same slot of
+/// another value, and [`Self::each_press`] and [`Self::each_material`] read each press and
+/// material slot, in field order.
 /// [`Theme::faces_valid`], [`Theme::scale_text`], [`Theme::share_text_axes`],
 /// [`Theme::press_effects`] and [`Theme::materials`] drive it. A part derives it and walks every
 /// field, so each field's type implements it, a value that holds none of the slots through
@@ -212,9 +215,15 @@ pub(crate) trait ThemeWalk {
     where
         F: FnMut(ThemeTextRef<'_>);
 
-    fn for_each_text<F>(&mut self, other: Option<&mut Self>, f: &mut F)
+    /// Each text slot, in field order, to write.
+    fn each_text_mut<F>(&mut self, f: &mut F)
     where
-        F: FnMut(ThemeText<'_>, Option<ThemeText<'_>>);
+        F: FnMut(ThemeText<'_>);
+
+    /// Each text slot, in field order, to write beside the same slot of `other`.
+    fn zip_text_mut<F>(&mut self, other: &mut Self, f: &mut F)
+    where
+        F: FnMut(ThemeText<'_>, ThemeText<'_>);
 
     /// Each press slot, in field order, to read ([`Theme::press_effects`]); a value that holds
     /// none visits nothing.
@@ -247,9 +256,16 @@ macro_rules! no_theme_walk {
             }
 
             #[inline]
-            fn for_each_text<F>(&mut self, _: Option<&mut Self>, _: &mut F)
+            fn each_text_mut<F>(&mut self, _: &mut F)
             where
-                F: FnMut(ThemeText<'_>, Option<ThemeText<'_>>),
+                F: FnMut(ThemeText<'_>),
+            {
+            }
+
+            #[inline]
+            fn zip_text_mut<F>(&mut self, _: &mut Self, _: &mut F)
+            where
+                F: FnMut(ThemeText<'_>, ThemeText<'_>),
             {
             }
         }
@@ -280,11 +296,18 @@ impl ThemeWalk for TextStyle {
         f(ThemeTextRef::Style(self));
     }
 
-    fn for_each_text<F>(&mut self, other: Option<&mut Self>, f: &mut F)
+    fn each_text_mut<F>(&mut self, f: &mut F)
     where
-        F: FnMut(ThemeText<'_>, Option<ThemeText<'_>>),
+        F: FnMut(ThemeText<'_>),
     {
-        f(ThemeText::Style(self), other.map(ThemeText::Style));
+        f(ThemeText::Style(self));
+    }
+
+    fn zip_text_mut<F>(&mut self, other: &mut Self, f: &mut F)
+    where
+        F: FnMut(ThemeText<'_>, ThemeText<'_>),
+    {
+        f(ThemeText::Style(self), ThemeText::Style(other));
     }
 }
 
@@ -298,9 +321,16 @@ impl ThemeWalk for Option<Material> {
     }
 
     #[inline]
-    fn for_each_text<F>(&mut self, _: Option<&mut Self>, _: &mut F)
+    fn each_text_mut<F>(&mut self, _: &mut F)
     where
-        F: FnMut(ThemeText<'_>, Option<ThemeText<'_>>),
+        F: FnMut(ThemeText<'_>),
+    {
+    }
+
+    #[inline]
+    fn zip_text_mut<F>(&mut self, _: &mut Self, _: &mut F)
+    where
+        F: FnMut(ThemeText<'_>, ThemeText<'_>),
     {
     }
 
@@ -325,9 +355,16 @@ impl ThemeWalk for Option<PressEffect> {
     }
 
     #[inline]
-    fn for_each_text<F>(&mut self, _: Option<&mut Self>, _: &mut F)
+    fn each_text_mut<F>(&mut self, _: &mut F)
     where
-        F: FnMut(ThemeText<'_>, Option<ThemeText<'_>>),
+        F: FnMut(ThemeText<'_>),
+    {
+    }
+
+    #[inline]
+    fn zip_text_mut<F>(&mut self, _: &mut Self, _: &mut F)
+    where
+        F: FnMut(ThemeText<'_>, ThemeText<'_>),
     {
     }
 
@@ -351,11 +388,18 @@ impl ThemeWalk for TextStyleOverrides {
         f(ThemeTextRef::Overrides(self));
     }
 
-    fn for_each_text<F>(&mut self, other: Option<&mut Self>, f: &mut F)
+    fn each_text_mut<F>(&mut self, f: &mut F)
     where
-        F: FnMut(ThemeText<'_>, Option<ThemeText<'_>>),
+        F: FnMut(ThemeText<'_>),
     {
-        f(ThemeText::Overrides(self), other.map(ThemeText::Overrides));
+        f(ThemeText::Overrides(self));
+    }
+
+    fn zip_text_mut<F>(&mut self, other: &mut Self, f: &mut F)
+    where
+        F: FnMut(ThemeText<'_>, ThemeText<'_>),
+    {
+        f(ThemeText::Overrides(self), ThemeText::Overrides(other));
     }
 }
 
@@ -387,7 +431,7 @@ impl Theme {
         assert!(text_scale_is_valid(factor), "{TEXT_SCALE_ERROR}");
         assert!(self.faces_valid(factor), "{SCALED_TEXT_METRICS_ERROR}");
         let scale = |px: f32| px * factor;
-        self.for_each_text(None, &mut |text, _| match text {
+        self.each_text_mut(&mut |text| match text {
             ThemeText::Style(style) => style.font_size = scale(style.font_size),
             ThemeText::Overrides(o) => o.font_size = o.font_size.map(scale),
         });
@@ -413,18 +457,14 @@ impl Theme {
     #[track_caller]
     pub fn dress_floats(&mut self, material: &FloatMaterial) {
         material.validate();
-        let shortcut = self.menu.item.shortcut;
-        let channel = self.color_picker.label.apply(&self.text).color;
-        let tooltip_ink = self.tooltip.text.apply(&self.text).color;
-        let ambient = self.text.color;
         let Self {
             menu,
             color_picker,
             tooltip,
             modal,
             popup,
+            text,
             // Not floating: drawn in the tree, or a scalar.
-            text: _,
             button: _,
             checkbox: _,
             radio: _,
@@ -450,29 +490,59 @@ impl Theme {
             panel_chrome: _,
             panel_clip: _,
         } = self;
-        for (panel, worn, ink) in [
-            (&mut menu.panel, &mut menu.material, shortcut),
-            (
-                &mut color_picker.popup.panel,
-                &mut color_picker.popup.material,
-                channel,
-            ),
-            (&mut popup.panel, &mut popup.material, shortcut),
-            (&mut tooltip.panel, &mut tooltip.material, tooltip_ink),
-            (&mut modal.panel, &mut modal.panel_material, ambient),
+        // A bare popup holds a menu row's shortcut ink, as an app fills it with rows like a menu's.
+        let shortcut = menu.item.shortcut;
+        for dressed in [
+            menu.try_dress(material),
+            color_picker.try_dress(material, text),
+            popup.try_dress(material, shortcut),
+            tooltip.try_dress(material, text),
+            modal.try_dress(material, text),
         ] {
-            material.dress(panel, worn, ink);
+            dressed.unwrap_or_else(|refusal| refusal.refuse());
         }
     }
 
     /// The effect each press slot names, in field order, a name once for each slot that names it.
-    pub(crate) fn press_effects(&self, mut f: impl FnMut(EffectName<PressInput>)) {
+    pub(crate) fn press_effects(&self, mut f: impl FnMut(EffectName<PressParams>)) {
         self.each_press(&mut |press: &PressEffect| f(press.effect));
     }
 
     /// Each slot's material, in field order.
     pub(crate) fn materials(&self, mut f: impl FnMut(&Material)) {
         self.each_material(&mut f);
+    }
+
+    /// Whether `effects` paints every effect the theme names: each press slot's a color effect
+    /// over [`PressParams`], and each material's one over the lanes the material holds. The first
+    /// slot in field order that fails names the error.
+    pub(crate) fn check_effects(&self, effects: &EffectRegistry) -> Result<(), ThemeEffectError> {
+        let press = EffectTypes::of::<PressParams, ColorEffect>();
+        let mut checked = Ok(());
+        self.press_effects(|name| {
+            if checked.is_ok() {
+                checked = match effects.types_of(name.erased()) {
+                    None => Err(ThemeEffectError::UnloadedPress(name)),
+                    Some(types) if types != press => Err(ThemeEffectError::NotPress(name)),
+                    Some(_) => Ok(()),
+                };
+            }
+        });
+        self.materials(|material| {
+            if checked.is_ok() {
+                let effect = material.effect;
+                let got = effect.count();
+                checked = match effects.material_fit(effect) {
+                    MaterialFit::Unloaded => Err(ThemeEffectError::UnloadedMaterial(effect)),
+                    MaterialFit::NotMaterial => Err(ThemeEffectError::NotMaterial(effect)),
+                    MaterialFit::Lanes(want) if want != got => {
+                        Err(ThemeEffectError::MaterialParams { effect, want, got })
+                    }
+                    MaterialFit::Lanes(_) => Ok(()),
+                };
+            }
+        });
+        checked
     }
 
     /// Whether every text slot, its font sizes scaled by `factor`, makes a face the shaper accepts:
@@ -505,12 +575,10 @@ impl Theme {
     /// unchanged. The derived `lerp` runs it.
     pub(crate) fn share_text_axes(a: &mut Self, b: &mut Self) {
         let (ambient_a, ambient_b) = (a.text, b.text);
-        a.for_each_text(Some(b), &mut |a, b| match (a, b) {
-            (ThemeText::Overrides(a), Some(ThemeText::Overrides(b))) => {
+        a.zip_text_mut(b, &mut |a, b| {
+            if let (ThemeText::Overrides(a), ThemeText::Overrides(b)) = (a, b) {
                 a.share_axes(&ambient_a, b, &ambient_b);
             }
-            (ThemeText::Style(_), Some(ThemeText::Style(_))) => {}
-            _ => unreachable!("two themes walk one structure"),
         });
     }
 
@@ -523,10 +591,10 @@ impl Theme {
     pub fn from_parts(p: &Palette, m: &Metrics) -> Self {
         let theme = Self {
             button: ButtonTheme::from_parts(p, m),
-            checkbox: ToggleTheme::from_parts(ToggleKind::Checkbox, p, m),
-            radio: ToggleTheme::from_parts(ToggleKind::Radio, p, m),
+            checkbox: ToggleTheme::checkbox(p, m),
+            radio: ToggleTheme::radio(p, m),
             segmented: SegmentedTheme::from_parts(p, m),
-            switch: ToggleTheme::from_parts(ToggleKind::Switch, p, m),
+            switch: ToggleTheme::switch(p, m),
             scrollbar: ScrollbarTheme::from_parts(p, m),
             text_edit: TextEditTheme::from_parts(p, m),
             drag_value: DragValueTheme::from_parts(p, m),

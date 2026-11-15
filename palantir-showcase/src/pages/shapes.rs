@@ -1,16 +1,12 @@
 //! Filled shape primitives: triangles and meshes.
-#![expect(
-    clippy::disallowed_methods,
-    reason = "a demo of the crate, whose frames owe no two systems the same bits"
-)]
-
+use crate::scaffold;
 use crate::scaffold::api;
-use crate::support;
-use crate::support::{DemoCell, Kit, Knob, Section};
-use palantir::Paint;
+use crate::scaffold::demo_cell::DemoCell;
+use crate::scaffold::kit::Kit;
+use crate::scaffold::knob::Knob;
+use crate::scaffold::section::Section;
 use palantir::glam::Vec2;
-use palantir::widget::{Mesh, Shape};
-use palantir::{Border, RgbaF32, Ui, WidgetId};
+use palantir::{Border, Mesh, Paint, RgbaF32, Shape, Ui, WidgetId};
 use std::f32::consts::{FRAC_PI_2, PI};
 
 pub(crate) fn build(ui: &mut Ui, k: Kit) {
@@ -18,13 +14,13 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
     Section::new("Triangles")
         .apis(&[api!(Shape::triangle)])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "One instanced quad each: coverage, rounded corners and the border \
                  all come from the signed distance field.",
             );
-            support::tiles(ui, |ui| {
+            scaffold::tiles(ui, |ui| {
                 DemoCell::new("sharp fill").show(ui, k, |ui| sharp(ui, k));
                 DemoCell::new("rounded 12 px").show(ui, k, |ui| rounded(ui, k));
                 DemoCell::new("fill + border").show(ui, k, |ui| bordered(ui, k));
@@ -36,13 +32,13 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
     Section::new("Meshes")
         .apis(&[api!(type Mesh), api!(Shape::mesh)])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "Raw vertices and indices, sent straight to the mesh pipeline. Each \
                  mesh is built once and kept in a state row.",
             );
-            support::tiles(ui, |ui| {
+            scaffold::tiles(ui, |ui| {
                 DemoCell::new("single triangle").show(ui, k, |ui| mesh_triangle(ui, k));
                 DemoCell::new("star — centroid fan").show(ui, k, |ui| polygon_star(ui, k));
                 DemoCell::new("per-vertex gradient").show(ui, k, |ui| gradient_quad(ui, k));
@@ -95,22 +91,25 @@ fn radii(ui: &mut Ui, k: Kit) {
 /// memoizes its content hash), even at three vertices.
 fn retained_mesh(ui: &mut Ui, key: &'static str, build: impl FnOnce(&mut Mesh)) {
     let id = WidgetId::from_hash(("showcase::shapes::mesh", key));
-    ui.with_state::<Option<Mesh>, _>(id, |ui, m| {
-        let m = m.get_or_insert_with(|| {
+    ui.with_state_or_insert_with(
+        id,
+        |_| {
             let mut m = Mesh::new();
             build(&mut m);
             m
-        });
-        ui.add_shape(Shape::mesh(m), RgbaF32::WHITE);
-    });
+        },
+        |ui, m| {
+            ui.add_shape(Shape::mesh(m), RgbaF32::WHITE);
+        },
+    );
 }
 
 fn mesh_triangle(ui: &mut Ui, k: Kit) {
     retained_mesh(ui, "triangle", |m| {
-        let a = m.vertex(B, k.swatch.red);
-        let b = m.vertex(C, k.swatch.red);
-        let c = m.vertex(A, k.swatch.red);
-        m.triangle(a, b, c);
+        let a = m.add_vertex(B, k.swatch.red);
+        let b = m.add_vertex(C, k.swatch.red);
+        let c = m.add_vertex(A, k.swatch.red);
+        m.add_triangle(a, b, c);
     });
 }
 
@@ -128,26 +127,26 @@ fn polygon_star(ui: &mut Ui, k: Kit) {
             };
             Vec2::new(cx + r * theta.cos(), cy + r * theta.sin())
         };
-        let centroid = m.vertex(Vec2::new(cx, cy), k.swatch.orange);
-        let first = m.vertex(point(0), k.swatch.orange);
+        let centroid = m.add_vertex(Vec2::new(cx, cy), k.swatch.orange);
+        let first = m.add_vertex(point(0), k.swatch.orange);
         let mut prev = first;
         for i in 1..10 {
-            let next = m.vertex(point(i), k.swatch.orange);
-            m.triangle(centroid, prev, next);
+            let next = m.add_vertex(point(i), k.swatch.orange);
+            m.add_triangle(centroid, prev, next);
             prev = next;
         }
-        m.triangle(centroid, prev, first);
+        m.add_triangle(centroid, prev, first);
     });
 }
 
 fn gradient_quad(ui: &mut Ui, k: Kit) {
     retained_mesh(ui, "gradient-quad", |m| {
-        let tl = m.vertex(Vec2::new(16.0, 16.0), k.swatch.red);
-        let tr = m.vertex(Vec2::new(152.0, 16.0), k.swatch.lime);
-        let br = m.vertex(Vec2::new(152.0, 152.0), k.swatch.teal);
-        let bl = m.vertex(Vec2::new(16.0, 152.0), k.swatch.orange);
-        m.triangle(tl, tr, br);
-        m.triangle(tl, br, bl);
+        let tl = m.add_vertex(Vec2::new(16.0, 16.0), k.swatch.red);
+        let tr = m.add_vertex(Vec2::new(152.0, 16.0), k.swatch.lime);
+        let br = m.add_vertex(Vec2::new(152.0, 152.0), k.swatch.teal);
+        let bl = m.add_vertex(Vec2::new(16.0, 152.0), k.swatch.orange);
+        m.add_triangle(tl, tr, br);
+        m.add_triangle(tl, br, bl);
     });
 }
 
@@ -172,7 +171,7 @@ fn live(ui: &mut Ui, k: Kit) {
     Section::new("Live triangle")
         .apis(&[api!(Shape::triangle)])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "Round the corners and widen the border: the same instanced quad draws every \

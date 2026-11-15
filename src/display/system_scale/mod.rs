@@ -20,6 +20,13 @@ use crate::primitives::math::domain::EPS;
 #[must_use]
 pub struct SystemScale(f32);
 
+// The two ranges keep the product `Display::scale_factor` takes, under every pair, finite and at
+// least `EPS`, so no frame checks it.
+const _: () = {
+    assert!(SystemScale::MIN * UserScale::MIN >= EPS);
+    assert!((SystemScale::MAX * UserScale::MAX).is_finite());
+};
+
 impl Default for SystemScale {
     fn default() -> Self {
         Self::ONE

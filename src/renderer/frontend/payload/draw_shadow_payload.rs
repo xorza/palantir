@@ -11,28 +11,12 @@ use crate::shape::paint::lowered_shadow::LoweredShadow;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct DrawShadowPayload {
     pub(crate) source: PlacedBox,
-    /// A paint animation's turn, the box's.
-    pub(crate) spin: Option<Spin>,
     pub(crate) shadow: LoweredShadow,
-}
-
-impl DrawShadowPayload {
-    /// `shadow` cast by `source`, unturned.
-    pub(crate) const fn new(source: PlacedBox, shadow: LoweredShadow) -> Self {
-        Self {
-            source,
-            spin: None,
-            shadow,
-        }
-    }
 }
 
 impl PaintPayload for DrawShadowPayload {
     #[inline]
     fn faded(self, by: f32) -> Self {
-        if by == 1.0 {
-            return self;
-        }
         Self {
             shadow: LoweredShadow {
                 color: self.shadow.color.faded(by),
@@ -55,12 +39,8 @@ impl PaintPayload for DrawShadowPayload {
         covered.is_paint_empty() || self.shadow.is_noop()
     }
 
-    fn spin_mut(&mut self) -> &mut Option<Spin> {
-        &mut self.spin
-    }
-
-    fn paint(self, sink: &mut impl PaintSink) {
-        sink.shadow(self);
+    fn paint(self, spin: Option<Spin>, sink: &mut impl PaintSink) {
+        sink.shadow(self, spin);
     }
 }
 
@@ -87,7 +67,10 @@ mod tests {
             corners: Corners::ZERO,
         };
         let drop = Shadow::drop(RgbaF32::BLACK, Vec2::ZERO, 2.0);
-        let cast = |shadow| DrawShadowPayload::new(sliver, LoweredShadow::lower(shadow));
+        let cast = |shadow| DrawShadowPayload {
+            source: sliver,
+            shadow: LoweredShadow::lower(shadow),
+        };
         assert!(!cast(drop).is_noop());
         assert!(cast(Shadow::inset(RgbaF32::BLACK, Vec2::ZERO, 2.0)).is_noop());
         assert!(cast(Shadow::drop(RgbaF32::TRANSPARENT, Vec2::ZERO, 2.0)).is_noop());

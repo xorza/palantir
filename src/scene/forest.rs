@@ -13,14 +13,16 @@ use crate::scene::node::Node;
 use crate::scene::node::id_recipe::{IdKind, IdRecipe};
 use crate::scene::per_plane::PerPlane;
 use crate::scene::plane::Plane;
-use crate::scene::scrollbars_def::{ResolvedScrollbarsDef, ScrollbarsDef};
+use crate::scene::scrollbars_def::ScrollbarsDef;
 use crate::scene::seen_ids::{CollisionRecord, ResolvedId, SeenIds};
 use crate::scene::tree::node_id::NodeId;
 use crate::scene::tree::paint_animations::PaintAnimationEntry;
-use crate::scene::tree::recording_scratch::RecordingScratch;
+use crate::scene::tree::recording_scratch::{PendingRoot, RecordingScratch};
+use crate::scene::tree::resolved_scrollbars_def::ResolvedScrollbarsDef;
 use crate::scene::tree::{NodeChrome, Tree};
 use crate::shape::draw::Draw;
 use crate::shape::paint_animation::PaintAnimation;
+use crate::shape::record::ShapeRecord;
 use crate::shape::record_store::RecordStore;
 use crate::shape::record_store::Resolve;
 use crate::text::family_keys::FamilyKeys;
@@ -39,11 +41,14 @@ pub(crate) struct Forest {
     pub(crate) collisions: Vec<CollisionRecord>,
     /// Planes of the active side-layer scopes; empty for the `Main` baseline.
     ///
-    /// Each pushed plane ranks strictly above the one below it (see [`Self::push_layer`]), so a plane is on the stack at most once and its `pending_placement` is single-occupancy.
+    /// Each pushed plane ranks strictly above the one below it (see [`Self::push_layer`]), so a plane is on the stack at most once and its `pending` root is single-occupancy.
     plane_stack: Vec<Plane>,
 }
 
 impl Forest {
+    /// What a shape drawn with no node open panics with.
+    pub(crate) const NO_OPEN_NODE: &str = "a shape is drawn inside an open node";
+
     /// A forest whose text records key their families in `families`, the shaper's table.
     pub(crate) fn new(families: FamilyKeys) -> Self {
         Self {
@@ -186,14 +191,6 @@ impl Forest {
         tree.close_node(scratch);
     }
 
-    /// Gate for the `add_*` entry points: a shape needs an open node.
-    fn assert_node_open(&self, plane: Plane, what: &str) {
-        debug_assert!(
-            !self.scratch[plane].open_frames.is_empty(),
-            "{what} called with no open node",
-        );
-    }
-
     /// Whether a record pass is in flight, i.e. some plane has a node open.
     ///
     /// Not `cur_plane()`: [`Ui::layer`](crate::Ui::layer) pushes a layer without opening a node in it, which would misread as not recording.
@@ -206,14 +203,36 @@ impl Forest {
     /// paints nothing.
     #[track_caller]
     pub(crate) fn add_draw(&mut self, draw: Draw<'_>, resolve: Resolve<'_>) -> Option<AddedSlot> {
+        let plane = self.open_plane();
+        let record = self.record_store.record(draw, resolve)?;
+        Some(self.push_record(plane, record))
+    }
+
+    /// The plane whose open node a shape goes into, checked before the shape records, so a shape
+    /// that paints nothing is refused as one that paints is.
+    ///
+    /// # Panics
+    ///
+    /// With no node open: a shape is drawn inside a widget's or a node's body, and an overlay
+    /// opens its own.
+    #[track_caller]
+    fn open_plane(&self) -> Plane {
         let plane = self.cur_plane();
-        self.assert_node_open(plane, "add_shape");
+        assert!(
+            !self.scratch[plane].open_frames.is_empty(),
+            "{}",
+            Self::NO_OPEN_NODE,
+        );
+        plane
+    }
+
+    /// Push `record` into `plane`'s open node, a row of its paint order.
+    fn push_record(&mut self, plane: Plane, record: ShapeRecord) -> AddedSlot {
         let tree = &mut self.trees[plane];
         let frame = self.scratch[plane]
             .open_frames
             .last_mut()
-            .expect("`assert_node_open` above found an open frame");
-        let record = self.record_store.record(draw, resolve)?;
+            .expect("`open_plane` found an open node");
         let shape_idx = tree.push_shape(record, frame);
         let slot = AddedSlot {
             plane,
@@ -223,7 +242,7 @@ impl Forest {
             invisible: frame.inherited.invisible,
         };
         frame.paint_rows += 1;
-        Some(slot)
+        slot
     }
 
     /// Animate the shape in `slot` at paint time: its hash takes `animation`, so the change reads
@@ -248,16 +267,12 @@ impl Forest {
         }
     }
 
-    /// Appends a `GpuView` shape to the active node. Only the view's target `id` and redraw `epoch` ride the shape; it skips lowering and never noop-collapses.
+    /// Append a `GpuView`'s shape to the active node ([`ShapeRecord::gpu_view`]): only the view's
+    /// target `id` and redraw `epoch` ride it, and it never paints nothing.
+    #[track_caller]
     pub(crate) fn add_gpu_view(&mut self, id: TextureId, epoch: u64) {
-        let plane = self.cur_plane();
-        self.assert_node_open(plane, "add_gpu_view");
-        self.trees[plane].shapes.add_gpu_view(id, epoch);
-        self.scratch[plane]
-            .open_frames
-            .last_mut()
-            .expect("`assert_node_open` above found an open frame")
-            .paint_rows += 1;
+        let plane = self.open_plane();
+        self.push_record(plane, ShapeRecord::gpu_view(id, epoch));
     }
 
     /// Open a side-layer scope for an overlay asking for `layer`. It records in the higher of
@@ -274,9 +289,11 @@ impl Forest {
             scratch.open_frames.is_empty(),
             "Ui::layer({layer:?}) chose {plane:?}, which has a node open",
         );
-        scratch.pending_placement = Some(placement);
-        scratch.pending_layer = layer;
-        scratch.owner_disabled = owner_disabled;
+        scratch.pending = Some(PendingRoot {
+            placement,
+            layer,
+            owner_disabled,
+        });
         self.plane_stack.push(plane);
     }
 
@@ -306,9 +323,7 @@ impl Forest {
             scratch.open_frames.len(),
             plane,
         );
-        scratch.pending_placement = None;
-        scratch.pending_layer = Layer::Main;
-        scratch.owner_disabled = false;
+        scratch.pending = None;
     }
 
     #[inline]
@@ -350,17 +365,22 @@ pub(crate) struct AddedSlot {
     invisible: bool,
 }
 
-#[cfg(test)]
+#[cfg(feature = "internals")]
 pub(crate) mod internals {
+    #[cfg(test)]
     use crate::internals::scratch_report;
     use crate::primitives::identity::widget_id::WidgetId;
     use crate::scene::forest::Forest;
     use crate::scene::plane::Plane;
+    #[cfg(test)]
     use crate::scene::tree::node_id::NodeId;
+    #[cfg(test)]
     use crate::scene::tree::recording_scratch::RecordingScratch;
+    use crate::shape::record::ShapeRecord;
 
     impl Forest {
         /// Record's ancestor stacks and plane stack; the trees, payloads, ids and collisions are what record hands the later phases.
+        #[cfg(test)]
         pub(crate) fn scratch_bytes(&self) -> usize {
             let Self {
                 trees: _,
@@ -375,16 +395,36 @@ pub(crate) mod internals {
                 .map(
                     |RecordingScratch {
                          open_frames,
-                         pending_placement: _,
-                         pending_layer: _,
-                         owner_disabled: _,
+                         pending: _,
                      }| scratch_report::vec_bytes(open_frames),
                 )
                 .sum();
             open_frames + scratch_report::vec_bytes(plane_stack)
         }
 
+        /// The bytes of text the node carrying `id` on `plane` recorded this pass, its
+        /// descendants' included; 0 where no node carries it.
+        pub(crate) fn text_len_of(&self, plane: impl Into<Plane>, id: WidgetId) -> usize {
+            let tree = &self.trees[plane.into()];
+            let Some(node) = tree
+                .records
+                .widget_id()
+                .iter()
+                .position(|node_id| *node_id == id)
+            else {
+                return 0;
+            };
+            tree.shapes.records[tree.records.shape_span()[node].range()]
+                .iter()
+                .map(|record| match record {
+                    ShapeRecord::Text { text, .. } => text.span.len as usize,
+                    _ => 0,
+                })
+                .sum()
+        }
+
         /// The node carrying `id` on `plane`; linear scan.
+        #[cfg(test)]
         pub(crate) fn node_for_widget_id(&self, plane: impl Into<Plane>, id: WidgetId) -> NodeId {
             let idx = self.trees[plane.into()]
                 .records

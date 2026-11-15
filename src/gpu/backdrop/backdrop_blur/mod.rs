@@ -1,14 +1,16 @@
 //! The backdrop blur's passes on the device: each job's capture through its tents to the last
 //! level, then the residual Gaussian across and down into the job's slot of the destination.
 
+use crate::cascade::blur_plan::BlurPlan;
 use crate::common::expiry_window::ExpiryWindow;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::pass_traffic::PassTraffic;
 use crate::gpu::device::tiler_family::TilerFamily;
 use crate::gpu::pipeline::effect_pipeline::backdrop_groups::ResultTexture;
+use crate::gpu::resource::decaying_texture::{DecayingTexture, Extent};
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use crate::gpu::resource::gpu_ctx::GpuCtx;
-use crate::gpu::resource::pipeline_recipe::{self, PipelineRecipe};
+use crate::gpu::resource::pipeline_recipe::PipelineRecipe;
 use crate::gpu::resource::shader_body::{ShaderBody, ShaderConstant};
 use crate::gpu::resource::shelf_packer::ShelfPacker;
 use crate::gpu::resource::staging_target::StagingTarget;
@@ -17,7 +19,6 @@ use crate::gpu::texel;
 use crate::gpu::texel::TargetFormat;
 use crate::gpu::texel::TargetSpec;
 use crate::primitives::geometry::urect::URect;
-use crate::shape::paint::blur_plan::BlurPlan;
 use glam::{IVec2, UVec2};
 use std::ops::Range;
 
@@ -93,15 +94,21 @@ pub(crate) struct BlurJob {
     /// Where the result's first texel lands in [`Self::dest`]: the region grown by the plan's
     /// apron on every side.
     pub(crate) dest_origin: UVec2,
-    /// Where the job lies in the textures it shares, which [`BackdropBlur::prepare`] writes.
-    pub(crate) layout: JobLayout,
+}
+
+/// A prepared job and where [`BackdropBlur::prepare`] laid it out, which the blur keeps for the
+/// frame's copies and passes, so a job a caller hands in is input alone.
+#[derive(Clone, Copy, Debug)]
+struct LaidJob {
+    job: BlurJob,
+    layout: JobLayout,
 }
 
 /// Where [`BackdropBlur::prepare`] lays a job out: its parameters, the origins of the capture
 /// and the levels the jobs of its batch share, each just large enough for what they read, and its
 /// place in the scratch.
 #[derive(Clone, Copy, Debug, Default)]
-pub(crate) struct JobLayout {
+struct JobLayout {
     /// The parameter slot of the job's first pass.
     first_slot: usize,
     /// The surface px the capture's first texel holds.
@@ -170,11 +177,54 @@ struct Sampled {
 #[derive(Debug)]
 struct CaptureTarget {
     format: TargetFormat,
-    /// Whether the format filters, so the passes that read the capture fetch it bilinearly.
-    filters: bool,
-    target: Sampled,
-    /// The most a frame of the current expiry window read of it.
-    peak: UVec2,
+    /// How the passes that read the capture fetch it: bilinearly where the format filters.
+    filtering: Filtering,
+    /// Held while a frame of the current expiry window read it; the step-down drops a capture
+    /// whose texture went.
+    texture: DecayingTexture<Sampled>,
+}
+
+impl CaptureTarget {
+    /// The capture's texture, which a kept capture holds.
+    fn target(&self) -> &Sampled {
+        self.texture
+            .get()
+            .expect("a kept capture holds its texture")
+    }
+}
+
+/// What the levels are sized by: the texels of level 1, and the count of levels.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct LevelsExtent {
+    first: UVec2,
+    mips: u8,
+}
+
+impl Extent for LevelsExtent {
+    const NONE: Self = Self {
+        first: UVec2::ZERO,
+        mips: 0,
+    };
+
+    fn union(self, other: Self) -> Self {
+        Self {
+            first: self.first.max(other.first),
+            mips: self.mips.max(other.mips),
+        }
+    }
+
+    fn holds(self, want: Self) -> bool {
+        self.first.holds(want.first) && self.mips >= want.mips
+    }
+
+    /// [`levels_size`] at the larger count of levels.
+    fn grown(self, want: Self, ceiling: u32) -> Self {
+        let mips = self.mips.max(want.mips);
+        Self {
+            first: levels_size(self.first, want.first, mips, ceiling),
+            mips,
+        }
+    }
 }
 
 /// What a frame's batches read of the textures they share, each at its largest: the capture of
@@ -182,8 +232,7 @@ struct CaptureTarget {
 #[derive(Clone, Copy, Debug, Default)]
 struct BlurNeeds {
     capture: Option<(TargetFormat, UVec2)>,
-    levels: UVec2,
-    mips: u8,
+    levels: LevelsExtent,
     scratch: UVec2,
     /// The staging target's, the scratch's where a job is staged, else none.
     staging: UVec2,
@@ -201,8 +250,7 @@ impl BlurNeeds {
         };
         Self {
             capture,
-            levels: self.levels.max(other.levels),
-            mips: self.mips.max(other.mips),
+            levels: self.levels.union(other.levels),
             scratch: self.scratch.max(other.scratch),
             staging: self.staging.max(other.staging),
         }
@@ -210,19 +258,19 @@ impl BlurNeeds {
 }
 
 /// A target the frame's blurs read their level 0 from where it is sampled, in place of a capture:
-/// the group a pass reads it through, its extent, and whether its format filters.
+/// the group a pass reads it through, its extent, and how its format fetches.
 #[derive(Clone, Debug)]
 pub(crate) struct TargetSource {
     group: wgpu::BindGroup,
     size: UVec2,
-    filters: bool,
+    filtering: Filtering,
 }
 
-/// What a pass reads as level 0: its group, and whether it filters.
+/// What a pass reads as level 0: its group, and how it fetches.
 #[derive(Clone, Copy, Debug)]
 struct LevelZero<'a> {
     group: &'a wgpu::BindGroup,
-    filters: bool,
+    filtering: Filtering,
 }
 
 /// The passes that read their source through one bind layout: a filtering one for the levels
@@ -230,9 +278,84 @@ struct LevelZero<'a> {
 /// (`Rgba32Float` without `FLOAT32_FILTERABLE`).
 #[derive(Debug)]
 struct SourcePasses {
-    layout: wgpu::BindGroupLayout,
     tent: wgpu::RenderPipeline,
     horizontal: wgpu::RenderPipeline,
+}
+
+/// The bind layouts a pass reads its source through, one for each [`Filtering`], and the sampler
+/// the filtered one binds.
+#[derive(Debug)]
+struct SourceLayouts {
+    filtered: wgpu::BindGroupLayout,
+    loaded: wgpu::BindGroupLayout,
+    /// The backend's one sampler ([`TextureBinding::sampler`]).
+    ///
+    /// [`TextureBinding::sampler`]: crate::gpu::resource::texture_binding::TextureBinding::sampler
+    sampler: wgpu::Sampler,
+}
+
+impl SourceLayouts {
+    /// The group a pass reads `view` through, with the sampler where it is `Filtered`.
+    fn group(&self, gpu: &Gpu, view: &wgpu::TextureView, filtering: Filtering) -> wgpu::BindGroup {
+        let texture = wgpu::BindGroupEntry {
+            binding: 0,
+            resource: wgpu::BindingResource::TextureView(view),
+        };
+        let sampler = wgpu::BindGroupEntry {
+            binding: 1,
+            resource: wgpu::BindingResource::Sampler(&self.sampler),
+        };
+        let (layout, entries) = match filtering {
+            Filtering::Filtered => (&self.filtered, &[texture, sampler][..]),
+            Filtering::Loaded => (&self.loaded, &[texture][..]),
+        };
+        gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("palantir.backdrop.blur.source"),
+            layout,
+            entries,
+        })
+    }
+
+    /// A texture a blur pass renders and another samples, as `spec` describes it.
+    fn sampled(&self, gpu: &Gpu, spec: SampledSpec) -> Sampled {
+        let SampledSpec {
+            label,
+            format,
+            size,
+            filtering,
+        } = spec;
+        let texture = TargetSpec {
+            label,
+            size: size.max(UVec2::ONE),
+            format,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::COPY_SRC
+                | wgpu::TextureUsages::COPY_DST,
+        }
+        .texture(gpu);
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let group = self.group(gpu, &view, filtering);
+        Sampled {
+            texture,
+            view,
+            group,
+        }
+    }
+}
+
+/// How `format`'s texels are fetched on `gpu`: bilinearly where it filters, else one by one.
+fn filtering_of(gpu: &Gpu, format: TargetFormat) -> Filtering {
+    if format
+        .get()
+        .guaranteed_format_features(gpu.device.features())
+        .flags
+        .contains(wgpu::TextureFormatFeatureFlags::FILTERABLE)
+    {
+        Filtering::Filtered
+    } else {
+        Filtering::Loaded
+    }
 }
 
 /// Levels `1..` in one texture, mip `k − 1` holding level `k` of a batch's backdrops from the
@@ -242,6 +365,68 @@ struct Levels {
     texture: wgpu::Texture,
     views: Vec<wgpu::TextureView>,
     groups: Vec<wgpu::BindGroup>,
+}
+
+impl Levels {
+    /// Levels at `extent`, a grown one, with a view and a source group per mip.
+    fn new(gpu: &Gpu, sources: &SourceLayouts, extent: LevelsExtent, ceiling: u32) -> Self {
+        let LevelsExtent { first: size, mips } = extent;
+        debug_assert!(
+            size.max_element() <= ceiling,
+            "levels of {size} pass the device's {ceiling} edge"
+        );
+        let texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("palantir.backdrop.levels"),
+            size: texel::extent(size),
+            mip_level_count: u32::from(mips),
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: LEVEL_FORMAT,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::COPY_SRC,
+            view_formats: &[],
+        });
+        let views: Vec<_> = (0..u32::from(mips))
+            .map(|mip| {
+                texture.create_view(&wgpu::TextureViewDescriptor {
+                    label: Some("palantir.backdrop.level"),
+                    base_mip_level: mip,
+                    mip_level_count: Some(1),
+                    ..Default::default()
+                })
+            })
+            .collect();
+        let groups = views
+            .iter()
+            .map(|view| sources.group(gpu, view, Filtering::Filtered))
+            .collect();
+        Self {
+            texture,
+            views,
+            groups,
+        }
+    }
+}
+
+/// The capture of `format` at `size`, fetched by `filtering`.
+const fn capture_spec(format: TargetFormat, size: UVec2, filtering: Filtering) -> SampledSpec {
+    SampledSpec {
+        label: "palantir.backdrop.capture",
+        format: format.get(),
+        size,
+        filtering,
+    }
+}
+
+/// The scratch at `size`.
+const fn scratch_spec(size: UVec2) -> SampledSpec {
+    SampledSpec {
+        label: "palantir.backdrop.scratch",
+        format: LEVEL_FORMAT,
+        size,
+        filtering: Filtering::Filtered,
+    }
 }
 
 /// The device side of the backdrop blur: its pipelines, the capture, the levels and the scratch
@@ -258,10 +443,7 @@ pub(crate) struct BackdropBlur {
     filtered: SourcePasses,
     loaded: SourcePasses,
     vertical: wgpu::RenderPipeline,
-    /// The backend's one sampler ([`TextureBinding::sampler`]), which the filtered passes bind.
-    ///
-    /// [`TextureBinding::sampler`]: crate::gpu::resource::texture_binding::TextureBinding::sampler
-    sampler: wgpu::Sampler,
+    sources: SourceLayouts,
     params_layout: wgpu::BindGroupLayout,
     params: DynamicBuffer<ParamsSlot>,
     params_group: wgpu::BindGroup,
@@ -269,19 +451,20 @@ pub(crate) struct BackdropBlur {
     params_bound: usize,
     /// This run's slots, one per pass, in pass order.
     slots: Vec<ParamsSlot>,
+    /// The jobs the last prepare laid out, in its order, which the copies and the passes name by
+    /// index.
+    laid: Vec<LaidJob>,
     captures: Vec<CaptureTarget>,
-    levels: Option<Levels>,
+    levels: DecayingTexture<Levels, LevelsExtent>,
     /// The residual's first axis, sized to the largest round seen.
-    scratch: Option<Sampled>,
+    scratch: DecayingTexture<Sampled>,
     /// What the device's passes move: where a pass moves its whole target, the second axis of a
     /// result on a page draws into [`Self::staging`], copied onto the page after.
     traffic: PassTraffic,
     /// The second axis of a frame's staged jobs, at their places in the scratch.
     staging: StagingTarget,
-    /// The most a frame of the current expiry window read of the levels and the scratch; each
-    /// capture keeps its own.
-    peak: BlurNeeds,
-    /// The current expiry window over the display frames.
+    /// The current expiry window over the display frames, which every texture of the blur steps
+    /// down at the end of.
     window: ExpiryWindow,
     /// Places a round's regions in the scratch, an edge of `ceiling` square.
     scratch_packer: ShelfPacker,
@@ -291,14 +474,14 @@ pub(crate) struct BackdropBlur {
     target: Option<TargetSource>,
 }
 
-/// A texture a blur pass renders and another samples, as [`BackdropBlur::sampled`] makes it.
+/// A texture a blur pass renders and another samples, as [`SourceLayouts::sampled`] makes it.
 #[derive(Clone, Copy, Debug)]
 struct SampledSpec {
     label: &'static str,
     format: wgpu::TextureFormat,
     size: UVec2,
-    /// Whether its format filters, which picks the group's sampler.
-    filters: bool,
+    /// How its format is fetched, which picks the group's layout.
+    filtering: Filtering,
 }
 
 impl BackdropBlur {
@@ -352,18 +535,20 @@ impl BackdropBlur {
                 }],
             });
         let shader = Self::SHADER.module(gpu);
-        let passes = |source_layout: wgpu::BindGroupLayout, tent_entry| {
-            let layout = pipeline_recipe::pipeline_layout(
-                gpu,
+        let pipeline_layout = |source_layout: &wgpu::BindGroupLayout| {
+            gpu.pipeline_layout(
                 "palantir.backdrop.blur.pl",
-                &[Some(&source_layout), Some(&params_layout)],
-            );
+                &[Some(source_layout), Some(&params_layout)],
+            )
+        };
+        let filtered_pl = pipeline_layout(&filtered_layout);
+        let passes = |layout: &wgpu::PipelineLayout, tent_entry| {
             let pipeline = |label, fragment_entry, constants| {
                 PipelineRecipe {
                     fragment_entry,
                     constants,
                     blend: None,
-                    ..PipelineRecipe::color(label, &shader, &layout, LEVEL_FORMAT)
+                    ..PipelineRecipe::color(label, &shader, layout, LEVEL_FORMAT)
                 }
                 .build(gpu)
                 .pipeline
@@ -375,11 +560,10 @@ impl BackdropBlur {
                     "fs_horizontal",
                     &one_loop,
                 ),
-                layout: source_layout,
             }
         };
-        let filtered = passes(filtered_layout, "fs_tent");
-        let loaded = passes(loaded_layout, "fs_tent_loads");
+        let filtered = passes(&filtered_pl, "fs_tent");
+        let loaded = passes(&pipeline_layout(&loaded_layout), "fs_tent_loads");
         let vertical = PipelineRecipe {
             fragment_entry: "fs_vertical",
             constants: &one_loop,
@@ -387,11 +571,7 @@ impl BackdropBlur {
             ..PipelineRecipe::color(
                 "palantir.backdrop.blur.vertical",
                 &shader,
-                &pipeline_recipe::pipeline_layout(
-                    gpu,
-                    "palantir.backdrop.blur.pl",
-                    &[Some(&filtered.layout), Some(&params_layout)],
-                ),
+                &filtered_pl,
                 LEVEL_FORMAT,
             )
         }
@@ -399,23 +579,27 @@ impl BackdropBlur {
         .pipeline;
         let params = DynamicBuffer::uniform(gpu, "palantir.backdrop.blur.params", 16);
         let params_group = params_group(gpu, &params_layout, &params.buffer);
-        let ceiling = gpu.max_texture_dim().get();
+        let ceiling = gpu.max_texture_dimension().get();
         Self {
             filtered,
             loaded,
             vertical,
-            sampler: sampler.clone(),
+            sources: SourceLayouts {
+                filtered: filtered_layout,
+                loaded: loaded_layout,
+                sampler: sampler.clone(),
+            },
             params_layout,
             params_bound: params.capacity(),
             params,
             params_group,
             slots: Vec::new(),
+            laid: Vec::new(),
             captures: Vec::new(),
-            levels: None,
-            scratch: None,
+            levels: DecayingTexture::new(),
+            scratch: DecayingTexture::new(),
             traffic: gpu.pass_traffic(),
             staging: StagingTarget::new("palantir.backdrop.staging", LEVEL_FORMAT),
-            peak: BlurNeeds::default(),
             window: ExpiryWindow::default(),
             scratch_packer: ShelfPacker::within(ceiling),
             ceiling,
@@ -423,190 +607,61 @@ impl BackdropBlur {
         }
     }
 
+    /// The capture of `format`, made where none is and grown to hold `size`.
     fn ensure_capture(&mut self, gpu: &Gpu, format: TargetFormat, size: UVec2) -> usize {
         let at = self
             .captures
             .iter()
-            .position(|c| c.format == format)
+            .position(|capture| capture.format == format)
             .unwrap_or_else(|| {
-                let filters = format
-                    .get()
-                    .guaranteed_format_features(gpu.device.features())
-                    .flags
-                    .contains(wgpu::TextureFormatFeatureFlags::FILTERABLE);
                 self.captures.push(CaptureTarget {
                     format,
-                    filters,
-                    target: self.sampled(
-                        gpu,
-                        SampledSpec {
-                            label: "palantir.backdrop.capture",
-                            format: format.get(),
-                            size: grown(UVec2::ZERO, size, self.ceiling),
-                            filters,
-                        },
-                    ),
-                    peak: UVec2::ZERO,
+                    filtering: filtering_of(gpu, format),
+                    texture: DecayingTexture::new(),
                 });
                 self.captures.len() - 1
             });
-        let have = texel::size(&self.captures[at].target.texture);
-        if have.x < size.x || have.y < size.y {
-            self.captures[at].target = self.sampled(
-                gpu,
-                SampledSpec {
-                    label: "palantir.backdrop.capture",
-                    format: format.get(),
-                    size: grown(have, size, self.ceiling),
-                    filters: self.captures[at].filters,
-                },
-            );
-        }
+        let sources = &self.sources;
+        let capture = &mut self.captures[at];
+        let filtering = capture.filtering;
+        capture.texture.reserve(size, self.ceiling, |size| {
+            sources.sampled(gpu, capture_spec(format, size, filtering))
+        });
         at
     }
 
-    /// Levels that hold `first` texels of level 1 and `levels` levels.
-    fn ensure_levels(&mut self, gpu: &Gpu, first: UVec2, levels: u8) {
-        let mips = u32::from(levels);
-        let (have, have_mips) = self.levels.as_ref().map_or((UVec2::ZERO, 0), |l| {
-            (texel::size(&l.texture), l.views.len() as u32)
-        });
-        if have.x >= first.x && have.y >= first.y && have_mips >= mips {
-            return;
-        }
-        let mips = mips.max(have_mips);
-        let size = levels_size(have, first, mips as u8, self.ceiling);
-        debug_assert!(
-            size.max_element() <= self.ceiling,
-            "levels of {size} pass the device's {} edge",
-            self.ceiling
-        );
-        let texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("palantir.backdrop.levels"),
-            size: texel::extent(size),
-            mip_level_count: mips,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: LEVEL_FORMAT,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-                | wgpu::TextureUsages::TEXTURE_BINDING
-                | wgpu::TextureUsages::COPY_SRC,
-            view_formats: &[],
-        });
-        let views: Vec<_> = (0..mips)
-            .map(|mip| {
-                texture.create_view(&wgpu::TextureViewDescriptor {
-                    label: Some("palantir.backdrop.level"),
-                    base_mip_level: mip,
-                    mip_level_count: Some(1),
-                    ..Default::default()
-                })
-            })
-            .collect();
-        let groups = views
-            .iter()
-            .map(|view| self.source_group(gpu, view, true))
-            .collect();
-        self.levels = Some(Levels {
-            texture,
-            views,
-            groups,
-        });
-    }
-
-    fn ensure_scratch(&mut self, gpu: &Gpu, size: UVec2) {
-        let have = self
-            .scratch
-            .as_ref()
-            .map_or(UVec2::ZERO, |s| texel::size(&s.texture));
-        if have.x >= size.x && have.y >= size.y {
-            return;
-        }
-        self.scratch = Some(self.sampled(
-            gpu,
-            SampledSpec {
-                label: "palantir.backdrop.scratch",
-                format: LEVEL_FORMAT,
-                size: grown(have, size, self.ceiling),
-                filters: true,
-            },
-        ));
-    }
-
-    fn sampled(&self, gpu: &Gpu, spec: SampledSpec) -> Sampled {
-        let SampledSpec {
-            label,
-            format,
-            size,
-            filters,
-        } = spec;
-        let texture = texel::texture_2d(
-            gpu,
-            TargetSpec {
-                label,
-                size: size.max(UVec2::ONE),
-                format,
-                usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-                    | wgpu::TextureUsages::TEXTURE_BINDING
-                    | wgpu::TextureUsages::COPY_SRC
-                    | wgpu::TextureUsages::COPY_DST,
-            },
-        );
-        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let group = self.source_group(gpu, &view, filters);
-        Sampled {
-            texture,
-            view,
-            group,
-        }
-    }
-
-    /// The group a pass reads `view` through, with the sampler where its format `filters`.
-    fn source_group(&self, gpu: &Gpu, view: &wgpu::TextureView, filters: bool) -> wgpu::BindGroup {
-        let texture = wgpu::BindGroupEntry {
-            binding: 0,
-            resource: wgpu::BindingResource::TextureView(view),
-        };
-        let sampler = wgpu::BindGroupEntry {
-            binding: 1,
-            resource: wgpu::BindingResource::Sampler(&self.sampler),
-        };
-        let (layout, entries) = if filters {
-            (&self.filtered.layout, &[texture, sampler][..])
-        } else {
-            (&self.loaded.layout, &[texture][..])
-        };
-        gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("palantir.backdrop.blur.source"),
-            layout,
-            entries,
-        })
-    }
-
     /// Lay out `jobs` in `batches`, each the jobs [`Self::encode`] records together, make room for
-    /// them once, at the most a batch reads, and write their parameters, ahead of the copies that
-    /// fill their captures and the passes. Ends an expiry window every [`EXPIRY_FRAMES`](crate::common::expiry_window::EXPIRY_FRAMES) display
-    /// frames.
+    /// them once, at the most a batch reads, end an expiry window every
+    /// [`EXPIRY_FRAMES`](crate::common::expiry_window::EXPIRY_FRAMES) display frames, and write
+    /// their parameters, ahead of the copies that fill their captures and the passes.
     pub(crate) fn prepare(
         &mut self,
         ctx: &mut GpuCtx<'_>,
-        jobs: &mut [BlurJob],
+        jobs: &[BlurJob],
         batches: impl Iterator<Item = Range<usize>>,
         target: Option<TargetSource>,
     ) {
         self.target = target;
+        self.laid.clear();
+        self.laid.extend(jobs.iter().map(|&job| LaidJob {
+            job,
+            layout: JobLayout::default(),
+        }));
         let mut needs = BlurNeeds::default();
         let mut laid_out = 0;
         for batch in batches {
             debug_assert_eq!(batch.start, laid_out, "batches cover the jobs in order");
             laid_out = batch.end;
-            needs = needs.max(self.lay_out(&mut jobs[batch]));
+            needs = needs.max(self.lay_out(batch));
         }
         debug_assert_eq!(laid_out, jobs.len(), "batches cover the jobs");
         self.make_room(ctx.gpu, needs);
-        self.write_params(ctx, jobs);
-        self.staging.decay(ctx.gpu, ctx.frame, needs.staging);
-        self.expire(ctx, needs);
+        self.staging.decay(ctx.gpu, ctx.frame);
+        self.expire(ctx);
+        // After the step-down, which may remake a texture smaller, at the window's peak, which
+        // holds this frame's needs: each pass's `source_max` is then the bound of the texture it
+        // binds.
+        self.write_params(ctx);
     }
 
     /// Grow the capture, the levels and the scratch to hold `needs`.
@@ -614,151 +669,130 @@ impl BackdropBlur {
         if let Some((format, size)) = needs.capture {
             self.ensure_capture(gpu, format, size);
         }
-        if needs.mips > 0 {
-            self.ensure_levels(gpu, needs.levels, needs.mips);
+        let (sources, ceiling) = (&self.sources, self.ceiling);
+        if needs.levels != LevelsExtent::NONE {
+            self.levels.reserve(needs.levels, ceiling, |extent| {
+                Levels::new(gpu, sources, extent, ceiling)
+            });
         }
         if needs.scratch != UVec2::ZERO {
-            self.ensure_scratch(gpu, needs.scratch);
+            self.scratch.reserve(needs.scratch, ceiling, |size| {
+                sources.sampled(gpu, scratch_spec(size))
+            });
         }
         if needs.staging != UVec2::ZERO {
             self.staging.reserve(gpu, needs.staging);
         }
     }
 
-    /// Fold this frame's `needs` into the window's peak and, at the window's end, make each shared
-    /// texture again at the window's peak where it holds more, or drop it where no frame read it.
-    fn expire(&mut self, ctx: &GpuCtx<'_>, needs: BlurNeeds) {
-        let gpu = ctx.gpu;
-        if let Some((format, size)) = needs.capture
-            && let Some(capture) = self.captures.iter_mut().find(|c| c.format == format)
-        {
-            capture.peak = capture.peak.max(size);
-        }
-        self.peak = self.peak.max(BlurNeeds {
-            capture: None,
-            ..needs
-        });
+    /// At the end of an expiry window, make each shared texture again at what the window's frames
+    /// read at most, or drop it where none read it; the reserves of [`Self::make_room`] note each
+    /// frame's needs.
+    fn expire(&mut self, ctx: &GpuCtx<'_>) {
         if !self.window.ends(ctx.frame) {
             return;
         }
-        let peak = std::mem::take(&mut self.peak);
-        self.captures.retain(|capture| capture.peak != UVec2::ZERO);
-        for at in 0..self.captures.len() {
-            let capture = &self.captures[at];
-            let want = grown(UVec2::ZERO, capture.peak, self.ceiling);
-            if texel::size(&capture.target.texture) != want {
-                self.captures[at].target = self.sampled(
-                    gpu,
-                    SampledSpec {
-                        label: "palantir.backdrop.capture",
-                        format: capture.format.get(),
-                        size: want,
-                        filters: capture.filters,
-                    },
-                );
-            }
-            self.captures[at].peak = UVec2::ZERO;
+        let gpu = ctx.gpu;
+        let (sources, ceiling) = (&self.sources, self.ceiling);
+        for capture in &mut self.captures {
+            let (format, filtering) = (capture.format, capture.filtering);
+            capture.texture.step_down(ceiling, |size| {
+                sources.sampled(gpu, capture_spec(format, size, filtering))
+            });
         }
-        let levels_held = self
-            .levels
-            .as_ref()
-            .map(|levels| (texel::size(&levels.texture), levels.views.len() as u32));
-        let levels_want = (peak.mips > 0).then(|| {
-            (
-                levels_size(UVec2::ZERO, peak.levels, peak.mips, self.ceiling),
-                u32::from(peak.mips),
-            )
-        });
-        if levels_held != levels_want {
-            self.levels = None;
-            if peak.mips > 0 {
-                self.ensure_levels(gpu, peak.levels, peak.mips);
-            }
-        }
-        let scratch_held = self
-            .scratch
-            .as_ref()
-            .map(|scratch| texel::size(&scratch.texture));
-        let scratch_want =
-            (peak.scratch != UVec2::ZERO).then(|| grown(UVec2::ZERO, peak.scratch, self.ceiling));
-        if scratch_held != scratch_want {
-            self.scratch = None;
-            if peak.scratch != UVec2::ZERO {
-                self.ensure_scratch(gpu, peak.scratch);
-            }
-        }
+        self.captures
+            .retain(|capture| capture.texture.get().is_some());
+        self.levels
+            .step_down(ceiling, |extent| Levels::new(gpu, sources, extent, ceiling));
+        self.scratch
+            .step_down(ceiling, |size| sources.sampled(gpu, scratch_spec(size)));
     }
 
-    /// Give `batch` its capture and levels origins, at the first texel it reads of each, and each
-    /// job its round and place in the scratch, and report what of the capture, the levels and the
-    /// scratch it reads.
-    fn lay_out(&mut self, batch: &mut [BlurJob]) -> BlurNeeds {
-        let first = batch[0];
+    /// Give the jobs of `batch`, laid out in order, their capture and levels origins, at the first
+    /// texel the batch reads of each, and each job its round and place in the scratch, and report
+    /// what of the capture, the levels and the scratch it reads.
+    fn lay_out(&mut self, batch: Range<usize>) -> BlurNeeds {
+        let Self {
+            laid,
+            target,
+            traffic,
+            scratch_packer,
+            ..
+        } = self;
+        let batch = &mut laid[batch];
+        let first = batch[0].job;
         let mut needs = BlurNeeds::default();
-        let capture_origin = if self.target.is_some() {
+        let capture_origin = if target.is_some() {
             UVec2::ZERO
         } else {
             let footprints = batch
                 .iter()
-                .map(|job| job.footprint)
+                .map(|laid| laid.job.footprint)
                 .reduce(URect::union)
                 .expect("a batch holds a job");
             needs.capture = Some((first.format, footprints.size));
             footprints.min
         };
-        let deepest = batch.iter().map(|job| job.plan.levels()).max().unwrap_or(0);
+        let deepest = batch
+            .iter()
+            .map(|laid| laid.job.plan.levels())
+            .max()
+            .unwrap_or(0);
         let levels_origin = batch
             .iter()
+            .map(|laid| laid.job)
             .filter(|job| job.plan.levels() > 0)
             .map(|job| level_region(job.region, job.plan.levels(), 1, job.surface))
             .reduce(URect::union)
             .map_or(UVec2::ZERO, |window| {
                 let align = 1 << (deepest - 1);
                 let origin = window.min / align * align;
-                needs.levels = window.max() - origin;
-                needs.mips = deepest;
+                needs.levels = LevelsExtent {
+                    first: window.max() - origin,
+                    mips: deepest,
+                };
                 origin
             });
         let mut round = 0;
-        self.scratch_packer.clear();
-        for job in batch {
-            job.layout.capture_origin = capture_origin;
-            job.layout.levels_origin = levels_origin;
-            job.layout.staged = self.traffic == PassTraffic::WholeTarget
-                && matches!(job.dest, ResultTexture::Page(_));
+        scratch_packer.clear();
+        for LaidJob { job, layout } in batch {
+            layout.capture_origin = capture_origin;
+            layout.levels_origin = levels_origin;
+            layout.staged =
+                *traffic == PassTraffic::WholeTarget && matches!(job.dest, ResultTexture::Page(_));
             // A staged job's place holds its result, which a page holds, so within the device's
             // edge; every other job's only its region, as a larger scratch costs a device whose
             // passes move their whole target each pass into it.
-            let place = if job.layout.staged {
+            let place = if layout.staged {
                 job.dest_rect().size
             } else {
                 job.region.size
             };
             let size = place.as_u16vec2();
-            let origin = self.scratch_packer.allocate(size).unwrap_or_else(|| {
+            let origin = scratch_packer.allocate(size).unwrap_or_else(|| {
                 round += 1;
-                self.scratch_packer.clear();
-                self.scratch_packer
+                scratch_packer.clear();
+                scratch_packer
                     .allocate(size)
                     .expect("a region lies on its surface, which the device's edge holds")
             });
-            job.layout.scratch_round = round;
-            job.layout.scratch_origin = origin.as_uvec2();
-            let end = job.layout.scratch_origin + place;
+            layout.scratch_round = round;
+            layout.scratch_origin = origin.as_uvec2();
+            let end = layout.scratch_origin + place;
             needs.scratch = needs.scratch.max(end);
-            if job.layout.staged {
+            if layout.staged {
                 needs.staging = needs.staging.max(end);
             }
         }
         needs
     }
 
-    /// Write the parameters of laid out `jobs`, and each one's first slot.
-    fn write_params(&mut self, ctx: &mut GpuCtx<'_>, jobs: &mut [BlurJob]) {
+    /// Write the parameters of the laid out jobs, and each one's first slot.
+    fn write_params(&mut self, ctx: &mut GpuCtx<'_>) {
         self.slots.clear();
-        for job in jobs {
-            job.layout.first_slot = self.slots.len();
-            self.push_params(*job);
+        for at in 0..self.laid.len() {
+            self.laid[at].layout.first_slot = self.slots.len();
+            self.push_params(self.laid[at]);
         }
         self.params.upload_instances(ctx, &self.slots);
         if self.params.capacity() != self.params_bound {
@@ -767,27 +801,29 @@ impl BackdropBlur {
         }
     }
 
-    /// Copy prepared `job`'s footprint of `color`, the target the main pass paints, into its
-    /// capture, past the batch's capture origin. Nothing where the jobs read the target itself.
+    /// Copy the footprint of prepared job `at`, by its place in the jobs the last prepare took, of
+    /// `color`, the target the main pass paints, into its capture, past the batch's capture
+    /// origin. Nothing where the jobs read the target itself.
     pub(crate) fn copy_capture(
         &self,
         encoder: &mut wgpu::CommandEncoder,
-        job: &BlurJob,
+        at: usize,
         color: &wgpu::Texture,
     ) {
         if self.target.is_some() {
             return;
         }
+        let LaidJob { job, layout } = self.laid[at];
         let footprint = job.footprint;
-        let capture = self.capture_of(job);
+        let capture = self.capture_of(job.format);
         debug_assert!(
             footprint.max().x <= color.width() && footprint.max().y <= color.height(),
             "a footprint lies on its surface"
         );
-        let into = footprint.min - job.layout.capture_origin;
+        let into = footprint.min - layout.capture_origin;
         debug_assert!(
-            into.x + footprint.size.x <= capture.target.texture.width()
-                && into.y + footprint.size.y <= capture.target.texture.height(),
+            into.x + footprint.size.x <= capture.target().texture.width()
+                && into.y + footprint.size.y <= capture.target().texture.height(),
             "the capture holds its batch's footprints"
         );
         encoder.copy_texture_to_texture(
@@ -798,7 +834,7 @@ impl BackdropBlur {
                 aspect: wgpu::TextureAspect::All,
             },
             wgpu::TexelCopyTextureInfo {
-                texture: &capture.target.texture,
+                texture: &capture.target().texture,
                 mip_level: 0,
                 origin: texel::origin(into),
                 aspect: wgpu::TextureAspect::All,
@@ -813,13 +849,13 @@ impl BackdropBlur {
         if let Some(target) = &self.target {
             return LevelZero {
                 group: &target.group,
-                filters: target.filters,
+                filtering: target.filtering,
             };
         }
-        let capture = self.capture_of(job);
+        let capture = self.capture_of(job.format);
         LevelZero {
-            group: &capture.target.group,
-            filters: capture.filters,
+            group: &capture.target().group,
+            filtering: capture.filtering,
         }
     }
 
@@ -832,28 +868,24 @@ impl BackdropBlur {
         format: TargetFormat,
         size: UVec2,
     ) -> TargetSource {
-        let filters = format
-            .get()
-            .guaranteed_format_features(gpu.device.features())
-            .flags
-            .contains(wgpu::TextureFormatFeatureFlags::FILTERABLE);
+        let filtering = filtering_of(gpu, format);
         TargetSource {
-            group: self.source_group(gpu, view, filters),
+            group: self.sources.group(gpu, view, filtering),
             size,
-            filters,
+            filtering,
         }
     }
 
-    /// Prepared job `job`'s capture, the one of its format.
-    fn capture_of(&self, job: &BlurJob) -> &CaptureTarget {
-        let format = job.format;
+    /// The capture of `format`, which a prepared job of it has.
+    fn capture_of(&self, format: TargetFormat) -> &CaptureTarget {
         self.captures
             .iter()
             .find(|c| c.format == format)
             .expect("a prepared job has its capture")
     }
 
-    /// Record prepared jobs `jobs`' passes, which read one capture: their tents a level to a pass,
+    /// Record the passes of prepared jobs `batch`, by their places in the jobs the last prepare
+    /// took, which read one capture: their tents a level to a pass,
     /// then for each round of the scratch the residual across into it and down into each job's
     /// texels of its [`BlurJob::dest`], which `dests` gives, a pass a destination; a staged job's
     /// down into its place of the staging target, one pass for the round, and a copy onto its
@@ -862,135 +894,141 @@ impl BackdropBlur {
     pub(crate) fn encode<'v>(
         &self,
         encoder: &mut wgpu::CommandEncoder,
-        jobs: &[BlurJob],
+        batch: Range<usize>,
         dests: impl Fn(ResultTexture) -> ResultTarget<'v>,
     ) {
+        let jobs = &self.laid[batch];
         let first = &jobs[0];
         debug_assert!(
-            jobs.iter().all(|job| job.format == first.format
-                && job.surface == first.surface
-                && job.layout.capture_origin == first.layout.capture_origin
-                && job.layout.levels_origin == first.layout.levels_origin),
+            jobs.iter().all(|laid| laid.job.format == first.job.format
+                && laid.job.surface == first.job.surface
+                && laid.layout.capture_origin == first.layout.capture_origin
+                && laid.layout.levels_origin == first.layout.levels_origin),
             "jobs encoded together are one batch, which reads one capture and one set of levels"
         );
-        let zero = self.level_zero(first);
-        let level_groups = self.levels.as_ref().map(|l| &*l.groups);
-        let level_views = self.levels.as_ref().map(|l| &*l.views);
+        let zero = self.level_zero(&first.job);
+        let level_groups = self.levels.get().map(|l| &*l.groups);
+        let level_views = self.levels.get().map(|l| &*l.views);
         // Level `k` reads from the capture at `k = 1`, and from mip `k − 2` above it.
         let source_of = |level: u8| match level {
             0 => zero.group,
             k => &level_groups.expect("a blurred level has its levels")[usize::from(k) - 1],
         };
         let passes_of = |level: u8| {
-            if level == 0 && !zero.filters {
+            if level == 0 && zero.filtering == Filtering::Loaded {
                 &self.loaded
             } else {
                 &self.filtered
             }
         };
-        let deepest = jobs.iter().map(|job| job.plan.levels()).max().unwrap_or(0);
+        let deepest = jobs
+            .iter()
+            .map(|laid| laid.job.plan.levels())
+            .max()
+            .unwrap_or(0);
         for k in 1..=deepest {
             let view = &level_views.expect("a blurred level has its levels")[usize::from(k) - 1];
-            let draws = jobs.iter().filter(|job| job.plan.levels() >= k).map(|job| {
-                let written = level_region(job.region, job.plan.levels(), k, job.surface);
-                Draw {
-                    pipeline: &passes_of(k - 1).tent,
-                    source: source_of(k - 1),
-                    slot: job.layout.first_slot + usize::from(k) - 1,
-                    scissor: URect {
-                        min: written.min - job.layout.origin(k),
-                        size: written.size,
-                    },
-                }
-            });
+            let draws = jobs.iter().filter(|laid| laid.job.plan.levels() >= k).map(
+                |&LaidJob { job, layout }| {
+                    let written = level_region(job.region, job.plan.levels(), k, job.surface);
+                    Draw {
+                        pipeline: &passes_of(k - 1).tent,
+                        source: source_of(k - 1),
+                        slot: layout.first_slot + usize::from(k) - 1,
+                        scissor: URect {
+                            min: written.min - layout.origin(k),
+                            size: written.size,
+                        },
+                    }
+                },
+            );
             self.pass(encoder, view, draws);
         }
-        let residual = |job: &BlurJob| job.layout.first_slot + usize::from(job.plan.levels());
-        let scratch = self.scratch.as_ref().expect("prepared");
+        let residual =
+            |laid: &LaidJob| laid.layout.first_slot + usize::from(laid.job.plan.levels());
+        let scratch = self.scratch.get().expect("prepared");
         for round in jobs.chunk_by(|a, b| a.layout.scratch_round == b.layout.scratch_round) {
-            let across = round.iter().map(|job| Draw {
-                pipeline: &passes_of(job.plan.levels()).horizontal,
-                source: source_of(job.plan.levels()),
-                slot: residual(job),
+            let across = round.iter().map(|laid| Draw {
+                pipeline: &passes_of(laid.job.plan.levels()).horizontal,
+                source: source_of(laid.job.plan.levels()),
+                slot: residual(laid),
                 scissor: URect {
-                    min: job.layout.scratch_origin,
-                    size: job.region.size,
+                    min: laid.layout.scratch_origin,
+                    size: laid.job.region.size,
                 },
             });
             self.pass(encoder, &scratch.view, across);
-            let staged_rect = |job: &BlurJob| URect {
-                min: job.layout.scratch_origin,
-                size: job.dest_rect().size,
+            let staged_rect = |laid: &LaidJob| URect {
+                min: laid.layout.scratch_origin,
+                size: laid.job.dest_rect().size,
             };
-            if round.iter().any(|job| job.layout.staged) {
+            if round.iter().any(|laid| laid.layout.staged) {
                 {
                     let mut rp = self.staging.begin_pass(encoder);
                     let down = round
                         .iter()
-                        .filter(|job| job.layout.staged)
-                        .map(|job| Draw {
+                        .filter(|laid| laid.layout.staged)
+                        .map(|laid| Draw {
                             pipeline: &self.vertical,
                             source: &scratch.group,
-                            slot: residual(job) + 1,
-                            scissor: staged_rect(job),
+                            slot: residual(laid) + 1,
+                            scissor: staged_rect(laid),
                         });
                     self.draw(&mut rp, down);
                 }
-                for job in round.iter().filter(|job| job.layout.staged) {
-                    let dest = dests(job.dest);
-                    self.staging
-                        .copy_to(encoder, staged_rect(job), dest.texture, job.dest_origin);
+                for laid in round.iter().filter(|laid| laid.layout.staged) {
+                    let dest = dests(laid.job.dest);
+                    self.staging.copy_to(
+                        encoder,
+                        staged_rect(laid),
+                        dest.texture,
+                        laid.job.dest_origin,
+                    );
                 }
             }
             // A pass for each destination the round writes unstaged, at its first job: rounds
             // are few jobs, so the scan beats a sort that would reorder the slots.
-            for (at, job) in round.iter().enumerate() {
-                if job.layout.staged || round[..at].iter().any(|before| before.dest == job.dest) {
+            for (at, laid) in round.iter().enumerate() {
+                let dest = laid.job.dest;
+                if laid.layout.staged || round[..at].iter().any(|before| before.job.dest == dest) {
                     continue;
                 }
                 let down = round[at..]
                     .iter()
-                    .filter(|other| other.dest == job.dest)
+                    .filter(|other| other.job.dest == dest)
                     .map(|other| Draw {
                         pipeline: &self.vertical,
                         source: &scratch.group,
                         slot: residual(other) + 1,
-                        scissor: other.dest_rect(),
+                        scissor: other.job.dest_rect(),
                     });
-                self.pass(encoder, dests(job.dest).view, down);
+                self.pass(encoder, dests(dest).view, down);
             }
         }
     }
 
     /// The parameters of `job`'s passes, in the order [`Self::encode`] records them.
-    fn push_params(&mut self, job: BlurJob) {
-        let BlurJob {
-            plan,
-            surface,
-            format,
-            region,
-            dest_origin,
+    fn push_params(&mut self, laid: LaidJob) {
+        let LaidJob {
+            job:
+                BlurJob {
+                    plan,
+                    surface,
+                    format,
+                    region,
+                    dest_origin,
+                    ..
+                },
             layout,
-            ..
-        } = job;
+        } = laid;
         let scratch_origin = layout.scratch_origin;
         let levels = plan.levels();
         let capture_max = self.target.as_ref().map_or_else(
-            || {
-                let capture = self
-                    .captures
-                    .iter()
-                    .find(|c| c.format == format)
-                    .expect("ensured before the parameters");
-                texel::size(&capture.target.texture)
-            },
+            || texel::size(&self.capture_of(format).target().texture),
             |target| target.size,
         );
         let mip_max = |level: u8| {
-            let levels = self
-                .levels
-                .as_ref()
-                .expect("a blurred level has its levels");
+            let levels = self.levels.get().expect("a blurred level has its levels");
             texel::size(&levels.texture) >> u32::from(level - 1)
         };
         let source_max = |level: u8| match level {
@@ -1159,26 +1197,13 @@ fn params_group(
     })
 }
 
-/// The texels a texture grows to that holds `have` and must hold `want`, inside the `ceiling`
-/// edge: each edge rounded up to [`GROWTH_GRANULE`], held to the ceiling, so a surface that grows
-/// a few px a frame, as a resize drag does, makes a new texture only every so often.
-fn grown(have: UVec2, want: UVec2, ceiling: u32) -> UVec2 {
-    debug_assert!(
-        want.max_element() <= ceiling,
-        "a texture of {want} passes the device's {ceiling} edge"
-    );
-    have.max(want.map(|edge| edge.next_multiple_of(GROWTH_GRANULE).min(ceiling)))
-}
-
-/// The texels [`grown`] rounds an edge up to.
-const GROWTH_GRANULE: u32 = 256;
-
 /// The first mip of levels that hold `have` and must hold `want` texels of level 1 across `mips`
-/// levels: [`grown`], each edge a whole number of the last mip's texels, as a mip floors its
-/// halving where a level's extent rounds up, so every mip stays as wide as its level.
+/// levels: [`Extent::grown`], each edge a whole number of the last mip's texels, as a mip floors
+/// its halving where a level's extent rounds up, so every mip stays as wide as its level.
 fn levels_size(have: UVec2, want: UVec2, mips: u8, ceiling: u32) -> UVec2 {
     let last = 1 << (mips - 1);
-    grown(have, want, ceiling).map(|side| side.next_multiple_of(last))
+    have.grown(want, ceiling)
+        .map(|side| side.next_multiple_of(last))
 }
 
 /// The numbers [`BackdropBlur::SHADER`] takes from the Rust types that own them.
@@ -1203,9 +1228,12 @@ pub(crate) mod internals {
     impl BackdropBlur {
         /// The memory of the blur's captures, levels and scratch, named `name`.
         pub(crate) fn memory(&self, name: &'static str) -> AtlasUse {
-            let captures = self.captures.iter().map(|capture| &capture.target.texture);
-            let levels = self.levels.iter().map(|levels| &levels.texture);
-            let scratch = self.scratch.iter().map(|scratch| &scratch.texture);
+            let captures = self
+                .captures
+                .iter()
+                .map(|capture| &capture.target().texture);
+            let levels = self.levels.get().map(|levels| &levels.texture);
+            let scratch = self.scratch.get().map(|scratch| &scratch.texture);
             AtlasUse::scratch(name, captures.chain(levels).chain(scratch))
         }
 
@@ -1231,7 +1259,7 @@ pub(crate) mod internals {
             size: UVec2,
         ) -> &wgpu::TextureView {
             let at = self.ensure_capture(gpu, format, size);
-            &self.captures[at].target.view
+            &self.captures[at].target().view
         }
 
         /// Blur each of `jobs` from its capture into its slot of `dest`, a `LEVEL_FORMAT` target
@@ -1240,12 +1268,12 @@ pub(crate) mod internals {
         pub(crate) fn run(
             &mut self,
             ctx: &mut GpuCtx<'_>,
-            jobs: &mut [BlurJob],
+            jobs: &[BlurJob],
             dest: ResultTarget<'_>,
         ) {
             let all = 0..jobs.len();
-            self.prepare(ctx, jobs, iter::once(all), None);
-            self.encode(ctx.encoder, jobs, |_| dest);
+            self.prepare(ctx, jobs, iter::once(all.clone()), None);
+            self.encode(ctx.encoder, all, |_| dest);
         }
     }
 }

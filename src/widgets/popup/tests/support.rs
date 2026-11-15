@@ -4,7 +4,7 @@ use crate::host::harness::Harness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::sense::Sense;
 use crate::primitives::layout::anchor::Anchor;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::ui::Ui;
 use crate::widget_core::click_outside::ClickOutside;
 use crate::widget_core::configure::Configure;
@@ -36,7 +36,7 @@ pub(super) fn record_body(ui: &mut Ui, config: Option<ClickOutside>) -> BodyPass
     let mut dismissed = false;
     Panel::vstack()
         .id(main_id)
-        .size((Sizing::FILL, Sizing::FILL))
+        .size(SizeSpec::FILL)
         .sense(Sense::CLICK)
         .show(ui, |ui| {
             dismissed = Popup::new()

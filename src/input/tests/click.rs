@@ -5,7 +5,7 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::input_event::InputEvent;
 use crate::primitives::input::pointer::PointerButton;
 use crate::primitives::input::sense::Sense;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::{button::Button, panel::Panel};
@@ -147,7 +147,7 @@ fn a_disabled_cover_absorbs_the_press_it_is_painted_over() {
                 .show(ui, |ui| {
                     let clicked = Block::new()
                         .id(under)
-                        .size(Sizing::FILL)
+                        .size(SizeSpec::FILL)
                         .sense(Sense::CLICK)
                         .focusable(true)
                         .show(ui)
@@ -155,7 +155,7 @@ fn a_disabled_cover_absorbs_the_press_it_is_painted_over() {
                         .clicked();
                     Block::new()
                         .id(cover)
-                        .size(Sizing::FILL)
+                        .size(SizeSpec::FILL)
                         .sense(sense)
                         .disabled(disabled)
                         .show(ui);
@@ -455,13 +455,13 @@ fn left_and_right_click_are_independent() {
 /// pass sees `take_action_flag() == true` with empty queues and runs a spurious
 /// second layout pass.
 #[test]
-fn drain_per_frame_queues_clears_action_latch() {
+fn clearing_edges_clears_the_action_latch() {
     use crate::input::Input;
     let mut input = Input {
         frame_had_action: true,
         ..Input::new()
     };
-    input.drain_per_frame_queues();
+    input.clear_edges();
     assert!(!input.take_action_flag());
 }
 
@@ -520,8 +520,8 @@ fn press_started_counts_multi_press_runs() {
 /// press or between the press and the release.
 #[test]
 fn pointer_actions_report_the_edges_the_response_reports() {
-    use crate::primitives::input::interaction::button_phase::ButtonPhase;
     use crate::primitives::input::interaction::pointer_action::PointerAction;
+    use crate::primitives::input::interaction::pointer_button_phase::PointerButtonPhase;
     use crate::primitives::input::interaction::pointer_edge::PointerEdge;
 
     let id = WidgetId::from_hash("collated");
@@ -540,7 +540,10 @@ fn pointer_actions_report_the_edges_the_response_reports() {
     h.press(Vec2::new(50.0, 20.0), PointerButton::Left);
     let pressed = h.frame_passes(|ui| {
         let edges = ui.pointer_actions().collect::<Vec<_>>();
-        let down = matches!(ui.response_for(id).left.phase, ButtonPhase::Down { .. });
+        let down = matches!(
+            ui.response_for(id).left.phase,
+            PointerButtonPhase::Down { .. }
+        );
         build(ui);
         (edges, down)
     });
@@ -590,7 +593,7 @@ fn pointer_actions_report_the_edges_the_response_reports() {
         let edges = ui.pointer_actions().collect::<Vec<_>>();
         let state = ui.response_for(id).left;
         build(ui);
-        (edges, state.phase != ButtonPhase::Idle)
+        (edges, state.phase != PointerButtonPhase::Idle)
     };
     h.frame(disabled);
     h.press(Vec2::new(50.0, 20.0), PointerButton::Left);

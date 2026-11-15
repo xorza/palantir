@@ -3,7 +3,7 @@
 use crate::animation::animation_spec::AnimationSpec;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::spacing::Spacing;
-use crate::primitives::input::interaction::response_state::ResponseState;
+use crate::primitives::input::interaction::response::Response;
 use crate::primitives::math::domain;
 use crate::primitives::paint::border::Border;
 use crate::primitives::paint::chrome::Chrome;
@@ -17,7 +17,6 @@ use crate::theme::look::theme_slot::ThemeSlot;
 use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
 use crate::theme::text_style_overrides::TextStyleOverrides;
-use crate::theme::toggle_kind::ToggleKind;
 use glam::Vec2;
 
 /// Visuals for [`crate::Checkbox`], the pips of [`crate::RadioGroup`] and [`crate::Switch`]: a 4-state look pack per checked branch plus geometry knobs.
@@ -40,24 +39,24 @@ pub struct ToggleTheme {
     pub indicator: RgbaF32,
     /// Color of the switch knob over the `unchecked` chrome ([`crate::Switch`] only; a checkbox
     /// and a radio paint no mark when off).
-    pub unchecked_indicator: RgbaF32,
+    pub indicator_unchecked: RgbaF32,
     /// Box side.
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
+    #[serde(deserialize_with = "crate::primitives::file::length")]
     pub box_size: f32,
     /// Stroke width of the indicator.
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
+    #[serde(deserialize_with = "crate::primitives::file::length")]
     pub indicator_width: f32,
     /// The check polyline's three points (Checkbox only) as fractions of [`Self::box_size`], so the tick keeps its proportions at any size.
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::offset_points3")]
+    #[serde(deserialize_with = "crate::primitives::file::offset_points3")]
     pub check_points: [Vec2; 3],
     /// Inset of the filled dot inside a radio pip; dot side is `box_size - 2 * indicator_inset`.
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
+    #[serde(deserialize_with = "crate::primitives::file::length")]
     pub indicator_inset: f32,
     /// Gap between box and label.
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
+    #[serde(deserialize_with = "crate::primitives::file::length")]
     pub gap: f32,
     /// Track width as a multiple of its height ([`crate::Switch`] only, ~7:4); `1.0` for the square checkbox and radio.
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
+    #[serde(deserialize_with = "crate::primitives::file::length")]
     pub track_aspect: f32,
     /// Spacing and transition spec — see [`SlotDefaults`].
     pub defaults: SlotDefaults,
@@ -76,33 +75,41 @@ impl ToggleTheme {
         self.check_points.map(|p| p * side)
     }
 
-    /// The recipe for `kind` over `p` and `m`; [`ToggleKind`] names each one's geometry.
-    pub fn from_parts(kind: ToggleKind, p: &Palette, m: &Metrics) -> Self {
-        match kind {
-            ToggleKind::Checkbox => ToggleGeometry {
-                corner: m.radius.control,
-                box_size: 16.0,
-                indicator_inset: 4.0,
-            }
-            .theme(p, m),
-            ToggleKind::Radio => ToggleGeometry {
-                corner: 8.0,
-                box_size: 16.0,
-                indicator_inset: 4.0,
-            }
-            .theme(p, m),
-            ToggleKind::Switch => {
-                let mut t = ToggleGeometry {
-                    corner: 10.0,
-                    box_size: 20.0,
-                    indicator_inset: 3.0,
-                }
-                .theme(p, m);
-                t.track_aspect = 1.75;
-                t.defaults.transition = AnimationSpec::SPRING;
-                t
-            }
+    /// [`Checkbox`](crate::Checkbox)'s recipe over `p` and `m`: a 16 px box, control-rounded. A
+    /// named constructor per toggle, as each wears its own geometry, as
+    /// [`ButtonTheme::accent`](crate::ButtonTheme::accent) names its kind.
+    pub fn checkbox(p: &Palette, m: &Metrics) -> Self {
+        ToggleGeometry {
+            corner: m.radius.control,
+            box_size: 16.0,
+            indicator_inset: 4.0,
         }
+        .theme(p, m)
+    }
+
+    /// [`RadioGroup`](crate::RadioGroup)'s pips over `p` and `m`: 16 px with pill radius.
+    pub fn radio(p: &Palette, m: &Metrics) -> Self {
+        ToggleGeometry {
+            corner: 8.0,
+            box_size: 16.0,
+            indicator_inset: 4.0,
+        }
+        .theme(p, m)
+    }
+
+    /// [`Switch`](crate::Switch)'s recipe over `p` and `m`: a 20 px-tall pill track, its height
+    /// [`Self::box_size`], whose knob wears `on_accent` when on and `text` when off, with a
+    /// sprung slide and cross-fade.
+    pub fn switch(p: &Palette, m: &Metrics) -> Self {
+        let mut t = ToggleGeometry {
+            corner: 10.0,
+            box_size: 20.0,
+            indicator_inset: 3.0,
+        }
+        .theme(p, m);
+        t.track_aspect = 1.75;
+        t.defaults.transition = AnimationSpec::SPRING;
+        t
     }
 }
 
@@ -131,18 +138,12 @@ impl ToggleGeometry {
             |fill: RgbaF32, border: Border| Chrome::rounded(fill, radius).with_border(border);
         let disabled_text = TextStyleOverrides::NONE.with_color(p.text_disabled);
         let unchecked = StatefulLook {
-            normal: WidgetLook {
-                chrome: chrome(p.element_mid, Border::new(edge, hairline)),
-                text: TextStyleOverrides::NONE,
-            },
-            hovered: WidgetLook {
-                chrome: chrome(p.element_strong, Border::new(edge, hairline)),
-                text: TextStyleOverrides::NONE,
-            },
-            active: WidgetLook {
-                chrome: chrome(p.element_strong, Border::new(p.border_focused, hairline)),
-                text: TextStyleOverrides::NONE,
-            },
+            normal: WidgetLook::new(chrome(p.element_mid, Border::new(edge, hairline))),
+            hovered: WidgetLook::new(chrome(p.element_strong, Border::new(edge, hairline))),
+            active: WidgetLook::new(chrome(
+                p.element_strong,
+                Border::new(p.border_focused, hairline),
+            )),
             disabled: WidgetLook {
                 chrome: chrome(p.element, Border::new(p.border_soft(), hairline)),
                 text: disabled_text,
@@ -150,18 +151,9 @@ impl ToggleGeometry {
         };
         let acc = p.accent;
         let checked = StatefulLook {
-            normal: WidgetLook {
-                chrome: chrome(acc, Border::NONE),
-                text: TextStyleOverrides::NONE,
-            },
-            hovered: WidgetLook {
-                chrome: chrome(acc, Border::NONE),
-                text: TextStyleOverrides::NONE,
-            },
-            active: WidgetLook {
-                chrome: chrome(acc, Border::new(p.border_focused, hairline)),
-                text: TextStyleOverrides::NONE,
-            },
+            normal: WidgetLook::new(chrome(acc, Border::NONE)),
+            hovered: WidgetLook::new(chrome(acc, Border::NONE)),
+            active: WidgetLook::new(chrome(acc, Border::new(p.border_focused, hairline))),
             disabled: WidgetLook {
                 chrome: chrome(acc.with_alpha8(115), Border::NONE),
                 text: disabled_text,
@@ -171,7 +163,7 @@ impl ToggleGeometry {
             unchecked,
             checked,
             indicator: p.on_accent,
-            unchecked_indicator: p.text,
+            indicator_unchecked: p.text,
             box_size,
             indicator_width: m.stroke.line,
             indicator_inset,
@@ -196,7 +188,7 @@ impl ThemeSlot for ToggleTheme {
     type Pick = CheckState;
 
     /// The checked or unchecked pack, then its state (`active` = pressed).
-    fn look(&self, response: &ResponseState, check: CheckState) -> &WidgetLook {
+    fn look(&self, response: &Response, check: CheckState) -> &WidgetLook {
         let pack = match check {
             CheckState::Checked => &self.checked,
             CheckState::Unchecked => &self.unchecked,

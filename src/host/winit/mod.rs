@@ -16,10 +16,10 @@
 //! WinitHost::builder(WindowToken(0))
 //!     .title("title")
 //!     .build(|ui, _handle| {
-//!         for scheme in [ColorScheme::Light, ColorScheme::Dark] {
+//!         for scheme in ColorScheme::ALL {
 //!             let mut theme = Theme::stock(scheme);
 //!             theme.button.defaults.transition = AnimationSpec::SPRING;
-//!             ui.set_theme(scheme, theme).expect("a stock theme names no press effect");
+//!             ui.set_scheme_theme(scheme, theme).expect("a stock theme names no press effect");
 //!         }
 //!         MyApp
 //!     })?
@@ -65,6 +65,7 @@ mod recovery_backoff;
 pub(crate) mod remote;
 mod runtime;
 mod system_preferences;
+pub(crate) mod user_event;
 mod wake_latch;
 mod window;
 mod window_set;
@@ -78,16 +79,15 @@ use std::time::Instant;
 use glam::UVec2;
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
-use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy};
+use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::WindowId;
 
 use crate::gpu::frame::gpu_timings::FrameTiming;
-use crate::gpu::surface::surface_manager::SurfaceManager;
 use crate::host::winit::config::WinitHostConfig;
 use crate::host::winit::error::WinitHostError;
-use crate::host::winit::frame_log::FrameLog;
-use crate::host::winit::handle::{EventSender, HostHandle, MainTask, UserEvent};
+use crate::host::winit::handle::{EventSender, HostHandle};
 use crate::host::winit::runtime::WinitRuntime;
+use crate::host::winit::user_event::{MainTask, UserEvent};
 use crate::host::winit::window::FramePresent;
 use crate::text::font_scope::FontScope;
 use crate::text::shaper::TextShaper;
@@ -140,8 +140,8 @@ impl<T: 'static> fmt::Debug for HostPhase<T> {
 pub struct WinitHost<T: 'static> {
     phase: HostPhase<T>,
     event_loop: Option<EventLoop<UserEvent<T>>>,
-    proxy: EventLoopProxy<UserEvent<T>>,
-    frame_log: Arc<FrameLog>,
+    /// The handle every [`Self::handle`] clones, holding the loop's proxy and the frame log.
+    handle: HostHandle<T>,
 }
 
 impl<T: 'static> fmt::Debug for WinitHost<T> {
@@ -154,15 +154,21 @@ impl<T: 'static> fmt::Debug for WinitHost<T> {
 }
 
 /// Startup configuration for [`WinitHost`].
-#[derive(Debug)]
 #[must_use]
 pub struct WinitHostBuilder<T> {
     first_token: WindowToken,
     config: WinitHostConfig,
-    /// The title [`Self::title`] set, laid over [`Self::window`]'s at build, so the order of the
-    /// two calls does not matter.
-    title: Option<String>,
     marker: PhantomData<fn() -> T>,
+}
+
+/// Hand-written: a derive would ask `T: Debug`, and the builder holds no `T`.
+impl<T> fmt::Debug for WinitHostBuilder<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("WinitHostBuilder")
+            .field("first_token", &self.first_token)
+            .field("config", &self.config)
+            .finish()
+    }
 }
 
 impl<T> WinitHostBuilder<T>
@@ -181,10 +187,10 @@ where
         self
     }
 
-    /// Set the bootstrap window's title; shorthand for the field of [`Self::window`] nearly every
-    /// app sets, which wins over that config's title whichever is called first.
+    /// Set the bootstrap window's title, the field of [`Self::window`]'s config nearly every app
+    /// sets; as each setter, the later call of the two wins.
     pub fn title(mut self, title: impl Into<String>) -> Self {
-        self.title = Some(title.into());
+        self.config.window.title = title.into();
         self
     }
 
@@ -246,9 +252,12 @@ where
         let event_loop = event_loop_builder
             .build()
             .map_err(|source| WinitHostError::CreateEventLoop { source })?;
-        let proxy = event_loop.create_proxy();
+        let handle = HostHandle {
+            sender: EventSender::Proxy(event_loop.create_proxy()),
+            frame_log: Arc::default(),
+        };
         let token = self.first_token;
-        let config = self.sealed_config();
+        let config = self.config;
         Ok(WinitHost {
             phase: HostPhase::Bootstrap(Bootstrap {
                 token,
@@ -257,19 +266,8 @@ where
                 pending_tasks: Vec::new(),
             }),
             event_loop: Some(event_loop),
-            proxy,
-            frame_log: Arc::default(),
+            handle,
         })
-    }
-
-    /// The config the bootstrap window opens with: [`Self::window`]'s, under [`Self::title`]'s
-    /// title when one is set.
-    fn sealed_config(self) -> WinitHostConfig {
-        let mut config = self.config;
-        if let Some(title) = self.title {
-            config.window.title = title;
-        }
-        config
     }
 }
 
@@ -282,17 +280,13 @@ where
         WinitHostBuilder {
             first_token,
             config: WinitHostConfig::default(),
-            title: None,
             marker: PhantomData,
         }
     }
 
     /// A cheap-to-clone, `Send` handle for cross-thread repaint requests and run-on-main scheduling.
     pub fn handle(&self) -> HostHandle<T> {
-        HostHandle {
-            sender: EventSender::Proxy(self.proxy.clone()),
-            frame_log: Arc::clone(&self.frame_log),
-        }
+        self.handle.clone()
     }
 
     /// Drive the event loop to completion.
@@ -310,7 +304,7 @@ where
     pub fn run(mut self) -> Result<(), WinitHostError> {
         let event_loop = self.event_loop.take().expect("event loop already consumed");
         let event_loop_result = event_loop.run_app(&mut self);
-        self.frame_log.clear();
+        self.handle.frame_log.clear();
         let failure = match self.phase {
             HostPhase::Failed(error) => Some(error),
             HostPhase::Bootstrap(_) | HostPhase::Running(_) => None,
@@ -447,7 +441,6 @@ where
         let Some(runtime) = self.running() else {
             return;
         };
-        let max_texture_dim = runtime.core.device.gpu().max_texture_dim();
         let Some(slot) = runtime.slot_of_id(id) else {
             return;
         };
@@ -486,11 +479,8 @@ where
                 if win.set_minimized(false) {
                     win.next = FramePresent::Immediate;
                 }
-                win.note_resized(UVec2::new(new.width, new.height));
-                let size = SurfaceManager::clamp_extent(
-                    max_texture_dim,
-                    UVec2::new(new.width, new.height),
-                );
+                let size = UVec2::new(new.width, new.height);
+                win.note_resized(size);
                 // Stash the new size only; `Window::frame` reconfigures the surface before the next acquire. Painting inline here lags on Wayland (it blocks on FIFO vsync), so defer to one `RedrawRequested` per loop tick.
                 if win.surface.resize(size) {
                     win.next = FramePresent::Immediate;

@@ -1,7 +1,7 @@
 //! Input-scope resolution: who owns a key this pass. Derived state is rebuilt once per pass by [`Scopes::resolve`], so grants don't depend on record position and [`Scopes::grant`] and [`Scopes::reader`] are cheap ([`ReaderMemo`] spares repeat scans).
 
 use crate::cascade::Cascade;
-use crate::cascade::cascade_key::{CascadeKey, CascadeReuse};
+use crate::cascade::cascade_key::CascadeKey;
 use crate::cascade::rows::scope_row::ScopeRow;
 use crate::common::counters::TestOnly;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -57,11 +57,11 @@ struct ReaderMemo {
 }
 
 impl Scopes {
-    /// Rebuilds the pass's routing from `focused` and the cascade; a steady frame keeps the last routing if the focus is the same, no withdrawal came, and the cascade keeps its structural tables ([`CascadeKey::reuse`]).
+    /// Rebuilds the pass's routing from `focused` and the cascade; a steady frame keeps the last routing if the focus is the same, no withdrawal came, and the cascade keeps its structural tables ([`CascadeKey::same_structure`]).
     pub(super) fn resolve(&mut self, focused: Option<WidgetId>, cascade: &Cascade) {
         if let (Some(last), Some(key)) = (self.resolved_for, cascade.key)
             && last.focused == focused
-            && last.cascade.reuse(&key) != CascadeReuse::Nothing
+            && last.cascade.same_structure(&key)
         {
             return;
         }

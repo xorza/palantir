@@ -301,7 +301,7 @@ pub(super) enum EncodeCoverage {
 ///
 /// # Why this is below [`crate::text::RENDERED_RUN_KEEP_FRAMES`]
 ///
-/// `EncodedKey` folds `scale_q` and `max_w_q`, so a zoom or width drag mints a
+/// `EncodedKey` folds `scale_q`, and its text key the wrap width, so a zoom or width drag mints a
 /// never-reused key per run per frame, each living the full span: `runs × (KEEP +
 /// 1)` entries (~27 MB at the shaped-buffer ceiling's 120) on an arena that never
 /// shrinks. 30 frames is half a second at 60 Hz; the cost is a shaper walk (the
@@ -329,6 +329,7 @@ pub(crate) mod internals {
     use crate::common::block_arena::BlockArenaCounts;
     #[cfg(test)]
     use crate::common::counters::CounterSet;
+    use crate::common::gen_slab::SlabKey;
     use crate::gpu::atlas::atlas_format::AtlasFormat;
     #[cfg(test)]
     use crate::gpu::raster::text_backend::encoded_counters::EncodedCounts;
@@ -390,15 +391,17 @@ pub(crate) mod internals {
                         offset: IVec2::new(glyph as i32, run as i32),
                         handle: AtlasHandle {
                             format: AtlasFormat::R8,
-                            idx: glyph,
-                            generation: 1,
+                            key: SlabKey {
+                                idx: glyph,
+                                generation: 1,
+                            },
                         },
                     });
                 }
+                // A rung of its own for each run of each frame: a key never reused.
                 let key = EncodedKey {
                     text: TextShapeKey::fixture(),
-                    scale_q: self.frame as u32,
-                    area_color: u64::from(run),
+                    scale_q: self.frame as u32 * self.runs + run,
                     bins: 0,
                 };
                 self.cache
@@ -453,8 +456,10 @@ pub(crate) mod internals {
                         offset: IVec2::new(glyph as i32, row as i32),
                         handle: AtlasHandle {
                             format: AtlasFormat::R8,
-                            idx: glyph,
-                            generation: 1,
+                            key: SlabKey {
+                                idx: glyph,
+                                generation: 1,
+                            },
                         },
                     });
                 }
@@ -462,7 +467,6 @@ pub(crate) mod internals {
                 let key = EncodedKey {
                     text: TextShapeKey::fixture(),
                     scale_q: row,
-                    area_color: 0,
                     bins: 0,
                 };
                 cache.settle(key, BENCH_TEXT, frame, EncodeCoverage::Complete);

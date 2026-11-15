@@ -17,13 +17,13 @@ use crate::theme::palette::Palette;
 #[serde(deny_unknown_fields)]
 pub struct ScrollbarTheme {
     /// Cross-axis thickness in logical px; pill radius is `thickness / 2`.
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
+    #[serde(deserialize_with = "crate::primitives::file::length")]
     pub thickness: f32,
     /// Empty strip between content and bar; reserved in addition to `thickness`.
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
+    #[serde(deserialize_with = "crate::primitives::file::length")]
     pub gap: f32,
     /// Floor for the thumb's main-axis length.
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
+    #[serde(deserialize_with = "crate::primitives::file::length")]
     pub min_thumb: f32,
     /// Track background; `TRANSPARENT` is pure overlay (macOS-style default).
     pub track: RgbaF32,

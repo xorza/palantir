@@ -1,9 +1,4 @@
 //! The two paths things travel in the reel: the cursor's reach and the camera's glide.
-#![expect(
-    clippy::disallowed_methods,
-    reason = "a demo of the crate, whose frames owe no two systems the same bits"
-)]
-
 use std::ops::{Add, Div, Mul, Sub};
 
 /// Minimum jerk (Flash and Hogan 1985): the share of a reach covered at `t` of its time,

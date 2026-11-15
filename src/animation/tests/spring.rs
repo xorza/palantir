@@ -230,7 +230,7 @@ fn spring_step_at_max_dt_stays_bounded() {
     domain::internals::assert_close(r.value, expected, 1e-4, "a few f32 ulps at 280");
 }
 
-/// A frame may run `build` twice; the guard on `render_frame_id` advances the
+/// A frame may run `build` twice; the guard on `render_frame_idx` advances the
 /// integrator once. A pass B retarget still takes effect without another `dt`.
 #[test]
 fn second_tick_in_same_frame_does_not_double_advance() {
@@ -243,7 +243,7 @@ fn second_tick_in_same_frame_does_not_double_advance() {
         AnimationSpec::FAST,
         AnimationClock {
             dt: 0.016,
-            render_frame_id: frame - 2,
+            render_frame_idx: frame - 2,
         },
     );
 
@@ -252,7 +252,7 @@ fn second_tick_in_same_frame_does_not_double_advance() {
         AnimationSpec::FAST,
         AnimationClock {
             dt: 0.016,
-            render_frame_id: frame - 1,
+            render_frame_idx: frame - 1,
         },
     );
     let from_rest_b = map.ticked(
@@ -260,7 +260,7 @@ fn second_tick_in_same_frame_does_not_double_advance() {
         AnimationSpec::FAST,
         AnimationClock {
             dt: 0.016,
-            render_frame_id: frame - 1,
+            render_frame_idx: frame - 1,
         },
     );
     assert_eq!((from_rest_a.value, from_rest_b.value), (0.0, 0.0));
@@ -270,7 +270,7 @@ fn second_tick_in_same_frame_does_not_double_advance() {
         AnimationSpec::FAST,
         AnimationClock {
             dt: 0.016,
-            render_frame_id: frame,
+            render_frame_idx: frame,
         },
     );
     let eased = Easing::OutCubic.apply(0.016 / 0.12);
@@ -283,17 +283,17 @@ fn second_tick_in_same_frame_does_not_double_advance() {
         AnimationSpec::FAST,
         AnimationClock {
             dt: 0.016,
-            render_frame_id: frame,
+            render_frame_idx: frame,
         },
     );
     assert_eq!(
         pass_b.value, pass_a_cur,
-        "pass B with same render_frame_id must not advance current",
+        "pass B with same render_frame_idx must not advance current",
     );
     assert_eq!(
         support::duration_motion(&map.rows[&(id, SLOT)]).elapsed,
         pass_a_elapsed,
-        "pass B with same render_frame_id must not advance elapsed",
+        "pass B with same render_frame_idx must not advance elapsed",
     );
 
     let pass_b_retarget = map.ticked(
@@ -301,7 +301,7 @@ fn second_tick_in_same_frame_does_not_double_advance() {
         AnimationSpec::FAST,
         AnimationClock {
             dt: 0.016,
-            render_frame_id: frame,
+            render_frame_idx: frame,
         },
     );
     assert_eq!(
@@ -319,7 +319,7 @@ fn second_tick_in_same_frame_does_not_double_advance() {
         AnimationSpec::FAST,
         AnimationClock {
             dt: 0.016,
-            render_frame_id: frame + 1,
+            render_frame_idx: frame + 1,
         },
     );
     assert_eq!(

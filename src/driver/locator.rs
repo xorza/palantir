@@ -8,28 +8,35 @@ use crate::ui::Ui;
 use crate::ui::inspected_widget::InspectedWidget;
 use glam::Vec2;
 use std::convert::Infallible;
-use std::fmt::Debug;
+use std::fmt::{self, Debug, Formatter};
 
 /// How many candidates a [`LocateError::NotFound`] lists.
 const NEAREST: usize = 10;
 
-/// A place in a window, read off its last frame: a widget by the text it shows or by its id, or
-/// a point. An app adds places only it can name as `App`, through [`Locate`].
+/// A place in a window, read off its last frame: a widget by the text it shows or by its id, a
+/// point, or a place an app names through [`Locate`]. A target names one or several matches;
+/// [`Self::nth`] picks one, and [`Self::offset`] moves it. Its `Debug` writes it as it is built,
+/// `Text("Save").nth(1)`, which each [`LocateError`] quotes.
+#[derive(Clone, PartialEq)]
+pub struct Locator<X = Infallible> {
+    target: Target<X>,
+    /// The match picked, from 0, of the several the target names; `None` takes the one match.
+    nth: Option<usize>,
+    /// How far the place moves past the match, in logical pixels.
+    offset: Vec2,
+}
+
+/// What a [`Locator`] matches before it picks and moves.
 #[derive(Clone, Debug, PartialEq)]
-pub enum Locator<X = Infallible> {
-    /// The one visible interactive widget whose text, trimmed, is exactly this, as
-    /// [`Ui::inspect`] lists it.
+enum Target<X> {
+    /// Each visible interactive widget whose text, trimmed, is exactly this, as [`Ui::inspect`]
+    /// lists it, in paint order.
     Text(String),
     /// The interactive widget with this id.
     Id(WidgetId),
     /// A point of the window, in logical pixels.
     Point(Vec2),
-    /// Another locator's place, moved by this many logical pixels.
-    Offset(Box<Self>, Vec2),
-    /// The match at this index, from 0, of a locator that matches several: widgets in paint
-    /// order, an app's places in the order its [`Locate`] lists them.
-    Nth(Box<Self>, usize),
-    /// A place the app names.
+    /// The places the app names, in the order its [`Locate`] lists them.
     App(X),
 }
 
@@ -42,7 +49,7 @@ pub(crate) enum Reach {
     Press,
 }
 
-/// A place an app names, which [`Locator::App`] carries: a graph node, a canvas point. A locator
+/// A place an app names, which [`Locator::app`] carries: a graph node, a canvas point. A locator
 /// crosses to a live window's thread, hence the owned, sendable copy.
 pub trait Locate<A>: Clone + Debug + Send + 'static {
     /// Every place this names in `app`'s last frame, as `ui` laid it out, in order, into `out`.
@@ -81,16 +88,48 @@ impl Found {
 }
 
 impl<X> Locator<X> {
-    /// This place moved by `by` logical pixels.
-    #[must_use]
-    pub fn offset(self, by: Vec2) -> Self {
-        Self::Offset(Box::new(self), by)
+    /// The visible interactive widget whose text, trimmed, is exactly `text`.
+    pub fn text(text: impl Into<String>) -> Self {
+        Self::of(Target::Text(text.into()))
     }
 
-    /// The `n`th place, from 0, of the several this names.
+    /// The interactive widget with this id.
+    pub const fn id(id: WidgetId) -> Self {
+        Self::of(Target::Id(id))
+    }
+
+    /// A point of the window, in logical pixels.
+    pub const fn point(point: Vec2) -> Self {
+        Self::of(Target::Point(point))
+    }
+
+    /// A place the app names.
+    pub const fn app(place: X) -> Self {
+        Self::of(Target::App(place))
+    }
+
+    const fn of(target: Target<X>) -> Self {
+        Self {
+            target,
+            nth: None,
+            offset: Vec2::ZERO,
+        }
+    }
+
+    /// The match at `n`, from 0, of the several the target names: widgets in paint order, an
+    /// app's places in the order its [`Locate`] lists them. An id or a point names one, at 0. It
+    /// replaces a pick made before.
     #[must_use]
-    pub fn nth(self, n: usize) -> Self {
-        Self::Nth(Box::new(self), n)
+    pub const fn nth(mut self, n: usize) -> Self {
+        self.nth = Some(n);
+        self
+    }
+
+    /// This place moved by `by` logical pixels, after the pick; offsets add.
+    #[must_use]
+    pub fn offset(mut self, by: Vec2) -> Self {
+        self.offset += by;
+        self
     }
 
     /// The one place this names in the last frame `ui` ran of `app`. A widget must be visible
@@ -98,51 +137,34 @@ impl<X> Locator<X> {
     ///
     /// # Errors
     ///
-    /// [`LocateError`] when it names no place, or several.
+    /// [`LocateError`] when the target names no place, several and no pick, or fewer than the
+    /// pick.
     pub fn find<A>(&self, app: &A, ui: &Ui) -> Result<Found, LocateError>
     where
         X: Locate<A>,
     {
-        match self {
-            Self::Point(point) => Ok(Found {
-                rect: Rect::new(point.x, point.y, 0.0, 0.0),
-                point: *point,
-            }),
-            Self::Offset(inner, by) => {
-                let found = inner.find(app, ui)?;
-                Ok(Found {
-                    rect: Rect::new(
-                        found.rect.min.x + by.x,
-                        found.rect.min.y + by.y,
-                        found.rect.size.w,
-                        found.rect.size.h,
-                    ),
-                    point: found.point + *by,
-                })
+        let mut matches = Vec::new();
+        self.find_each(app, ui, &mut matches)?;
+        let found = match (self.nth, matches.as_slice()) {
+            (None, [one]) => *one,
+            (None, _) => {
+                return Err(LocateError::Ambiguous {
+                    locator: format!("{self:?}"),
+                    matches,
+                });
             }
-            Self::Nth(inner, n) => {
-                let mut found = Vec::new();
-                inner.find_each(app, ui, &mut found)?;
-                if !matches!(**inner, Self::Text(_) | Self::App(_)) || *n >= found.len() {
-                    return Err(LocateError::NoNth {
-                        locator: format!("{self:?}"),
-                        count: found.len(),
-                    });
-                }
-                Ok(found[*n])
-            }
-            Self::Text(_) | Self::Id(_) | Self::App(_) => {
-                let mut found = Vec::new();
-                self.find_each(app, ui, &mut found)?;
-                match found.as_slice() {
-                    [one] => Ok(*one),
-                    many => Err(LocateError::Ambiguous {
-                        locator: format!("{self:?}"),
-                        matches: many.to_vec(),
-                    }),
-                }
-            }
-        }
+            (Some(n), _) => *matches.get(n).ok_or_else(|| LocateError::NoNth {
+                locator: format!("{self:?}"),
+                count: matches.len(),
+            })?,
+        };
+        Ok(Found {
+            rect: Rect {
+                min: found.rect.min + self.offset,
+                size: found.rect.size,
+            },
+            point: found.point + self.offset,
+        })
     }
 
     /// The point this names, for `reach`. A press refuses a point where the topmost widget that
@@ -168,14 +190,14 @@ impl<X> Locator<X> {
         Ok(point)
     }
 
-    /// Every place this names, at least one, in order.
+    /// Every place the target names, at least one, in order.
     fn find_each<A>(&self, app: &A, ui: &Ui, out: &mut Vec<Found>) -> Result<(), LocateError>
     where
         X: Locate<A>,
     {
         let locator = || format!("{self:?}");
-        match self {
-            Self::Text(text) => {
+        match &self.target {
+            Target::Text(text) => {
                 let mut widgets = Vec::new();
                 ui.inspect(&mut widgets);
                 let shows = |widget: &&InspectedWidget| widget.text.trim() == text;
@@ -206,7 +228,7 @@ impl<X> Locator<X> {
                     });
                 }
             }
-            Self::Id(id) => {
+            Target::Id(id) => {
                 let mut widgets = Vec::new();
                 ui.inspect(&mut widgets);
                 let widget = widgets
@@ -221,7 +243,7 @@ impl<X> Locator<X> {
                 }
                 out.push(reached(ui, widget, locator)?);
             }
-            Self::App(place) => {
+            Target::App(place) => {
                 place.find_all(app, ui, out)?;
                 if out.is_empty() {
                     return Err(LocateError::NotFound {
@@ -230,7 +252,10 @@ impl<X> Locator<X> {
                     });
                 }
             }
-            Self::Point(_) | Self::Offset(..) | Self::Nth(..) => out.push(self.find(app, ui)?),
+            Target::Point(point) => out.push(Found {
+                rect: Rect::new(point.x, point.y, 0.0, 0.0),
+                point: *point,
+            }),
         }
         Ok(())
     }
@@ -278,26 +303,61 @@ fn nearest(widgets: &[InspectedWidget], wanted: &str) -> Vec<String> {
     }
 }
 
+impl<X: Debug> Debug for Locator<X> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match &self.target {
+            Target::Text(text) => write!(f, "Text({text:?})")?,
+            Target::Id(id) => write!(f, "Id({id:?})")?,
+            Target::Point(point) => write!(f, "Point({}, {})", point.x, point.y)?,
+            Target::App(place) => write!(f, "App({place:?})")?,
+        }
+        if let Some(n) = self.nth {
+            write!(f, ".nth({n})")?;
+        }
+        if self.offset != Vec2::ZERO {
+            write!(f, ".offset({}, {})", self.offset.x, self.offset.y)?;
+        }
+        Ok(())
+    }
+}
+
 impl<X> From<&str> for Locator<X> {
     fn from(text: &str) -> Self {
-        Self::Text(text.to_owned())
+        Self::text(text)
     }
 }
 
 impl<X> From<String> for Locator<X> {
     fn from(text: String) -> Self {
-        Self::Text(text)
+        Self::text(text)
     }
 }
 
 impl<X> From<WidgetId> for Locator<X> {
     fn from(id: WidgetId) -> Self {
-        Self::Id(id)
+        Self::id(id)
     }
 }
 
 impl<X> From<Vec2> for Locator<X> {
     fn from(point: Vec2) -> Self {
-        Self::Point(point)
+        Self::point(point)
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod internals {
+    use crate::driver::locator::{Locator, Target};
+    use glam::Vec2;
+
+    impl<X> Locator<X> {
+        /// The point a point target names, moved by the offset; `None` for a target found in a
+        /// frame.
+        pub(crate) fn as_point(&self) -> Option<Vec2> {
+            match self.target {
+                Target::Point(point) => Some(point + self.offset),
+                _ => None,
+            }
+        }
     }
 }

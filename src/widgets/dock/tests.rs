@@ -4,12 +4,14 @@
 use glam::{UVec2, Vec2};
 
 use crate::host::harness::Harness;
+use crate::internals::panic_probe;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::pointer::PointerButton;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::axis::Axis;
+use crate::primitives::layout::sizing::SizeSpec;
 use crate::primitives::text::interned_str::InternedStr;
 use crate::theme::Theme;
 use crate::theme::close_shown::CloseShown;
@@ -25,7 +27,7 @@ use crate::widgets::dock::dock_state::{DockState, RATIO_MIN};
 use crate::widgets::dock::dock_tabs::{DockTabMenu, DockTabs};
 use crate::widgets::dock::dock_view::DockView;
 use crate::widgets::dock::pane_geometry::{DropTarget, PaneGeometry};
-use crate::widgets::dock::split_side::{SplitDirection, SplitSide};
+use crate::widgets::dock::split_side::SplitSide;
 use crate::widgets::dock::tab_group::{TabGroup, TabGroupId};
 use crate::widgets::menu::Menu;
 use crate::widgets::menu::menu_item::MenuItem;
@@ -148,7 +150,7 @@ fn focus_moves_only_the_focused_group() {
     assert_ne!(fresh, primary, "the new pane took focus");
     let actives: Vec<Tab> = d.active_tabs().collect();
 
-    d.apply(DockOperation::FocusPane { group: primary });
+    d.apply(DockOperation::FocusGroup { group: primary });
     d.validate().unwrap();
     assert_eq!(d.focused(), primary);
     assert_eq!(
@@ -157,11 +159,11 @@ fn focus_moves_only_the_focused_group() {
         "focus alone moved — no pane switched tabs"
     );
 
-    d.apply(DockOperation::FocusPane { group: primary });
+    d.apply(DockOperation::FocusGroup { group: primary });
     assert_eq!(d.focused(), primary, "re-focusing the same pane is inert");
 
     let gone = d.absent_group();
-    d.apply(DockOperation::FocusPane { group: gone });
+    d.apply(DockOperation::FocusGroup { group: gone });
     assert_eq!(
         d.focused(),
         primary,
@@ -179,7 +181,7 @@ fn open_tab_reuses_an_existing_tab_and_focuses_its_pane() {
     split_off(&mut d, viewer(1), primary, SplitSide::Right);
     let fresh = d.focused();
 
-    d.apply(DockOperation::FocusPane { group: primary });
+    d.apply(DockOperation::FocusGroup { group: primary });
     d.apply(DockOperation::OpenTab { tab: viewer(1) });
     assert_eq!(
         d.all_tabs().collect::<Vec<_>>(),
@@ -204,12 +206,12 @@ fn split_move_and_collapse_roundtrip() {
     let mut d = seeded();
     let primary = d.primary().id;
 
-    // Row split, primary first, new single-tab group second and focused;
+    // A split along x, primary first, new single-tab group second and focused;
     // pre-order `[split, primary, new]`.
     split_off(&mut d, viewer(1), primary, SplitSide::Right);
     d.validate().unwrap();
     let root = root_split(&d);
-    assert_eq!(root.split.direction, SplitDirection::Row);
+    assert_eq!(root.split.axis, Axis::X);
     assert_eq!(root.split.ratio(), 0.5);
     let DockNode::Group(first) = root.first else {
         panic!("primary stays first for a Right split");
@@ -225,7 +227,7 @@ fn split_move_and_collapse_roundtrip() {
     // Moving back into the primary strip collapses the split.
     d.apply(DockOperation::MoveTab {
         tab: viewer(1),
-        to: DockDrop::Into {
+        to: DockDrop::Join {
             group: primary,
             idx: 1,
         },
@@ -245,21 +247,29 @@ fn split_move_and_collapse_roundtrip() {
 }
 
 #[test]
-fn left_and_top_splits_put_the_new_pane_first() {
-    for (side, direction) in [
-        (SplitSide::Left, SplitDirection::Row),
-        (SplitSide::Top, SplitDirection::Col),
+fn each_side_splits_along_its_axis_with_the_new_pane_on_its_half() {
+    for (side, axis, new_first) in [
+        (SplitSide::Left, Axis::X, true),
+        (SplitSide::Right, Axis::X, false),
+        (SplitSide::Top, Axis::Y, true),
+        (SplitSide::Bottom, Axis::Y, false),
     ] {
         let mut d = seeded();
         let primary = d.primary().id;
         split_off(&mut d, viewer(1), primary, side);
         d.validate().unwrap();
         let root = root_split(&d);
-        assert_eq!(root.split.direction, direction);
-        let DockNode::Group(first) = root.first else {
-            panic!("the first child is the new pane");
+        assert_eq!(root.split.axis, axis, "{side:?}");
+        let (DockNode::Group(first), DockNode::Group(second)) = (root.first, root.second) else {
+            panic!("{side:?}: both children are groups");
         };
-        assert_eq!(first.tabs, [viewer(1)], "{side:?} puts the new pane first");
+        let (fresh, kept) = if new_first {
+            (first, second)
+        } else {
+            (second, first)
+        };
+        assert_eq!(fresh.tabs, [viewer(1)], "{side:?}: the new pane's half");
+        assert_eq!(kept.id, primary, "{side:?}: the primary keeps the other");
     }
 }
 
@@ -279,7 +289,7 @@ fn degenerate_and_forbidden_moves_change_nothing() {
     let gone = d.absent_group();
     d.apply(DockOperation::MoveTab {
         tab: Tab::Prefs,
-        to: DockDrop::Into {
+        to: DockDrop::Join {
             group: gone,
             idx: 0,
         },
@@ -399,7 +409,7 @@ fn a_same_group_reorder_uses_pre_move_indices() {
         d.insert_into(viewer(2), primary);
         d.apply(DockOperation::MoveTab {
             tab: from,
-            to: DockDrop::Into {
+            to: DockDrop::Join {
                 group: primary,
                 idx,
             },
@@ -593,7 +603,7 @@ fn nested_splits_stay_canonical() {
     // Collapse the inner split; the outer survives.
     d.apply(DockOperation::MoveTab {
         tab: viewer(2),
-        to: DockDrop::Into {
+        to: DockDrop::Join {
             group: primary,
             idx: 99,
         },
@@ -624,24 +634,24 @@ fn serde_roundtrips_through_ron() {
 /// A saved layout that breaks an invariant fails to load with that error.
 #[test]
 fn loading_rejects_each_corruption() {
-    type Corrupt = fn(&mut DockState<Tab>);
+    type Corrupt = fn(&mut DockLayout<Tab>);
 
-    // Base: `[split, primary(Main, Prefs), viewer-pane(v1)]`, corrupted one
-    // invariant at a time through gated raw access, saved and read back.
+    // Base: `[split, primary(Main, Prefs), viewer-pane(v1)]`, its layout corrupted one
+    // invariant at a time, saved and read back.
     let base = {
         let mut d = seeded();
         let primary = d.primary().id;
         split_off(&mut d, viewer(1), primary, SplitSide::Right);
         d.validate().unwrap();
-        d
+        d.layout().clone()
     };
 
     let cases: [(&str, Corrupt, &str); 11] = [
         (
             "duplicate group id",
-            |d| {
-                let pid = d.primary().id;
-                for n in d.nodes_mut() {
+            |layout| {
+                let pid = layout.focused;
+                for n in &mut layout.nodes {
                     if let DockNode::Group(g) = n {
                         g.id = pid;
                     }
@@ -651,16 +661,13 @@ fn loading_rejects_each_corruption() {
         ),
         (
             "dangling focused",
-            |d| {
-                let gone = d.absent_group();
-                d.set_focused_unchecked(gone);
-            },
+            |layout| layout.focused = TabGroupId(layout.next_group + 1000),
             "focused group",
         ),
         (
             "active out of range",
-            |d| {
-                let DockNode::Group(g) = &mut d.nodes_mut()[1] else {
+            |layout| {
+                let DockNode::Group(g) = &mut layout.nodes[1] else {
                     panic!("slot 1 is the primary group");
                 };
                 g.active = g.tabs.len();
@@ -669,8 +676,8 @@ fn loading_rejects_each_corruption() {
         ),
         (
             "ratio out of bounds",
-            |d| {
-                let DockNode::Split(s) = &mut d.nodes_mut()[0] else {
+            |layout| {
+                let DockNode::Split(s) = &mut layout.nodes[0] else {
                     panic!("the root is a split");
                 };
                 s.ratio = 0.95;
@@ -680,18 +687,18 @@ fn loading_rejects_each_corruption() {
         (
             // The next split would mint an id a group already holds.
             "group counter repeats a live id",
-            |d| d.set_next_group_unchecked(0),
+            |layout| layout.next_group = 0,
             "cannot mint a fresh id",
         ),
         (
             "group counter has nowhere left to count",
-            |d| d.set_next_group_unchecked(u64::MAX),
+            |layout| layout.next_group = u64::MAX,
             "cannot mint a fresh id",
         ),
         (
             "children out of pre-order",
-            |d| {
-                let DockNode::Split(s) = &mut d.nodes_mut()[0] else {
+            |layout| {
+                let DockNode::Split(s) = &mut layout.nodes[0] else {
                     panic!("the root is a split");
                 };
                 mem::swap(&mut s.first, &mut s.second);
@@ -700,13 +707,13 @@ fn loading_rejects_each_corruption() {
         ),
         (
             "child index past the end",
-            |d| d.nodes_mut().truncate(2),
+            |layout| layout.nodes.truncate(2),
             "dock node index",
         ),
         (
             "unreachable trailing slot",
-            |d| {
-                let DockNode::Split(s) = &mut d.nodes_mut()[0] else {
+            |layout| {
+                let DockNode::Split(s) = &mut layout.nodes[0] else {
                     panic!("the root is a split");
                 };
                 // The root points only at slot 1; slots 2.. are orphaned.
@@ -720,8 +727,8 @@ fn loading_rejects_each_corruption() {
         ),
         (
             "empty group",
-            |d| {
-                let DockNode::Group(g) = &mut d.nodes_mut()[2] else {
+            |layout| {
+                let DockNode::Group(g) = &mut layout.nodes[2] else {
                     panic!("slot 2 is the split-off viewer pane");
                 };
                 g.tabs.clear();
@@ -730,8 +737,8 @@ fn loading_rejects_each_corruption() {
         ),
         (
             "no pinned tab anywhere",
-            |d| {
-                let DockNode::Group(g) = &mut d.nodes_mut()[1] else {
+            |layout| {
+                let DockNode::Group(g) = &mut layout.nodes[1] else {
                     panic!("slot 1 is the primary group");
                 };
                 g.tabs.retain(|t| *t != Tab::Main);
@@ -741,18 +748,18 @@ fn loading_rejects_each_corruption() {
         ),
     ];
     for (name, corrupt, expected) in cases {
-        let mut d = base.clone();
-        corrupt(&mut d);
-        let err = load_err(&d);
+        let mut layout = base.clone();
+        corrupt(&mut layout);
+        let err = load_err(&layout);
         assert!(err.contains(expected), "{name}: unexpected error: {err}");
     }
 }
 
-/// Save `d` and read it back, expecting the read to fail.
-fn load_err(d: &DockState<Tab>) -> String {
-    let text = ser::to_string(d.layout()).expect("a corrupt tree still serializes");
+/// Save `layout` and read it back, expecting the load to fail.
+fn load_err(layout: &DockLayout<Tab>) -> String {
+    let text = ser::to_string(layout).expect("a corrupt tree still serializes");
     let layout: DockLayout<Tab> = ron::from_str(&text).expect("a corrupt tree still parses");
-    DockState::load(layout, d.pinned())
+    DockState::load(layout, Tab::Main)
         .expect_err("a corrupt layout must not load")
         .to_string()
 }
@@ -764,11 +771,12 @@ fn loading_rejects_a_tab_that_appears_twice() {
     let mut d = seeded();
     let primary = d.primary().id;
     split_off(&mut d, viewer(1), primary, SplitSide::Right);
-    let DockNode::Group(g) = &mut d.nodes_mut()[1] else {
+    let mut layout = d.layout().clone();
+    let DockNode::Group(g) = &mut layout.nodes[1] else {
         panic!("slot 1 is the primary group");
     };
     g.tabs.push(viewer(1));
-    let err = load_err(&d);
+    let err = load_err(&layout);
     assert!(err.contains("appears twice"), "unexpected error: {err}");
 }
 
@@ -808,7 +816,7 @@ fn a_drop_classifies_into_strip_slots_join_and_wedges() {
     assert_eq!(
         hit,
         DropTarget::Region {
-            drop: DockDrop::Into { group, idx: 2 },
+            drop: DockDrop::Join { group, idx: 2 },
             wash: content,
         }
     );
@@ -829,12 +837,12 @@ fn a_drop_classifies_into_strip_slots_join_and_wedges() {
     let p = Vec2::new(90.0, 165.0);
     assert_eq!(classify(p).drop(), left.drop());
     let narrow = geometry(true, AllowedSplits::ALL, 0.2).classify(p);
-    assert_eq!(narrow.drop(), DockDrop::Into { group, idx: 2 });
+    assert_eq!(narrow.drop(), DockDrop::Join { group, idx: 2 });
 
     // At the cap, or where the policy forbids the nearest edge, wedges join.
     let at = Vec2::new(20.0, 60.0);
     let capped = geometry(false, AllowedSplits::ALL, 0.25).classify(at);
-    assert_eq!(capped.drop(), DockDrop::Into { group, idx: 2 });
+    assert_eq!(capped.drop(), DockDrop::Join { group, idx: 2 });
     let col_only = geometry(true, AllowedSplits::COL, 0.25).classify(at);
     assert_eq!(
         col_only.drop(),
@@ -845,7 +853,7 @@ fn a_drop_classifies_into_strip_slots_join_and_wedges() {
         "the nearest *offered* edge wins when Left is refused"
     );
     let none = geometry(true, AllowedSplits::NONE, 0.25).classify(at);
-    assert_eq!(none.drop(), DockDrop::Into { group, idx: 2 });
+    assert_eq!(none.drop(), DockDrop::Join { group, idx: 2 });
 }
 
 /// The minimal viewer: every tab is a label and an empty body.
@@ -866,7 +874,7 @@ impl DockTabs for Labels {
     fn body(&mut self, ui: &mut Ui, _tab: Tab, _size: Option<Size>) {
         Panel::vstack()
             .id_salt("body")
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |_| {});
     }
 }
@@ -885,7 +893,7 @@ fn a_split_dock_tiles_its_panes_and_strips() {
     let mut h = Harness::mono(SURFACE);
     let mut tabs = Labels;
     h.prime(3, |ui| {
-        DockView::run(ui, dock(), &mut d, &mut tabs);
+        DockView::new(dock(), &mut d).show(ui, &mut tabs);
     });
 
     let left_pane = h
@@ -909,7 +917,7 @@ fn a_split_dock_tiles_its_panes_and_strips() {
                 ..pane
             }
         );
-        let content = h.arranged(group.content_id(dock())).unwrap();
+        let content = h.layout_rect(group.content_id(dock())).unwrap();
         assert_eq!(
             content,
             Rect::new(
@@ -944,8 +952,10 @@ fn an_over_dragged_divider_keeps_its_width_through_the_release() {
     let mut h = Harness::mono(SURFACE);
     let mut tabs = Labels;
     let mut run = |h: &mut Harness, d: &mut DockState<Tab>| {
-        h.frame(|ui| DockView::run(ui, dock(), d, &mut tabs));
-        h.arranged(primary.pane_id(dock())).unwrap().size.w
+        h.frame(|ui| {
+            DockView::new(dock(), d).show(ui, &mut tabs);
+        });
+        h.layout_rect(primary.pane_id(dock())).unwrap().size.w
     };
     for _ in 0..3 {
         run(&mut h, &mut d);
@@ -979,7 +989,9 @@ fn a_carried_tab_marks_a_strip_slot_or_washes_a_region() {
     let mut d = seeded();
     let mut tabs = Labels;
     let mut h = Harness::mono(SURFACE);
-    h.prime(3, |ui| DockView::run(ui, dock(), &mut d, &mut tabs));
+    h.prime(3, |ui| {
+        DockView::new(dock(), &mut d).show(ui, &mut tabs);
+    });
     let strip = d.primary().id.strip_id(dock());
     let caret = strip.with("caret");
     let wash = dock().with("preview");
@@ -988,15 +1000,21 @@ fn a_carried_tab_marks_a_strip_slot_or_washes_a_region() {
         TabStrip::chip_id(strip, TabKey::of(Tab::Main)),
         PointerButton::Left,
     );
-    h.frame(|ui| DockView::run(ui, dock(), &mut d, &mut tabs));
+    h.frame(|ui| {
+        DockView::new(dock(), &mut d).show(ui, &mut tabs);
+    });
     let last = h.center_of(TabStrip::chip_id(strip, TabKey::of(viewer(1))));
     h.drag_to(last + Vec2::new(4.0, 0.0));
-    h.prime(2, |ui| DockView::run(ui, dock(), &mut d, &mut tabs));
+    h.prime(2, |ui| {
+        DockView::new(dock(), &mut d).show(ui, &mut tabs);
+    });
     assert!(h.rect(caret).is_some(), "over the strip, its caret");
     assert!(h.rect(wash).is_none(), "and no wash");
 
     h.drag_to(Vec2::new(300.0, 200.0));
-    h.prime(2, |ui| DockView::run(ui, dock(), &mut d, &mut tabs));
+    h.prime(2, |ui| {
+        DockView::new(dock(), &mut d).show(ui, &mut tabs);
+    });
     assert!(h.rect(caret).is_none(), "over the content, no caret");
     assert!(h.rect(wash).is_some(), "but a wash");
 }
@@ -1012,7 +1030,9 @@ fn a_lone_tab_over_its_own_pane_washes_nothing() {
     let before = d.clone();
     let mut tabs = Labels;
     let mut h = Harness::mono(SURFACE);
-    h.prime(3, |ui| DockView::run(ui, dock(), &mut d, &mut tabs));
+    h.prime(3, |ui| {
+        DockView::new(dock(), &mut d).show(ui, &mut tabs);
+    });
     let strip = lone.strip_id(dock());
     let wash = dock().with("preview");
 
@@ -1020,17 +1040,23 @@ fn a_lone_tab_over_its_own_pane_washes_nothing() {
         TabStrip::chip_id(strip, TabKey::of(viewer(1))),
         PointerButton::Left,
     );
-    h.frame(|ui| DockView::run(ui, dock(), &mut d, &mut tabs));
+    h.frame(|ui| {
+        DockView::new(dock(), &mut d).show(ui, &mut tabs);
+    });
     let pane = h
         .rect(lone.pane_id(dock()))
         .expect("the lone pane is arranged");
     for at in [pane.center(), pane.min + Vec2::new(4.0, pane.size.h - 4.0)] {
         h.drag_to(at);
-        h.prime(2, |ui| DockView::run(ui, dock(), &mut d, &mut tabs));
+        h.prime(2, |ui| {
+            DockView::new(dock(), &mut d).show(ui, &mut tabs);
+        });
         assert!(h.rect(wash).is_none(), "no wash at {at:?}");
     }
     h.release(PointerButton::Left);
-    h.prime(2, |ui| DockView::run(ui, dock(), &mut d, &mut tabs));
+    h.prime(2, |ui| {
+        DockView::new(dock(), &mut d).show(ui, &mut tabs);
+    });
     assert_eq!(d, before, "the release moves nothing");
 }
 
@@ -1041,13 +1067,15 @@ fn a_chip_click_switches_the_pane_on_the_same_frame() {
     let mut d = seeded();
     let mut h = Harness::mono(SURFACE);
     let mut tabs = Labels;
-    h.prime(3, |ui| DockView::run(ui, dock(), &mut d, &mut tabs));
+    h.prime(3, |ui| {
+        DockView::new(dock(), &mut d).show(ui, &mut tabs);
+    });
     assert_eq!(d.primary().active_tab(), Tab::Main);
 
     let chip = TabStrip::chip_id(d.primary().id.strip_id(dock()), TabKey::of(Tab::Prefs));
     h.click(chip);
     let content = h.frame_value(|ui| {
-        DockView::run(ui, dock(), &mut d, &mut tabs);
+        DockView::new(dock(), &mut d).show(ui, &mut tabs);
         ui.response_for(d.primary().id.content_id(dock())).rect
     });
     assert_eq!(
@@ -1065,12 +1093,16 @@ fn a_close_click_removes_the_tab_and_does_not_activate_it() {
     let mut h = Harness::mono(SURFACE);
     h.ui_mut().theme_mut().tabs.close_shown = CloseShown::Always;
     let mut tabs = Labels;
-    h.prime(3, |ui| DockView::run(ui, dock(), &mut d, &mut tabs));
+    h.prime(3, |ui| {
+        DockView::new(dock(), &mut d).show(ui, &mut tabs);
+    });
 
     let strip = d.primary().id.strip_id(dock());
     let close = TabStrip::close_id(strip, TabKey::of(Tab::Prefs));
     h.click(close);
-    h.frame(|ui| DockView::run(ui, dock(), &mut d, &mut tabs));
+    h.frame(|ui| {
+        DockView::new(dock(), &mut d).show(ui, &mut tabs);
+    });
 
     assert_eq!(
         d.all_tabs().collect::<Vec<_>>(),
@@ -1083,6 +1115,38 @@ fn a_close_click_removes_the_tab_and_does_not_activate_it() {
         "the closed tab is not the active one"
     );
     d.validate().unwrap();
+}
+
+/// A view moved off the id it was built with would record where the scan never reads, so `show`
+/// refuses it; the same id set again is no move.
+#[test]
+fn a_view_moved_off_its_id_is_refused() {
+    const RULE: &str = "a dock view records under the id it was built with";
+    let d = seeded();
+    let mut tabs = Labels;
+
+    Harness::mono(SURFACE).frame(|ui| {
+        let mut operations = Vec::new();
+        DockView::emitting(dock(), &d, &mut operations)
+            .id(dock())
+            .show(ui, &mut tabs);
+    });
+    panic_probe::assert_panics_with(RULE, || {
+        Harness::mono(SURFACE).frame(|ui| {
+            let mut operations = Vec::new();
+            DockView::emitting(dock(), &d, &mut operations)
+                .id(WidgetId::from_hash("elsewhere"))
+                .show(ui, &mut tabs);
+        });
+    });
+    panic_probe::assert_panics_with(RULE, || {
+        Harness::mono(SURFACE).frame(|ui| {
+            let mut operations = Vec::new();
+            DockView::emitting(dock(), &d, &mut operations)
+                .id_salt("elsewhere")
+                .show(ui, &mut tabs);
+        });
+    });
 }
 
 /// A tab chosen from the overflow menu activates like a chip click. The
@@ -1098,7 +1162,7 @@ fn a_pick_from_the_overflow_menu_activates_its_tab() {
             for operation in operations.drain(..) {
                 d.apply(operation);
             }
-            DockView::new(dock(), &*d, &mut operations)
+            DockView::emitting(dock(), &*d, &mut operations)
                 .id(dock())
                 .overflow(TabOverflow::Menu)
                 .show(ui, tabs);
@@ -1185,7 +1249,9 @@ fn a_right_click_opens_the_tab_menu_only_where_one_is_declared() {
     let mut d = seeded();
     let mut tabs = MenuOn(Tab::Prefs);
     let mut h = Harness::mono(SURFACE);
-    h.prime(3, |ui| DockView::run(ui, dock(), &mut d, &mut tabs));
+    h.prime(3, |ui| {
+        DockView::new(dock(), &mut d).show(ui, &mut tabs);
+    });
     let strip = d.primary().id.strip_id(dock());
     let chip = |tab| TabStrip::chip_id(strip, TabKey::of(tab));
 
@@ -1194,7 +1260,9 @@ fn a_right_click_opens_the_tab_menu_only_where_one_is_declared() {
         .expect("the Main chip arranged")
         .center();
     h.right_click(at);
-    h.frame(|ui| DockView::run(ui, dock(), &mut d, &mut tabs));
+    h.frame(|ui| {
+        DockView::new(dock(), &mut d).show(ui, &mut tabs);
+    });
     assert!(!Menu::is_open(h.ui(), chip(Tab::Main)));
     assert!(h.rect(MenuOn::item_id()).is_none(), "Main has no menu");
 
@@ -1203,7 +1271,9 @@ fn a_right_click_opens_the_tab_menu_only_where_one_is_declared() {
         .expect("the Prefs chip arranged")
         .center();
     h.right_click(at);
-    h.frame(|ui| DockView::run(ui, dock(), &mut d, &mut tabs));
+    h.frame(|ui| {
+        DockView::new(dock(), &mut d).show(ui, &mut tabs);
+    });
     assert!(Menu::is_open(h.ui(), chip(Tab::Prefs)));
     assert!(
         h.rect(MenuOn::item_id()).is_some(),
@@ -1211,8 +1281,12 @@ fn a_right_click_opens_the_tab_menu_only_where_one_is_declared() {
     );
 
     h.click(MenuOn::item_id());
-    h.frame(|ui| DockView::run(ui, dock(), &mut d, &mut tabs));
-    h.frame(|ui| DockView::run(ui, dock(), &mut d, &mut tabs));
+    h.frame(|ui| {
+        DockView::new(dock(), &mut d).show(ui, &mut tabs);
+    });
+    h.frame(|ui| {
+        DockView::new(dock(), &mut d).show(ui, &mut tabs);
+    });
     assert_eq!(
         d.all_tabs().collect::<Vec<_>>(),
         [Tab::Main, viewer(1)],
@@ -1230,10 +1304,14 @@ fn a_right_click_opens_the_tab_menu_only_where_one_is_declared() {
         .expect("the viewer chip arranged")
         .center();
     h.right_click(at);
-    h.frame(|ui| DockView::run(ui, dock(), &mut d, &mut tabs));
+    h.frame(|ui| {
+        DockView::new(dock(), &mut d).show(ui, &mut tabs);
+    });
     assert!(Menu::is_open(h.ui(), chip(viewer(1))));
     d.retain_tabs(|tab| tab != viewer(1));
-    h.frame(|ui| DockView::run(ui, dock(), &mut d, &mut tabs));
+    h.frame(|ui| {
+        DockView::new(dock(), &mut d).show(ui, &mut tabs);
+    });
     assert!(!Menu::is_open(h.ui(), chip(viewer(1))));
     assert!(
         h.rect(MenuOn::item_id()).is_none(),
@@ -1281,12 +1359,14 @@ fn escape_ends_a_chip_drag_at_the_root_and_inside_an_overlay() {
             let mut tabs = Labels;
             if overlay {
                 ui.layer(Layer::Popup).show(|ui| {
-                    let mut root = Panel::zstack().id_salt("claim").size(Sizing::FILL);
+                    let mut root = Panel::zstack().id_salt("claim").size(SizeSpec::FILL);
                     root.configure().input_scope(KeyFilter::ALL).blocks_below();
-                    root.show(ui, |ui| DockView::run(ui, dock(), d, &mut tabs));
+                    root.show(ui, |ui| {
+                        DockView::new(dock(), d).show(ui, &mut tabs);
+                    });
                 });
             } else {
-                DockView::run(ui, dock(), d, &mut tabs);
+                DockView::new(dock(), d).show(ui, &mut tabs);
             }
         });
     }
@@ -1323,7 +1403,9 @@ fn a_carried_tab_leaves_with_the_dock() {
     let mut tabs = Labels;
     let mut h = Harness::mono(UVec2::new(400, 200));
     let record = |h: &mut Harness, d: &mut DockState<Tab>, tabs: &mut Labels| {
-        h.frame(|ui| DockView::run(ui, dock(), d, tabs));
+        h.frame(|ui| {
+            DockView::new(dock(), d).show(ui, tabs);
+        });
     };
     for _ in 0..2 {
         record(&mut h, &mut d, &mut tabs);
@@ -1347,7 +1429,7 @@ fn a_carried_tab_leaves_with_the_dock() {
 fn a_new_dock_view_has_no_authored_size() {
     let d = DockState::new(Tab::Main);
     let mut operations = Vec::new();
-    let mut view = DockView::new(dock(), &d, &mut operations);
+    let mut view = DockView::emitting(dock(), &d, &mut operations);
     assert_eq!(view.configure().widget.authored().size(), None);
 }
 
@@ -1368,7 +1450,7 @@ fn the_dock_restyles_its_strips_and_tab_menus() {
         let chip = TabStrip::chip_id(strip, TabKey::of(Tab::Prefs));
         let mut h = Harness::mono(SURFACE);
         let mut scene = |ui: &mut Ui| {
-            DockView::new(dock(), &d, &mut ops)
+            DockView::emitting(dock(), &d, &mut ops)
                 .id(dock())
                 .tabs_style(styled.then_some(&strips))
                 .menu_style(styled.then_some(&menu))

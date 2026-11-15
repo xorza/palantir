@@ -18,14 +18,16 @@ use crate::driver::error::{LocateError, PlayError};
 use crate::driver::locator::{Found, Locator};
 use crate::gpu::test_gpu::{headless_test_gpu, isolated_headless_test_gpu};
 use crate::host::harness::Harness;
-use crate::host::harness::harness_builder::Depth;
+use crate::host::harness::harness_builder::HarnessDepth;
 use crate::host::winit::frame_log::FrameLog;
 use crate::host::winit::frame_summary::FrameSummary;
-use crate::host::winit::handle::{EventSender, HostHandle, UserEvent};
+use crate::host::winit::handle::{EventSender, HostHandle};
 use crate::host::winit::remote::remote_end::RemoteEnd;
 use crate::host::winit::remote::{Remote, Until, WAIT};
+use crate::host::winit::user_event::UserEvent;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::interaction::wheel_delta::WheelDelta;
 use crate::primitives::input::keyboard::modifiers::Modifiers;
 use crate::primitives::input::pointer::PointerButton;
 use crate::primitives::input::sense::Sense;
@@ -104,7 +106,7 @@ impl App for Counter {
                 gestures.travel = delta;
             }
             gestures.drags += u32::from(pad.left.drag.stopped());
-            gestures.scroll += pad.scroll.pixels;
+            gestures.scroll += pad.scroll.wheel.pixels;
             if pad.scroll.zoom.get() != 1.0 {
                 gestures.pinches.push(pad.scroll.zoom.get());
             }
@@ -198,10 +200,10 @@ impl Loop {
 /// A handle to a loop of the test's own on a thread of its own, with no device: a device is shared
 /// by the tests, so a wait for it would hold this window's frames for work of others.
 fn serve() -> (HostHandle<Counter>, JoinHandle<()>) {
-    serve_at(Depth::Record)
+    serve_at(HarnessDepth::Record)
 }
 
-fn serve_at(depth: Depth) -> (HostHandle<Counter>, JoinHandle<()>) {
+fn serve_at(depth: HarnessDepth) -> (HostHandle<Counter>, JoinHandle<()>) {
     let (sender, events) = mpsc::channel();
     let frame_log = Arc::new(FrameLog::default());
     frame_log.open(WINDOW);
@@ -231,11 +233,11 @@ fn serve_at(depth: Depth) -> (HostHandle<Counter>, JoinHandle<()>) {
 /// not open, or after the loop ended, is disconnected.
 #[test]
 fn a_remote_plays_and_reads_a_live_window() {
-    let (handle, thread) = serve_at(Depth::gpu(headless_test_gpu().handles()));
+    let (handle, thread) = serve_at(HarnessDepth::gpu(headless_test_gpu().handles()));
     let mut remote = handle.remote(WINDOW).with_tick(TICK);
 
     let (clicks, frame) = remote
-        .query(|app, ui| (app.clicks, ui.record_frame_id()))
+        .query(|app, ui| (app.clicks, ui.record_frame_idx()))
         .unwrap();
     assert_eq!(clicks, 0);
     assert!(frame > 0, "a frame ran before the query");
@@ -352,7 +354,7 @@ fn a_step_failed_by_a_held_thread_leaves_nothing_held() {
         held.store(true, Ordering::Release);
         let failed = remote.play(std::slice::from_ref(&action)).unwrap_err();
         assert_eq!(failed.step, 0, "{action:?}");
-        assert_eq!(failed.error, PlayError::Blocked, "{action:?}");
+        assert_eq!(failed.source, PlayError::Blocked, "{action:?}");
         held.store(false, Ordering::Release);
         remote.settle().unwrap();
         assert_eq!(
@@ -398,7 +400,7 @@ fn a_settle_waits_through_a_windows_first_frame() {
         log.record(
             WINDOW,
             FrameSummary {
-                record_frame_id: 1,
+                record_frame_idx: 1,
                 repaint_requested: false,
                 ..FrameSummary::AT_OPEN
             },
@@ -410,6 +412,52 @@ fn a_settle_waits_through_a_windows_first_frame() {
     handle.frame_log.remove(WINDOW);
     assert!(!handle.is_open(WINDOW));
     assert_eq!(settling.settle(), Err(PlayError::Disconnected));
+}
+
+/// A remote kept across its window's close and reopen counts against the window as it is open: the
+/// events it sent the closed one hold no settle of the new one, whose count starts at zero, and an
+/// event it sends the new one counts from there. Thirty seconds bound each wait that must not last.
+#[test]
+fn a_remote_counts_against_the_window_as_it_is_open_now() {
+    const LONG: Duration = Duration::from_secs(30);
+    let (sender, _events) = mpsc::channel();
+    let handle: HostHandle<Counter> = HostHandle {
+        sender: EventSender::Channel(sender),
+        frame_log: Arc::default(),
+    };
+    let idle = |record_frame_idx, sent_events| FrameSummary {
+        record_frame_idx,
+        sent_events,
+        repaint_requested: false,
+        busy: false,
+    };
+    handle.frame_log.open(WINDOW);
+    handle.frame_log.record(WINDOW, idle(1, 0));
+    let mut remote = handle.remote(WINDOW).with_tick(TICK).with_wait(LONG);
+    for _ in 0..3 {
+        remote.count_sent(1);
+    }
+    assert_eq!(remote.sent, 3);
+    handle.frame_log.record(WINDOW, idle(2, 3));
+    remote.settle().unwrap();
+
+    handle.frame_log.remove(WINDOW);
+    handle.frame_log.open(WINDOW);
+    handle.frame_log.record(WINDOW, idle(1, 0));
+    let began = Instant::now();
+    remote.settle().unwrap();
+    assert!(
+        began.elapsed() < LONG,
+        "the three events went to the closed window"
+    );
+
+    remote.count_sent(1);
+    assert_eq!(
+        remote.sent, 1,
+        "the new opening's count, 0, and the one sent"
+    );
+    handle.frame_log.record(WINDOW, idle(2, 1));
+    remote.settle().unwrap();
 }
 
 /// A query that changes the app shows to the next settle: the frame after it records, and counts
@@ -433,16 +481,19 @@ fn a_settle_after_a_query_sees_what_it_changed() {
 #[test]
 fn a_remote_loses_the_device_and_a_settle_waits_for_the_frame_after() {
     let gpu = isolated_headless_test_gpu();
-    let (handle, thread) = serve_at(Depth::gpu(gpu.handles()));
+    let (handle, thread) = serve_at(HarnessDepth::gpu(gpu.handles()));
     let mut remote = handle.remote(WINDOW).with_tick(TICK);
     remote.settle().unwrap();
-    let before = handle.last_frame(WINDOW).unwrap().sent_events;
+    let before = handle.last_frame(WINDOW).unwrap().summary.sent_events;
     assert!(!gpu.is_lost());
     remote.lose_device().unwrap();
     assert!(gpu.is_lost());
     remote.settle().unwrap();
     // 1 = the loss, the one event sent since `before`.
-    assert_eq!(handle.last_frame(WINDOW).unwrap().sent_events, before + 1);
+    assert_eq!(
+        handle.last_frame(WINDOW).unwrap().summary.sent_events,
+        before + 1
+    );
     handle.quit();
     thread.join().unwrap();
 }
@@ -457,12 +508,12 @@ fn a_remote_answers_a_hidden_window_and_settles_a_busy_app() {
     let mut remote = handle.remote(WINDOW).with_tick(TICK);
     assert_eq!(remote.query(|app, _| app.clicks).unwrap(), 0);
     remote.settle().unwrap();
-    let frame = remote.record_frame_id();
+    let frame = remote.record_frame_idx();
     let sent = remote.sent;
     assert!(frame > 0, "a frame ran before the reads");
     handle.frame_log.set_hidden(WINDOW, true);
     assert_eq!(
-        remote.read(|app, ui| (app.clicks, ui.record_frame_id())),
+        remote.read(|app, ui| (app.clicks, ui.record_frame_idx())),
         Ok((0, frame))
     );
     let button = remote.widgets(Some("press")).unwrap()[0].rect;
@@ -472,7 +523,7 @@ fn a_remote_answers_a_hidden_window_and_settles_a_busy_app() {
     );
     assert_eq!(remote.sent, sent);
     assert_eq!(remote.settle(), Ok(0));
-    assert_eq!(remote.record_frame_id(), frame);
+    assert_eq!(remote.record_frame_idx(), frame);
     // A query runs between frames, a hidden window's too, so its answer outlasts the ticks that
     // give up a wait for a hidden window's frame.
     let slow = remote.query(|app, _| {
@@ -569,7 +620,7 @@ fn a_settle_that_outlasts_its_wait_says_why() {
     remote = remote.with_wait(Duration::from_millis(250));
     let settled = remote.settle();
     assert!(
-        matches!(settled, Err(PlayError::Unsettled { frames }) if frames > 0),
+        matches!(settled, Err(PlayError::Unsettled { frames_recorded }) if frames_recorded > 0),
         "{settled:?}"
     );
 
@@ -591,7 +642,7 @@ fn gestures_of(window: &mut impl AgentWindow<Counter>) -> Gestures {
 /// host paints only what changes.
 #[test]
 fn both_players_play_each_gesture_alike() {
-    let pad = || Locator::Id(pad_id());
+    let pad = || Locator::id(pad_id());
     let steps: [(Action, Result<Gestures, PlayError>); 4] = [
         (
             Action::Drag {
@@ -608,9 +659,9 @@ fn both_players_play_each_gesture_alike() {
             }),
         ),
         (
-            Action::ScrollPixels {
+            Action::Scroll {
                 at: pad(),
-                delta: Vec2::new(0.0, 30.0),
+                delta: WheelDelta::pixels(Vec2::new(0.0, 30.0)),
             },
             Ok(Gestures {
                 drags: 1,
@@ -645,7 +696,7 @@ fn both_players_play_each_gesture_alike() {
     ];
     let gpu = headless_test_gpu();
     let mut h = Harness::builder(SIZE)
-        .depth(Depth::gpu(gpu.handles()))
+        .depth(HarnessDepth::gpu(gpu.handles()))
         .build();
     let mut app = Counter::default();
     // The first frame, which the served window runs at its open, before a step locates in it.
@@ -658,10 +709,10 @@ fn both_players_play_each_gesture_alike() {
             .session(&mut app)
             .play(std::slice::from_ref(&action))
             .map(|_| app.gestures.clone())
-            .map_err(|failed| failed.error);
+            .map_err(|failed| failed.source);
         let on_remote = remote
             .play(std::slice::from_ref(&action))
-            .map_err(|failed| failed.error)
+            .map_err(|failed| failed.source)
             .map(|_| gestures_of(&mut remote));
         let outcome = |result: &Result<Gestures, PlayError>| {
             result.as_ref().map(|_| ()).map_err(Clone::clone)

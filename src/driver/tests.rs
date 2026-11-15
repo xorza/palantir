@@ -11,7 +11,7 @@ use crate::primitives::input::keyboard::modifiers::Modifiers;
 use crate::primitives::input::pointer::PointerButton;
 use crate::primitives::input::sense::Sense;
 use crate::primitives::input::shortcut::{Shortcut, ShortcutMods};
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::button::Button;
@@ -19,6 +19,7 @@ use crate::widgets::panel::Panel;
 use crate::widgets::text::Text;
 use glam::{UVec2, Vec2};
 use std::convert::Infallible;
+use std::num::NonZeroU32;
 use std::time::Duration;
 
 /// Buttons 60 × 20 on a canvas: "One" at (10, 10), "Two" at (10, 40), two "Twin" at (10, 70) and
@@ -37,7 +38,7 @@ fn scene(ui: &mut Ui) {
     };
     Panel::canvas()
         .auto_id()
-        .size((Sizing::FILL, Sizing::FILL))
+        .size(SizeSpec::FILL)
         .show(ui, |ui| {
             button(ui, "one", "One", Vec2::new(10.0, 10.0));
             button(ui, "two", "Two", Vec2::new(10.0, 40.0));
@@ -105,8 +106,9 @@ fn a_locator_finds_a_widget_by_text_id_and_point() {
     );
 }
 
-/// Two widgets showing one text are ambiguous, each listed at its center; `Nth` picks by paint
-/// order and refuses an index past them, or around a locator that names one place.
+/// Two widgets showing one text are ambiguous, each listed at its center; `nth` picks by paint
+/// order and refuses an index past them. An id names one place, at 0. The pick comes before the
+/// offset in either order of the calls, offsets add, and a second pick replaces the first.
 #[test]
 fn nth_picks_among_ambiguous_matches() {
     let h = primed();
@@ -128,15 +130,33 @@ fn nth_picks_among_ambiguous_matches() {
     assert_eq!(
         find(&h, &nth(2)),
         Err(LocateError::NoNth {
-            locator: r#"Nth(Text("Twin"), 2)"#.to_owned(),
+            locator: r#"Text("Twin").nth(2)"#.to_owned(),
             count: 2,
         })
     );
-    let of_id = Locator::from(WidgetId::from_hash("one")).nth(0);
-    assert!(matches!(
-        find(&h, &of_id),
-        Err(LocateError::NoNth { count: 1, .. })
-    ));
+    let of_id = |n| Locator::from(WidgetId::from_hash("one")).nth(n);
+    assert_eq!(
+        find(&h, &of_id(0)),
+        Ok(Found::center_of(Rect::new(10.0, 10.0, 60.0, 20.0)))
+    );
+    assert_eq!(
+        find(&h, &of_id(1)),
+        Err(LocateError::NoNth {
+            locator: format!("Id({:?}).nth(1)", WidgetId::from_hash("one")),
+            count: 1,
+        })
+    );
+    // The second twin at (40, 110), moved by (5, -2) and (1, 1).
+    let moved = Ok(Found {
+        rect: Rect::new(16.0, 99.0, 60.0, 20.0),
+        point: Vec2::new(46.0, 109.0),
+    });
+    let by = Vec2::new(5.0, -2.0);
+    assert_eq!(find(&h, &nth(1).offset(by).offset(Vec2::ONE)), moved);
+    assert_eq!(
+        find(&h, &text("Twin").offset(by).nth(0).offset(Vec2::ONE).nth(1)),
+        moved
+    );
 }
 
 /// A widget under another is covered at its center, and a text that a covered widget and a free
@@ -239,8 +259,8 @@ impl Locate<Vec<Rect>> for Nowhere {
 }
 
 /// An app's place resolves through its `Locate`: one match is found, several are ambiguous until
-/// `Nth` picks one, and its own error passes through. One that returns `Ok` with nothing reads as
-/// `NotFound` with no nearest, alone and under `Nth`.
+/// `nth` picks one, and its own error passes through. One that returns `Ok` with nothing reads as
+/// `NotFound` with no nearest, alone and under `nth`.
 #[test]
 fn an_app_names_its_own_places() {
     let h = primed();
@@ -248,7 +268,7 @@ fn an_app_names_its_own_places() {
         Rect::new(0.0, 0.0, 10.0, 10.0),
         Rect::new(20.0, 0.0, 10.0, 10.0),
     ];
-    let slot = |n| Locator::App(Slot(n));
+    let slot = |n| Locator::app(Slot(n));
     let ui = h.ui();
     assert_eq!(slot(1).find(&app, ui), Ok(Found::center_of(app[1])));
     assert!(matches!(
@@ -260,56 +280,80 @@ fn an_app_names_its_own_places() {
         slot(2).find(&app, ui),
         Err(LocateError::NotFound { .. })
     ));
-    let nowhere = LocateError::NotFound {
-        locator: "App(Nowhere)".to_owned(),
-        nearest: Vec::new(),
+    let nowhere = |locator: &str| {
+        Err(LocateError::NotFound {
+            locator: locator.to_owned(),
+            nearest: Vec::new(),
+        })
     };
-    let named = Locator::App(Nowhere);
-    assert_eq!(named.find(&app, ui), Err(nowhere.clone()));
-    assert_eq!(named.nth(0).find(&app, ui), Err(nowhere));
+    let named = Locator::app(Nowhere);
+    assert_eq!(named.find(&app, ui), nowhere("App(Nowhere)"));
+    assert_eq!(named.nth(0).find(&app, ui), nowhere("App(Nowhere).nth(0)"));
 }
 
-/// Each error tells the reader what to change.
+/// Each error tells the reader what to change, and quotes the locator as it is built.
 #[test]
 fn locate_errors_read_as_corrections() {
-    let error = |error: LocateError| error.to_string();
-    assert_eq!(
-        error(LocateError::NotFound {
-            locator: "L".to_owned(),
-            nearest: vec!["a".to_owned(), "b".to_owned()],
-        }),
-        "L matches nothing; the nearest are: a, b"
-    );
-    assert_eq!(
-        error(LocateError::NotFound {
-            locator: "L".to_owned(),
-            nearest: Vec::new(),
-        }),
-        "L matches nothing"
-    );
-    assert_eq!(
-        error(LocateError::Ambiguous {
-            locator: "L".to_owned(),
-            matches: vec![
-                Found::center_of(Rect::new(30.0, 70.0, 20.0, 20.0)),
-                Found::center_of(Rect::new(30.5, 100.0, 20.0, 20.0)),
-            ],
-        }),
-        "L matches 2 places; pick one with Nth: 0: at (40, 80), 1: at (40.5, 110)"
-    );
-    assert_eq!(
-        error(LocateError::Covered {
-            locator: "L".to_owned(),
-            point: Vec2::new(1.0, 2.5),
-        }),
-        "L lies under another widget at (1, 2.5); close what covers it"
-    );
-    assert_eq!(
-        error(LocateError::Disabled {
-            locator: "L".to_owned()
-        }),
-        "L is disabled; a press there does nothing"
-    );
+    let built: Locator = Locator::text("Save").nth(1).offset(Vec2::new(3.0, -4.5));
+    let locator = format!("{built:?}");
+    assert_eq!(locator, r#"Text("Save").nth(1).offset(3, -4.5)"#);
+    let point: Locator = Locator::point(Vec2::new(1.0, 2.0));
+    assert_eq!(format!("{point:?}"), "Point(1, 2)");
+    let at = |rect| Found::center_of(rect);
+    for (error, reads) in [
+        (
+            LocateError::NotFound {
+                locator: locator.clone(),
+                nearest: vec!["a".to_owned(), "b".to_owned()],
+            },
+            "matches nothing; the nearest are: a, b",
+        ),
+        (
+            LocateError::NotFound {
+                locator: locator.clone(),
+                nearest: Vec::new(),
+            },
+            "matches nothing",
+        ),
+        (
+            LocateError::Ambiguous {
+                locator: locator.clone(),
+                matches: vec![
+                    at(Rect::new(30.0, 70.0, 20.0, 20.0)),
+                    at(Rect::new(30.5, 100.0, 20.0, 20.0)),
+                ],
+            },
+            "matches 2 places; pick one with nth: 0: at (40, 80), 1: at (40.5, 110)",
+        ),
+        (
+            LocateError::OffScreen {
+                locator: locator.clone(),
+            },
+            "is clipped out of view; scroll it into view",
+        ),
+        (
+            LocateError::Covered {
+                locator: locator.clone(),
+                point: Vec2::new(1.0, 2.5),
+            },
+            "lies under another widget at (1, 2.5); close what covers it",
+        ),
+        (
+            LocateError::Disabled {
+                locator: locator.clone(),
+            },
+            "is disabled; a press there does nothing",
+        ),
+        (
+            LocateError::NoNth {
+                locator: locator.clone(),
+                count: 1,
+            },
+            "picks past its last match; it has 1",
+        ),
+    ] {
+        assert_eq!(error.to_string(), format!("{locator} {reads}"));
+    }
 }
 
 /// What a [`ScriptedStage`] saw, in order.
@@ -338,10 +382,9 @@ struct ScriptedStage {
 
 impl Stage<Infallible> for ScriptedStage {
     fn point(&mut self, at: &Locator, _reach: Reach) -> Result<Vec2, PlayError> {
-        let Locator::Point(point) = at else {
-            panic!("the table names points: {at:?}");
-        };
-        Ok(*point)
+        Ok(at
+            .as_point()
+            .unwrap_or_else(|| panic!("the table names points: {at:?}")))
     }
 
     fn input(&mut self, event: InputEvent<'_>) {
@@ -401,20 +444,20 @@ fn a_failed_frame_releases_what_the_step_holds() {
     let (ctrl, none) = (Seen::Mods(Modifiers::CTRL), Seen::Mods(Modifiers::NONE));
     let mods = chord.mods;
     let plain = Shortcut::key(chord.key);
-    let at = Locator::Point(Vec2::new(10.0, 0.0));
+    let at = Locator::point(Vec2::new(10.0, 0.0));
     let drag = Action::Drag {
         from: at.clone(),
-        to: Locator::Point(Vec2::new(30.0, 0.0)),
+        to: Locator::point(Vec2::new(30.0, 0.0)),
         button: PointerButton::Left,
         mods,
-        steps: 2,
+        steps: NonZeroU32::new(2).unwrap(),
     };
     let plain_drag = Action::Drag {
         from: at.clone(),
-        to: Locator::Point(Vec2::new(30.0, 0.0)),
+        to: Locator::point(Vec2::new(30.0, 0.0)),
         button: PointerButton::Left,
         mods: ShortcutMods::NONE,
-        steps: 1,
+        steps: NonZeroU32::MIN,
     };
     let click = Action::Click {
         at: at.clone(),
@@ -619,5 +662,23 @@ fn a_failed_frame_releases_what_the_step_holds() {
         });
         assert_eq!(played.err(), error, "{label}");
         assert_eq!(stage.seen, want, "{label}");
+    }
+}
+
+/// A typed character's key: a printing one is its `Char`, a newline Enter and a tab Tab, as a
+/// keyboard types them; any other control character, escape and NUL among them, types no key.
+#[test]
+fn a_typed_character_is_the_key_a_keyboard_types_it_with() {
+    for (c, key) in [
+        ('a', Some(Key::Char('a'))),
+        (' ', Some(Key::Char(' '))),
+        ('ζ', Some(Key::Char('ζ'))),
+        ('\n', Some(Key::Enter)),
+        ('\t', Some(Key::Tab)),
+        ('\u{1b}', None),
+        ('\r', None),
+        ('\0', None),
+    ] {
+        assert_eq!(play::typed_key(c), key, "{c:?}");
     }
 }

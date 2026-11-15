@@ -1,26 +1,28 @@
 //! Backdrops painted end to end on a headless window, against reference arithmetic and
 //! against whole repaints.
 
+use crate::cascade::blur_plan::BlurPlan;
 use crate::common::expiry_window::EXPIRY_FRAMES;
 use crate::gpu::test_gpu::{TestGpu, headless_test_gpu};
 use crate::host::harness::Harness;
-use crate::host::harness::harness_builder::Depth;
+use crate::host::harness::harness_builder::HarnessDepth;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::layout::anchor::Anchor;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::primitives::math::libm_ext::Libm;
 use crate::primitives::paint::border::Border;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::color::srgba_u8::SrgbaU8;
+use crate::primitives::paint::image::Image;
 use crate::primitives::paint::material::Material;
 use crate::primitives::paint::paint::Paint;
 use crate::primitives::paint::shadow::Shadow;
 use crate::scene::layer::Layer;
 use crate::shape::Shape;
-use crate::shape::paint::blur_plan::BlurPlan;
 use crate::theme::popup::PopupTheme;
 use crate::ui::Ui;
 use crate::ui::frame_report::FramePaint;
@@ -28,7 +30,6 @@ use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::popup::Popup;
 use glam::{UVec2, Vec2};
-use image::RgbaImage;
 
 mod clear;
 mod dispersion;
@@ -47,7 +48,7 @@ const BACKDROP: Rect = Rect::new(16.0, 8.0, 32.0, 32.0);
 fn scene(ui: &mut Ui, sigma: Option<f32>) {
     Panel::canvas()
         .id_salt("backdrop-scene")
-        .size((Sizing::FILL, Sizing::FILL))
+        .size(SizeSpec::FILL)
         .show(ui, |ui| {
             for i in 0..16 {
                 let x = i as f32 * 4.0;
@@ -86,13 +87,23 @@ fn encode(linear: f64) -> f64 {
         }
 }
 
+/// One channel of a texel.
+type ChannelOf = fn(SrgbaU8) -> u8;
+
+/// The channels a blur filters, each with its name, as a test reads them off a texel.
+const COLOR_CHANNELS: [(&str, ChannelOf); 3] = [
+    ("red", |texel| texel.r),
+    ("green", |texel| texel.g),
+    ("blue", |texel| texel.b),
+];
+
 /// One channel of `image` blurred by `plan` as the GPU's stages run, read at every pixel.
-fn reference(plan: BlurPlan, image: &RgbaImage, channel: usize) -> Vec<f64> {
-    let (w, h) = (image.width() as usize, image.height() as usize);
+fn reference(plan: BlurPlan, image: &Image, channel: ChannelOf) -> Vec<f64> {
+    let (w, h) = (image.size().x as usize, image.size().y as usize);
     let rows: Vec<Vec<f64>> = (0..h)
         .map(|y| {
             let line: Vec<f64> = (0..w)
-                .map(|x| decode(image.get_pixel(x as u32, y as u32)[channel]))
+                .map(|x| decode(channel(image.texel(UVec2::new(x as u32, y as u32)))))
                 .collect();
             plan.reference_residual(&plan.reference_level(&line))
         })
@@ -133,23 +144,26 @@ enum Expect {
 /// Every pixel of `got` against `under`, as `at` classes its center: blurred by `plan` as the
 /// reference arithmetic blurs `under`, or equal to it.
 fn assert_blurred(
-    got: &RgbaImage,
-    under: &RgbaImage,
+    got: &Image,
+    under: &Image,
     plan: BlurPlan,
     at: impl Fn(Vec2) -> Expect,
     what: &str,
 ) {
-    let want: Vec<Vec<f64>> = (0..3).map(|c| reference(plan, under, c)).collect();
-    for (x, y, pixel) in got.enumerate_pixels() {
+    let want: Vec<Vec<f64>> = COLOR_CHANNELS
+        .iter()
+        .map(|&(_, channel)| reference(plan, under, channel))
+        .collect();
+    for (UVec2 { x, y }, pixel) in got.enumerate_texels() {
         match at(Vec2::new(x as f32 + 0.5, y as f32 + 0.5)) {
-            Expect::Same => assert_eq!(pixel, under.get_pixel(x, y), "{what}: ({x}, {y})"),
+            Expect::Same => assert_eq!(pixel, under.texel(UVec2::new(x, y)), "{what}: ({x}, {y})"),
             Expect::Blurred => {
-                for (c, want) in want.iter().enumerate() {
-                    let w = encode(want[(y * got.width() + x) as usize]);
-                    let g = f64::from(pixel[c]);
+                for ((name, channel), want) in COLOR_CHANNELS.iter().zip(&want) {
+                    let w = encode(want[(y * got.size().x + x) as usize]);
+                    let g = f64::from(channel(pixel));
                     assert!(
                         (g - w).abs() <= 1.0,
-                        "{what}: ({x}, {y}) channel {c} is {g}, want {w:.2}"
+                        "{what}: ({x}, {y}) {name} is {g}, want {w:.2}"
                     );
                 }
             }
@@ -202,7 +216,7 @@ fn a_wide_backdrop_shows_its_pixels_through_a_scratch_texture() {
     let stripes = |ui: &mut Ui, sigma: Option<f32>| {
         Panel::canvas()
             .id_salt("wide-backdrop-scene")
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 for i in 0..180 {
                     let color = match i % 3 {
@@ -269,7 +283,7 @@ fn a_luminance_ceiling_holds_a_bright_backdrop_under_it() {
         reference.paint(move |ui: &mut Ui| {
             Panel::canvas()
                 .id_salt("backdrop-ceiling")
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| {
                     ui.add_shape(
                         Shape::rect().at(Rect::new(0.0, 0.0, 32.0, 48.0)),
@@ -291,12 +305,12 @@ fn a_luminance_ceiling_holds_a_bright_backdrop_under_it() {
         for (xs, want) in [(4..28, white), (36..60, black)] {
             for x in xs {
                 for y in 4..44 {
-                    let pixel = got.get_pixel(x, y);
-                    for c in 0..3 {
-                        let g = f64::from(pixel[c]);
+                    let pixel = got.texel(UVec2::new(x, y));
+                    for (name, channel) in COLOR_CHANNELS {
+                        let g = f64::from(channel(pixel));
                         assert!(
                             (g - encode(want)).abs() <= 1.0,
-                            "{ceiling:?}: ({x}, {y}) channel {c} is {g}, want {:.2}",
+                            "{ceiling:?}: ({x}, {y}) {name} is {g}, want {:.2}",
                             encode(want)
                         );
                     }
@@ -320,7 +334,7 @@ fn a_luminance_floor_lifts_a_dark_backdrop_to_it() {
         reference.paint(move |ui: &mut Ui| {
             Panel::canvas()
                 .id_salt("backdrop-floor")
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| {
                     ui.add_shape(
                         Shape::rect().at(Rect::new(0.0, 0.0, 32.0, 48.0)),
@@ -342,12 +356,12 @@ fn a_luminance_floor_lifts_a_dark_backdrop_to_it() {
         for (xs, want) in [(4..28, white), (36..60, black)] {
             for x in xs {
                 for y in 4..44 {
-                    let pixel = got.get_pixel(x, y);
-                    for c in 0..3 {
-                        let g = f64::from(pixel[c]);
+                    let pixel = got.texel(UVec2::new(x, y));
+                    for (name, channel) in COLOR_CHANNELS {
+                        let g = f64::from(channel(pixel));
                         assert!(
                             (g - encode(want)).abs() <= 1.0,
-                            "{floor:?}: ({x}, {y}) channel {c} is {g}, want {:.2}",
+                            "{floor:?}: ({x}, {y}) {name} is {g}, want {:.2}",
                             encode(want)
                         );
                     }
@@ -362,7 +376,7 @@ fn a_luminance_floor_lifts_a_dark_backdrop_to_it() {
 fn layered(ui: &mut Ui, under: RgbaF32, backdrop: Rect, sigma: f32, over: RgbaF32) {
     Panel::canvas()
         .id_salt("backdrop-layered")
-        .size((Sizing::FILL, Sizing::FILL))
+        .size(SizeSpec::FILL)
         .show(ui, |ui| {
             ui.add_shape(Shape::rect().at(Rect::new(6.0, 10.0, 14.0, 14.0)), under);
             for i in 0..8 {
@@ -388,7 +402,7 @@ impl Reference {
     }
 
     /// What a fresh window paints of `scene` on its first, whole frame.
-    fn paint(&mut self, scene: impl FnMut(&mut Ui)) -> RgbaImage {
+    fn paint(&mut self, scene: impl FnMut(&mut Ui)) -> Image {
         self.0.frame_without_baseline(scene);
         self.0.read_back()
     }
@@ -403,24 +417,20 @@ impl Reference {
 fn window(gpu: &TestGpu, size: UVec2, clear: RgbaF32) -> Harness {
     let mut window = Harness::builder(size)
         .mono()
-        .depth(Depth::gpu(gpu.handles()))
+        .depth(HarnessDepth::gpu(gpu.handles()))
         .build();
     window.ui_mut().theme_mut().window_bg = clear;
     window
 }
 
 /// Every channel of `got` within one 8-bit step of `want`, the dither's half step either way.
-fn assert_within_a_step(got: &RgbaImage, want: &RgbaImage, what: &str) {
-    for (x, y, pixel) in got.enumerate_pixels() {
-        let other = want.get_pixel(x, y);
-        for c in 0..4 {
-            assert!(
-                pixel[c].abs_diff(other[c]) <= 1,
-                "{what}: ({x}, {y}) channel {c} is {}, a whole repaint {}",
-                pixel[c],
-                other[c]
-            );
-        }
+fn assert_within_a_step(got: &Image, want: &Image, what: &str) {
+    for (UVec2 { x, y }, pixel) in got.enumerate_texels() {
+        let other = want.texel(UVec2::new(x, y));
+        assert!(
+            pixel.max_channel_diff(other) <= 1,
+            "{what}: ({x}, {y}) is {pixel:?}, a whole repaint {other:?}"
+        );
     }
 }
 
@@ -476,7 +486,7 @@ fn a_backdrop_over_a_backdrop_repaints_as_a_whole_frame() {
         move |ui: &mut Ui| {
             Panel::canvas()
                 .id_salt("backdrop-stacked")
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| {
                     for i in 0..8 {
                         ui.add_shape(
@@ -512,7 +522,7 @@ fn a_backdrop_over_a_backdrop_repaints_as_a_whole_frame() {
         (green, blue, "under the first", FramePaint::Partial, 2),
         (green, green, "over the second", FramePaint::Partial, 0),
     ] {
-        let paint = window.frame(&mut scene(under, over)).paint();
+        let paint = window.frame(&mut scene(under, over)).paint;
         assert_eq!(
             (paint, window.backdrop_blurs()),
             (want_paint, blurs),
@@ -538,11 +548,11 @@ fn a_backdrop_growing_back_paints_once_under_overlapping_repaints() {
         move |ui: &mut Ui| {
             Panel::zstack()
                 .id_salt("backdrop-grow")
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| {
                     Panel::canvas()
                         .id_salt("backdrop-grow-stripes")
-                        .size((Sizing::FILL, Sizing::FILL))
+                        .size(SizeSpec::FILL)
                         .show(ui, |ui| scene(ui, None));
                     let style = PopupTheme {
                         panel: Chrome::rounded(

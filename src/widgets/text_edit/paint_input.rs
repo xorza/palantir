@@ -55,7 +55,6 @@ impl PaintInput<'_> {
     /// of the block, which outranked every authored size.
     pub(super) fn record(self, ui: &mut Ui, mut widget: Widget) {
         let layout = self.geometry.layout;
-        let ctx = layout.ctx;
         widget.fit_scroll_content();
 
         let block = self.block(layout, ui.display());
@@ -78,15 +77,15 @@ impl PaintInput<'_> {
                 }
 
                 let (display, color) = if self.text.is_empty() {
-                    (ui.intern(self.placeholder), self.placeholder_color)
+                    (self.placeholder, self.placeholder_color)
                 } else {
-                    (ui.intern(self.text), self.text_color)
+                    (self.text, self.text_color)
                 };
                 if !display.is_empty() {
                     ui.add_shape(
-                        Shape::text(display, ctx.font)
+                        Shape::text(display, layout.font)
                             .at_origin(Vec2::ZERO)
-                            .wrap(if ctx.multiline {
+                            .wrap(if layout.multiline {
                                 TextWrap::Wrap
                             } else {
                                 TextWrap::Scroll

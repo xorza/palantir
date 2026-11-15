@@ -1,15 +1,15 @@
 //! A purge between frames, as the system warns of low memory, gives the glyphs, the backdrop
 //! results and the gradient rows no frame drew back, and the next frame paints as before it.
 
+use crate::primitives::paint::image::Image;
 use glam::UVec2;
-use image::RgbaImage;
 
 use crate::gpu::atlas::atlas_format::AtlasFormat;
 use crate::gpu::test_gpu::{TestGpu, headless_test_gpu};
 use crate::host::offscreen::OffscreenHost;
 use crate::primitives::geometry::rect::Rect;
-use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
+use crate::primitives::paint::brush::gradient::Gradient;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
@@ -63,7 +63,7 @@ fn gradients(ui: &mut Ui, count: u32) {
         let [r, g, _, _] = (40 * i).to_le_bytes();
         ui.add_shape(
             Shape::rect().at(Rect::new(4.0 + 12.0 * i as f32, 4.0, 10.0, 10.0)),
-            LinearGradient::horizontal([SrgbaU8::rgb(r, g, 9).into(), RgbaF32::WHITE]),
+            Gradient::horizontal([SrgbaU8::rgb(r, g, 9).into(), RgbaF32::WHITE]),
         );
     }
 }
@@ -102,7 +102,7 @@ fn a_purge_takes_the_undrawn_gradient_rows() {
 fn glass_scene(ui: &mut Ui, tile: RgbaF32, glass: Rect, chip: RgbaF32) {
     Panel::zstack()
         .id_salt("purged-glass-scene")
-        .size((Sizing::FILL, Sizing::FILL))
+        .size(SizeSpec::FILL)
         .chrome(Chrome::new(RgbaF32::hex(0x202830)))
         .show(ui, |ui| {
             Block::new()
@@ -112,7 +112,7 @@ fn glass_scene(ui: &mut Ui, tile: RgbaF32, glass: Rect, chip: RgbaF32) {
                 .show(ui);
             Panel::canvas()
                 .id_salt("purged-glass")
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| {
                     for i in 0..8 {
                         let stripe =
@@ -154,7 +154,7 @@ fn a_purge_takes_an_undrawn_backdrop_which_its_next_frame_captures_again() {
 
 /// The blurs of the frame that repaints `glass` on a window of `size` after it went undrawn for two
 /// frames, and a purge between where `purge` says, and the pixels it paints.
-fn purge_and_repaint(gpu: &TestGpu, size: UVec2, glass: Rect, purge: bool) -> (usize, RgbaImage) {
+fn purge_and_repaint(gpu: &TestGpu, size: UVec2, glass: Rect, purge: bool) -> (usize, Image) {
     let (red, blue) = (RgbaF32::srgb(1.0, 0.2, 0.0), RgbaF32::srgb(0.0, 0.3, 1.0));
     let mut host = OffscreenHost::builder(gpu.handles())
         .shaper(TextShaper::test_mono())

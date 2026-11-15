@@ -3,8 +3,6 @@
 
 use crate::diagnostics::gpu_pass_stats::{BackdropTimes, BatchKind, GpuPassStats};
 use crate::gpu::device::gpu::Gpu;
-use crate::gpu::frame::gpu_timings::Mark;
-use crate::gpu::frame::main_segment::MainSegment;
 use std::array;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering::Acquire, Ordering::Release};
@@ -50,35 +48,6 @@ impl WallClockTracer {
         }
     }
 
-    pub(super) const fn pass_writes(
-        &self,
-        _segment: MainSegment,
-    ) -> Option<wgpu::RenderPassTimestampWrites<'_>> {
-        None
-    }
-
-    pub(super) const fn segment_begin(
-        &self,
-        _pass: &mut wgpu::RenderPass<'_>,
-        _segment: MainSegment,
-    ) {
-    }
-
-    pub(super) const fn mark(&self, _pass: &mut wgpu::RenderPass<'_>, _kind: BatchKind) {}
-
-    pub(super) const fn segment_end(
-        &self,
-        _pass: &mut wgpu::RenderPass<'_>,
-        _segment: MainSegment,
-    ) {
-    }
-
-    pub(super) const fn encoder_mark(&self, _encoder: &mut wgpu::CommandEncoder, _mark: Mark) {}
-
-    /// Nothing to resolve: the CPU clock read the frames.
-    #[cfg(feature = "internals")]
-    pub(super) const fn resolve_done(&self, _encoder: &mut wgpu::CommandEncoder) {}
-
     /// Take an idle slot for the frame `encoder` closes; with every slot waiting, the frame goes
     /// unmeasured.
     pub(super) fn finish(&mut self, _encoder: &mut wgpu::CommandEncoder) {
@@ -110,10 +79,10 @@ impl WallClockTracer {
             }
             slot.in_flight = false;
             let elapsed = Duration::from_nanos(done.saturating_sub(slot.submitted));
-            sink.record_pass(elapsed);
-            sink.clear_kinds();
-            sink.record_copy_out(None);
-            sink.record_backdrops(BackdropTimes::default());
+            sink.pass = Some(elapsed);
+            sink.kinds = [None; BatchKind::COUNT];
+            sink.copy_out = None;
+            sink.backdrops = BackdropTimes::default();
         }
     }
 }
@@ -136,7 +105,7 @@ mod tests {
         let gpu = test_gpu.handles();
         let mut tracer = WallClockTracer::new();
         let mut sink = GpuPassStats::default();
-        sink.record_kind(BatchKind::Quads, Duration::from_nanos(5));
+        sink.kinds[BatchKind::Quads.idx()] = Some(Duration::from_nanos(5));
         let mut encoder = gpu
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
@@ -165,6 +134,6 @@ mod tests {
         );
         assert_eq!(sink.last_kind(BatchKind::Quads), None);
         assert_eq!(sink.last_copy_out(), None);
-        assert_eq!(sink.last_backdrops(), BackdropTimes::default());
+        assert_eq!(sink.backdrops, BackdropTimes::default());
     }
 }

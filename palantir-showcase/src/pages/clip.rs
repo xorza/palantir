@@ -1,13 +1,16 @@
 //! Clip modes and subtree transforms. Each card holds a child overflowing on all four sides via negative margins; the clip mode decides what survives (none spills, rect cuts square, rounded trims to the corner radius), and padding moves the boundary to the content rect. `TranslateScale` applies to whole subtrees, stroke widths included.
 
+use crate::scaffold;
 use crate::scaffold::api;
-use crate::support;
-use crate::support::{DemoCell, Kit, Knob, Section, Surface};
+use crate::scaffold::demo_cell::{DemoCell, Surface};
+use crate::scaffold::kit::Kit;
+use crate::scaffold::knob::Knob;
+use crate::scaffold::section::Section;
 use palantir::glam::Vec2;
-use palantir::widget::{CubicBezier, QuadraticBezier, Shape};
 use palantir::{
-    Align, Block, Border, Chrome, ComboBox, Configure, Corners, LineCap, LinearGradient, Paint,
-    Panel, Rect, RgbaF32, Sizing, Stroke, Text, TranslateScale, Ui, WidgetId,
+    Align, Block, Border, Chrome, ComboBox, Configure, Corners, CubicBezier, Gradient, LineCap,
+    Paint, Panel, QuadraticBezier, Rect, RgbaF32, Shape, SizeSpec, Sizing, Stroke, Text,
+    TranslateScale, Ui, WidgetId,
 };
 
 const CARD: f32 = 200.0;
@@ -20,12 +23,12 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
     Section::new("Clip modes")
         .apis(&[api!(Panel::clip_rect), api!(Panel::clip_rounded)])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "The same child, overflowing the card by 18 px on every side, under each mode.",
             );
-            support::tiles(ui, |ui| {
+            scaffold::tiles(ui, |ui| {
                 for (label, mode) in [
                     ("None — the child spills", Mode::None),
                     ("Rect — square cut at the bounds", Mode::Rect),
@@ -42,13 +45,13 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
         });
 
     Section::new("Clip and padding").show(ui, k, |ui| {
-        support::note(
+        scaffold::note(
             ui,
             k,
             "Padding moves the clip boundary in, to the content rect, and the rounded mask \
                  follows the same edge.",
         );
-        support::tiles(ui, |ui| {
+        scaffold::tiles(ui, |ui| {
             for card in [
                 ClipCard {
                     label: "padded, no clip",
@@ -76,7 +79,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
     Section::new("Subtree transform")
         .apis(&[api!(Panel::transform), api!(TranslateScale::from_scale)])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "A TranslateScale on a container moves and scales everything under it, stroke \
@@ -98,7 +101,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
                     .show(ui, k, value);
                 }
                 let transform = TranslateScale::new(Vec2::new(t.dx, t.dy), t.scale);
-                support::tiles(ui, |ui| {
+                scaffold::tiles(ui, |ui| {
                     DemoCell::new("the knobs' transform").show(ui, k, |ui| {
                         Panel::zstack()
                             .transform(transform)
@@ -106,7 +109,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
                     });
                 });
             });
-            support::tiles(ui, |ui| {
+            scaffold::tiles(ui, |ui| {
                 DemoCell::new("translate (30, 24)").show(ui, k, |ui| {
                     Panel::zstack()
                         .transform(TranslateScale::from_translation(Vec2::new(30.0, 24.0)))
@@ -140,14 +143,14 @@ fn cases(ui: &mut Ui, k: Kit) {
     Section::new("Rounded clip cases")
         .apis(&[api!(Panel::clip_rounded), api!(Corners::new)])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "Each clip is a rounded rect, a circle at half its side; what it holds runs past \
                  its edge, and nested clips multiply, so an inner clip that hangs out of its \
                  parent is cut by both.",
             );
-            support::tiles(ui, |ui| {
+            scaffold::tiles(ui, |ui| {
                 board(ui, k, "circle — a curve leaves it", curve_in_circle);
                 board(ui, k, "circle in an offset circle", circle_in_circle);
                 board(ui, k, "four radii — 56 / 6 / 36 / 0", four_radii);
@@ -169,7 +172,7 @@ fn board(ui: &mut Ui, k: Kit, label: &'static str, body: fn(&mut Ui, Kit)) {
         .surface(Surface::Bare)
         .show(ui, k, |ui| {
             Panel::canvas()
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| body(ui, k));
         });
 }
@@ -194,9 +197,7 @@ fn clip_at(
 
 /// A canvas child that fills its clip, so shapes added in `body` are laid out in the clip's rect.
 fn layer(ui: &mut Ui, body: impl FnOnce(&mut Ui)) {
-    Panel::zstack()
-        .size((Sizing::FILL, Sizing::FILL))
-        .show(ui, body);
+    Panel::zstack().size(SizeSpec::FILL).show(ui, body);
 }
 
 /// A layer filled with `color` edge to edge, which shows the clips over it.
@@ -265,7 +266,7 @@ fn four_radii(ui: &mut Ui, k: Kit) {
             layer(ui, |ui| {
                 ui.add_shape(
                     Shape::rect().at(Rect::new(-20.0, -20.0, size.x + 40.0, size.y + 40.0)),
-                    LinearGradient::new(0.6, [k.swatch.red, k.swatch.teal]),
+                    Gradient::linear(0.6, [k.swatch.red, k.swatch.teal]),
                 );
                 for i in 0..8 {
                     let x = i as f32 * 28.0 - 40.0;
@@ -325,7 +326,7 @@ fn three_nested(ui: &mut Ui, k: Kit) {
 fn filled_clip(ui: &mut Ui, k: Kit) {
     circle_at(ui, k, Vec2::splat(30.0), 140.0, |ui| {
         Block::new()
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .chrome(Chrome::new(k.swatch.teal))
             .show(ui);
     });
@@ -424,7 +425,7 @@ fn inside_border(ui: &mut Ui, k: Kit) {
 fn spiller_of(color: RgbaF32) -> impl FnOnce(&mut Ui) {
     move |ui| {
         Block::new()
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .margin((-SPILL, -SPILL, -SPILL, -SPILL))
             .chrome(Chrome::new(color))
             .show(ui);
@@ -481,7 +482,7 @@ impl ClipCard {
             .surface(Surface::Bare)
             .show(ui, k, |ui| {
                 Panel::zstack()
-                    .size((Sizing::FILL, Sizing::FILL))
+                    .size(SizeSpec::FILL)
                     .child_align(Align::CENTER)
                     .show(ui, |ui| {
                         let mut panel = Panel::zstack()
@@ -502,7 +503,7 @@ impl ClipCard {
 /// Rectangle overflowing the card on all sides: the negative margin grows its slot past the content rect and `Fill` takes it all, so the overhang stays [`SPILL`] padded or not.
 fn spiller(ui: &mut Ui, k: Kit) {
     Block::new()
-        .size((Sizing::FILL, Sizing::FILL))
+        .size(SizeSpec::FILL)
         .margin((-SPILL, -SPILL, -SPILL, -SPILL))
         // Translucent so the card edge stays visible beneath; unclipped would otherwise be a solid block.
         .chrome(Chrome::new(k.swatch.orange.with_alpha(0.8)))
@@ -514,7 +515,7 @@ fn tile(ui: &mut Ui, k: Kit) {
     Block::new()
         .auto_id()
         .size((Sizing::fixed(56.0), Sizing::fixed(56.0)))
-        .chrome(support::swatch_chrome(k.swatch.teal))
+        .chrome(scaffold::swatch_chrome(k.swatch.teal))
         .show(ui);
 }
 
@@ -527,14 +528,14 @@ static MODES: [(&str, Mode); 3] = [
 /// The live card's knobs: its clip mode and its padding.
 #[derive(Debug)]
 struct LiveClip {
-    mode: &'static (&'static str, Mode),
+    mode: (&'static str, Mode),
     padding: f32,
 }
 
 impl Default for LiveClip {
     fn default() -> Self {
         Self {
-            mode: &MODES[2],
+            mode: MODES[2],
             padding: 0.0,
         }
     }
@@ -545,7 +546,7 @@ fn live(ui: &mut Ui, k: Kit) {
     Section::new("Live clip")
         .apis(&[api!(Panel::clip_rounded)])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "Pick a clip mode and pad the card: the clip follows the content rect, and the \
@@ -553,9 +554,9 @@ fn live(ui: &mut Ui, k: Kit) {
             );
             let id = WidgetId::from_hash("showcase::clip::live");
             ui.with_state::<LiveClip, _>(id, |ui, l| {
-                support::row(ui, |ui| {
+                scaffold::row(ui, |ui| {
                     Text::new("clip").style(&k.t.caption()).show(ui);
-                    ComboBox::labeled(&mut l.mode, &MODES, |mode| mode.0)
+                    ComboBox::labeled(&mut l.mode, MODES, |mode| mode.0)
                         .size((Sizing::fixed(120.0), Sizing::HUG))
                         .show(ui);
                     Knob {

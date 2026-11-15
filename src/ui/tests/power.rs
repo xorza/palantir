@@ -13,6 +13,7 @@ use crate::ui::ui_preferences::UiPreferences;
 use crate::widget_core::configure::Configure;
 use crate::widgets::button::Button;
 use crate::widgets::spinner::Spinner;
+use std::num::NonZeroU32;
 
 fn pick(ui: &mut Ui, power: Preference<Reduction>) {
     ui.set_preferences(UiPreferences {
@@ -28,12 +29,12 @@ fn pick(ui: &mut Ui, power: Preference<Reduction>) {
 fn power_moves_only_between_frames_and_follows_the_system_through_system() {
     let mut h = Harness::mono(SURFACE);
     h.prime(2, |_| {});
-    assert!(!h.ui().is_power_reduced());
+    assert!(!h.ui().reductions().power.is_reduced());
 
     let mut seen = None;
     let report = h.frame(|ui| {
         pick(ui, Preference::Fixed(Reduction::Reduced));
-        seen = Some(ui.is_power_reduced());
+        seen = Some(ui.reductions().power.is_reduced());
     });
     assert_eq!(
         seen,
@@ -41,31 +42,34 @@ fn power_moves_only_between_frames_and_follows_the_system_through_system() {
         "the frame keeps the power it started with"
     );
     assert!(report.repaint_requested, "the move asks for a frame");
-    let report = h.frame(|_| {});
+    let report = h.frame_recorded(|_| {});
     assert!(
-        h.ui().is_power_reduced(),
+        h.ui().reductions().power.is_reduced(),
         "the next frame runs under the pick"
     );
     assert_ne!(report.processing, FrameProcessing::PaintOnly);
 
-    h.frame(|ui| pick(ui, Preference::Fixed(Reduction::Full)));
+    h.frame(|ui| pick(ui, Preference::Fixed(Reduction::Unreduced)));
     h.set_system_power_reduced(true);
     h.frame(|_| {});
-    assert!(h.ui().system_power_reduced());
+    assert!(h.ui().system_reductions().power.is_reduced());
     assert!(
-        !h.ui().is_power_reduced(),
+        !h.ui().reductions().power.is_reduced(),
         "a pick of full over the saver mode"
     );
 
     h.frame(|ui| pick(ui, Preference::System));
     h.frame(|_| {});
-    assert!(h.ui().is_power_reduced(), "System follows the saver mode");
+    assert!(
+        h.ui().reductions().power.is_reduced(),
+        "System follows the saver mode"
+    );
 }
 
 fn reduced_at(millihertz: u32) -> Harness {
     Harness::builder(SURFACE)
         .mono()
-        .refresh_millihertz(millihertz)
+        .refresh_millihertz(NonZeroU32::new(millihertz).unwrap())
         .system_power_reduced(true)
         .build()
 }
@@ -107,7 +111,7 @@ fn reduced_power_spaces_frames_by_whole_refresh_periods() {
     }
     let mut h = Harness::builder(SURFACE)
         .mono()
-        .refresh_millihertz(60_000)
+        .refresh_millihertz(NonZeroU32::new(60_000).unwrap())
         .build();
     assert_eq!(frame_times(&mut h, 3), [Duration::ZERO; 3]);
     assert_eq!(h.frame(|_| {}).earliest_repaint_at, None);
@@ -126,15 +130,15 @@ fn the_frame_rate_pick_decides_the_cap_apart_from_the_power() {
         h.ui_mut().set_preferences(preferences);
     };
     let mut h = reduced_at(60_000);
-    frame_rate(&mut h, Preference::Fixed(Reduction::Full));
+    frame_rate(&mut h, Preference::Fixed(Reduction::Unreduced));
     assert_eq!(frame_times(&mut h, 3), [Duration::ZERO; 3]);
-    assert!(h.ui().is_power_reduced());
+    assert!(h.ui().reductions().power.is_reduced());
     assert!(!h.ui().is_frame_rate_reduced());
     assert_eq!(h.frame(|_| {}).earliest_repaint_at, None);
 
     let mut h = Harness::builder(SURFACE)
         .mono()
-        .refresh_millihertz(60_000)
+        .refresh_millihertz(NonZeroU32::new(60_000).unwrap())
         .build();
     frame_rate(&mut h, Preference::Fixed(Reduction::Reduced));
     let interval = Duration::from_nanos(33_333_333);
@@ -142,7 +146,7 @@ fn the_frame_rate_pick_decides_the_cap_apart_from_the_power() {
         frame_times(&mut h, 3),
         [Duration::ZERO, interval, interval * 2]
     );
-    assert!(!h.ui().is_power_reduced());
+    assert!(!h.ui().reductions().power.is_reduced());
     assert!(h.ui().is_frame_rate_reduced());
 }
 
@@ -182,7 +186,7 @@ fn a_spinner_turns_on_the_reduced_power_grid() {
     };
     let mut frames = Vec::new();
     for _ in 0..3 {
-        let report = h.frame(&mut spinner);
+        let report = h.frame_recorded(&mut spinner);
         let now = h.ui().now();
         frames.push((
             now,

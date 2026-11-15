@@ -141,7 +141,7 @@ fn incremental_matches_full_across_cascade_input_classes() {
     }
 
     fn layered(ui: &mut Ui, layer: Layer) {
-        ui.layer(layer).fixed_at(Vec2::splat(10.0)).show(|ui| {
+        ui.layer(layer).at(Vec2::splat(10.0)).show(|ui| {
             colored_frame(ui, RgbaF32::WHITE);
         });
     }
@@ -171,7 +171,7 @@ fn incremental_matches_full_across_cascade_input_classes() {
     fn nested_overlay(ui: &mut Ui, x: f32, color: RgbaF32, nested: bool) {
         let inner = |ui: &mut Ui| {
             ui.layer(Layer::Popup)
-                .fixed_at(Vec2::new(x, 10.0))
+                .at(Vec2::new(x, 10.0))
                 .show(|ui| colored_frame(ui, color));
         };
         ui.layer(Layer::Popup).show(|ui| {

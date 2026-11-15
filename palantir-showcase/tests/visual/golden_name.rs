@@ -3,9 +3,8 @@
 use std::env;
 use std::fs;
 
-use image::RgbaImage;
-use palantir::Ui;
 use palantir::glam::UVec2;
+use palantir::{Image, Ui};
 
 use crate::goldens;
 use crate::visual_rig::VisualRig;
@@ -36,8 +35,8 @@ macro_rules! golden_names {
 impl GoldenName {
     /// `actual` matches this golden.
     #[track_caller]
-    pub(crate) fn assert_matches(self, actual: &RgbaImage) {
-        goldens::suite().assert_matches(self.name(), &goldens::to_image(actual));
+    pub(crate) fn assert_matches(self, actual: &Image) {
+        goldens::suite().assert_matches(self.name(), actual);
     }
 
     /// One frame of `scene` at `size` on a fresh [`VisualRig`] matches this golden.
@@ -49,10 +48,7 @@ impl GoldenName {
     /// [`Self::assert_scene`] on the frame after `settle` discarded ones, for state that builds over frames.
     #[track_caller]
     pub(crate) fn assert_settled_scene(self, size: UVec2, settle: u32, scene: impl FnMut(&mut Ui)) {
-        let img = VisualRig::new()
-            .size(size)
-            .settled_frame(settle, scene)
-            .image;
+        let img = VisualRig::new(size).settled_frame(settle, scene).image;
         self.assert_matches(&img);
     }
 }

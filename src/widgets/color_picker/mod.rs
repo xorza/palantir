@@ -2,11 +2,10 @@
 //! deciding which control's write reaches the bound color.
 
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::primitives::input::interaction::response::Response;
 use crate::primitives::input::sense::Sense;
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::grid_cell::GridCell;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::primitives::layout::track::Track;
 use crate::primitives::math::domain;
 use crate::primitives::paint::color::RgbaF32;
@@ -17,7 +16,7 @@ use crate::theme::color_picker::ColorPickerTheme;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::configure::ThemeDefaults;
+use crate::widget_core::configure::ConfigureDefaults;
 use crate::widget_core::value_response::ValueResponse;
 use crate::widget_core::widget::Widget;
 use crate::widgets::color_field::ColorField;
@@ -32,6 +31,7 @@ use crate::widgets::panel::Panel;
 use crate::widgets::radio_group::RadioGroup;
 use crate::widgets::text::Text;
 use crate::widgets::text_edit::TextEdit;
+use std::num::NonZeroU16;
 use std::rc::Rc;
 
 mod history;
@@ -59,12 +59,18 @@ pub(crate) mod swatch_row;
 #[must_use = "a widget records nothing until `show`"]
 pub struct ColorPicker<'a> {
     widget: Widget,
+    body: PickerBody<'a>,
+    style: Option<&'a ColorPickerTheme>,
+}
+
+/// What the panel's rows record from, besides the retained state.
+#[derive(Debug)]
+struct PickerBody<'a> {
     color: &'a mut RgbaF32,
-    alpha: bool,
-    model: Option<ColorModel>,
+    alpha_on: bool,
+    pinned: Option<ColorModel>,
     swatches: SwatchRow<'a>,
     texel_size: u32,
-    style: Option<&'a ColorPickerTheme>,
 }
 
 /// What one picker keeps between frames.
@@ -83,30 +89,32 @@ impl<'a> ColorPicker<'a> {
     pub fn new(color: &'a mut RgbaF32) -> Self {
         Self {
             widget: Widget::vstack(),
-            color,
-            alpha: false,
-            model: None,
-            swatches: SwatchRow::None,
-            texel_size: color_surface::TEXEL_SIZE,
+            body: PickerBody {
+                color,
+                alpha_on: false,
+                pinned: None,
+                swatches: SwatchRow::None,
+                texel_size: color_surface::TEXEL_SIZE,
+            },
             style: None,
         }
     }
 
     /// Show the alpha bar and the opacity value. Off by default.
     pub const fn alpha(mut self, alpha: bool) -> Self {
-        self.alpha = alpha;
+        self.body.alpha_on = alpha;
         self
     }
 
     /// Pin the model instead of letting the user switch it; the switch hides.
     pub const fn model(mut self, model: ColorModel) -> Self {
-        self.model = Some(model);
+        self.body.pinned = Some(model);
         self
     }
 
     /// The swatch row under the panel. [`SwatchRow::None`] by default.
     pub const fn swatches(mut self, row: SwatchRow<'a>) -> Self {
-        self.swatches = row;
+        self.body.swatches = row;
         self
     }
 
@@ -118,7 +126,7 @@ impl<'a> ColorPicker<'a> {
     /// Panics unless `n` is a power of two from 1 to 16.
     #[track_caller]
     pub const fn texel_size(mut self, n: u32) -> Self {
-        self.texel_size = domain::power_of_two_in(n, color_surface::MAX_TEXEL_SIZE);
+        self.body.texel_size = domain::power_of_two_in(n, color_surface::MAX_TEXEL_SIZE);
         self
     }
 
@@ -129,8 +137,8 @@ impl<'a> ColorPicker<'a> {
     }
 
     /// The bound color before `show`, for a [`ColorButton`](crate::ColorButton) chip.
-    pub const fn color(&self) -> RgbaF32 {
-        *self.color
+    pub(crate) const fn color(&self) -> RgbaF32 {
+        *self.body.color
     }
 
     /// Record the panel and report what it did to the bound color.
@@ -142,39 +150,22 @@ impl<'a> ColorPicker<'a> {
 
         // As wide as the field; every row is `FILL` inside, keeping the value
         // grid's columns a fixed width.
-        let mut widget = self.widget.default_gap(gap).default_size((
+        let Self { widget, body, .. } = self;
+        let mut widget = widget.default_gap(gap).default_size((
             Sizing::fixed(domain::length_at_least(slot.field_width, 1.0)),
             Sizing::HUG,
         ));
         let response = widget.response(ui);
         let id = response.id;
-
-        let color = self.color;
-        let alpha_on = self.alpha;
-        let pinned = self.model;
-        let swatches = self.swatches;
-        let texel_size = self.texel_size;
-
-        let mut value = ValueResponse {
-            response,
-            changed: false,
-            committed: false,
-        };
-        widget.record(ui, None, |ui| {
-            ui.with_state::<PickerState, _>(id, |ui, state| {
-                let inputs = Inputs {
-                    id,
-                    theme: slot,
-                    color,
-                    alpha_on,
-                    pinned,
-                    swatches,
-                    texel_size,
-                };
-                value = inputs.record(ui, state, response);
-            });
+        let panel = PanelLook { theme: slot, gap };
+        let edits = widget.record(ui, None, |ui| {
+            ui.with_state::<PickerState, _>(id, |ui, state| body.record(ui, state, id, panel))
         });
-        value
+        ValueResponse {
+            response,
+            changed: edits.changed,
+            committed: edits.committed,
+        }
     }
 }
 
@@ -185,17 +176,18 @@ impl Configure for ColorPicker<'_> {
     }
 }
 
-/// Everything the panel body needs besides the retained state, bundled because
-/// the state borrow must span every row.
-#[derive(Debug)]
-struct Inputs<'a> {
-    id: WidgetId,
+/// What the panel's rows did to the bound color this frame.
+#[derive(Clone, Copy, Debug)]
+struct PanelEdits {
+    changed: bool,
+    committed: bool,
+}
+
+/// The theme every row wears, and its gap, checked once.
+#[derive(Clone, Copy, Debug)]
+struct PanelLook<'a> {
     theme: &'a ColorPickerTheme,
-    color: &'a mut RgbaF32,
-    alpha_on: bool,
-    pinned: Option<ColorModel>,
-    swatches: SwatchRow<'a>,
-    texel_size: u32,
+    gap: f32,
 }
 
 /// Columns the value grid is built on. Four, so the hex field spans two and
@@ -223,11 +215,25 @@ struct Writes {
 }
 
 impl Writes {
-    /// A typed value's commit, which the history keeps.
-    const fn typed(&mut self, edit: &ValueResponse) {
+    /// A pointer surface's frame: its commit, which the history keeps when a release made it.
+    const fn gestured(&mut self, edit: &ValueResponse) {
         self.committed |= edit.committed;
-        self.remember |= edit.committed;
+        self.remember |= edit.committed && edit.response.left.released();
     }
+
+    /// A channel value's commit; the history keeps it only as a pick.
+    const fn typed(&mut self, cell: &CellWrite) {
+        self.committed |= cell.edit.committed;
+        self.remember |= cell.edit.committed && cell.pick;
+    }
+}
+
+/// A channel value's frame: what it reported, and whether a commit in it is a pick the history
+/// keeps, a scrub's release or the editor's commit, rather than a key's nudge on the chip.
+#[derive(Clone, Copy, Debug)]
+struct CellWrite {
+    edit: ValueResponse,
+    pick: bool,
 }
 
 /// One channel's grid cell: its caption, where it sits, and the top of its
@@ -299,18 +305,23 @@ fn same_rgb(a: SrgbaU8, b: SrgbaU8) -> bool {
     (a.r, a.g, a.b) == (b.r, b.g, b.b)
 }
 
-impl Inputs<'_> {
-    fn record(self, ui: &mut Ui, state: &mut PickerState, response: Response) -> ValueResponse {
+impl PickerBody<'_> {
+    /// Record the panel's rows over `state`, the picker `id`'s, and answer what they did to the
+    /// bound color.
+    fn record(
+        self,
+        ui: &mut Ui,
+        state: &mut PickerState,
+        id: WidgetId,
+        PanelLook { theme, gap }: PanelLook<'_>,
+    ) -> PanelEdits {
         let Self {
-            id,
-            theme,
             color,
             alpha_on,
             pinned,
             swatches,
             texel_size,
         } = self;
-        let gap = domain::length_at_least(theme.gap, 0.0);
         let bar = domain::length_at_least(theme.bar_thickness, 1.0);
         let chip = domain::length_at_least(theme.chip_size, 1.0);
 
@@ -336,15 +347,14 @@ impl Inputs<'_> {
             .id(id.with("field"))
             .show(ui);
         writes.axes |= field.changed;
-        writes.committed |= field.committed;
-        writes.remember |= field.committed && field.response.left.released();
+        writes.gestured(&field);
 
         let bound = *color;
         let preview = shown(state, bound, &writes);
         Panel::hstack()
             .id(id.with("bars"))
             .gap(gap)
-            .size((Sizing::FILL, Sizing::HUG))
+            .size(SizeSpec::FILL_W)
             .show(ui, |ui| {
                 ColorSwatch::new(preview)
                     .style(theme)
@@ -356,7 +366,7 @@ impl Inputs<'_> {
                 Panel::vstack()
                     .id(id.with("bar-stack"))
                     .gap(gap)
-                    .size((Sizing::FILL, Sizing::HUG))
+                    .size(SizeSpec::FILL_W)
                     .show(ui, |ui| {
                         let hue = ColorStrip::hue(&mut state.coords)
                             .texel_size(texel_size)
@@ -365,8 +375,7 @@ impl Inputs<'_> {
                             .size((Sizing::FILL, Sizing::fixed(bar)))
                             .show(ui);
                         writes.axes |= hue.changed;
-                        writes.committed |= hue.committed;
-                        writes.remember |= hue.committed && hue.response.left.released();
+                        writes.gestured(&hue);
                         if alpha_on {
                             let mut working = preview;
                             let strip = ColorStrip::alpha(&mut working)
@@ -379,8 +388,7 @@ impl Inputs<'_> {
                                 writes.alpha = working.a;
                                 writes.alpha_moved = true;
                             }
-                            writes.committed |= strip.committed;
-                            writes.remember |= strip.committed && strip.response.left.released();
+                            writes.gestured(&strip);
                         }
                     });
             });
@@ -390,17 +398,17 @@ impl Inputs<'_> {
             state,
             id,
             theme,
+            gap,
             writes,
         };
         rows.values_grid(ui, alpha_on, readout);
         if pinned.is_none() {
-            rows.model_switch(ui, gap);
+            rows.model_switch(ui);
         }
         rows.swatch_row(ui, swatches);
 
         let Rows { state, writes, .. } = rows;
-        ValueResponse {
-            response,
+        PanelEdits {
             changed: apply(state, color, writes),
             committed: writes.committed,
         }
@@ -413,6 +421,7 @@ struct Rows<'a> {
     state: &'a mut PickerState,
     id: WidgetId,
     theme: &'a ColorPickerTheme,
+    gap: f32,
     writes: Writes,
 }
 
@@ -427,7 +436,7 @@ impl Rows<'_> {
     fn values_grid(&mut self, ui: &mut Ui, alpha_on: bool, shown: RgbaF32) {
         let id = self.id;
         let theme = self.theme;
-        let gap = domain::length_at_least(theme.gap, 0.0);
+        let gap = self.gap;
         let quantized = shown.to_srgba8();
         let hex_id = id.with("hex");
         let shown_hex = ui.fmt(format_args!(
@@ -451,13 +460,15 @@ impl Rows<'_> {
             .rows([Track::HUG; 2])
             .gap(gap)
             .line_gap(gap)
-            .size((Sizing::FILL, Sizing::HUG))
+            .size(SizeSpec::FILL_W)
             .show(ui, |ui| {
                 Panel::vstack()
                     .id(id.with("hex-cell"))
                     .gap(LABEL_GAP)
-                    .grid_cell(GridCell::at(0, 0).with_span(1, 2))
-                    .size((Sizing::FILL, Sizing::HUG))
+                    .grid_cell(
+                        GridCell::at(0, 0).with_span(NonZeroU16::MIN, NonZeroU16::new(2).unwrap()),
+                    )
+                    .size(SizeSpec::FILL_W)
                     .show(ui, |ui| {
                         Text::new("HEX")
                             .style(&theme.label.apply(&ui.theme().text))
@@ -467,7 +478,7 @@ impl Rows<'_> {
                             .max_chars(7)
                             .style(&theme.hex)
                             .id(hex_id)
-                            .size((Sizing::FILL, Sizing::HUG))
+                            .size(SizeSpec::FILL_W)
                             .show(ui);
                         // A draft parsing to the color already shown is no edit, as `#0000ff`
                         // under `#0000FF`.
@@ -485,14 +496,14 @@ impl Rows<'_> {
                 // edited and the value axis otherwise, completing H, S and V.
                 if alpha_on {
                     let r = self.value_cell(ui, OPACITY, &mut opacity);
-                    if r.changed {
+                    if r.edit.changed {
                         self.writes.alpha = opacity as f32 / 100.0;
                         self.writes.alpha_moved = true;
                     }
                     self.writes.typed(&r);
                 } else {
                     let r = self.value_cell(ui, VALUE, &mut val);
-                    if r.changed {
+                    if r.edit.changed {
                         self.state.coords = self.state.coords.with_value(val as f32 / 100.0);
                         self.writes.axes = true;
                     }
@@ -500,7 +511,7 @@ impl Rows<'_> {
                 }
 
                 let r = self.value_cell(ui, HUE, &mut hue);
-                if r.changed {
+                if r.edit.changed {
                     self.state.coords = self.state.coords.with_hue(hue as f32 / 360.0);
                     self.writes.axes = true;
                 }
@@ -508,7 +519,7 @@ impl Rows<'_> {
 
                 for (channel, cell) in CHANNELS.into_iter().enumerate() {
                     let r = self.value_cell(ui, cell, &mut rgb[channel]);
-                    if r.changed {
+                    if r.edit.changed {
                         let byte = |v: i64| v.clamp(0, 255) as u8;
                         self.writes.exact = Some(
                             RgbaF32::from_srgba8(SrgbaU8::rgb(
@@ -523,7 +534,7 @@ impl Rows<'_> {
                 }
 
                 let r = self.value_cell(ui, SATURATION, &mut sat);
-                if r.changed {
+                if r.edit.changed {
                     self.state.coords = self.state.coords.with_saturation(sat as f32 / 100.0);
                     self.writes.axes = true;
                 }
@@ -533,16 +544,19 @@ impl Rows<'_> {
 
     /// One grid cell: the channel's caption over its value, a drag from zero to the
     /// cell's top.
-    fn value_cell(&self, ui: &mut Ui, cell: ValueCell, value: &mut i64) -> ValueResponse {
+    fn value_cell(&self, ui: &mut Ui, cell: ValueCell, value: &mut i64) -> CellWrite {
         let theme = self.theme;
         // Keyed on the channel letter alone: an id that moved with the unit would
         // drop the widget's state.
         let cell_id = self.id.with(&cell.caption[..1]);
-        Panel::vstack()
+        let value_id = cell_id.with("value");
+        // Read before the show, which closes an editor on its commit.
+        let editing = DragValue::is_editing(ui, value_id);
+        let edit = Panel::vstack()
             .id(cell_id)
             .gap(LABEL_GAP)
             .grid_cell(cell.cell)
-            .size((Sizing::FILL, Sizing::HUG))
+            .size(SizeSpec::FILL_W)
             .show(ui, |ui| {
                 Text::new(cell.caption)
                     .style(&theme.label.apply(&ui.theme().text))
@@ -551,22 +565,27 @@ impl Rows<'_> {
                 DragValue::new(value)
                     .range(0.0..=cell.top)
                     .style(&theme.value)
-                    .id(cell_id.with("value"))
-                    .size((Sizing::FILL, Sizing::HUG))
+                    .id(value_id)
+                    .size(SizeSpec::FILL_W)
                     .show(ui)
             })
-            .inner
+            .inner;
+        CellWrite {
+            edit,
+            pick: editing || edit.response.left.released(),
+        }
     }
 
     /// The two models, as one either-or choice.
-    fn model_switch(&mut self, ui: &mut Ui, gap: f32) {
+    fn model_switch(&mut self, ui: &mut Ui) {
         let id = self.id;
+        let gap = self.gap;
         let mut model = self.state.coords.model();
         RadioGroup::new(&mut model)
             .axis(Axis::X)
             .id(id.with("models"))
             .gap(gap)
-            .size((Sizing::FILL, Sizing::HUG))
+            .size(SizeSpec::FILL_W)
             .show(ui, |ui, options| {
                 for choice in ColorModel::ALL {
                     options.option(choice).label(model_label(choice)).show(ui);
@@ -587,8 +606,8 @@ impl Rows<'_> {
         let mut picked = None;
         Panel::wrap_hstack()
             .id(id.with("swatches"))
-            .gap(domain::length_at_least(theme.gap, 0.0))
-            .size((Sizing::FILL, Sizing::HUG))
+            .gap(self.gap)
+            .size(SizeSpec::FILL_W)
             .show(ui, |ui| {
                 for (idx, color) in colors.iter().enumerate() {
                     if ColorSwatch::new(*color)

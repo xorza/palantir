@@ -159,13 +159,20 @@ impl PassCounts {
 /// clone is a snapshot.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct GpuPassStats {
-    pass: Option<Duration>,
-    kinds: [Option<Duration>; BatchKind::COUNT],
-    stats: Option<PipelineStats>,
-    copy_out: Option<Duration>,
-    backdrops: BackdropTimes,
-    main_pass_cpu: Option<Duration>,
-    pass_counts: PassCounts,
+    /// [`Self::last_pass`].
+    pub(crate) pass: Option<Duration>,
+    /// [`Self::last_kind`], by [`BatchKind::idx`].
+    pub(crate) kinds: [Option<Duration>; BatchKind::COUNT],
+    /// [`Self::last_pipeline_stats`].
+    pub(crate) stats: Option<PipelineStats>,
+    /// [`Self::last_copy_out`].
+    pub(crate) copy_out: Option<Duration>,
+    /// The backdrop captures and blurs of the last frame that painted.
+    pub(crate) backdrops: BackdropTimes,
+    /// [`Self::last_main_pass_cpu`].
+    pub(crate) main_pass_cpu: Option<Duration>,
+    /// The calls the last frame's main pass recorded; zero before the first frame that painted.
+    pub(crate) pass_counts: PassCounts,
 }
 
 impl GpuPassStats {
@@ -203,55 +210,6 @@ impl GpuPassStats {
     pub const fn last_main_pass_cpu(&self) -> Option<Duration> {
         self.main_pass_cpu
     }
-
-    pub(crate) const fn record_pass(&mut self, time: Duration) {
-        self.pass = Some(time);
-    }
-
-    pub(crate) const fn record_main_pass_cpu(&mut self, time: Duration) {
-        self.main_pass_cpu = Some(time);
-    }
-
-    /// The calls the last frame's main pass recorded; zero before the first frame that painted.
-    #[cfg_attr(
-        not(feature = "internals"),
-        expect(dead_code, reason = "the tests and benches of batching read it")
-    )]
-    pub(crate) const fn last_pass_counts(&self) -> PassCounts {
-        self.pass_counts
-    }
-
-    pub(crate) const fn record_pass_counts(&mut self, counts: PassCounts) {
-        self.pass_counts = counts;
-    }
-
-    pub(crate) const fn record_kind(&mut self, kind: BatchKind, time: Duration) {
-        self.kinds[kind.idx()] = Some(time);
-    }
-
-    pub(crate) const fn clear_kinds(&mut self) {
-        self.kinds = [None; BatchKind::COUNT];
-    }
-
-    pub(crate) const fn record_pipeline_stats(&mut self, stats: Option<PipelineStats>) {
-        self.stats = stats;
-    }
-
-    pub(crate) const fn record_copy_out(&mut self, time: Option<Duration>) {
-        self.copy_out = time;
-    }
-
-    #[cfg_attr(
-        not(feature = "internals"),
-        expect(dead_code, reason = "the backdrop benches read it")
-    )]
-    pub(crate) const fn last_backdrops(&self) -> BackdropTimes {
-        self.backdrops
-    }
-
-    pub(crate) const fn record_backdrops(&mut self, times: BackdropTimes) {
-        self.backdrops = times;
-    }
 }
 
 #[cfg(test)]
@@ -266,73 +224,6 @@ mod tests {
         assert_eq!(s.last_pipeline_stats(), None);
         assert_eq!(s.last_copy_out(), None);
         assert_eq!(s.last_main_pass_cpu(), None);
-    }
-
-    /// A copy keeps the sample it was taken at: a record into the original after it reaches only
-    /// the original.
-    #[test]
-    fn a_copy_keeps_the_sample_it_was_taken_at() {
-        let mut a = GpuPassStats::default();
-        a.record_pass(Duration::from_micros(3500));
-        let b = a;
-        a.record_pass(Duration::from_micros(10));
-        a.record_main_pass_cpu(Duration::from_micros(250));
-        assert_eq!(b.last_pass(), Some(Duration::from_micros(3500)));
-        assert_eq!(b.last_main_pass_cpu(), None);
-        assert_eq!(a.last_pass(), Some(Duration::from_micros(10)));
-        assert_eq!(a.last_main_pass_cpu(), Some(Duration::from_micros(250)));
-    }
-
-    #[test]
-    fn record_overrides_previous_value() {
-        let mut s = GpuPassStats::default();
-        s.record_pass(Duration::from_millis(1));
-        s.record_pass(Duration::from_millis(5));
-        assert_eq!(s.last_pass(), Some(Duration::from_millis(5)));
-        s.record_main_pass_cpu(Duration::from_micros(80));
-        s.record_main_pass_cpu(Duration::from_micros(20));
-        assert_eq!(s.last_main_pass_cpu(), Some(Duration::from_micros(20)));
-    }
-
-    #[test]
-    fn per_kind_independent_of_total() {
-        let mut s = GpuPassStats::default();
-        s.record_kind(BatchKind::Quads, Duration::from_micros(1500));
-        s.record_kind(BatchKind::Text, Duration::from_micros(500));
-        assert_eq!(
-            s.last_kind(BatchKind::Quads),
-            Some(Duration::from_micros(1500))
-        );
-        assert_eq!(
-            s.last_kind(BatchKind::Text),
-            Some(Duration::from_micros(500))
-        );
-        assert_eq!(s.last_kind(BatchKind::Mesh), None);
-        assert_eq!(s.last_pass(), None);
-        assert_eq!(s.last_main_pass_cpu(), None);
-    }
-
-    #[test]
-    fn clear_kinds_resets_to_none() {
-        let mut s = GpuPassStats::default();
-        let stats = PipelineStats {
-            vertex_shader_invocations: 1,
-            clipper_invocations: 2,
-            clipper_primitives_out: 3,
-            fragment_shader_invocations: 4,
-        };
-        s.record_kind(BatchKind::Quads, Duration::from_millis(2));
-        s.record_kind(BatchKind::Text, Duration::from_millis(1));
-        s.record_pass(Duration::from_millis(3));
-        s.record_main_pass_cpu(Duration::from_micros(500));
-        s.record_pipeline_stats(Some(stats));
-        s.clear_kinds();
-        for kind in BatchKind::ALL {
-            assert_eq!(s.last_kind(kind), None, "{kind:?}");
-        }
-        assert_eq!(s.last_pass(), Some(Duration::from_millis(3)));
-        assert_eq!(s.last_main_pass_cpu(), Some(Duration::from_micros(500)));
-        assert_eq!(s.last_pipeline_stats(), Some(stats));
     }
 
     #[test]

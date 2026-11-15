@@ -32,11 +32,7 @@ impl AxisAlignPair {
         child: &LayoutCore,
         parent_child_align: Align,
     ) -> AxisAlign {
-        let a = child.meta.align();
-        match axis {
-            Axis::X => a.halign().or(parent_child_align.halign()).to_axis(),
-            Axis::Y => a.valign().or(parent_child_align.valign()).to_axis(),
-        }
+        child.meta.align().or(parent_child_align).axis(axis)
     }
 
     /// Both axes with `Auto` read as `Stretch`, Grid's default.

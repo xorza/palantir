@@ -190,6 +190,8 @@ struct PagePair {
     dest: wgpu::Texture,
     dest_view: wgpu::TextureView,
     draw: MoveDraw,
+    /// The belt the draw's rectangles go through.
+    belt: UploadStaging,
     /// Zeros for a whole page, which clear the destination before a case checks its move.
     zeros: Vec<u8>,
 }
@@ -197,18 +199,16 @@ struct PagePair {
 impl PagePair {
     fn new(gpu: &Gpu, format: AtlasFormat) -> Self {
         let page = |label| {
-            texel::texture_2d(
-                gpu,
-                TargetSpec {
-                    label,
-                    size: UVec2::splat(MOVE_PAGE),
-                    format: texture_format(format),
-                    usage: wgpu::TextureUsages::TEXTURE_BINDING
-                        | wgpu::TextureUsages::RENDER_ATTACHMENT
-                        | wgpu::TextureUsages::COPY_SRC
-                        | wgpu::TextureUsages::COPY_DST,
-                },
-            )
+            TargetSpec {
+                label,
+                size: UVec2::splat(MOVE_PAGE),
+                format: texture_format(format),
+                usage: wgpu::TextureUsages::TEXTURE_BINDING
+                    | wgpu::TextureUsages::RENDER_ATTACHMENT
+                    | wgpu::TextureUsages::COPY_SRC
+                    | wgpu::TextureUsages::COPY_DST,
+            }
+            .texture(gpu)
         };
         let source = page("palantir.bench.atlas_move.source");
         let dest = page("palantir.bench.atlas_move.dest");
@@ -228,6 +228,7 @@ impl PagePair {
             source,
             dest,
             draw: MoveDraw::new(gpu),
+            belt: UploadStaging::new(&gpu.device, 1 << 16),
             zeros: vec![0; bytes],
         }
     }
@@ -257,16 +258,18 @@ impl PagePair {
                 }
             }
             Mover::Draw => {
-                self.draw.begin();
+                let mut ctx = GpuCtx::new(gpu, &mut self.belt, encoder, 0);
+                self.draw.stage_run(&mut ctx, self.format, moves);
+                self.belt.finish_and_recall_on_submit(encoder);
                 self.draw.record(
                     gpu,
                     encoder,
                     MoveRun {
                         format: self.format,
+                        page: 0,
                         source: &self.source_view,
                         dest: &self.dest_view,
                     },
-                    moves.iter().copied(),
                 );
             }
         }
@@ -421,18 +424,16 @@ fn atlas_page(c: &mut Criterion, backends: &Backends, backend: Backend) {
                 let raster =
                     vec![0x55u8; (FIRST_WRITE * FIRST_WRITE * format.texel_bytes()) as usize];
                 b.iter(|| {
-                    let page = texel::texture_2d(
-                        gpu,
-                        TargetSpec {
-                            label: "palantir.bench.atlas_page",
-                            size: UVec2::splat(edge),
-                            format: texture_format(format),
-                            usage: wgpu::TextureUsages::TEXTURE_BINDING
-                                | wgpu::TextureUsages::RENDER_ATTACHMENT
-                                | wgpu::TextureUsages::COPY_SRC
-                                | wgpu::TextureUsages::COPY_DST,
-                        },
-                    );
+                    let page = TargetSpec {
+                        label: "palantir.bench.atlas_page",
+                        size: UVec2::splat(edge),
+                        format: texture_format(format),
+                        usage: wgpu::TextureUsages::TEXTURE_BINDING
+                            | wgpu::TextureUsages::RENDER_ATTACHMENT
+                            | wgpu::TextureUsages::COPY_SRC
+                            | wgpu::TextureUsages::COPY_DST,
+                    }
+                    .texture(gpu);
                     gpu.queue.write_texture(
                         page.as_image_copy(),
                         &raster,

@@ -1,8 +1,7 @@
 //! Corner radii larger than their box holds.
 
 use palantir::glam::UVec2;
-use palantir::widget::Shape;
-use palantir::{Block, Chrome, Configure, Corners, Panel, Rect, RgbaF32, Sizing};
+use palantir::{Block, Chrome, Configure, Corners, Panel, Rect, RgbaF32, Shape, SizeSpec, Sizing};
 
 use crate::fixtures;
 use crate::visual_rig::VisualRig;
@@ -12,9 +11,8 @@ use crate::visual_rig::VisualRig;
 /// Each pill sits at x 10..110; pixel (11, y) is 18.5 px from the left arc's center (30, y + 0.5): inside.
 #[test]
 fn oversized_radii_fit_their_box() {
-    let mut h = VisualRig::new();
+    let mut h = VisualRig::new(UVec2::new(120, 160));
     let img = h
-        .size(UVec2::new(120, 160))
         .clear(RgbaF32::BLACK)
         .frame(|ui| {
             fixtures::canvas(ui, |ui| {
@@ -33,15 +31,15 @@ fn oversized_radii_fit_their_box() {
                     .show(ui, |ui| {
                         Block::new()
                             .id_salt("clipped")
-                            .size((Sizing::FILL, Sizing::FILL))
+                            .size(SizeSpec::FILL)
                             .chrome(Chrome::new(RgbaF32::WHITE))
                             .show(ui);
                     });
             });
         })
         .image;
-    let lit = |x: u32, y: u32| img.get_pixel(x, y).0[0] > 200;
-    let dark = |x: u32, y: u32| img.get_pixel(x, y).0[0] < 40;
+    let lit = |x: u32, y: u32| img.texel(UVec2::new(x, y)).r > 200;
+    let dark = |x: u32, y: u32| img.texel(UVec2::new(x, y)).r < 40;
     for (label, mid) in [
         ("corners(30)", 29),
         ("corners(9999)", 79),

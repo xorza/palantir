@@ -1,7 +1,7 @@
 //! Where focus lands in a menu the keyboard opens.
 
-use crate::cascade::rows::tab_stop_row::TabEnd;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::tab_end::TabEnd;
 use crate::ui::Ui;
 use crate::widget_core::overlay_response::OverlayResponse;
 
@@ -31,8 +31,8 @@ impl MenuLanding {
             return;
         }
         match self {
-            Self::First => ui.focus_within(resp.id, TabEnd::First),
-            Self::Last => ui.focus_within(resp.id, TabEnd::Last),
+            Self::First => ui.set_focus_within(resp.id, TabEnd::First),
+            Self::Last => ui.set_focus_within(resp.id, TabEnd::Last),
             Self::Row(row) => ui.set_focus(row),
         }
     }

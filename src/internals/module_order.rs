@@ -140,11 +140,12 @@ fn edges_against_order<'a>(order: Order, module: &str, text: &'a str) -> Vec<&'a
         .collect()
 }
 
-/// A bench, a test or a sweep sits outside the order wherever its file lies.
+/// A bench or a test sits outside the order wherever its file lies, as a file of its own or a
+/// folder of them.
 fn ships(path: &Path) -> bool {
     !path.components().any(|part| {
         let part = part.as_os_str();
-        ["tests", "tests.rs", "bench.rs", "sweep"]
+        ["tests", "tests.rs", "bench", "bench.rs"]
             .iter()
             .any(|name| part == *name)
     })
@@ -219,6 +220,23 @@ fn the_scan_finds_an_edge_against_the_order() {
         Vec::<&str>::new(),
         "and so does each other tail"
     );
+}
+
+/// A bench and a test are left out as a file and as a folder, and nothing else is: a shipped
+/// folder named after a study is held to the order.
+#[test]
+fn a_bench_or_a_test_ships_nothing_and_a_study_folder_ships() {
+    for (path, ships_it) in [
+        ("damage/bench.rs", false),
+        ("damage/bench/mod.rs", false),
+        ("damage/bench/sweep/player.rs", false),
+        ("damage/tests.rs", false),
+        ("damage/tests/arena.rs", false),
+        ("damage/sweep/player.rs", true),
+        ("damage/engine.rs", true),
+    ] {
+        assert_eq!(ships(Path::new(path)), ships_it, "{path}");
+    }
 }
 
 /// Each module has a place, in its order or outside it, and no shipped line of one names a module it

@@ -1,5 +1,6 @@
 //! Where a backdrop cuts the frame, and what its row records.
 
+use crate::cascade::blur_plan::BlurPlan;
 use crate::cascade::plane_backdrop::PlaneBackdrop;
 use crate::common::span::Span;
 use crate::internals::compose_rig::ComposeRig;
@@ -11,16 +12,16 @@ use crate::primitives::identity::backdrop_key::BackdropKey;
 use crate::primitives::identity::effect_id::EffectId;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::color::RgbaF32;
-use crate::renderer::backdrop_captures::BackdropTicket;
+use crate::renderer::backdrop_captures::{BackdropTicket, TicketResult};
 use crate::renderer::frontend::composer::paint_order::internals::{Closes, GroupCloses};
 use crate::renderer::frontend::composer::tests::support::{
     clip, draw, draw_marked, effect, listed, params, run, survivor_calls, text,
 };
-use crate::renderer::frontend::paint_sink::PaintSink;
+use crate::renderer::frontend::paint_sink::{DrawAnimation, PaintSink};
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_closed_payload::DrawClosedPayload;
 use crate::renderer::frontend::payload::draw_closed_payload::closed_effect::{
-    ClosedEffect, EffectCaptureDraw,
+    ClosedEffect, EffectCaptureDraw, EffectRead,
 };
 use crate::renderer::frontend::payload::draw_closed_payload::closed_fill::ClosedFill;
 use crate::renderer::render_buffer::RenderBuffer;
@@ -33,7 +34,6 @@ use crate::renderer::render_buffer::template_cover::TemplateCover;
 use crate::shape::geometry::box_geometry::PlacedBox;
 use crate::shape::geometry::closed_geometry::PlacedClosed;
 use crate::shape::geometry::triangle_geometry::PlacedTriangle;
-use crate::shape::paint::blur_plan::BlurPlan;
 use crate::shape::paint::capture_params::CaptureReach;
 use crate::shape::paint::lowered_border::LoweredBorder;
 use crate::shape::paint::lowered_material::LoweredMaterial;
@@ -41,7 +41,7 @@ use glam::{UVec2, Vec2};
 
 /// The ticket of backdrop `i` at `rect` and σ `sigma`, at scale 1, as the ledger writes it: its
 /// footprint the rect grown by the plan's reach and a pixel.
-fn ticket(i: u32, rect: Rect, sigma: f32, captures: bool) -> BackdropTicket {
+fn ticket(i: u32, rect: Rect, sigma: f32, result: TicketResult) -> BackdropTicket {
     let plan = BlurPlan::new(sigma);
     let footprint = URect::covering(rect.inflated(PlaneBackdrop::reach(plan, 0)));
     BackdropTicket {
@@ -56,7 +56,7 @@ fn ticket(i: u32, rect: Rect, sigma: f32, captures: bool) -> BackdropTicket {
                 .region(footprint, footprint.max())
                 .expect("a test backdrop paints"),
         },
-        captures,
+        result,
     }
 }
 
@@ -66,15 +66,15 @@ fn material(
     read: EffectCaptureDraw,
     border: LoweredBorder,
 ) -> DrawClosedPayload<ClosedEffect> {
-    DrawClosedPayload::new(
+    DrawClosedPayload {
         geometry,
-        ClosedEffect::material(
+        paint: ClosedEffect::material(
             LoweredMaterial::fixture(4.0),
             read,
             BrushSource::Solid(RgbaF32::new(1.0, 1.0, 1.0, 0.25).to_f16()),
             border,
         ),
-    )
+    }
 }
 
 /// The box at `rect`, square-cornered, covering its inside.
@@ -92,13 +92,16 @@ fn ticketed(buf: &mut PaintCapture, rect: Rect, ticket: BackdropTicket, alpha: f
         ticket,
         reach: CaptureReach::Px(0.0),
     };
-    buf.draw(material(sharp(rect), read, LoweredBorder::NONE), alpha);
+    buf.draw(
+        material(sharp(rect), read, LoweredBorder::NONE),
+        DrawAnimation { alpha, spin: None },
+    );
 }
 
 /// A capturing backdrop at `rect` and σ `sigma`, faded by `alpha`.
 fn backdrop(buf: &mut PaintCapture, rect: Rect, sigma: f32, alpha: f32) {
     let i = buf.calls.len() as u32;
-    ticketed(buf, rect, ticket(i, rect, sigma, true), alpha);
+    ticketed(buf, rect, ticket(i, rect, sigma, TicketResult::New), alpha);
 }
 
 /// Each capturing row's barrier, `0` for one of the clear.
@@ -121,7 +124,7 @@ fn barriers(buf: &RenderBuffer) -> Vec<u32> {
 #[test]
 fn a_backdrop_cuts_the_frame_at_its_barrier() {
     let rect = Rect::new(20.0, 20.0, 40.0, 20.0);
-    let ticket = ticket(0, rect, 5.0, true);
+    let ticket = ticket(0, rect, 5.0, TicketResult::New);
     let buf = run(
         |b, _| {
             draw(b, Rect::new(0.0, 0.0, 90.0, 90.0));
@@ -174,7 +177,12 @@ fn each_group_counts_why_it_closed() {
     let mut recorded = PaintCapture::default();
     draw(&mut recorded, Rect::new(0.0, 0.0, 90.0, 90.0));
     text(&mut recorded, Rect::new(10.0, 10.0, 40.0, 10.0));
-    ticketed(&mut recorded, rect, ticket(0, rect, 5.0, true), 1.0);
+    ticketed(
+        &mut recorded,
+        rect,
+        ticket(0, rect, 5.0, TicketResult::New),
+        1.0,
+    );
     draw(&mut recorded, Rect::new(30.0, 30.0, 5.0, 5.0));
     clip(&mut recorded, Rect::new(100.0, 100.0, 50.0, 50.0));
     draw(&mut recorded, Rect::new(110.0, 110.0, 10.0, 10.0));
@@ -215,7 +223,7 @@ fn each_group_counts_why_it_closed() {
 #[test]
 fn a_held_backdrop_breaks_nothing() {
     let rect = Rect::new(20.0, 20.0, 40.0, 20.0);
-    let ticket = ticket(0, rect, 5.0, false);
+    let ticket = ticket(0, rect, 5.0, TicketResult::Held);
     let buf = run(
         |b, _| {
             draw(b, Rect::new(0.0, 0.0, 90.0, 90.0));
@@ -385,25 +393,30 @@ fn a_materials_key_takes_its_shapes_form() {
                         radius: 1.0,
                     }),
                     EffectCaptureDraw {
-                        ticket: ticket(0, Rect::new(0.0, 0.0, 200.0, 200.0), 4.0, false),
+                        ticket: ticket(
+                            0,
+                            Rect::new(0.0, 0.0, 200.0, 200.0),
+                            4.0,
+                            TicketResult::Held,
+                        ),
                         reach: CaptureReach::Px(0.0),
                     },
                     LoweredBorder::NONE,
                 ),
-                1.0,
+                DrawAnimation::STILL,
             );
             b.draw(
-                DrawClosedPayload::new(
-                    PlacedClosed::Triangle(PlacedTriangle {
+                DrawClosedPayload {
+                    geometry: PlacedClosed::Triangle(PlacedTriangle {
                         centers: points,
                         radius: 1.0,
                     }),
-                    ClosedFill::new(
+                    paint: ClosedFill::new(
                         BrushSource::Solid(RgbaF32::WHITE.to_f16()),
                         LoweredBorder::NONE,
                     ),
-                ),
-                1.0,
+                },
+                DrawAnimation::STILL,
             );
             b.draw(
                 material(
@@ -412,12 +425,17 @@ fn a_materials_key_takes_its_shapes_form() {
                         corners: Corners::all(4.0),
                     }),
                     EffectCaptureDraw {
-                        ticket: ticket(1, Rect::new(0.0, 0.0, 200.0, 200.0), 4.0, false),
+                        ticket: ticket(
+                            1,
+                            Rect::new(0.0, 0.0, 200.0, 200.0),
+                            4.0,
+                            TicketResult::Held,
+                        ),
                         reach: CaptureReach::Px(0.0),
                     },
                     LoweredBorder::NONE,
                 ),
-                1.0,
+                DrawAnimation::STILL,
             );
         },
         &params(2.0, UVec2::new(200, 200)),
@@ -458,28 +476,28 @@ fn a_materials_key_takes_its_shapes_form() {
 fn a_material_and_a_backdrop_effect_share_one_path() {
     let rect = Rect::new(20.0, 20.0, 40.0, 20.0);
     let read = |i| EffectCaptureDraw {
-        ticket: ticket(i, rect, 4.0, true),
+        ticket: ticket(i, rect, 4.0, TicketResult::New),
         reach: CaptureReach::Px(0.0),
     };
     let buf = run(
         |b, _| {
-            b.draw(material(sharp(rect), read(0), LoweredBorder::NONE), 1.0);
+            b.draw(
+                material(sharp(rect), read(0), LoweredBorder::NONE),
+                DrawAnimation::STILL,
+            );
             b.draw(
                 DrawClosedPayload {
                     geometry: sharp(rect),
-                    spin: None,
                     paint: ClosedEffect {
                         effect: EffectId(0),
                         params: Span::default(),
                         images: Span::default(),
-                        backdrop: Some(read(1)),
-                        stage: None,
-                        outside: None,
+                        read: EffectRead::Backdrop { capture: read(1) },
                         opacity: 1.0,
                         time: 0.0,
                     },
                 },
-                1.0,
+                DrawAnimation::STILL,
             );
         },
         &params(1.0, UVec2::new(200, 200)),

@@ -12,6 +12,7 @@ use crate::primitives::input::pointer::PointerButton;
 use crate::primitives::input::shortcut::{Shortcut, ShortcutMods};
 use glam::Vec2;
 use std::fmt::Debug;
+use std::num::NonZeroU32;
 use std::time::Duration;
 
 /// How many of its waits for a wake a settle gives a busy app that keeps waking the window, past
@@ -52,7 +53,7 @@ pub(crate) fn play_all<X: Debug>(
     actions: &[Action<X>],
 ) -> Result<(), StepError> {
     for (step, action) in actions.iter().enumerate() {
-        play(stage, action).map_err(|error| StepError { step, error })?;
+        play(stage, action).map_err(|source| StepError { step, source })?;
     }
     Ok(())
 }
@@ -121,15 +122,10 @@ pub(crate) fn play<X: Debug>(
             stage.note_press();
             released?;
         }
-        Action::ScrollPixels { at, delta } => {
+        Action::Scroll { at, delta } => {
             let point = stage.point(at, Reach::Hover)?;
             hover(stage, point)?;
-            stage.input(InputEvent::ScrollPixels(*delta));
-        }
-        Action::ScrollLines { at, delta } => {
-            let point = stage.point(at, Reach::Hover)?;
-            hover(stage, point)?;
-            stage.input(InputEvent::scroll_lines(*delta));
+            stage.input(InputEvent::Scroll(*delta));
         }
         Action::Pinch { at, factor } => {
             let point = stage.point(at, Reach::Hover)?;
@@ -159,8 +155,12 @@ pub(crate) fn play<X: Debug>(
             });
         }
         Action::Type(text) => {
-            for c in text.chars() {
-                let key = Key::Char(c);
+            // Every character is checked before the first types, so a refused text types none.
+            let untypable = text.chars().find(|&c| typed_key(c).is_none());
+            if let Some(found) = untypable {
+                return Err(PlayError::Untypable { found });
+            }
+            for key in text.chars().filter_map(typed_key) {
                 stage.input(Shortcut::key(key).key_down());
                 stage.input(InputEvent::KeyUp { key });
             }
@@ -199,10 +199,10 @@ fn drag_moves<X>(
     stage: &mut impl Stage<X>,
     start: Vec2,
     end: Vec2,
-    steps: u32,
+    steps: NonZeroU32,
 ) -> Result<(), PlayError> {
     stage.frame()?;
-    let steps = steps.max(1);
+    let steps = steps.get();
     for step in 1..=steps {
         let point = start.lerp(end, step as f32 / steps as f32);
         stage.input(InputEvent::PointerMoved(point));
@@ -231,4 +231,14 @@ fn press_and_release<X>(
         pressed?;
         stage.frame()
     })
+}
+
+/// The key that types `c`: a newline is Enter and a tab is Tab, as a keyboard types them; any
+/// other control character types no key.
+pub(crate) const fn typed_key(c: char) -> Option<Key> {
+    match c {
+        '\n' => Some(Key::Enter),
+        '\t' => Some(Key::Tab),
+        _ => Key::from_char(c),
+    }
 }

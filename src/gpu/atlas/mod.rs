@@ -13,11 +13,12 @@ pub(crate) mod scratch_cache;
 pub(crate) mod tenant;
 
 use crate::gpu::atlas::atlas_format::{AtlasFormat, PerFormat};
-use crate::gpu::atlas::atlas_handle::{Allocation, AtlasHandle, Placement};
+use crate::gpu::atlas::atlas_handle::{Allocation, AtlasHandle, Evicted, Placement};
 use crate::gpu::atlas::error::AtlasError;
-use crate::gpu::atlas::page_list::{MoveBudget, PageList, PageListConfig};
-use crate::gpu::atlas::scratch_cache::ScratchId;
-use crate::gpu::atlas::tenant::Tenant;
+use crate::gpu::atlas::page_list::move_budget::MoveBudget;
+use crate::gpu::atlas::page_list::{PageList, PageListConfig};
+use crate::gpu::atlas::scratch_cache::{EvictedScratch, ScratchId};
+use crate::gpu::atlas::tenant::{ItemOwner, Tenant};
 use crate::gpu::device::pass_traffic::PassTraffic;
 use crate::renderer::row_table::{RowTable, RowTableConfig};
 use glam::UVec2;
@@ -47,21 +48,21 @@ impl PoolConfig {
     }
 }
 
-/// The handles and scratch ids evicted since each tenant last drained its queues. Each holds an
+/// The items and scratch textures evicted since each tenant last drained its queues. Each holds an
 /// item at most once a generation, so a queue is bounded by its list's slab or scratch slots.
 #[derive(Debug, Default)]
 pub(crate) struct Evictions {
-    queues: [Vec<AtlasHandle>; Tenant::COUNT],
-    scratch: [Vec<ScratchId>; Tenant::COUNT],
+    queues: [Vec<Evicted>; Tenant::COUNT],
+    scratch: [Vec<EvictedScratch>; Tenant::COUNT],
 }
 
 impl Evictions {
-    fn push(&mut self, tenant: Tenant, handle: AtlasHandle) {
-        self.queues[tenant as usize].push(handle);
+    fn push(&mut self, tenant: Tenant, evicted: Evicted) {
+        self.queues[tenant as usize].push(evicted);
     }
 
-    fn push_scratch(&mut self, tenant: Tenant, id: ScratchId) {
-        self.scratch[tenant as usize].push(id);
+    fn push_scratch(&mut self, tenant: Tenant, evicted: EvictedScratch) {
+        self.scratch[tenant as usize].push(evicted);
     }
 }
 
@@ -121,18 +122,18 @@ impl AtlasPool {
     /// a frame longer.
     pub(crate) fn advance_to(&mut self, frame: u64) {
         self.frame = self.frame.max(frame);
-        self.rows.advance_to(frame);
+        self.rows.advance_to(self.frame);
     }
 
-    /// Room for an item of `size` of `format` for `tenant`, drawn this frame, and where it sits;
-    /// the items evicted for it wait in their tenants' queues.
+    /// Room for `owner`'s item of `size` of `format`, drawn this frame, and where it sits; the
+    /// items evicted for it wait in their tenants' queues.
     pub(crate) fn allocate(
         &mut self,
         format: AtlasFormat,
-        tenant: Tenant,
+        owner: ItemOwner,
         size: UVec2,
     ) -> Result<Allocation, AtlasError> {
-        self.lists[format].allocate(tenant, size, self.frame, &mut self.evictions)
+        self.lists[format].allocate(owner, size, self.frame, &mut self.evictions)
     }
 
     /// Return what the lists and the rows hold past their need, at the end of the first submit of
@@ -206,36 +207,34 @@ impl AtlasPool {
         self.lists[handle.format].unpin(handle, self.frame);
     }
 
-    /// The handles of `tenant`'s items evicted since its last drain, each stale now: the tenant
-    /// drops the keys it held them under.
+    /// `tenant`'s items evicted since its last drain, each handle stale now: the tenant drops the
+    /// entry each tag names.
     #[expect(
         clippy::iter_with_drain,
         reason = "the queue keeps its buffer for the next evictions, which `into_iter` would drop"
     )]
-    pub(crate) fn drain_evicted(&mut self, tenant: Tenant) -> Drain<'_, AtlasHandle> {
+    pub(crate) fn drain_evicted(&mut self, tenant: Tenant) -> Drain<'_, Evicted> {
         self.evictions.queues[tenant as usize].drain(..)
     }
 
-    /// The scratch ids of `tenant`'s textures a purge took since its last drain, each stale now.
+    /// `tenant`'s scratch textures a purge took since its last drain, each id stale now.
     #[expect(
         clippy::iter_with_drain,
         reason = "the queue keeps its buffer for the next evictions, which `into_iter` would drop"
     )]
-    pub(crate) fn drain_evicted_scratch(&mut self, tenant: Tenant) -> Drain<'_, ScratchId> {
+    pub(crate) fn drain_evicted_scratch(&mut self, tenant: Tenant) -> Drain<'_, EvictedScratch> {
         self.evictions.scratch[tenant as usize].drain(..)
     }
 
-    /// A texture of its own of `format` for `tenant`'s item of `size`, drawn this frame.
+    /// A texture of its own of `format` for `owner`'s item of `size`, drawn this frame.
     pub(crate) fn acquire_scratch(
         &mut self,
         format: AtlasFormat,
-        tenant: Tenant,
+        owner: ItemOwner,
         size: UVec2,
     ) -> Result<ScratchId, AtlasError> {
         let frame = self.frame;
-        self.lists[format]
-            .scratch_mut()
-            .acquire(size, tenant, frame)
+        self.lists[format].scratch_mut().acquire(size, owner, frame)
     }
 
     /// The size of the texture `id` holds, `None` once a purge took it or it was released.
@@ -258,11 +257,36 @@ impl AtlasPool {
 
 #[cfg(test)]
 pub(crate) mod internals {
+    use crate::gpu::atlas::Evictions;
     use crate::gpu::atlas::atlas_format::{AtlasFormat, PerFormat};
-    use crate::gpu::atlas::page_list::{MoveBudget, PageListConfig};
+    use crate::gpu::atlas::atlas_handle::{AtlasHandle, Evicted};
+    use crate::gpu::atlas::page_list::PageListConfig;
+    use crate::gpu::atlas::page_list::move_budget::MoveBudget;
+    use crate::gpu::atlas::scratch_cache::EvictedScratch;
+    use crate::gpu::atlas::tenant::Tenant;
     use crate::gpu::atlas::{AtlasPool, PoolConfig};
     use crate::gpu::device::pass_traffic::PassTraffic;
     use crate::renderer::row_table::RowTableConfig;
+
+    impl Evictions {
+        /// The handles of `tenant`'s queued evictions, in order.
+        pub(crate) fn handles(&self, tenant: Tenant) -> Vec<AtlasHandle> {
+            self.queues[tenant as usize]
+                .iter()
+                .map(|evicted: &Evicted| evicted.handle)
+                .collect()
+        }
+
+        /// `tenant`'s queued evictions, with their tags, in order.
+        pub(crate) fn evicted(&self, tenant: Tenant) -> &[Evicted] {
+            &self.queues[tenant as usize]
+        }
+
+        /// `tenant`'s queued scratch evictions, with their tags, in order.
+        pub(crate) fn evicted_scratch(&self, tenant: Tenant) -> &[EvictedScratch] {
+            &self.scratch[tenant as usize]
+        }
+    }
 
     impl AtlasPool {
         /// The pool of a device whose largest texture edge is `device_edge` at the starting

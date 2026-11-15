@@ -2,7 +2,7 @@ use crate::internals::layout_rig::LayoutRig;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::align::{Align, HAlign, VAlign};
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::widget_core::configure::Configure;
 use crate::widget_core::widget::Widget;
 
@@ -64,7 +64,7 @@ fn zstack_per_axis_alignment() {
             "parent_center_with_h_override_only",
             Some(Align::CENTER),
             // Child: 20×20, override H=Right (auto V → CENTER). Expected: x=80, y=40.
-            vec![((20.0, 20.0), Align::h(HAlign::Right), (80.0, 40.0))],
+            vec![((20.0, 20.0), Align::from(HAlign::Right), (80.0, 40.0))],
         ),
     ];
     for (label, parent_align, children) in &cases {
@@ -103,7 +103,7 @@ fn zstack_fill_child_stretches_to_inner() {
             Widget::zstack()
                 .size((Sizing::fixed(100.0), Sizing::fixed(100.0)))
                 .padding(10.0),
-            |rec| rec.leaf("filler", Widget::leaf().size((Sizing::FILL, Sizing::FILL))),
+            |rec| rec.leaf("filler", Widget::leaf().size(SizeSpec::FILL)),
         );
     });
     assert_eq!(rig.rect("filler"), Rect::new(10.0, 10.0, 80.0, 80.0));
@@ -115,7 +115,7 @@ fn hug_zstack_with_only_fill_children_collapses_to_zero() {
     let mut rig = LayoutRig::new();
     rig.run(SURFACE, |rec| {
         rec.node("panel", Widget::zstack(), |rec| {
-            rec.leaf("filler", Widget::leaf().size((Sizing::FILL, Sizing::FILL)));
+            rec.leaf("filler", Widget::leaf().size(SizeSpec::FILL));
         });
     });
     assert_eq!(rig.rect("panel").size, Size::ZERO);

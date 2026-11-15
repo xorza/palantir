@@ -55,8 +55,8 @@ pub(super) struct PlaneWalk<'a> {
     pub(super) backdrops: &'a mut BackdropWalk,
     /// The plane's place in paint order.
     pub(super) ord: usize,
-    /// Per-row screen extents for the order-inversion check; filled only when a node's row order inverted.
-    pub(super) order_extents: &'a mut Vec<Rect>,
+    /// The order-inversion scratch, filled with a node's row extents only when its row order
+    /// inverted.
     pub(super) inversions: &'a mut InvertedOverlaps,
     pub(super) counters: &'a mut DamageCounters,
     pub(super) surface: Rect,
@@ -287,21 +287,18 @@ impl PlaneWalk<'_> {
     /// Damage the overlap of every exact-matched row pair whose paint order inverted. Reached only behind [`RowMatcher::has_order_inversion`](crate::damage::row_matcher::RowMatcher::has_order_inversion).
     fn emit_inverted_overlaps(&mut self, node: NodeId) {
         self.build_row_extents(node);
-        self.inversions.push(
-            self.raw_rects,
-            self.matcher.matched_poss(),
-            self.order_extents,
-        );
+        self.inversions
+            .push(self.raw_rects, self.matcher.matched_poss());
     }
 
     /// Screen extent per row of `node`'s paint span: chrome and shapes keep their `Paint.screen`; a child marker's zero rect becomes its subtree's painted extent. One cursor advances across rows and the `TreeItems` stream.
     fn build_row_extents(&mut self, node: NodeId) {
         let arena = &self.frame.cascade.paint_arena;
         let node_span = arena.node_spans[node.idx()];
-        self.order_extents.clear();
+        let extents = self.inversions.cleared_extents();
         let mut row = node_span.start as usize;
         if self.frame.tree.chrome(node).is_some() {
-            self.order_extents.push(arena.rows[row].screen);
+            extents.push(arena.rows[row].screen);
             row += 1;
         }
         for item in self.frame.tree.tree_items(node) {
@@ -310,10 +307,10 @@ impl PlaneWalk<'_> {
                 TreeItem::Child(child) => self.frame.cascade.subtree_paint_rects[child.id.idx()],
             };
             row += 1;
-            self.order_extents.push(extent);
+            extents.push(extent);
         }
         debug_assert_eq!(
-            self.order_extents.len(),
+            extents.len(),
             node_span.len as usize,
             "row extents out of sync with the owner's paint span",
         );

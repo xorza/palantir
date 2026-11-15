@@ -7,9 +7,9 @@ use crate::primitives::math::domain;
 /// `(1 − (1 − x)⁴)^¼` of the inward fraction `x`; a ray through it bends by Snell's law, and a
 /// fixed top-left lamp glints off it.
 ///
-/// Plain data: `bezel` and `thickness` are [lengths](crate::widget::domain::length),
-/// `refractive_index` a [refractive index](crate::widget::domain::refractive_index), and
-/// `dispersion` and `highlight` [fractions](crate::widget::domain::fraction), each coerced into its
+/// Plain data: `bezel` and `thickness` are [lengths](crate::widget::domain::is_length),
+/// `refractive_index` a [refractive index](crate::widget::domain::is_refractive_index), and
+/// `dispersion` and `highlight` [fractions](crate::widget::domain::is_fraction), each coerced into its
 /// kind where the material's reach reads it, as the glass reads its parameters as they come.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]

@@ -113,20 +113,14 @@ fn a_press_chains_inside_the_window_and_radius_on_the_same_target() {
         want,
     } in rows
     {
-        let mut cap = Capture {
-            run: Some(PressRun {
-                at: Duration::ZERO,
-                target: target(),
-                pos: Vec2::ZERO,
-                count,
-            }),
-            ..Capture::default()
-        };
+        let mut cap = Capture::after(PressRun::new(Duration::ZERO, target(), Vec2::ZERO, count));
         cap.begin_press(on, pos, now, interval);
-        let press = cap.press.expect("a press latched");
-        assert_eq!(press.count, want, "{label}");
-        let run = cap.run.expect("the run follows the press");
-        assert_eq!((run.count, run.target, run.at), (want, on, now), "{label}");
+        assert_eq!(cap.press_count(), Some(want), "{label}");
+        assert_eq!(
+            cap.run(),
+            Some(PressRun::new(now, on, pos, want)),
+            "{label}: the run follows the press"
+        );
     }
 }
 
@@ -140,5 +134,5 @@ fn a_first_press_starts_a_run_at_one() {
         Duration::from_secs(3),
         DOUBLE_CLICK_INTERVAL,
     );
-    assert_eq!(cap.press.map(|press| press.count), Some(1));
+    assert_eq!(cap.press_count(), Some(1));
 }

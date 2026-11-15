@@ -2,10 +2,9 @@
 
 use crate::gpu::device::backbuffer_out::BackbufferOut;
 use crate::gpu::device::device_health::DeviceHealth;
-use crate::gpu::device::device_requirements::DeviceRequirements;
+use crate::gpu::device::device_requirements::IMMEDIATES_BYTES;
 use crate::gpu::device::gpu_wait::GpuWait;
 use crate::gpu::device::pass_traffic::PassTraffic;
-use crate::gpu::error::UnmetRequirements;
 use std::iter;
 use std::num::NonZeroU32;
 use std::thread;
@@ -46,7 +45,7 @@ pub struct Gpu {
 
 impl Gpu {
     /// Draw through a device the caller owns. It must have been requested with
-    /// [`DeviceRequirements`]; the host builders check that.
+    /// [`DeviceRequirements`](crate::DeviceRequirements); the host builders check that.
     ///
     /// Takes over the device's lost callback and its uncaptured-error handler, which Palantir
     /// needs to know of a loss, so a callback or a handler set on `device` before is replaced.
@@ -87,8 +86,22 @@ impl Gpu {
         debug_assert!(self.is_lost(), "the lost callback ran");
     }
 
-    pub(crate) fn requirements_met(&self) -> Result<(), UnmetRequirements> {
-        DeviceRequirements::met_by(&self.device)
+    /// The layout a pipeline recipe's [`PipelineRecipe::layout`] takes, over `bind_group_layouts`.
+    /// Every pipeline declares the same immediate-region size, [`IMMEDIATES_BYTES`], taken by
+    /// `PalantirImmediates`.
+    ///
+    /// [`PipelineRecipe::layout`]: crate::gpu::resource::pipeline_recipe::PipelineRecipe::layout
+    pub(crate) fn pipeline_layout(
+        &self,
+        label: &'static str,
+        bind_group_layouts: &[Option<&wgpu::BindGroupLayout>],
+    ) -> wgpu::PipelineLayout {
+        self.device
+            .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some(label),
+                bind_group_layouts,
+                immediate_size: IMMEDIATES_BYTES,
+            })
     }
 
     /// The device's `max_texture_dimension_2d`: the ceiling on surfaces, registered images,
@@ -96,7 +109,7 @@ impl Gpu {
     /// device reads it here; the CPU side reads the copy a host attaches to its `SharedDevice`.
     ///
     /// A zero limit panics: no adapter reports one.
-    pub fn max_texture_dim(&self) -> NonZeroU32 {
+    pub fn max_texture_dimension(&self) -> NonZeroU32 {
         NonZeroU32::new(self.device.limits().max_texture_dimension_2d)
             .expect("device texture dimension limit is zero")
     }
@@ -153,7 +166,7 @@ impl Gpu {
     }
 
     /// Whether the device is lost: it draws nothing more, and a host attaches a new one.
-    pub(crate) fn is_lost(&self) -> bool {
+    pub fn is_lost(&self) -> bool {
         self.health.is_lost()
     }
 

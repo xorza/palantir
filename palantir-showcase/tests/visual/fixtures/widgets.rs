@@ -1,13 +1,12 @@
 //! Per-widget fixtures: the smallest scene exercising one widget's render path.
 
-use image::Rgba;
 use palantir::glam::{UVec2, Vec2};
-use palantir::widget::Shape;
 use palantir::{
     AnimationSpec, Axis, Block, Border, Button, Checkbox, Chrome, ColorCoords, ColorField,
     ColorModel, ColorPicker, ColorScheme, ColorStrip, ComboBox, Configure, Corners, DragValue,
-    InputEvent, Key, KeyText, Modal, Panel, ProgressBar, RadioGroup, RadioLook, Rect, RgbaF32,
-    Sizing, Slider, Spinner, SrgbaU8, SwatchRow, Switch, Text, TextEdit, Ui,
+    InputEvent, Key, KeyText, Modal, Paint, Panel, ProgressBar, RadioGroup, RadioLook, Rect,
+    RgbaF32, Shape, SizeSpec, Sizing, Slider, Spinner, SrgbaU8, SwatchRow, Switch, Text, TextEdit,
+    Ui,
 };
 
 use crate::fixtures;
@@ -16,14 +15,13 @@ use crate::golden_name::GoldenName;
 
 use crate::theme;
 use crate::visual_rig::VisualRig;
-use palantir::Paint;
 
 /// A well padded by `p` and filling the surface around `body`.
 fn padded(ui: &mut Ui, p: f32, body: impl FnOnce(&mut Ui)) {
     Panel::vstack()
         .id_salt("well")
         .padding(p)
-        .size((Sizing::FILL, Sizing::FILL))
+        .size(SizeSpec::FILL)
         .show(ui, body);
 }
 
@@ -40,7 +38,7 @@ fn rounded_clip(ui: &mut Ui, panel: Panel) {
     panel.clip_rounded().show(ui, |ui| {
         Block::new()
             .id_salt("inner")
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .chrome(Chrome::new(RgbaF32::BLACK))
             .show(ui);
     });
@@ -52,7 +50,7 @@ fn button_hello_matches_golden() {
         Button::new()
             .auto_id()
             .label("hello")
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui);
     });
 }
@@ -64,7 +62,7 @@ fn frame_filled_with_border_matches_golden() {
         padded(ui, 20.0, |ui| {
             Block::new()
                 .id_salt("card")
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .chrome(
                     Chrome::rounded(RgbaF32::srgb(0.20, 0.30, 0.55), Corners::all(16.0))
                         .with_border(Border::new(RgbaF32::srgb(0.65, 0.80, 1.00), 2.0)),
@@ -78,8 +76,7 @@ fn frame_filled_with_border_matches_golden() {
 /// exactly 0 or 1, so the middle row reads: clear, border for its width, fill.
 #[test]
 fn a_border_paints_inside_the_rect() {
-    let img = VisualRig::new()
-        .size(UVec2::new(20, 20))
+    let img = VisualRig::new(UVec2::new(20, 20))
         .clear(RgbaF32::BLACK)
         .frame(|ui| {
             fixtures::canvas(ui, |ui| {
@@ -91,9 +88,9 @@ fn a_border_paints_inside_the_rect() {
             });
         })
         .image;
-    let clear = Rgba([0, 0, 0, 255]);
-    let border = Rgba([255, 255, 255, 255]);
-    let fill = Rgba([255, 0, 0, 255]);
+    let clear = SrgbaU8::rgb(0, 0, 0);
+    let border = SrgbaU8::rgb(255, 255, 255);
+    let fill = SrgbaU8::rgb(255, 0, 0);
     let expected: Vec<_> = (0..20)
         .map(|x| match x {
             4..=5 | 14..=15 => border,
@@ -101,7 +98,7 @@ fn a_border_paints_inside_the_rect() {
             _ => clear,
         })
         .collect();
-    let row: Vec<_> = (0..20).map(|x| *img.get_pixel(x, 10)).collect();
+    let row: Vec<_> = (0..20).map(|x| img.texel(UVec2::new(x, 10))).collect();
     assert_eq!(row, expected);
 }
 
@@ -113,13 +110,13 @@ fn surface_rounded_clips_full_fill_child() {
     GoldenName::SurfaceRoundedClipsFullFillChild.assert_scene(UVec2::new(220, 220), |ui| {
         Panel::vstack()
             .auto_id()
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .padding(20.0)
             .chrome(Chrome::new(RgbaF32::srgb(1.0, 0.42, 0.72)))
             .show(ui, |ui| {
                 let panel = Panel::zstack()
                     .id_salt("rounded")
-                    .size((Sizing::FILL, Sizing::FILL))
+                    .size(SizeSpec::FILL)
                     .chrome(green_rim(5.0, Corners::new(4.0, 12.0, 20.0, 28.0)));
                 rounded_clip(ui, panel);
             });
@@ -134,8 +131,7 @@ fn surface_rounded_clips_full_fill_child() {
 /// corners must be solid black; a clamped mask notches them.
 #[test]
 fn rounded_clip_partially_offscreen_does_not_bleed_corners() {
-    let img = VisualRig::new()
-        .size(UVec2::new(120, 90))
+    let img = VisualRig::new(UVec2::new(120, 90))
         .frame(|ui| {
             fixtures::canvas(ui, |ui| {
                 let panel = Panel::zstack()
@@ -150,34 +146,31 @@ fn rounded_clip_partially_offscreen_does_not_bleed_corners() {
 
     // sRGB(0.08, 0.08, 0.10) ~ (20, 20, 25); near-black means all channels
     // well under that.
-    let is_near_black = |p: Rgba<u8>| p.0[0] < 8 && p.0[1] < 8 && p.0[2] < 8;
-    let is_dark_bg = |p: Rgba<u8>| p.0[0] > 12 && p.0[0] < 32 && p.0[2] > 12 && p.0[2] < 40;
+    let is_near_black = |p: SrgbaU8| p.r < 8 && p.g < 8 && p.b < 8;
+    let is_dark_bg = |p: SrgbaU8| p.r > 12 && p.r < 32 && p.b > 12 && p.b < 40;
 
     // The TL corner is the genuine cutout.
-    let tl = *img.get_pixel(0, 0);
+    let tl = img.texel(UVec2::new(0, 0));
     assert!(
         is_dark_bg(tl),
-        "TL viewport corner should be DARK_BG (genuine offscreen-arc cutout), got rgba={:?}",
-        tl.0,
+        "TL viewport corner should be DARK_BG (genuine offscreen-arc cutout), got rgba={tl:?}",
     );
 
     // The other three corners must be solid black.
     for (x, y, label) in [(119, 0, "TR"), (0, 89, "BL"), (119, 89, "BR")] {
-        let px = *img.get_pixel(x, y);
+        let px = img.texel(UVec2::new(x, y));
         assert!(
             is_near_black(px),
             "{label} viewport corner ({x},{y}) should be black (panel arc is offscreen), \
-             got rgba={:?} — the mask SDF is using the viewport-clamped scissor \
+             got rgba={px:?} — the mask SDF is using the viewport-clamped scissor \
              instead of the panel's true rect.",
-            px.0,
         );
     }
 
-    let center = *img.get_pixel(60, 45);
+    let center = img.texel(UVec2::new(60, 45));
     assert!(
         is_near_black(center),
-        "viewport center should be solid black, got rgba={:?}",
-        center.0,
+        "viewport center should be solid black, got rgba={center:?}",
     );
 
     GoldenName::RoundedClipPartiallyOffscreen.assert_matches(&img);
@@ -187,12 +180,12 @@ fn rounded_clip_partially_offscreen_does_not_bleed_corners() {
 /// a size change makes, probed where the clip decides the pixel.
 #[test]
 fn rounded_clip_survives_surface_resize() {
-    let mut h = VisualRig::new();
+    let mut h = VisualRig::new(UVec2::new(120, 120));
     let scene = |ui: &mut Ui| {
         padded(ui, 10.0, |ui| {
             Panel::zstack()
                 .id_salt("rounded")
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .chrome(Chrome::rounded(
                     RgbaF32::srgb(0.2, 0.2, 0.3),
                     Corners::all(8.0),
@@ -208,13 +201,13 @@ fn rounded_clip_survives_surface_resize() {
     for size in [UVec2::new(120, 120), UVec2::new(240, 200)] {
         let img = h.size(size).frame(scene).image;
         fixtures::assert_px(
-            img.get_pixel(10, 10).0,
-            [clear.r, clear.g, clear.b, 255],
+            img.texel(UVec2::new(10, 10)),
+            clear,
             format_args!("{size}: the corner outside the arc"),
         );
         fixtures::assert_px(
-            img.get_pixel(size.x / 2, size.y / 2).0,
-            [fill.r, fill.g, fill.b, 255],
+            img.texel(UVec2::new(size.x / 2, size.y / 2)),
+            fill,
             format_args!("{size}: the panel's center"),
         );
     }
@@ -242,7 +235,7 @@ fn toggle_switch_states_matches_golden() {
             .auto_id()
             .padding(20.0)
             .gap(16.0)
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 for (salt, mut on) in [("on", true), ("off", false)] {
                     Switch::new(&mut on)
@@ -259,16 +252,15 @@ fn toggle_switch_states_matches_golden() {
 /// a slider and a progress bar, at rest, as the light theme holds no motion.
 #[test]
 fn light_theme_widgets_match_golden() {
-    let img = VisualRig::new()
+    let img = VisualRig::new(UVec2::new(320, 260))
         .color_scheme(ColorScheme::Light)
         .clear(theme::fixture(ColorScheme::Light).window_bg)
-        .size(UVec2::new(320, 260))
         .frame(|ui| {
             Panel::vstack()
                 .auto_id()
                 .padding(16.0)
                 .gap(12.0)
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| {
                     Panel::hstack().auto_id().gap(8.0).show(ui, |ui| {
                         Button::new().id_salt("apply").label("Apply").show(ui);
@@ -292,7 +284,7 @@ fn light_theme_widgets_match_golden() {
                     let mut segment = 1;
                     RadioGroup::new(&mut segment)
                         .axis(Axis::X)
-                        .look(RadioLook::Segment)
+                        .look(RadioLook::Segment(None))
                         .id_salt("segments")
                         .size((Sizing::fixed(240.0), Sizing::HUG))
                         .show(ui, |ui, options| {
@@ -358,10 +350,10 @@ fn drag_value_matches_golden() {
 #[test]
 fn combo_box_closed_matches_golden() {
     let opts = ["Apple", "Banana", "Cherry"];
-    let mut selected = &opts[1];
+    let mut selected = opts[1];
     GoldenName::ComboBoxClosed.assert_scene(UVec2::new(220, 70), |ui| {
         padded(ui, 16.0, |ui| {
-            ComboBox::new(&mut selected, &opts)
+            ComboBox::new(&mut selected, opts)
                 .size((Sizing::fixed(160.0), Sizing::HUG))
                 .id_salt("cb")
                 .show(ui);
@@ -375,7 +367,7 @@ fn modal_dialog_matches_golden() {
     GoldenName::ModalDialog.assert_scene(UVec2::new(300, 200), |ui| {
         Panel::vstack()
             .auto_id()
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .chrome(Chrome::new(RgbaF32::srgb(0.35, 0.45, 0.65)))
             .show(ui, |_| {});
         Modal::new().id_salt("m").show(ui, |ui| {
@@ -393,14 +385,14 @@ fn color_field_and_bars_match_golden() {
             .auto_id()
             .padding(12.0)
             .gap(16.0)
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 for model in ColorModel::ALL {
                     let mut coords = ColorCoords::from_color(RgbaF32::hex(0x2b7fd4), model, 0.0);
                     Panel::vstack()
                         .id_salt(model)
                         .gap(8.0)
-                        .size((Sizing::HUG, Sizing::HUG))
+                        .size(SizeSpec::HUG)
                         .show(ui, |ui| {
                             ColorField::new(&mut coords).id_salt("field").show(ui);
                             ColorStrip::hue(&mut coords).id_salt("hue").show(ui);
@@ -435,17 +427,17 @@ fn color_picker_panel_matches_golden() {
 /// ring would paint.
 #[test]
 fn focus_ring_matches_golden() {
-    let mut h = VisualRig::new();
+    let mut h = VisualRig::new(UVec2::new(220, 100));
     let scene = |ui: &mut Ui| {
         Panel::hstack()
             .auto_id()
             .padding(16.0)
             .gap(16.0)
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 Block::new()
                     .id_salt("ringed")
-                    .size((Sizing::FILL, Sizing::FILL))
+                    .size(SizeSpec::FILL)
                     .focusable(true)
                     .chrome(
                         Chrome::rounded(RgbaF32::srgb(0.20, 0.30, 0.55), Corners::all(10.0))
@@ -454,12 +446,12 @@ fn focus_ring_matches_golden() {
                     .show(ui);
                 Block::new()
                     .id_salt("plain")
-                    .size((Sizing::FILL, Sizing::FILL))
+                    .size(SizeSpec::FILL)
                     .focusable(true)
                     .show(ui);
             });
     };
-    h.size(UVec2::new(220, 100)).frame(scene);
+    h.frame(scene);
     h.host.on_input(InputEvent::KeyDown {
         key: Key::Tab,
         repeat: false,

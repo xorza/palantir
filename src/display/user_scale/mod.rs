@@ -72,7 +72,7 @@ impl UserScale {
     /// of the product, so the host's per-event copy and a frame's
     /// [`Display`](crate::Display) can't disagree.
     #[inline]
-    pub const fn applied_to(self, system_scale: SystemScale) -> f32 {
+    pub(crate) const fn applied_to(self, system_scale: SystemScale) -> f32 {
         system_scale.get() * self.0
     }
 

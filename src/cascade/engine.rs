@@ -7,7 +7,6 @@ use crate::cascade::cascade_source::CascadeSource;
 use crate::cascade::counters::CascadeCounters;
 use crate::cascade::paint::Paint;
 use crate::cascade::paint_rect::{self, PaintRectCtx};
-use crate::cascade::plane_backdrop::PlaneBackdrop;
 use crate::cascade::plane_cascade::PlaneCascade;
 use crate::cascade::rows::arrow_group_row::ArrowGroupRow;
 use crate::cascade::rows::entry_row::EntryRow;
@@ -19,10 +18,10 @@ use crate::common::content_hash::ContentHash;
 use crate::common::hash::Hasher;
 use crate::common::non_max::NonMaxU32;
 use crate::common::tracy;
+use crate::layout::drivers;
 use crate::layout::plane_layout::PlaneLayout;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::translate_scale::TranslateScale;
-use crate::primitives::identity::backdrop_key::BackdropKey;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::key_class::KeyFilter;
 use crate::primitives::input::sense::Sense;
@@ -33,13 +32,7 @@ use crate::scene::layer::Layer;
 use crate::scene::node::inherited::Inherited;
 use crate::scene::plane::Plane;
 use crate::scene::tree::Tree;
-use crate::scene::tree::backdrop_entry::BackdropEntry;
-use crate::scene::tree::iter::{TreeItem, TreeItems};
 use crate::scene::tree::node_id::NodeId;
-use crate::shape::geometry::closed_geometry::ClosedGeometry;
-use crate::shape::paint::blur_plan::BlurPlan;
-use crate::shape::paint::closed_paint::ClosedPaint;
-use crate::shape::record::ShapeRecord;
 use std::hash::Hasher as _;
 
 #[derive(Clone, Copy, Debug)]
@@ -143,7 +136,7 @@ impl RowSink for TreeSink<'_> {
                 focusable,
                 disabled: rows.disabled,
             });
-            NonMaxU32::index(self.hits.len() - 1)
+            NonMaxU32::from_idx(self.hits.len() - 1)
         });
         let filter = if keyboard_off {
             KeyFilter::NONE
@@ -506,7 +499,7 @@ impl CascadeEngine {
             let layout_rect = layout.rect[iu];
             let subtree_end = ends[iu].end();
             let has_children = ends[iu].has_children(iu);
-            let outside = layout.outside_input(tree, id);
+            let outside = drivers::outside_input(tree, layout, id);
             let cascade_input =
                 CascadeInputHash::finish(parent_prefix, layout_rect, outside, invisible);
             let clean = S::INCREMENTAL
@@ -619,131 +612,9 @@ impl CascadeEngine {
         while let Some(popped) = self.stack.pop() {
             finalize_frame(&mut self.stack, &mut lc.subtree_paint_rects, &popped);
         }
-        source.list_backdrops(lc);
+        lc.list_backdrops(source.tree, source.layout, source.display_scale);
         true
     }
-}
-
-impl TreeSource<'_> {
-    /// Rebuild `lc.backdrops` from the backdrops `tree` recorded, each at its paint row and that
-    /// row's screen, and `lc.backdrop_rows` from them.
-    fn list_backdrops(self, lc: &mut PlaneCascade) {
-        let Self {
-            tree,
-            display_scale,
-            ..
-        } = self;
-        lc.backdrops.clear();
-        let widget_ids = tree.records.widget_id();
-        for entry in &tree.backdrops {
-            let node = entry.node.idx();
-            let span = lc.paint_arena.node_spans[node];
-            if span.len == 0 {
-                continue;
-            }
-            debug_assert!(
-                entry.row < span.len,
-                "a backdrop's row lies in its owner's span"
-            );
-            let row = span.start + entry.row;
-            let rect = lc.paint_arena.rows[row as usize].screen;
-            if rect.is_paint_empty() {
-                continue;
-            }
-            let paint_row = after_children(tree, lc, entry).max(row);
-            let capture = tree.shapes.records[entry.shape_idx as usize]
-                .backdrop_capture()
-                .expect("a listed backdrop reads under it");
-            let shape_scale = lc.shape_scales[node];
-            let scale = shape_scale * display_scale;
-            let plan = BlurPlan::new(capture.sigma * scale);
-            let narrowest = self
-                .narrowest_side(entry, rect, shape_scale)
-                .map(|n| n * display_scale);
-            lc.backdrops.push(PlaneBackdrop {
-                key: BackdropKey {
-                    owner: widget_ids[node],
-                    shape: entry.row,
-                },
-                row,
-                paint_row,
-                rect,
-                plan,
-                footprint: rect.inflated(
-                    PlaneBackdrop::reach(plan, capture.reach.margin(scale, narrowest))
-                        / display_scale,
-                ),
-            });
-        }
-        lc.backdrop_rows.clear();
-        lc.backdrop_rows
-            .extend(lc.backdrops.iter().map(|backdrop| backdrop.row));
-        lc.backdrop_rows.sort_unstable();
-    }
-
-    /// The narrowest side, in logical px, of a backdrop drawn whole on the screen, which a lens
-    /// reads inside of: a shape's box that no paint animation turns and no clip cuts. `rect` is the
-    /// shape's paint rect, its drop shadow's halo in it, which the test of a clip compares with
-    /// the same bound lifted; the side is the box's own, as a shadow is no part of the backdrop.
-    /// `None` for a turning or clipped backdrop, whose screen rect is not its own; and for a
-    /// triangle, as the lens bounds its reads by a
-    /// rounded rect's chords, no shorter along an inward normal than its narrowest side
-    /// (`LensOptics::margin`), which a triangle's corner breaks.
-    fn narrowest_side(self, entry: &BackdropEntry, rect: Rect, shape_scale: f32) -> Option<f32> {
-        let Self { tree, layout, .. } = self;
-        if tree.paint_animations.rotates(entry.shape_idx) {
-            return None;
-        }
-        let ShapeRecord::Closed {
-            geometry: geometry @ ClosedGeometry::Box(_),
-            paint: ClosedPaint::Fill(paint),
-        } = &tree.shapes.records[entry.shape_idx as usize]
-        else {
-            return None;
-        };
-        let owner_size = layout.rect[entry.node.idx()].size;
-        let painted = paint.bbox_local(*geometry, owner_size).size;
-        // The lift and a clip that misses the backdrop round the size within a few f32 ulps; a clip
-        // that cuts less than this lets a sample out by less than the pixel `PlaneBackdrop::reach`
-        // rounds out.
-        let whole = |screen: f32, lifted: f32| screen >= lifted * (1.0 - 1e-5);
-        if !(whole(rect.size.w, painted.w * shape_scale)
-            && whole(rect.size.h, painted.h * shape_scale))
-        {
-            return None;
-        }
-        let own = geometry.local_bounds(owner_size).size;
-        Some(own.w.min(own.h) * shape_scale)
-    }
-}
-
-/// The first row past the subtree of the last child `entry`'s node records before the backdrop, `0`
-/// for a backdrop no child precedes: a node's rows lie before its children's, each subtree's rows
-/// in one run from its root's span, so the run ends where the next node's span starts.
-fn after_children(tree: &Tree, lc: &PlaneCascade, entry: &BackdropEntry) -> u32 {
-    let mut child = None;
-    for item in TreeItems::new(&tree.records, &tree.shapes.records, entry.node) {
-        match item {
-            TreeItem::ShapeRecord(idx, _) if idx == entry.shape_idx => break,
-            TreeItem::ShapeRecord(..) => {}
-            TreeItem::Child(c) => child = Some(c.id),
-        }
-    }
-    let Some(child) = child else {
-        return 0;
-    };
-    let spans = &lc.paint_arena.node_spans;
-    let next = lc.subtree_ends[child.idx()] as usize;
-    let end = spans
-        .get(next)
-        .map_or(lc.paint_arena.rows.len() as u32, |span| span.start);
-    debug_assert!(
-        spans[child.idx()..next]
-            .iter()
-            .all(|span| span.start >= spans[child.idx()].start && span.start + span.len <= end),
-        "a subtree's rows lie in one run, before the next node's"
-    );
-    end
 }
 
 #[cfg(feature = "internals")]

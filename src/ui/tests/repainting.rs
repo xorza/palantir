@@ -8,11 +8,11 @@ use crate::image_registry::texture_limit::TextureLimit;
 use crate::internals::paint_capture::PaintCall;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::input_policy::InputPolicy;
+use crate::primitives::input::input_policy::InputSignal;
 use crate::primitives::input::keyboard::key::Key;
-use crate::primitives::input::policy::InputPolicy;
-use crate::primitives::input::policy::InputSignal;
 use crate::primitives::layout::clip_mode::ClipMode;
-use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
+use crate::primitives::paint::brush::gradient::Gradient;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
@@ -64,7 +64,7 @@ fn frame_stats_overlay_records_partial_damage() {
     assert_eq!(debug.records.len(), 3, "row, chip and text leaf");
     assert_eq!(debug.chrome_table.len(), 1, "the chip's fill alone");
 
-    let report = h.at(Duration::from_millis(16)).frame(&mut body);
+    let report = h.at(Duration::from_millis(16)).frame_recorded(&mut body);
     assert!(
         matches!(
             report.plan,
@@ -189,7 +189,7 @@ fn coalesce_floor_follows_refresh_rate() {
 
     let mut h = Harness::builder(SURFACE)
         .mono()
-        .refresh_millihertz(60_000)
+        .refresh_millihertz(NonZeroU32::new(60_000).unwrap())
         .build();
     schedule_pair(&mut h);
     assert_eq!(
@@ -237,17 +237,17 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
 
     let mut h = Harness::mono(SURFACE);
 
-    let r0 = h.frame(|ui| body(ui, half));
+    let r0 = h.frame_recorded(|ui| body(ui, half));
     assert_eq!(r0.processing, FrameProcessing::SingleLayout);
     assert_eq!(r0.repaint_at, Some(half));
-    let (rendered, recorded) = (h.ui().render_frame_id(), h.ui().record_frame_id());
+    let (rendered, recorded) = (h.ui().render_frame_idx(), h.ui().record_frame_idx());
 
-    let r1 = h.at(half).frame(|ui| body(ui, half));
+    let r1 = h.at(half).frame_recorded(|ui| body(ui, half));
     assert_eq!(r1.processing, FrameProcessing::PaintOnly);
 
-    // `record_frame_id` must not count the painted frame, or retained state stamping it reads an idle blink as a skipped surface.
-    assert_eq!(h.ui().render_frame_id(), rendered + 1);
-    assert_eq!(h.ui().record_frame_id(), recorded);
+    // `record_frame_idx` must not count the painted frame, or retained state stamping it reads an idle blink as a skipped surface.
+    assert_eq!(h.ui().render_frame_idx(), rendered + 1);
+    assert_eq!(h.ui().record_frame_idx(), recorded);
 
     match r1.plan {
         Some(RenderPlan {
@@ -266,19 +266,19 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
         other => panic!("expected RenderPlan::Partial on PaintOnly, got {other:?}"),
     }
     assert_eq!(r1.repaint_at, Some(half + half));
-    let r2 = h.at(half + half).frame(|ui| body(ui, half));
+    let r2 = h.at(half + half).frame_recorded(|ui| body(ui, half));
     assert_eq!(r2.processing, FrameProcessing::PaintOnly);
 
     // A pending close request vetoes the fast path: the app reads `close_requested` only during record.
     h.ui_mut().host.window_frame.facts.close_requested = true;
-    let r3 = h.at(half * 3).frame(|ui| body(ui, half));
+    let r3 = h.at(half * 3).frame_recorded(|ui| body(ui, half));
     assert_eq!(r3.processing, FrameProcessing::SingleLayout);
     h.ui_mut().host.window_frame.facts.close_requested = false;
-    let r4 = h.at(half * 4).frame(|ui| body(ui, half));
+    let r4 = h.at(half * 4).frame_recorded(|ui| body(ui, half));
     assert_eq!(r4.processing, FrameProcessing::PaintOnly);
 
-    assert_eq!(h.ui().render_frame_id(), rendered + 4);
-    assert_eq!(h.ui().record_frame_id(), recorded + 1);
+    assert_eq!(h.ui().render_frame_idx(), rendered + 4);
+    assert_eq!(h.ui().record_frame_idx(), recorded + 1);
 }
 
 /// A `PaintOnly` frame must not clear the record store: retained `ShapeRecord`s' payload indices
@@ -291,7 +291,7 @@ fn paint_only_preserves_record_store_for_retained_shapes() {
             Block::new()
                 .id(WidgetId::from_hash("grad_bg"))
                 .size(50.0)
-                .chrome(Chrome::NONE.with_fill(LinearGradient::horizontal([
+                .chrome(Chrome::NONE.with_fill(Gradient::horizontal([
                     RgbaF32::srgb(1.0, 0.0, 0.0),
                     RgbaF32::srgb(0.0, 0.0, 1.0),
                 ])))
@@ -308,14 +308,14 @@ fn paint_only_preserves_record_store_for_retained_shapes() {
 
     let mut h = Harness::mono(SURFACE);
 
-    let r0 = h.frame(|ui| body(ui, half));
+    let r0 = h.frame_recorded(|ui| body(ui, half));
     assert_eq!(r0.processing, FrameProcessing::SingleLayout);
     {
         let store = &h.ui().forest.record_store;
         assert_eq!(store.text.interned().all(), "retained 7");
     }
 
-    let r1 = h.at(half).frame(|ui| body(ui, half));
+    let r1 = h.at(half).frame_recorded(|ui| body(ui, half));
     assert_eq!(r1.processing, FrameProcessing::PaintOnly);
 
     assert_eq!(
@@ -350,7 +350,7 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
             .calls
             .iter()
             .filter_map(|command| match command {
-                PaintCall::Fill(payload) if payload.paint.fill.lut_row != LutRow::FALLBACK => {
+                PaintCall::Fill(payload, _) if payload.paint.fill.lut_row != LutRow::FALLBACK => {
                     Some(payload.paint.fill.lut_row)
                 }
                 _ => None,
@@ -362,7 +362,7 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
         Panel::hstack().size(20.0).show(ui, |ui| {
             ui.add_shape(
                 Shape::rect().at(Rect::new(0.0, 0.0, 8.0, 8.0)),
-                LinearGradient::horizontal([RgbaF32::hex(0xff0000), RgbaF32::hex(0x0000ff)]),
+                Gradient::horizontal([RgbaF32::hex(0xff0000), RgbaF32::hex(0x0000ff)]),
             );
             support::add_blink_shape(ui, half);
         });
@@ -384,7 +384,7 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
             for idx in 0..SOFT_ROWS - 1 {
                 ui.add_shape(
                     Shape::rect().at(Rect::new(0.0, 0.0, 8.0, 8.0)),
-                    LinearGradient::horizontal([
+                    Gradient::horizontal([
                         RgbaF32::from_srgba8(SrgbaU8::rgb(
                             idx as u8,
                             (idx >> u8::BITS) as u8,
@@ -403,7 +403,7 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
     assert!(b_rows.contains(&original_row));
     table.advance_to(4);
 
-    let report = a.at(half).frame(|ui| window_a(ui, half));
+    let report = a.at(half).frame_recorded(|ui| window_a(ui, half));
     assert_eq!(report.processing, FrameProcessing::PaintOnly);
     let resolved_row = rows(a.frames(), &mut encoder, &mut table)[0];
     assert_ne!(
@@ -430,14 +430,15 @@ fn a_new_device_makes_each_window_record_once() {
     a.frame(|ui| body(ui, half));
     b.frame(|ui| body(ui, half));
     assert_eq!(
-        a.at(half).frame(|ui| body(ui, half)).processing,
+        a.at(half).frame_recorded(|ui| body(ui, half)).processing,
         FrameProcessing::PaintOnly
     );
 
     let limit = NonZeroU32::new(4096).unwrap();
     shared.attach_device(TextureLimit::from_device(limit));
     for ui in [&mut a, &mut b] {
-        let processing = |ui: &mut Harness, at| ui.at(at).frame(|ui| body(ui, half)).processing;
+        let processing =
+            |ui: &mut Harness, at| ui.at(at).frame_recorded(|ui| body(ui, half)).processing;
         assert_eq!(processing(ui, half * 2), FrameProcessing::SingleLayout);
         assert_eq!(processing(ui, half * 3), FrameProcessing::PaintOnly);
     }
@@ -468,7 +469,7 @@ fn paint_only_skipped_when_widget_requested_repaint() {
     });
     assert!(r0.repaint_requested);
 
-    let r1 = h.at(half).frame(|ui| body(ui, half));
+    let r1 = h.at(half).frame_recorded(|ui| body(ui, half));
     assert_eq!(r1.processing, FrameProcessing::SingleLayout);
 }
 
@@ -492,7 +493,7 @@ fn input_policy_routes_paint_only_gate() {
     {
         let mut h = Harness::mono(SURFACE);
         h.ui_mut().set_input_policy(InputPolicy::OnDelta);
-        let r0 = h.frame(|ui| body(ui, half));
+        let r0 = h.frame_recorded(|ui| body(ui, half));
         assert_eq!(r0.processing, FrameProcessing::SingleLayout);
 
         h.hover(Vec2::new(40.0, 40.0));
@@ -502,7 +503,7 @@ fn input_policy_routes_paint_only_gate() {
             "an inert pointer move registers as Inert",
         );
 
-        let r1 = h.at(half).frame(|ui| body(ui, half));
+        let r1 = h.at(half).frame_recorded(|ui| body(ui, half));
         assert_eq!(
             r1.processing,
             FrameProcessing::PaintOnly,
@@ -518,7 +519,7 @@ fn input_policy_routes_paint_only_gate() {
         let _ = h.frame(|ui| body(ui, half));
 
         h.hover(Vec2::new(40.0, 40.0));
-        let r1 = h.at(half).frame(|ui| body(ui, half));
+        let r1 = h.at(half).frame_recorded(|ui| body(ui, half));
         assert_eq!(
             r1.processing,
             FrameProcessing::SingleLayout,
@@ -539,7 +540,7 @@ fn input_policy_routes_paint_only_gate() {
             InputSignal::Repaint,
             "KeyDown with focus held must raise the signal to Repaint",
         );
-        let r1 = h.at(half).frame(|ui| body(ui, half));
+        let r1 = h.at(half).frame_recorded(|ui| body(ui, half));
         assert_ne!(
             r1.processing,
             FrameProcessing::PaintOnly,
@@ -576,7 +577,7 @@ fn request_relayout_between_frames_is_a_caller_error() {
 fn request_relayout_during_record_is_honored() {
     let mut h = Harness::mono(SURFACE);
     let mut asked = false;
-    let report = h.frame(|ui| {
+    let report = h.frame_recorded(|ui| {
         if !asked {
             asked = true;
             ui.request_relayout();

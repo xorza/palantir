@@ -11,19 +11,17 @@
 
 use crate::bench::backends::Backends;
 use crate::bench::kind::{Kind, Scale};
+use crate::cascade::blur_plan::BlurPlan;
 use crate::gpu::atlas::atlas_format::AtlasFormat;
 use crate::gpu::atlas::page_list::PageListConfig;
 use crate::gpu::atlas::scratch_cache::ScratchId;
-use crate::gpu::backdrop::backdrop_blur::{
-    BackdropBlur, BlurJob, JobLayout, LEVEL_FORMAT, ResultTarget,
-};
+use crate::gpu::backdrop::backdrop_blur::{BackdropBlur, BlurJob, LEVEL_FORMAT, ResultTarget};
 use crate::gpu::bench_gpu::{BenchGpu, PassTimer, TARGET_FORMAT, Timing};
 use crate::gpu::pipeline::effect_pipeline::backdrop_groups::ResultTexture;
 use crate::gpu::resource::gpu_ctx::GpuCtx;
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::resource::upload_staging::UploadStaging;
 use crate::primitives::geometry::urect::URect;
-use crate::shape::paint::blur_plan::BlurPlan;
 use criterion::{Bencher, Criterion, Throughput};
 use glam::UVec2;
 use std::time::Duration;
@@ -36,7 +34,7 @@ const SIDES: [u32; 2] = [512, 2048];
 fn fill_capture(gpu: &BenchGpu, blur: &mut BackdropBlur, side: u32) {
     let surface = UVec2::splat(side);
     blur.capture_view(&gpu.gpu, TARGET_FORMAT, surface);
-    let texture = &blur.captures[0].target.texture;
+    let texture = &blur.captures[0].target().texture;
     let pixels: Vec<u8> = (0..side * side * 4)
         .map(|i| (i.wrapping_mul(2_654_435_761) >> 24) as u8)
         .collect();
@@ -84,7 +82,6 @@ pub(crate) fn atomic(c: &mut Criterion, backends: &Backends) {
                         generation: 0,
                     }),
                     dest_origin: UVec2::ZERO,
-                    layout: JobLayout::default(),
                 };
                 let mut blur = BackdropBlur::new(&gpu.gpu, TextureBinding::new(&gpu.gpu).sampler());
                 fill_capture(gpu, &mut blur, side);
@@ -108,7 +105,7 @@ pub(crate) fn atomic(c: &mut Criterion, backends: &Backends) {
                     bencher,
                     gpu,
                     &mut blur,
-                    &mut [job],
+                    &[job],
                     ResultTarget {
                         texture: &dest,
                         view: &view,
@@ -123,7 +120,7 @@ pub(crate) fn atomic(c: &mut Criterion, backends: &Backends) {
             let gpu = backends.device(Timing::PassOnly);
             let plan = BlurPlan::new(32.0);
             assert_eq!(plan.levels(), 3, "σ 32 px halves three times");
-            let mut jobs: Vec<BlurJob> = (0..n)
+            let jobs: Vec<BlurJob> = (0..n)
                 .map(|i| BlurJob {
                     plan,
                     surface: UVec2::splat(2048),
@@ -132,7 +129,6 @@ pub(crate) fn atomic(c: &mut Criterion, backends: &Backends) {
                     region: URect::new(16 * i, 8, 8, 8),
                     dest: ResultTexture::Page(0),
                     dest_origin: UVec2::new(16 * i, 0),
-                    layout: JobLayout::default(),
                 })
                 .collect();
             let mut blur = BackdropBlur::new(&gpu.gpu, TextureBinding::new(&gpu.gpu).sampler());
@@ -162,7 +158,7 @@ pub(crate) fn atomic(c: &mut Criterion, backends: &Backends) {
                 bencher,
                 gpu,
                 &mut blur,
-                &mut jobs,
+                &jobs,
                 ResultTarget {
                     texture: &dest,
                     view: &view,
@@ -178,7 +174,7 @@ fn time_jobs(
     bencher: &mut Bencher<'_>,
     gpu: &BenchGpu,
     blur: &mut BackdropBlur,
-    jobs: &mut [BlurJob],
+    jobs: &[BlurJob],
     dest: ResultTarget<'_>,
 ) {
     let mut timer = PassTimer::new(gpu);

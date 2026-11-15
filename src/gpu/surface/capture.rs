@@ -18,38 +18,36 @@ const BYTES_PER_PIXEL: u32 = 4;
 #[derive(Debug)]
 pub(crate) struct Capture {
     staging: ReadbackStaging,
-    /// What [`Self::take`] does to the staged bytes to read them in [`Self::FORMAT`]'s order.
-    order: TexelOrder,
+    /// The order of the staged bytes' channels, which [`Self::take`] puts in [`Self::FORMAT`]'s.
+    order: ChannelOrder,
 }
 
-/// How a texture's bytes reach [`Capture::FORMAT`]'s byte order, the one classifier every
-/// read-back asks.
+/// The channel order of an 8-bit four-channel texture's bytes, the one classifier every read-back
+/// asks; a texture of no such order is blitted into [`Capture::FORMAT`] first.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum TexelOrder {
-    /// 8-bit RGBA: as they are.
+pub(crate) enum ChannelOrder {
     Rgba,
-    /// 8-bit BGRA: red and blue swapped.
+    /// Red and blue swapped.
     Bgra,
-    /// Any other format: blitted into [`Capture::FORMAT`] first. A frame's target is sRGB or
-    /// float, so only a test's read-back meets an 8-bit unorm one, whose bytes it takes as they
-    /// are.
-    Blit,
 }
 
-impl TexelOrder {
-    pub(crate) const fn of(format: wgpu::TextureFormat) -> Self {
+impl ChannelOrder {
+    /// The order of `format`'s bytes, sRGB or not; `None` for any other format, which a blit
+    /// puts in [`Capture::FORMAT`]. A frame's target is sRGB or float, so only a test's read-back
+    /// meets an 8-bit unorm one, whose bytes it takes as they are.
+    pub(crate) const fn of(format: wgpu::TextureFormat) -> Option<Self> {
         match format {
-            wgpu::TextureFormat::Rgba8UnormSrgb | wgpu::TextureFormat::Rgba8Unorm => Self::Rgba,
-            wgpu::TextureFormat::Bgra8UnormSrgb | wgpu::TextureFormat::Bgra8Unorm => Self::Bgra,
-            _ => Self::Blit,
+            wgpu::TextureFormat::Rgba8UnormSrgb | wgpu::TextureFormat::Rgba8Unorm => {
+                Some(Self::Rgba)
+            }
+            wgpu::TextureFormat::Bgra8UnormSrgb | wgpu::TextureFormat::Bgra8Unorm => {
+                Some(Self::Bgra)
+            }
+            _ => None,
         }
     }
 
-    /// `bytes`, copied in this order, put in RGBA order in place, four to a texel.
-    ///
-    /// # Panics
-    ///
-    /// For [`Self::Blit`], whose bytes a blit puts in order.
+    /// `bytes`, in this order, put in RGBA order in place, four to a texel.
     pub(crate) fn to_rgba(self, bytes: &mut [u8]) {
         match self {
             Self::Rgba => {}
@@ -58,7 +56,6 @@ impl TexelOrder {
                     texel.swap(0, 2);
                 }
             }
-            Self::Blit => panic!("a blit puts the bytes in order"),
         }
     }
 }
@@ -68,8 +65,8 @@ impl TexelOrder {
 pub(crate) struct CaptureSource<'a> {
     /// A texture made with `COPY_SRC`.
     pub(crate) texture: &'a wgpu::Texture,
-    /// The blit into [`Capture::FORMAT`], where [`TexelOrder::of`] reads the texture's format as
-    /// [`TexelOrder::Blit`].
+    /// The blit into [`Capture::FORMAT`], where [`ChannelOrder::of`] finds the texture's format in
+    /// no order.
     pub(crate) blit: Option<CaptureBlit<'a>>,
 }
 
@@ -129,20 +126,18 @@ impl Capture {
         };
         let into_buffer = staging.copy_info();
         let format = texture.format();
-        let order = match TexelOrder::of(format) {
-            TexelOrder::Blit => {
+        let order = match ChannelOrder::of(format) {
+            None => {
                 let CaptureBlit { pipeline, binding } =
                     blit.unwrap_or_else(|| panic!("a {format:?} texture needs the capture blit"));
                 let texture = |label, format, usage| {
-                    texel::texture_2d(
-                        gpu,
-                        TargetSpec {
-                            label,
-                            size: region.size,
-                            format,
-                            usage,
-                        },
-                    )
+                    TargetSpec {
+                        label,
+                        size: region.size,
+                        format,
+                        usage,
+                    }
+                    .texture(gpu)
                 };
                 // The blit reads texel for texel at the target's own position, so the region is
                 // first copied to a texture of its own size.
@@ -163,9 +158,9 @@ impl Capture {
                 let encoded_view = encoded.create_view(&wgpu::TextureViewDescriptor::default());
                 blit_pipeline::draw(&mut encoder, &bind_group, &encoded_view, pipeline);
                 encoder.copy_texture_to_buffer(encoded.as_image_copy(), into_buffer, extent);
-                TexelOrder::Rgba
+                ChannelOrder::Rgba
             }
-            order => {
+            Some(order) => {
                 encoder.copy_texture_to_buffer(at_region, into_buffer, extent);
                 order
             }
@@ -207,14 +202,14 @@ impl Capture {
 pub(crate) mod internals {
     use crate::gpu::device::gpu::Gpu;
     use crate::gpu::resource::readback_staging::ReadbackStaging;
-    use crate::gpu::surface::capture::{Capture, TexelOrder};
+    use crate::gpu::surface::capture::{Capture, ChannelOrder};
 
     impl Capture {
         /// A capture whose copy never finishes, as one the device is still running.
         pub(crate) fn never_landing(gpu: &Gpu) -> Self {
             Self {
                 staging: ReadbackStaging::never_landing(gpu),
-                order: TexelOrder::Rgba,
+                order: ChannelOrder::Rgba,
             }
         }
     }
@@ -222,7 +217,7 @@ pub(crate) mod internals {
 
 #[cfg(test)]
 mod tests {
-    use crate::gpu::surface::capture::TexelOrder;
+    use crate::gpu::surface::capture::ChannelOrder;
 
     /// 8-bit RGBA reads as it is and BGRA swaps, sRGB or not; every other format, half float
     /// among them, blits. Two BGRA texels swap red and blue each, and RGBA bytes stay.
@@ -239,19 +234,19 @@ mod tests {
                 Bgra8UnormSrgb,
                 Rgba16Float
             ]
-            .map(TexelOrder::of),
+            .map(ChannelOrder::of),
             [
-                TexelOrder::Rgba,
-                TexelOrder::Rgba,
-                TexelOrder::Bgra,
-                TexelOrder::Bgra,
-                TexelOrder::Blit,
+                Some(ChannelOrder::Rgba),
+                Some(ChannelOrder::Rgba),
+                Some(ChannelOrder::Bgra),
+                Some(ChannelOrder::Bgra),
+                None,
             ]
         );
         let mut bytes = [1, 2, 3, 4, 5, 6, 7, 8];
-        TexelOrder::Bgra.to_rgba(&mut bytes);
+        ChannelOrder::Bgra.to_rgba(&mut bytes);
         assert_eq!(bytes, [3, 2, 1, 4, 7, 6, 5, 8]);
-        TexelOrder::Rgba.to_rgba(&mut bytes);
+        ChannelOrder::Rgba.to_rgba(&mut bytes);
         assert_eq!(bytes, [3, 2, 1, 4, 7, 6, 5, 8]);
     }
 }

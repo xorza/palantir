@@ -7,7 +7,7 @@ use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use glam::Vec2;
 
 /// Which axis a layout distributes children along, or a query targets. `X` horizontal, `Y` vertical.
-#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug, serde::Serialize, serde::Deserialize)]
 #[repr(u8)]
 pub enum Axis {
     /// Horizontal.

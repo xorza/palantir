@@ -19,13 +19,13 @@ use glam::Vec2;
 #[serde(deny_unknown_fields)]
 pub struct ComboBoxTheme {
     /// Gutter between label and chevron; the trigger justifies its children apart, so this is the minimum gap.
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
+    #[serde(deserialize_with = "crate::primitives::file::length")]
     pub gap: f32,
     /// Chevron bounding box in logical px; a polyline, so font-independent.
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::size")]
+    #[serde(deserialize_with = "crate::primitives::file::size")]
     pub arrow_size: Size,
     /// Stroke width of the chevron polyline.
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
+    #[serde(deserialize_with = "crate::primitives::file::length")]
     pub arrow_width: f32,
 }
 

@@ -85,9 +85,7 @@ fn fill_panel_grows_to_contain_wrapped_content_on_y() {
         for surface_h in [800.0, 400.0, 300.0, 200.0, 150.0, 100.0, 50.0] {
             let mut rig = LayoutRig::new();
             rig.run(Size::new(800.0, surface_h), |rec| {
-                let chrome = Widget::zstack()
-                    .padding(16.0)
-                    .size((Sizing::FILL, Sizing::FILL));
+                let chrome = Widget::zstack().padding(16.0).size(SizeSpec::FILL);
                 rec.node("chrome", chrome, |rec| {
                     let size = (Sizing::fixed(360.0), Sizing::HUG);
                     let paragraph = |rec: &mut NodeRecorder<'_>| {
@@ -139,7 +137,7 @@ fn a_hug_scroll_wraps_its_text_at_the_column_width() {
         rec.node("column", column, |rec| {
             rec.node("scroll", Widget::zstack(), |rec| {
                 let axes = ScrollAxes::VERTICAL.fit_content(SizeSpec::default());
-                let viewport = Widget::scroll(axes).size((Sizing::FILL, Sizing::FILL));
+                let viewport = Widget::scroll(axes).size(SizeSpec::FILL);
                 rec.node("viewport", viewport, |rec| {
                     let run = TextRun::new(&paragraph, 16.0, TextWrap::WrapWithOverflow);
                     rec.text_leaf("text", Widget::leaf(), run);

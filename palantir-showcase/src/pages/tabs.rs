@@ -1,13 +1,14 @@
 //! The two tab widgets: a page view bound to an index, and the strip on
 //! its own with content of the app's, close buttons and overflow.
 
+use crate::scaffold;
 use crate::scaffold::api;
+use crate::scaffold::kit::Kit;
+use crate::scaffold::section::Section;
 use crate::scaffold::tokens::M;
-use crate::support;
-use crate::support::{Kit, Section};
 use palantir::{
-    Block, Button, Chrome, Configure, Corners, Panel, Sizing, TabChip, TabItem, TabKey, TabMove,
-    TabOverflow, TabStrip, TabbedView, Text, Ui, WidgetId, fmt,
+    Block, Button, Chrome, Configure, Corners, Panel, SizeSpec, Sizing, TabChip, TabItem, TabKey,
+    TabMove, TabOverflow, TabStrip, TabbedView, Text, Ui, WidgetId, fmt,
 };
 
 /// The pages the view may hold; it opens on the first three, and "+" adds the next missing.
@@ -81,7 +82,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
         Section::new("Tabbed view")
             .apis(&[api!(type TabbedView)])
             .show(ui, k, |ui| {
-                support::note(
+                scaffold::note(
                     ui,
                     k,
                     "A strip over a content area, bound to a &mut usize as a combo box is. Click a \
@@ -94,7 +95,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
                     .padding(M.space.md)
                     .chrome(k.t.card())
                     .show(ui, |ui| tabbed_view(ui, k, s));
-                support::row(ui, |ui| {
+                scaffold::row(ui, |ui| {
                     let next = POOL.into_iter().find(|page| !s.pages.contains(page));
                     if Button::new()
                         .label("+ Add page")
@@ -113,14 +114,14 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
                         Some(Edit::Closed(page)) => fmt!(ui, "closed {page}"),
                         Some(Edit::Moved { page, to }) => fmt!(ui, "moved {page} to slot {to}"),
                     };
-                    support::readout(ui, k, "last edit", last);
+                    scaffold::readout(ui, k, "last edit", last);
                 });
             });
 
         Section::new("The strip alone")
             .apis(&[api!(TabStrip::new), api!(TabChip::show_label)])
             .show(ui, k, |ui| {
-                support::note(
+                scaffold::note(
                     ui,
                     k,
                     "TabStrip draws each chip's frame and close button, and the app records what \
@@ -133,7 +134,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
         Section::new("Overflow")
             .apis(&[api!(TabOverflow::Menu)])
             .show(ui, k, |ui| {
-                support::note(
+                scaffold::note(
                     ui,
                     k,
                     "More chips than room. They pan under the wheel, and the trailing button lists \
@@ -149,20 +150,20 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
                             s.items.push(TabItem::new(TabKey::of(i), ui.intern(*label)));
                         }
                         let hit = TabStrip::new(&s.items)
-                            .selected(s.overflowing)
+                            .selected_idx(s.overflowing)
                             .overflow(TabOverflow::Menu)
                             .show(ui, |ui, chip| chip.show_label(ui));
                         if let Some(i) = hit.activated {
                             s.overflowing = i;
                         }
                     });
-                support::readout(ui, k, "showing", MANY[s.overflowing]);
+                scaffold::readout(ui, k, "showing", MANY[s.overflowing]);
             });
     });
 }
 
 fn strip_demo(ui: &mut Ui, k: Kit, s: &mut State) {
-    support::well(ui, k, |ui| {
+    scaffold::well(ui, k, |ui| {
         s.items.clear();
         for &key in &s.open {
             s.items.push(TabItem {
@@ -172,8 +173,8 @@ fn strip_demo(ui: &mut Ui, k: Kit, s: &mut State) {
         }
         let open = &s.open;
         let hit = TabStrip::new(&s.items)
-            .selected(s.picked)
-            .show(ui, |ui, chip| layer_chip(ui, chip, open[chip.slot]));
+            .selected_idx(s.picked)
+            .show(ui, |ui, chip| layer_chip(ui, chip, open[chip.idx]));
         if let Some(slot) = hit.closed
             && s.open.len() > 1
         {
@@ -184,7 +185,7 @@ fn strip_demo(ui: &mut Ui, k: Kit, s: &mut State) {
         }
     });
     let line = fmt!(ui, "{} open, slot {} selected", s.open.len(), s.picked);
-    support::readout(ui, k, "chips", line);
+    scaffold::readout(ui, k, "chips", line);
 }
 
 /// The chip of `layer`: its label, and a dot on the even layers in the chip's ink.
@@ -206,7 +207,7 @@ fn tabbed_view(ui: &mut Ui, k: Kit, s: &mut State) {
         .closable(true)
         .show(ui, |ui, page| {
             Panel::vstack()
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .padding(M.space.md)
                 .gap(M.space.sm)
                 .show(ui, |ui| {

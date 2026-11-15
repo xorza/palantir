@@ -4,11 +4,11 @@
 //! frames, so a pixel reads magenta only if the scene left it uncovered. A failing
 //! test writes its second frame under `tests/visual/output/damage_<name>/`.
 
-use image::{Rgba, RgbaImage};
+use palantir::Image;
 use palantir::glam::{IVec2, UVec2, Vec2};
 use palantir::{
-    Block, Button, Chrome, Configure, DebugOverlayConfig, FramePaint, Panel, Rect, RgbaF32, Sizing,
-    Ui,
+    Block, Button, Chrome, Configure, DebugOverlayConfig, FramePaint, Panel, Rect, RgbaF32,
+    SizeSpec, Sizing, SrgbaU8, Ui,
 };
 
 use crate::fixtures;
@@ -30,17 +30,20 @@ const DAMAGE_RECT: DebugOverlayConfig = DebugOverlayConfig {
     frame_stats: false,
 };
 
-const fn is_magenta(Rgba([r, g, b, _]): Rgba<u8>) -> bool {
+const fn is_magenta(SrgbaU8 { r, g, b, .. }: SrgbaU8) -> bool {
     r > 240 && g < 16 && b > 240
 }
 
-const fn is_red(Rgba([r, g, b, _]): Rgba<u8>) -> bool {
+const fn is_red(SrgbaU8 { r, g, b, .. }: SrgbaU8) -> bool {
     r > 240 && g < 16 && b < 16
 }
 
 /// Pixels of `img` that read as [`VIS_CLEAR`], which no scene paints.
-fn magenta_pixels(img: &RgbaImage) -> usize {
-    img.pixels().filter(|p| is_magenta(**p)).count()
+fn magenta_pixels(img: &Image) -> usize {
+    img.texels()
+        .iter()
+        .filter(|&&texel| is_magenta(texel))
+        .count()
 }
 
 /// Physical px of the damage overlay's border and gap at scale 1
@@ -72,26 +75,25 @@ impl PxRect {
     }
 }
 
-fn assert_outlines_exactly(img: &RgbaImage, damage: &[PxRect]) {
-    for (x, y, p) in img.enumerate_pixels() {
+fn assert_outlines_exactly(img: &Image, damage: &[PxRect]) {
+    for (UVec2 { x, y }, p) in img.enumerate_texels() {
         let (x, y) = (x as i32, y as i32);
         let expected = damage
             .iter()
             .any(|rect| rect.outline_covers(IVec2::new(x, y)));
         assert_eq!(
-            is_red(*p),
+            is_red(p),
             expected,
-            "pixel ({x}, {y}) {:?}: outline of {damage:?} expected {expected}",
-            p.0,
+            "pixel ({x}, {y}) {p:?}: outline of {damage:?} expected {expected}",
         );
     }
 }
 
 /// The rect the red pixels bracket, for a damage rect the fixture cannot derive.
-fn outlined_rect(img: &RgbaImage) -> PxRect {
+fn outlined_rect(img: &Image) -> PxRect {
     let (mut x0, mut y0, mut x1, mut y1) = (i32::MAX, i32::MAX, i32::MIN, i32::MIN);
-    for (x, y, p) in img.enumerate_pixels() {
-        if is_red(*p) {
+    for (UVec2 { x, y }, p) in img.enumerate_texels() {
+        if is_red(p) {
             let (x, y) = (x as i32, y as i32);
             (x0, y0, x1, y1) = (x0.min(x), y0.min(y), x1.max(x), y1.max(y));
         }
@@ -109,7 +111,7 @@ fn button_scene(id_salt: &'static str, label: &'static str) -> impl FnMut(&mut U
             .auto_id()
             .padding(12.0)
             .gap(8.0)
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .chrome(Chrome::new(RgbaF32::srgb(0.15, 0.15, 0.18)))
             .show(ui, |ui| {
                 Button::new().id_salt(id_salt).label(label).show(ui);
@@ -125,7 +127,7 @@ fn corner_pair_scene(salt: &'static str) -> impl FnMut(&mut Ui) + Copy {
     move |ui: &mut Ui| {
         Panel::canvas()
             .auto_id()
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .chrome(Chrome::new(RgbaF32::srgb(0.15, 0.15, 0.18)))
             .show(ui, |ui| {
                 Block::new()
@@ -149,11 +151,10 @@ fn corner_pair_scene(salt: &'static str) -> impl FnMut(&mut Ui) + Copy {
 /// scene covered every pixel.
 #[test]
 fn static_scene_repeats_clean() {
-    let mut h = VisualRig::new();
-    let size = UVec2::new(160, 96);
+    let mut h = VisualRig::new(UVec2::new(160, 96));
     let scene = button_scene("hi", "hello");
 
-    let f1 = h.size(size).clear(VIS_CLEAR).frame(scene).image;
+    let f1 = h.clear(VIS_CLEAR).frame(scene).image;
     let repeat = h.overlay(DIM_UNDAMAGED).frame(scene);
     assert_eq!(repeat.paint, FramePaint::Skip);
     let f2 = repeat.image;
@@ -171,7 +172,7 @@ fn static_scene_repeats_clean() {
 /// frame repaints partially (target loaded, not cleared).
 #[test]
 fn single_button_change_repaints_partially() {
-    let mut h = VisualRig::new();
+    let mut h = VisualRig::new(UVec2::new(160, 96));
 
     h.size(UVec2::new(160, 96))
         .clear(VIS_CLEAR)
@@ -192,7 +193,7 @@ fn single_button_change_repaints_partially() {
 /// swapchain; no other test exercises the post-copy pass.
 #[test]
 fn damage_rect_overlay_strokes_dirty_region() {
-    let mut h = VisualRig::new();
+    let mut h = VisualRig::new(UVec2::new(160, 96));
     h.size(UVec2::new(160, 96)).frame(button_scene("c", "a"));
     let f2 = h.overlay(DAMAGE_RECT).frame(button_scene("c", "b")).image;
     let _kept = KeptOnFailure::new("damage_rect_overlay_strokes_dirty_region", &f2);
@@ -215,20 +216,17 @@ fn damage_rect_overlay_strokes_dirty_region() {
 /// color, and each corner reads its block's fill.
 #[test]
 fn corner_pair_change_keeps_center_unpainted() {
-    let mut h = VisualRig::new();
-    let f1 = h
-        .size(UVec2::new(200, 200))
-        .clear(VIS_CLEAR)
-        .frame(corner_pair_scene("a"))
-        .image;
+    let mut h = VisualRig::new(UVec2::new(200, 200));
+    let f1 = h.clear(VIS_CLEAR).frame(corner_pair_scene("a")).image;
     let f2 = h.overlay(DIM_UNDAMAGED).frame(corner_pair_scene("b")).image;
     let _kept = KeptOnFailure::new("damage_corner_pair_change_keeps_center_unpainted", &f2);
 
     let center = Rect::new(50.0, 50.0, 100.0, 100.0);
     let (before, after) = (goldens::crop(&f1, center), goldens::crop(&f2, center));
-    let lum = |img: &RgbaImage| -> u64 {
-        img.pixels()
-            .map(|Rgba([r, g, b, _])| u64::from(*r) + u64::from(*g) + u64::from(*b))
+    let lum = |img: &Image| -> u64 {
+        img.texels()
+            .iter()
+            .map(|texel| u64::from(texel.r) + u64::from(texel.g) + u64::from(texel.b))
             .sum()
     };
     assert_eq!(
@@ -247,8 +245,8 @@ fn corner_pair_change_keeps_center_unpainted() {
     for (x, y, fill) in [(5, 5, TOP_LEFT), (195, 195, BOTTOM_RIGHT)] {
         let fill = fill.to_srgba8();
         fixtures::assert_px(
-            f2.get_pixel(x, y).0,
-            [fill.r, fill.g, fill.b, 255],
+            f2.texel(UVec2::new(x, y)),
+            fill,
             format_args!("({x}, {y}) is its corner block's fill"),
         );
     }
@@ -258,7 +256,7 @@ fn corner_pair_change_keeps_center_unpainted() {
 /// rect: red in both corners, none in the center.
 #[test]
 fn corner_pair_overlay_strokes_each_rect() {
-    let mut h = VisualRig::new();
+    let mut h = VisualRig::new(UVec2::new(200, 200));
     h.size(UVec2::new(200, 200)).frame(corner_pair_scene("a"));
     let f2 = h.overlay(DAMAGE_RECT).frame(corner_pair_scene("b")).image;
     let _kept = KeptOnFailure::new("damage_corner_pair_overlay_strokes_each_rect", &f2);
@@ -279,12 +277,12 @@ fn corner_pair_overlay_strokes_each_rect() {
 /// rect, and an inset would collapse it.
 #[test]
 fn damage_rect_overlay_outlines_thin_sliver() {
-    let mut h = VisualRig::new();
+    let mut h = VisualRig::new(UVec2::new(120, 80));
     let sliver = |on: bool| {
         move |ui: &mut Ui| {
             Panel::canvas()
                 .auto_id()
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .chrome(Chrome::new(RgbaF32::srgb(0.12, 0.12, 0.15)))
                 .show(ui, |ui| {
                     Block::new()
@@ -301,7 +299,7 @@ fn damage_rect_overlay_outlines_thin_sliver() {
         }
     };
 
-    h.size(UVec2::new(120, 80)).frame(sliver(false));
+    h.frame(sliver(false));
     let f2 = h.overlay(DAMAGE_RECT).frame(sliver(true)).image;
     let _kept = KeptOnFailure::new("damage_rect_overlay_outlines_thin_sliver", &f2);
 

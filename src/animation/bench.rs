@@ -72,7 +72,7 @@ fn bench_motion(group: &mut CaseGroup<'_>, motion: Motion) {
         let mut map = AnimationMapTyped::default();
         let mut clock = AnimationClock {
             dt: 1.0 / 60.0,
-            render_frame_id: 1,
+            render_frame_idx: 1,
         };
         for &id in &ids {
             let _ = map.tick(
@@ -83,7 +83,7 @@ fn bench_motion(group: &mut CaseGroup<'_>, motion: Motion) {
         }
         let mut use_second = true;
         b.iter(|| {
-            clock.render_frame_id += 1;
+            clock.render_frame_idx += 1;
             let target = if use_second { &second } else { &first };
             use_second = !use_second;
             for &id in &ids {
@@ -104,7 +104,7 @@ fn bench_steady(group: &mut CaseGroup<'_>) {
         let mut map = AnimationMapTyped::default();
         let mut clock = AnimationClock {
             dt: 1.0 / 60.0,
-            render_frame_id: 1,
+            render_frame_idx: 1,
         };
         for &id in &ids {
             let _ = map.tick(
@@ -114,7 +114,7 @@ fn bench_steady(group: &mut CaseGroup<'_>) {
             );
         }
         b.iter(|| {
-            clock.render_frame_id += 1;
+            clock.render_frame_idx += 1;
             for &id in &ids {
                 let mut request = AnimationRequest::new(id, SLOT, target.clone());
                 black_box(map.tick(&mut request, spec, clock));
@@ -132,10 +132,10 @@ fn bench_instant(group: &mut CaseGroup<'_>) {
         let mut map = AnimationMap::default();
         let mut clock = AnimationClock {
             dt: 1.0 / 60.0,
-            render_frame_id: 1,
+            render_frame_idx: 1,
         };
         b.iter(|| {
-            clock.render_frame_id += 1;
+            clock.render_frame_idx += 1;
             for &id in &ids {
                 let mut request = AnimationRequest::new(id, SLOT, target.clone());
                 black_box(map.animate(&mut request, AnimationSpec::SNAP, clock));

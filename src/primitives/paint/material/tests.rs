@@ -1,49 +1,21 @@
-use crate::effect::effect_registry::{EffectRegistry, ResolvedMaterial};
-use crate::effect::effect_source::{EffectSource, ReducedPaint};
-use crate::internals::panic_probe::assert_panics_with;
 use crate::internals::srgb_reference;
 use crate::primitives::effect::effect_kind::BackdropEffect;
 use crate::primitives::effect::effect_name::EffectName;
-use crate::primitives::identity::effect_id::EffectId;
 use crate::primitives::math::lerp::Lerp;
 use crate::primitives::math::libm_ext::Libm;
 use crate::primitives::paint::border::Border;
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
-use crate::primitives::paint::material::frosted_input::FrostedInput;
-use crate::primitives::paint::material::glass_input::GlassInput;
+use crate::primitives::paint::material::Material;
+use crate::primitives::paint::material::backdrop_fallback::BackdropFallback;
+use crate::primitives::paint::material::frosted_params::FrostedParams;
+use crate::primitives::paint::material::glass_params::GlassParams;
+use crate::primitives::paint::material::ink_bound::{bend_root, ceiling_bend};
 use crate::primitives::paint::material::lens::Lens;
 use crate::primitives::paint::material::material_effect::MaterialEffect;
-use crate::primitives::paint::material::material_fallback::MaterialFallback;
 use crate::primitives::paint::material::material_paint::MaterialPaint;
-use crate::primitives::paint::material::material_reach::MaterialReach;
-use crate::primitives::paint::material::{Material, bend_root, ceiling_bend};
 use crate::primitives::paint::paint::Paint;
-use crate::primitives::reduction::{Reduction, Reductions};
-use crate::shape;
-use crate::shape::Shape;
-use crate::shape::paint::capture_params::CaptureReach;
-use crate::shape::paint::lowered_material::{LoweredMaterial, MaterialRead};
-use crate::shape::record_store::{RecordStore, Resolve};
-use glam::Vec2;
-
-/// `material` lowered through effect 0 under the box alone, with its parameters staged in `store`.
-fn captured_in(store: &mut RecordStore, material: &Material) -> LoweredMaterial {
-    LoweredMaterial::lower(
-        store,
-        material,
-        ResolvedMaterial {
-            id: EffectId(0),
-            reach: MaterialReach::NONE,
-        },
-    )
-}
-
-/// [`captured_in`] a store of its own.
-fn captured(material: &Material) -> LoweredMaterial {
-    captured_in(&mut RecordStore::default(), material)
-}
 
 /// The constructors name their stock effects, lay out each effect's own parameters in order, and
 /// set exactly their own fields, the theme's fallback included; each `with_*` sets its own,
@@ -55,7 +27,7 @@ fn the_constructors_and_setters_set_their_own_fields() {
         Material {
             effect: MaterialEffect::new(
                 EffectName::FROSTED,
-                FrostedInput {
+                FrostedParams {
                     saturation: 1.0,
                     noise: 0.0,
                 },
@@ -63,7 +35,7 @@ fn the_constructors_and_setters_set_their_own_fields() {
             backdrop_blur: 6.0,
             max_luminance: None,
             min_luminance: None,
-            fallback: MaterialFallback::ThemeSurface,
+            fallback: BackdropFallback::ThemeSurface,
         }
     );
     let frosted = Material::frosted(12.0);
@@ -79,11 +51,11 @@ fn the_constructors_and_setters_set_their_own_fields() {
     );
     assert_eq!(
         glass,
-        Material::new(EffectName::GLASS, GlassInput::new(Lens::WINDOW_GLASS))
+        Material::new(EffectName::GLASS, GlassParams::new(Lens::WINDOW_GLASS))
     );
     assert_eq!(
-        glass.effect.read::<GlassInput>(),
-        GlassInput::new(Lens::WINDOW_GLASS)
+        bytemuck::pod_read_unaligned::<GlassParams>(glass.effect.bytes()),
+        GlassParams::new(Lens::WINDOW_GLASS)
     );
     let set = Material::blur(0.0)
         .with_backdrop_blur(2.0)
@@ -96,286 +68,10 @@ fn the_constructors_and_setters_set_their_own_fields() {
             backdrop_blur: 2.0,
             max_luminance: Some(0.2),
             min_luminance: Some(0.1),
-            fallback: MaterialFallback::Brush(Brush::Solid(RgbaF32::WHITE)),
+            fallback: BackdropFallback::Brush(Brush::Solid(RgbaF32::WHITE)),
             ..Material::blur(0.0)
         }
     );
-}
-
-/// A rect, a circle and a triangle take the same checks: each case panics with its kind's rule.
-#[test]
-fn a_material_out_of_its_kinds_panics_where_it_enters() {
-    let base = Material::blur(1.0);
-    let nan = Material::new(
-        EffectName::FROSTED,
-        FrostedInput {
-            saturation: f32::NAN,
-            noise: 0.0,
-        },
-    );
-    for (material, rule) in [
-        (Material::blur(-1.0), "a length must"),
-        (base.clone().with_max_luminance(-0.1), "a factor must"),
-        (
-            base.clone().with_min_luminance(f32::INFINITY),
-            "a factor must",
-        ),
-        (
-            base.with_fallback(RgbaF32::new(f32::NAN, 0.0, 0.0, 1.0)),
-            "a color must",
-        ),
-        (nan, "a material's parameters must be finite"),
-    ] {
-        for entry in ["rect", "circle", "triangle"] {
-            let panic = std::panic::catch_unwind(|| match entry {
-                "rect" => _ = shape::internals::check(&Shape::rect(), material.clone()),
-                "circle" => _ = shape::internals::check(&Shape::circle(), material.clone()),
-                _ => {
-                    let triangle = Shape::triangle(Vec2::ZERO, Vec2::X, Vec2::Y);
-                    _ = shape::internals::check(&triangle, material.clone());
-                }
-            })
-            .expect_err(entry);
-            let message = panic
-                .downcast_ref::<String>()
-                .map(String::as_str)
-                .or_else(|| panic.downcast_ref::<&str>().copied())
-                .unwrap_or_default();
-            assert!(message.contains(rule), "{entry} {material:?}: {message}");
-        }
-    }
-}
-
-/// What a material reads follows the reductions: its effect over what is under it while
-/// transparency runs whole, its effect resolved through the registry, where the frost a blur wears
-/// is effect 2, past the two ripples, and the glass effect 3, reading as far as its lens bends; and
-/// its fallback while transparency is reduced, with the theme's surface at hand for one that names
-/// none. A material that cannot paint panics in every mode: over a name nothing loaded, over a
-/// color effect, and with another count of lanes than its effect takes.
-#[test]
-fn a_material_reads_its_fallback_while_transparency_is_reduced() {
-    let effects = EffectRegistry::default();
-    let theme = RgbaF32::new(0.1, 0.2, 0.3, 0.75);
-    let resolve = |transparency| Resolve {
-        effects: &effects,
-        reductions: Reductions {
-            transparency,
-            ..Reductions::FULL
-        },
-        material_fallback: theme,
-    };
-    let blur = Material::blur(4.0);
-    assert_eq!(
-        MaterialRead::resolve(&blur, resolve(Reduction::Full)),
-        Some(MaterialRead::Capture(ResolvedMaterial {
-            id: EffectId(2),
-            reach: MaterialReach::NONE,
-        }))
-    );
-    assert_eq!(
-        MaterialRead::resolve(&blur, resolve(Reduction::Reduced)),
-        Some(MaterialRead::Fallback { theme })
-    );
-    assert_eq!(
-        MaterialRead::resolve(
-            &Material::glass(Lens::WINDOW_GLASS),
-            resolve(Reduction::Full)
-        ),
-        Some(MaterialRead::Capture(ResolvedMaterial {
-            id: EffectId(3),
-            reach: MaterialReach::Lens(Lens::WINDOW_GLASS),
-        }))
-    );
-    let gone = Material::new(EffectName::<(), BackdropEffect>::named("gone").unwrap(), ());
-    assert_panics_with("no effect is loaded under `gone`", || {
-        MaterialRead::resolve(&gone, resolve(Reduction::Reduced))
-    });
-    let ripple = Material::new(
-        EffectName::<(), BackdropEffect>::named("palantir.ripple").unwrap(),
-        (),
-    );
-    assert_panics_with(
-        "a material over `palantir.ripple` paints effect 0, which is no material's",
-        || MaterialRead::resolve(&ripple, resolve(Reduction::Full)),
-    );
-    let short = Material::new(
-        EffectName::<(), BackdropEffect>::named("palantir.frosted").unwrap(),
-        (),
-    );
-    assert_panics_with(
-        "effect `palantir.frosted` takes 2 parameter lanes, and its material holds 0",
-        || MaterialRead::resolve(&short, resolve(Reduction::Full)),
-    );
-}
-
-/// An effect's source declares how far a material over it reads from its parameters: an app's
-/// backdrop effect over one lane reads that lane's px past its box, so a material of 6 reads 6
-/// and one of 2 reads 2; with no declaration a material reads under its box alone. An alternative
-/// paints at its own id and reach.
-#[test]
-fn an_effects_source_declares_its_materials_reach() {
-    #[derive(
-        Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable, palantir_derive::EffectParams,
-    )]
-    #[repr(C)]
-    struct Shift {
-        dx: f32,
-    }
-    let wgsl = "struct Params { dx: f32 }
-    fn effect(input: EffectInput, params: Params) -> EffectOutput {
-        return effect_over(effect_backdrop(input.pos + vec2<f32>(params.dx, 0.0)));
-    }";
-    let effects = EffectRegistry::default();
-    let reaching = EffectName::<Shift, BackdropEffect>::named("reaching").unwrap();
-    let plain = EffectName::<Shift, BackdropEffect>::named("plain").unwrap();
-    effects
-        .load(
-            reaching,
-            &EffectSource::new(wgsl).reach(|shift| MaterialReach::Px(shift.dx)),
-        )
-        .unwrap();
-    effects.load(plain, &EffectSource::new(wgsl)).unwrap();
-    let reach = |effect, dx| {
-        effects
-            .resolve_material(&Material::new(effect, Shift { dx }), Reductions::FULL)
-            .map(|resolved| resolved.reach)
-    };
-    assert_eq!(reach(reaching, 6.0), Some(MaterialReach::Px(6.0)));
-    assert_eq!(reach(reaching, 2.0), Some(MaterialReach::Px(2.0)));
-    assert_eq!(reach(plain, 6.0), Some(MaterialReach::NONE));
-
-    // While power is reduced, a material paints its effect's alternative, at that alternative's
-    // id and reach: ids follow load order past the four stock effects, so `reaching` is 4 and
-    // `saving`, which gives way to it, 6; `vanishing` gives way to nothing.
-    let saving = EffectName::<Shift, BackdropEffect>::named("saving").unwrap();
-    let vanishing = EffectName::<Shift, BackdropEffect>::named("vanishing").unwrap();
-    effects
-        .load(
-            saving,
-            &EffectSource::new(wgsl).power_saver(ReducedPaint::Effect(reaching)),
-        )
-        .unwrap();
-    effects
-        .load(
-            vanishing,
-            &EffectSource::new(wgsl).power_saver(ReducedPaint::Nothing),
-        )
-        .unwrap();
-    let resolve = |effect, power| {
-        let reductions = Reductions {
-            power,
-            ..Reductions::FULL
-        };
-        effects.resolve_material(&Material::new(effect, Shift { dx: 6.0 }), reductions)
-    };
-    assert_eq!(
-        resolve(saving, Reduction::Full),
-        Some(ResolvedMaterial {
-            id: EffectId(6),
-            reach: MaterialReach::NONE,
-        })
-    );
-    assert_eq!(
-        resolve(saving, Reduction::Reduced),
-        Some(ResolvedMaterial {
-            id: EffectId(4),
-            reach: MaterialReach::Px(6.0),
-        })
-    );
-    assert!(resolve(vanishing, Reduction::Full).is_some());
-    assert_eq!(resolve(vanishing, Reduction::Reduced), None);
-}
-
-/// A luminance floor lowers to the f16 at or above it, so a material never shows darker than its
-/// author allowed: 0.3's nearest f16, 0.300048828125 = 1229/4096, is above it and stays; 0.1's
-/// nearest, 0.0999755859375 = 819/8192, is below it, so it lowers one step up, to
-/// 0.10003662109375 = 1639/16384; 0.5 is exact. A material with no floor lowers to 0.
-#[test]
-fn a_luminance_floor_rounds_up_where_it_lowers() {
-    for (floor, want) in [
-        (Some(0.3), 1229.0 / 4096.0),
-        (Some(0.1), 1639.0 / 16384.0),
-        (Some(0.5), 0.5),
-        (None, 0.0),
-    ] {
-        let material = Material {
-            min_luminance: floor,
-            ..Material::blur(1.0)
-        };
-        assert_eq!(captured(&material).min_luminance(), want, "{floor:?}");
-    }
-}
-
-/// A luminance ceiling lowers to the f16 at or below it, so a material never shows brighter than
-/// its author allowed: 0.3's nearest f16 is 0.300048828125 = 1229/4096, above it, so it lowers
-/// one step down, to 0.2998046875 = 307/1024; 0.1's nearest, 0.0999755859375 = 819/8192, is
-/// below it and stays; 0.5 is exact. A material with no ceiling lowers to 65504, the lane's top,
-/// and 1e6, which a tween may carry past the lane, saturates there.
-#[test]
-fn a_luminance_ceiling_rounds_down_where_it_lowers() {
-    for (ceiling, want) in [
-        (Some(0.3), 307.0 / 1024.0),
-        (Some(0.1), 819.0 / 8192.0),
-        (Some(0.5), 0.5),
-        (Some(0.0), 0.0),
-        (Some(1.0e6), 65504.0),
-        (None, 65504.0),
-    ] {
-        let material = Material {
-            max_luminance: ceiling,
-            ..Material::blur(1.0)
-        };
-        assert_eq!(captured(&material).max_luminance(), want, "{ceiling:?}");
-    }
-}
-
-/// A tween that overshoots a fade to none, as `OutBack` does, carries a material past its kinds,
-/// and it coerces where it paints: a negative blur and floor paint as 0, and a lens's reach as
-/// its kinds: a negative bezel and thickness as 0, an index under 1 as 1, a dispersion of 2 as 1.
-/// The parameters are staged as they are, its effect's to read: the frost's two lanes, word for
-/// word.
-#[test]
-fn a_material_coerces_into_its_kinds_where_it_paints() {
-    let past = Material {
-        backdrop_blur: -0.4,
-        min_luminance: Some(-0.04),
-        ..Material::new(
-            EffectName::FROSTED,
-            FrostedInput {
-                saturation: -0.1,
-                noise: 0.02,
-            },
-        )
-    };
-    let mut store = RecordStore::default();
-    let lens = Lens {
-        bezel: -2.4,
-        thickness: -1.6,
-        refractive_index: 0.95,
-        dispersion: 2.0,
-        highlight: -1.0,
-    };
-    let lowered = LoweredMaterial::lower(
-        &mut store,
-        &past,
-        ResolvedMaterial {
-            id: EffectId(0),
-            reach: MaterialReach::Lens(lens),
-        },
-    );
-    assert_eq!(lowered.capture.sigma, 0.0);
-    assert_eq!(lowered.min_luminance(), 0.0);
-    let CaptureReach::Lens(lanes) = lowered.capture.reach else {
-        panic!("a lens's reach");
-    };
-    assert_eq!(lanes.lanes(), [0.0, 0.0, 1.0, 1.0]);
-    let start = lowered.params.start as usize;
-    assert_eq!(lowered.params.len, 2);
-    let words: Vec<f32> = store.effect_params[start..start + 2]
-        .iter()
-        .map(|&w| f32::from_bits(w))
-        .collect();
-    assert_eq!(words, [-0.1, 0.02]);
 }
 
 /// The blur, the fallback, an absent floor and the parameters of one effect blend, the floor
@@ -409,7 +105,7 @@ fn a_material_blends_its_numbers_and_snaps_its_effect() {
     let half = Material::lerp(&frosted, &glass, 0.5);
     assert_eq!(
         half.fallback,
-        MaterialFallback::Brush(Brush::Solid(RgbaF32::lerp(
+        BackdropFallback::Brush(Brush::Solid(RgbaF32::lerp(
             &RgbaF32::BLACK,
             &RgbaF32::WHITE,
             0.5
@@ -418,7 +114,7 @@ fn a_material_blends_its_numbers_and_snaps_its_effect() {
     let themed = Material::blur(2.0);
     assert_eq!(
         Material::lerp(&themed, &glass, 0.49).fallback,
-        MaterialFallback::ThemeSurface
+        BackdropFallback::ThemeSurface
     );
     assert_eq!(
         Material::lerp(&themed, &glass, 0.5).fallback,
@@ -480,7 +176,25 @@ fn a_materials_parameters_are_listed_f32_lanes() {
         const FIELDS: &'static [EffectParam] = &[];
     }
     assert_eq!(MaterialEffect::lanes_for::<Mixed>(), Some(4));
-    assert_eq!(MaterialEffect::lanes_for::<GlassInput>(), Some(7));
+    assert_eq!(MaterialEffect::lanes_for::<GlassParams>(), Some(7));
+    // The lens's fields read flat after the two of the glass's own, a word apart, as the stock
+    // glass's WGSL `Params` declares them.
+    let glass: Vec<(&str, usize)> = GlassParams::FIELDS
+        .iter()
+        .map(|field| (field.name, field.offset))
+        .collect();
+    assert_eq!(
+        glass,
+        [
+            ("saturation", 0),
+            ("noise", 4),
+            ("bezel", 8),
+            ("thickness", 12),
+            ("refractive_index", 16),
+            ("dispersion", 20),
+            ("highlight", 24),
+        ]
+    );
     assert_eq!(MaterialEffect::lanes_for::<()>(), Some(0));
     assert_eq!(MaterialEffect::lanes_for::<Count>(), None);
     assert_eq!(MaterialEffect::lanes_for::<Wide>(), None);
@@ -507,7 +221,7 @@ fn a_material_springs_its_blur_and_lanes() {
     use crate::primitives::math::animatable::Animatable;
     let frost = |sigma, saturation, noise| {
         Some(
-            Material::new(EffectName::FROSTED, FrostedInput { saturation, noise })
+            Material::new(EffectName::FROSTED, FrostedParams { saturation, noise })
                 .with_backdrop_blur(sigma),
         )
     };
@@ -522,6 +236,43 @@ fn a_material_springs_its_blur_and_lanes() {
     assert_eq!(step.magnitude_squared(), 4.3125);
     assert_eq!(lanes(&step.scale(0.5)), (1.0, vec![0.25, 0.125]));
     assert_eq!(to.add(&step), from);
+}
+
+/// A spring retargeted from a frost onto a glass snaps the effect, as a tween does, and springs
+/// the blur on: the value and the velocity take the glass's effect, the velocity's lanes from
+/// rest, so the spring's offset holds no frost lanes and the target plus it paints the glass's
+/// own parameters. The blur's offset, `4 − 2 = 2`, and its velocity stay.
+#[test]
+fn a_spring_onto_another_effect_snaps_the_effect() {
+    use crate::primitives::math::animatable::Animatable;
+    let frost = Some(Material::frosted(4.0));
+    let glass = Some(Material::glass(Lens::WINDOW_GLASS).with_backdrop_blur(2.0));
+    let mut value = frost.clone();
+    let mut velocity = frost.scale(0.5);
+    value.normalize_for_spring(&glass, &mut velocity);
+
+    let (value, velocity, target) = (
+        value.expect("a value"),
+        velocity.expect("a velocity"),
+        glass.clone().expect("a target"),
+    );
+    assert_eq!(value.effect, target.effect);
+    assert!(velocity.effect.blends_with(&target.effect));
+    assert!(velocity.effect.params().iter().all(|&lane| lane == 0.0));
+    assert_eq!(velocity.backdrop_blur, 2.0, "the blur's velocity, 4 × 0.5");
+
+    let offset = Some(value).sub(&glass);
+    let landed = glass.add(&offset).expect("a material");
+    assert_eq!(landed.effect, target.effect);
+    assert_eq!(landed.backdrop_blur, 4.0);
+
+    // Over one effect nothing snaps: a frost onto another frost keeps its lanes.
+    let mut value = frost.clone();
+    let mut velocity = frost.scale(0.5);
+    let other_frost = Some(Material::frosted(1.0));
+    value.normalize_for_spring(&other_frost, &mut velocity);
+    assert_eq!(value, frost);
+    assert_eq!(velocity, frost.scale(0.5));
 }
 
 /// `Paint::with_material` keeps the paint whole over the material, and a material alone paints
@@ -615,7 +366,7 @@ fn a_floor_for_an_ink_holds_it_at_the_text_contrast() {
 /// needs about 0.183, which a white fill's 1 exceeds.
 #[test]
 fn each_refused_bound_returns_its_case() {
-    use crate::primitives::paint::material::InkBound;
+    use crate::primitives::paint::material::ink_bound::InkBound;
     let material = Material::frosted(20.0);
     let half = |hex: u32| RgbaF32::hex(hex).with_alpha(0.5);
     let floors = [
@@ -657,7 +408,7 @@ fn each_refused_bound_returns_its_case() {
 /// a white surface, and dark ink on a black one.
 #[test]
 fn a_fallback_takes_the_least_alpha_that_holds_its_ink() {
-    use crate::primitives::paint::material::fallback_alpha;
+    use crate::primitives::paint::material::ink_bound::fallback_alpha;
     assert_eq!(
         fallback_alpha(RgbaF32::hex(0xa4a4a4), RgbaF32::hex(0x383838)),
         1.0
@@ -675,7 +426,7 @@ fn a_fallback_takes_the_least_alpha_that_holds_its_ink() {
 /// stay.
 #[test]
 fn a_fallback_alpha_rounds_up_to_the_grid_as_f16_reads_it() {
-    use crate::primitives::paint::material::grid_alpha_at_or_above;
+    use crate::primitives::paint::material::ink_bound::grid_alpha_at_or_above;
     assert_eq!(grid_alpha_at_or_above(0.3372), 87.0 / 255.0);
     assert_eq!(grid_alpha_at_or_above(0.3371), 86.0 / 255.0);
     assert_eq!(grid_alpha_at_or_above(0.0), 0.0);

@@ -13,18 +13,19 @@ use crate::shape::sealed;
 #[derive(Clone, Copy, Debug)]
 #[must_use]
 pub struct ArcShape {
-    pub(crate) local_rect: Option<Rect>,
-    pub(crate) start_angle: f32,
-    /// Coerced to one full circle, `±2π`, its sign kept: a longer sweep traces the same circle.
-    pub(crate) sweep: f32,
+    /// Its sweep coerced to one full circle, `±2π`, its sign kept: a longer sweep traces the same
+    /// circle.
+    pub(crate) geometry: ArcGeometry,
 }
 
 impl ArcShape {
     pub(super) const fn new(start_angle: f32, sweep: f32) -> Self {
         Self {
-            local_rect: None,
-            start_angle,
-            sweep: sweep.clamp(-std::f32::consts::TAU, std::f32::consts::TAU),
+            geometry: ArcGeometry {
+                local_rect: None,
+                start_angle,
+                sweep: sweep.clamp(-std::f32::consts::TAU, std::f32::consts::TAU),
+            },
         }
     }
 
@@ -32,11 +33,11 @@ impl ArcShape {
     ///
     /// # Panics
     ///
-    /// Panics unless every component of `rect` is an [offset](crate::widget::domain::offset).
+    /// Panics unless every component of `rect` is an [offset](crate::widget::domain::is_offset).
     #[track_caller]
     pub const fn at(mut self, rect: Rect) -> Self {
         rect.validate();
-        self.local_rect = Some(rect);
+        self.geometry.local_rect = Some(rect);
         self
     }
 }
@@ -57,17 +58,8 @@ impl sealed::DrawWith<Stroke> for ArcShape {
     }
 
     fn draw<'a>(&'a self, stroke: &'a Stroke) -> Draw<'a> {
-        let Self {
-            local_rect,
-            start_angle,
-            sweep,
-        } = *self;
         Draw::Arc {
-            geometry: ArcGeometry {
-                local_rect,
-                start_angle,
-                sweep,
-            },
+            geometry: self.geometry,
             stroke,
         }
     }

@@ -1,0 +1,9 @@
+# What binds the showcase as a consumer of the published surface: the workspace's base rules,
+# and none of palantir's internal layering (wgpu behind `crate::gpu`, `Libm` for every
+# transcendental, locks through `crate::common::sync`), which an app need not keep.
+allow-print-in-tests = true
+allowed-wildcard-imports = ["x86_64", "aarch64", "arch"]
+absolute-paths-allowed-crates = ["std", "core", "alloc"]
+disallowed-types = [
+    { path = "std::thread::LocalKey", reason = "state lives on an owner and travels by parameter" },
+]

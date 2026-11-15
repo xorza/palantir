@@ -16,7 +16,7 @@ use crate::window::window_token::WindowToken;
 /// composes through. A host that paints pairs it with a
 /// [`HostDevice`](crate::host::host_device::HostDevice) in a
 /// [`HostCore`](crate::host::host_core::HostCore); a harness below
-/// [`Depth::Gpu`](crate::Depth::Gpu) holds it alone. Refused: one core with an optional device
+/// [`HarnessDepth::Gpu`](crate::HarnessDepth::Gpu) holds it alone. Refused: one core with an optional device
 /// half, which every host that always paints unwrapped, and which a harness stored beside its own
 /// fact of whether it paints.
 #[derive(Debug)]

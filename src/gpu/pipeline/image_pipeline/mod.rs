@@ -9,10 +9,11 @@
 use crate::common::span::Span;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::pipeline::clip_variant::ClipVariant;
-use crate::gpu::pipeline::instanced_pipeline::{InstancedPipeline, InstancedSpec, VariantTarget};
+use crate::gpu::pipeline::frame_variant::VariantTarget;
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
 use crate::gpu::pipeline::runs::Runs;
 use crate::gpu::pipeline::shape_template::{self, TemplateIndices};
+use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use crate::gpu::resource::gpu_ctx::GpuCtx;
 use crate::gpu::resource::gpu_view_targets::GpuViewTargets;
 use crate::gpu::resource::pipeline_recipe::{self, Pipeline, PipelineRecipe, vertex_attr};
@@ -61,7 +62,11 @@ impl<'a> ImageTextures<'a> {
 
 #[derive(Debug)]
 pub(crate) struct ImagePipeline {
-    family: InstancedPipeline<ImageInstance>,
+    /// This frame's instances, uploaded each frame.
+    instances: DynamicBuffer<ImageInstance>,
+    shader: wgpu::ShaderModule,
+    /// The pipeline layout every format's pipelines build over.
+    layout: wgpu::PipelineLayout,
 }
 
 impl ImagePipeline {
@@ -83,22 +88,15 @@ impl ImagePipeline {
     /// [`FormatPipelines`](crate::gpu::pipeline::format_pipelines::FormatPipelines).
     pub(crate) fn new(gpu: &Gpu, textures: &TextureBinding) -> Self {
         Self {
-            family: InstancedPipeline::new(
-                gpu,
-                InstancedSpec {
-                    shader: Self::SHADER,
-                    // The frame group, then the image's texture.
-                    layout: &pipeline_recipe::pipeline_layout(
-                        gpu,
-                        "palantir.image.pl",
-                        &[
-                            Some(textures.frame_layout()),
-                            Some(textures.texture_layout()),
-                        ],
-                    ),
-                    instances: "palantir.image.instances",
-                    capacity: 16,
-                },
+            instances: DynamicBuffer::vertex(gpu, "palantir.image.instances", 16),
+            shader: Self::SHADER.module(gpu),
+            // The frame group, then the image's texture.
+            layout: gpu.pipeline_layout(
+                "palantir.image.pl",
+                &[
+                    Some(textures.frame_layout()),
+                    Some(textures.texture_layout()),
+                ],
             ),
         }
     }
@@ -116,30 +114,41 @@ impl ImagePipeline {
             ShapeForm::Rect => PipelineRecipe {
                 vertex_buffers: &instance,
                 topology: wgpu::PrimitiveTopology::TriangleStrip,
-                ..self.family.recipe("palantir.image.pipeline", target.format)
+                ..PipelineRecipe::color(
+                    "palantir.image.pipeline",
+                    &self.shader,
+                    &self.layout,
+                    target.format,
+                )
             },
             ShapeForm::Box => PipelineRecipe {
                 vertex_entry: "vs_box",
                 fragment_entry: "fs_shaped",
                 vertex_buffers: &instance,
-                ..self
-                    .family
-                    .recipe("palantir.image.pipeline.box", target.format)
+                ..PipelineRecipe::color(
+                    "palantir.image.pipeline.box",
+                    &self.shader,
+                    &self.layout,
+                    target.format,
+                )
             },
             ShapeForm::Triangle => PipelineRecipe {
                 vertex_entry: "vs_triangle",
                 fragment_entry: "fs_shaped",
                 vertex_buffers: &instance,
-                ..self
-                    .family
-                    .recipe("palantir.image.pipeline.triangle", target.format)
+                ..PipelineRecipe::color(
+                    "palantir.image.pipeline.triangle",
+                    &self.shader,
+                    &self.layout,
+                    target.format,
+                )
             },
         };
-        variant.ensure(gpu, target.clipping, &recipe);
+        variant.ensure(gpu, target.variant.clipping, &recipe);
     }
 
     pub(crate) fn upload(&mut self, ctx: &mut GpuCtx<'_>, instances: &[ImageInstance]) {
-        self.family.upload(ctx, instances);
+        self.instances.upload_instances(ctx, instances);
     }
 
     /// Draw one image batch, each draw through its form's pipeline of `pipelines`. `ids` is the
@@ -163,7 +172,7 @@ impl ImagePipeline {
         }: ImageBatch<'a>,
         textures: ImageTextures<'_>,
     ) {
-        rec.vertex(0, self.family.instances());
+        rec.vertex(0, &self.instances.buffer);
         let key = |i: u32| (keys[i as usize], ids[i as usize]);
         for run in Runs::new(items, key) {
             let (form, id) = run.key;

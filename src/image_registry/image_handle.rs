@@ -1,5 +1,5 @@
 use crate::image_registry::ImageRegistry;
-use crate::image_registry::error::ImageTooLarge;
+use crate::image_registry::error::ImageSizeError;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::image::Image;
 use glam::UVec2;
@@ -7,7 +7,7 @@ use std::cell::Cell;
 use std::rc::Rc;
 
 /// RAII owner of a registered image's GPU texture, from [`Ui::load_image`](crate::Ui::load_image); the
-/// texture lives until the last clone drops. Reference it from [`ImagePaint`](crate::widget::ImagePaint)
+/// texture lives until the last clone drops. Reference it from [`ImagePaint`](crate::ImagePaint)
 /// each frame; "no image" is `Option<ImageHandle>`. Not `Copy`: sharing is an explicit `clone`.
 #[must_use = "hold the ImageHandle to keep its GPU texture alive — \
               discarding it (e.g. ignoring load_image's return) frees \
@@ -78,7 +78,7 @@ impl ImageHandle {
     ///
     /// Panics unless `image` is the registered size (a 2×3 and 3×2 image have equal byte counts, so wgpu would
     /// accept the write and scramble the rows).
-    pub fn update(&self, image: &Image) -> Result<(), ImageTooLarge> {
+    pub fn update(&self, image: &Image) -> Result<(), ImageSizeError> {
         assert_eq!(
             image.size, self.inner.size,
             "an image update must match the registered size",

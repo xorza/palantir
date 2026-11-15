@@ -10,14 +10,12 @@ use crate::shell::{MAIN_WINDOW, Shell};
 #[derive(Debug)]
 pub struct Showcase {
     shell: Shell,
-    field_len: usize,
 }
 
 impl Default for Showcase {
     fn default() -> Self {
         Self {
-            shell: Shell::open(0),
-            field_len: 0,
+            shell: Shell::open(Shell::page_idx("Controls").expect("the tour has a Controls page")),
         }
     }
 }
@@ -25,7 +23,6 @@ impl Default for Showcase {
 impl Scene for Showcase {
     fn record(&mut self, ui: &mut Ui) {
         self.shell.record(MAIN_WINDOW, ui);
-        self.field_len = controls::internals::device_name_len(ui);
     }
 
     fn hover_targets(&self) -> [WidgetId; 2] {
@@ -34,10 +31,6 @@ impl Scene for Showcase {
 
     fn field(&self) -> WidgetId {
         controls::device_name_id()
-    }
-
-    fn field_len(&self) -> usize {
-        self.field_len
     }
 }
 
@@ -51,6 +44,7 @@ mod tests {
 
     /// What the frame cases aim at answers on their surface: a pointer at the middle of a hover
     /// target hovers it, as one under the page's fold would not, and a key reaches the field.
+    /// The field's text is what its widget records, as the inspection reads it.
     #[test]
     fn the_targets_answer_on_the_bench_surface() {
         let mut h = Harness::builder(BENCH_SURFACE)
@@ -60,15 +54,25 @@ mod tests {
         h.frame(|ui| scene.record(ui));
         for id in scene.hover_targets() {
             let rect = h.ui().response_for(id).rect.expect("the target shows");
-            h.hover(Locator::Point(rect.center()));
+            h.hover(Locator::point(rect.center()));
             h.frame(|ui| scene.record(ui));
             assert!(h.ui().response_for(id).hovered(), "{id:?}");
         }
-        assert_eq!(scene.field_len(), 0, "the field starts empty");
-        h.ui_mut().set_focus(scene.field());
+        let field = scene.field();
+        let field_text = |h: &Harness| {
+            let mut widgets = Vec::new();
+            h.ui().inspect(&mut widgets);
+            widgets
+                .into_iter()
+                .find(|widget| widget.id == field)
+                .expect("the field shows")
+                .text
+        };
+        assert_eq!(field_text(&h), "", "the field starts empty");
+        h.ui_mut().set_focus(field);
         h.frame(|ui| scene.record(ui));
         h.key(Key::Char('x'));
         h.frame(|ui| scene.record(ui));
-        assert_eq!(scene.field_len(), 1, "the key lands");
+        assert_eq!(field_text(&h), "x", "the key lands");
     }
 }

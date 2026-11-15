@@ -15,17 +15,12 @@ pub(crate) struct DrawTextPayload {
     pub(crate) ink: Spacing,
     pub(crate) color: RgbaF16,
     pub(crate) text: ShapedTextRef,
-    /// A paint animation's turn.
-    pub(crate) spin: Option<Spin>,
 }
 
 impl PaintPayload for DrawTextPayload {
     /// This draw with alpha scaled by `by`, for the [`PaintSink`] gate.
     #[inline]
     fn faded(self, by: f32) -> Self {
-        if by == 1.0 {
-            return self;
-        }
         Self {
             color: self.color.faded(by),
             ..self
@@ -38,11 +33,7 @@ impl PaintPayload for DrawTextPayload {
         self.rect.is_paint_empty() || self.color.is_noop()
     }
 
-    fn spin_mut(&mut self) -> &mut Option<Spin> {
-        &mut self.spin
-    }
-
-    fn paint(self, sink: &mut impl PaintSink) {
-        sink.text(self);
+    fn paint(self, spin: Option<Spin>, sink: &mut impl PaintSink) {
+        sink.text(self, spin);
     }
 }

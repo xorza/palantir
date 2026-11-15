@@ -39,14 +39,6 @@ pub(super) struct Seen {
     pub(super) visible: URect,
 }
 
-/// What a draw [`Ordering::admit`] let through takes: the pixels it paints, and its scissor
-/// ([`Ordering::order`]), `None` for the whole viewport.
-#[derive(Clone, Copy, Debug)]
-pub(super) struct Admitted {
-    pub(super) visible: URect,
-    pub(super) scissor: Option<URect>,
-}
-
 /// Where a tier's run of the open group starts among its rows, and the scissor it draws under.
 #[derive(Clone, Copy, Debug)]
 struct TierRun {
@@ -275,17 +267,13 @@ pub(super) struct Ordering<'s> {
 }
 
 impl Ordering<'_> {
-    /// [`Self::cull`] `bounds`, then [`Self::order`] a draw of `lane` there: the pixels it paints
-    /// and its run's scissor, or `None` when it paints none, which then neither splits a batch nor
-    /// registers a rect.
+    /// [`Self::cull`] `bounds`, then [`Self::order`] a draw of `lane` there: the pixels it paints,
+    /// or `None` when it paints none, which then neither splits a batch nor registers a rect.
     #[inline(always)]
-    pub(super) fn admit(&mut self, lane: Lane, bounds: URect) -> Option<Admitted> {
+    pub(super) fn admit(&mut self, lane: Lane, bounds: URect) -> Option<URect> {
         let seen = self.cull(bounds)?;
-        let scissor = self.order(lane, seen);
-        Some(Admitted {
-            visible: seen.visible,
-            scissor,
-        })
+        self.order(lane, seen);
+        Some(seen.visible)
     }
 
     /// `bounds` and the part of them the clip in force leaves, `None` when that is empty.
@@ -306,14 +294,13 @@ impl Ordering<'_> {
     /// group where it overlaps a tier that replays after it. A close on every draw would cost one
     /// text batch per draw (one per toolbar button); either half alone is unsound.
     ///
-    /// Returns the scissor the draw takes: a tier draw its run's ([`Self::run_scissor`]), a quad
-    /// the clip in force, which the group's join trades for its run's; a text run's batch takes
-    /// its own.
+    /// A tier draw joins its run ([`Self::run_scissor`]); a quad takes the clip in force, which
+    /// the group's join trades for its run's; a text run's batch takes its own.
     // Always inlined: each caller's `lane` is a constant, so one arm remains and `visible` stays
     // in registers. As a call it took `visible` through memory, and `same_tier_image` ran 5 %
     // slower.
     #[inline(always)]
-    pub(super) fn order(&mut self, lane: Lane, seen: Seen) -> Option<URect> {
+    pub(super) fn order(&mut self, lane: Lane, seen: Seen) {
         let visible = seen.visible;
         match lane {
             Lane::Quad => self.quad_forces_flush(visible),
@@ -335,13 +322,10 @@ impl Ordering<'_> {
         self.order.backdrop_break.paint(visible);
         self.order.closes.edit(|tally| tally.draws += 1);
         match lane {
-            Lane::Text => None,
-            // A quad takes the clip in force, which the group's join trades for its run's
-            // scissor ([`QuadRuns::join`]).
+            Lane::Text => {}
             Lane::Quad => {
                 let bounds = &mut self.order.quad_bounds;
                 *bounds = Some(bounds.map_or(visible, |bounds| bounds.union(visible)));
-                self.clip.scissor()
             }
             Lane::Tier(tier) => self.run_scissor(tier, seen),
         }
@@ -353,7 +337,7 @@ impl Ordering<'_> {
     /// costs no run, and one that cuts costs the runs of its cut draws. As Skia sets a scissor
     /// only for a draw its clip does not hold (`GrClip::IsInsideClip`).
     #[inline(always)]
-    fn run_scissor(&mut self, tier: PaintTier, seen: Seen) -> Option<URect> {
+    fn run_scissor(&mut self, tier: PaintTier, seen: Seen) {
         let Seen { bounds, visible } = seen;
         if let Some(run) = self.order.open_runs[tier.idx()] {
             let cuts = match run.scissor {
@@ -361,15 +345,15 @@ impl Ordering<'_> {
                 Some(scissor) => bounds.clamp_to(scissor),
             };
             if cuts == visible {
-                return run.scissor;
+                return;
             }
         }
-        self.open_tier_run(tier, seen)
+        self.open_tier_run(tier, seen);
     }
 
     /// Open a run of `tier` for a draw `seen` its open run cannot take, under the clip in force
     /// where that cuts the draw and none where it does not.
-    fn open_tier_run(&mut self, tier: PaintTier, seen: Seen) -> Option<URect> {
+    fn open_tier_run(&mut self, tier: PaintTier, seen: Seen) {
         let cut = seen.bounds != seen.visible;
         debug_assert!(
             !cut || self.clip.scissor().is_some(),
@@ -383,7 +367,6 @@ impl Ordering<'_> {
         if let Some(closed) = self.order.open_runs[tier.idx()].replace(run) {
             self.order.tier_runs[tier.idx()].push(closed);
         }
-        scissor
     }
 
     /// Where a backdrop of `ticket` reads: its cached result where it holds one, else a
@@ -393,7 +376,7 @@ impl Ordering<'_> {
     /// reorders or prunes against what follows: the main pass can break there and read the
     /// pixels the runs before it painted.
     pub(super) fn backdrop_source(&mut self, ticket: BackdropTicket) -> BackdropSource {
-        if !ticket.captures {
+        if !ticket.is_new() {
             return BackdropSource::Held;
         }
         let barrier = self

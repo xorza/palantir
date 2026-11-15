@@ -1,10 +1,9 @@
 //! The centered dialog and its input-blocking barrier.
 
 use crate::primitives::geometry::size::Size;
-use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::sense::Sense;
 use crate::primitives::layout::align::Align;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::SizeSpec;
 use crate::primitives::paint::chrome::Chrome;
 use crate::scene::layer::Layer;
 use crate::theme::modal::ModalTheme;
@@ -12,7 +11,7 @@ use crate::ui::Ui;
 use crate::widget_core::click_outside::ClickOutside;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::configure::ThemeDefaults;
+use crate::widget_core::configure::ConfigureDefaults;
 use crate::widget_core::overlay_response::OverlayResponse;
 use crate::widget_core::overlay_scope::{Barrier, OverlayScope, OverlaySpec};
 use crate::widget_core::widget::{MaterialBox, Widget};
@@ -35,8 +34,10 @@ use std::rc::Rc;
 /// the pass costs the frame a second pass.
 ///
 /// A modal is open while it records. Stop recording it only on the frame its response reads
-/// [`closed`](OverlayResponse::closed), or after [`Self::close`]: a modal that merely stops
-/// recording keeps every key and press one more frame, so the next key goes nowhere.
+/// [`closed`](OverlayResponse::closed), or after
+/// [`Ui::withdraw_input_scope`](crate::Ui::withdraw_input_scope) of its id, as a caller does when
+/// a choice in its body ends it: a modal that merely stops recording keeps every key and press one
+/// more frame, so the next key goes nowhere.
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
 pub struct Modal<'a> {
@@ -74,8 +75,7 @@ impl<'a> Modal<'a> {
     ///
     /// Panics unless `scrim` passes its checks, as a widget's `chrome` does.
     #[track_caller]
-    pub fn scrim(mut self, scrim: impl Into<Chrome>) -> Self {
-        let scrim = scrim.into();
+    pub const fn scrim(mut self, scrim: Chrome) -> Self {
         scrim.validate();
         self.scrim = Some(scrim);
         self
@@ -113,7 +113,7 @@ impl<'a> Modal<'a> {
         // The root dims the surface; the panel re-senses `Sense::ABSORB_POINTER`.
         let mut root = Widget::zstack()
             .id(root_id)
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .child_align(Align::CENTER)
             .sense(Sense::ABSORB_POINTER);
         let spec = OverlaySpec {
@@ -125,21 +125,13 @@ impl<'a> Modal<'a> {
         if scope.opened() {
             ui.overlays().arm_cancel(root_id);
         }
-        let response = scope.record(ui, |ui| {
+        scope.record(ui, |ui| {
             root.record_box(ui, dim, |ui| panel.record_box(ui, panel_box, body))
-        });
-        scope.finish(ui, response)
+        })
     }
 }
 
 impl Modal<'_> {
-    /// Close the modal `id` from outside, as a caller does when a choice in its body ends it: the
-    /// input it took from the layers below goes back at once. No-op for a modal its response
-    /// already closed.
-    pub fn close(ui: &mut Ui, id: WidgetId) {
-        ui.withdraw_input_scope(id);
-    }
-
     /// Paints `chrome` as the panel chrome, which wears no material, in place of the theme's panel
     /// over its material; [`Chrome::NONE`] suppresses the themed chrome.
     ///
@@ -150,21 +142,6 @@ impl Modal<'_> {
     pub const fn chrome(mut self, chrome: Chrome) -> Self {
         chrome.validate();
         self.chrome = Some(chrome);
-        self
-    }
-
-    /// Paints `chrome` unless the caller set one, for a wrapper theming a
-    /// widget after the caller's setters; an explicit [`Self::chrome`] wins in either order.
-    ///
-    /// # Panics
-    ///
-    /// Panics unless `chrome` holds the kinds [`Chrome`] lists.
-    #[track_caller]
-    pub const fn default_chrome(mut self, chrome: Chrome) -> Self {
-        chrome.validate();
-        if self.chrome.is_none() {
-            self.chrome = Some(chrome);
-        }
         self
     }
 }

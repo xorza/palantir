@@ -31,7 +31,7 @@ fn collision_outlines(frames: &WindowFrames) -> Vec<Rect> {
         },
     );
     frontend
-        .buffer
+        .buffer()
         .quads
         .instance()
         .iter()
@@ -126,7 +126,7 @@ fn collision_outlines_repaint_whole_until_they_clear() {
 
     let mut h = Harness::mono(UVec2::new(100, 100));
     let frame = |h: &mut Harness, duplicate: bool, red: f32| {
-        let report = h.frame(|ui| {
+        let report = h.frame_recorded(|ui| {
             Panel::hstack().auto_id().show(ui, |ui| {
                 Block::new()
                     .id(WidgetId::from_hash("moving"))
@@ -160,13 +160,13 @@ fn collision_outlines_repaint_whole_until_they_clear() {
 #[test]
 fn a_collision_under_a_transform_is_outlined_where_it_paints() {
     use crate::primitives::geometry::translate_scale::TranslateScale;
-    use crate::primitives::layout::sizing::Sizing;
+    use crate::primitives::layout::sizing::SizeSpec;
 
     let mut h = Harness::mono(UVec2::new(200, 200));
     h.frame(|ui| {
         Panel::canvas()
             .auto_id()
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .transform(TranslateScale::new(Vec2::new(30.0, 20.0), 0.5))
             .show(ui, |ui| {
                 for x in [10.0, 60.0] {
@@ -247,15 +247,13 @@ fn layout_outputs_stay_isolated_per_layer_across_cache_hits() {
                     .size((40.0, 20.0))
                     .show(ui);
             });
-        ui.layer(Layer::Popup)
-            .fixed_at(Vec2::new(80.0, 60.0))
-            .show(|ui| {
-                Button::new()
-                    .id(popup_id)
-                    .label("popup layer")
-                    .size((70.0, 30.0))
-                    .show(ui);
-            });
+        ui.layer(Layer::Popup).at(Vec2::new(80.0, 60.0)).show(|ui| {
+            Button::new()
+                .id(popup_id)
+                .label("popup layer")
+                .size((70.0, 30.0))
+                .show(ui);
+        });
     };
     let node_for = |h: &Harness, layer: Layer, id: WidgetId| {
         let at = h.node_of(id).expect("recorded");
@@ -413,6 +411,6 @@ fn two_widgets_resolved_before_recording_get_distinct_ids() {
         "positional, like any auto-id collision"
     );
     for id in ids {
-        assert!(h.arranged(id).is_some(), "{id:?} recorded");
+        assert!(h.layout_rect(id).is_some(), "{id:?} recorded");
     }
 }

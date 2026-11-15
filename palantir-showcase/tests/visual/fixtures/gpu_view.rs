@@ -4,18 +4,13 @@
     clippy::cast_sign_loss,
     reason = "test fixtures cast non-negative sizes, coordinates, indices and color channels"
 )]
-#![expect(
-    clippy::disallowed_types,
-    reason = "an outside consumer of the published surface, where naming a wgpu type is the point"
-)]
-
 use palantir::wgpu;
 use std::cell::RefCell;
 use std::rc::Rc;
 
 use palantir::glam::UVec2;
 use palantir::{
-    Configure, GpuFrameCtx, GpuInitCtx, GpuPaint, GpuView, Panel, Sizing, SystemScale,
+    Configure, GpuFrameCtx, GpuInitCtx, GpuPaint, GpuView, Panel, Sizing, SrgbaU8, SystemScale,
     TranslateScale,
 };
 
@@ -176,8 +171,7 @@ impl GpuPaint for DepthTriangle {
 #[test]
 fn gpu_view_pipeline_depth_and_capacity_crop() {
     let paint = Rc::new(RefCell::new(DepthTriangle::new(None)));
-    let img = VisualRig::new()
-        .size(UVec2::new(64, 50))
+    let img = VisualRig::new(UVec2::new(64, 50))
         .frame(|ui| {
             GpuView::new(&paint)
                 .size((Sizing::fixed(64.0), Sizing::fixed(200.0)))
@@ -188,8 +182,8 @@ fn gpu_view_pipeline_depth_and_capacity_crop() {
     // (63,49) discriminates: a full [0,1] UV would sample blue slack at texel ≈63.
     for &(x, y) in &[(32u32, 25u32), (63, 49), (0, 49), (63, 0)] {
         fixtures::assert_px(
-            img.get_pixel(x, y).0,
-            [0, 255, 0, 255],
+            img.texel(UVec2::new(x, y)),
+            SrgbaU8::rgb(0, 255, 0),
             format_args!("pixel ({x},{y}) is green, not the capacity slack"),
         );
     }
@@ -201,8 +195,7 @@ fn gpu_view_pipeline_depth_and_capacity_crop() {
 #[test]
 fn gpu_view_magnified_composite_reads_no_slack() {
     let paint = Rc::new(RefCell::new(DepthTriangle::new(None)));
-    let img = VisualRig::new()
-        .size(UVec2::new(64, 64))
+    let img = VisualRig::new(UVec2::new(64, 64))
         .frame(|ui| {
             GpuView::new(&paint)
                 .size((Sizing::fixed(64.0), Sizing::fixed(100_000.0)))
@@ -216,8 +209,8 @@ fn gpu_view_magnified_composite_reads_no_slack() {
     );
     for &(x, y) in &[(32u32, 32u32), (32, 63), (63, 63), (0, 0)] {
         fixtures::assert_px(
-            img.get_pixel(x, y).0,
-            [0, 255, 0, 255],
+            img.texel(UVec2::new(x, y)),
+            SrgbaU8::rgb(0, 255, 0),
             format_args!("pixel ({x},{y}) is green, not the capacity slack"),
         );
     }
@@ -226,8 +219,7 @@ fn gpu_view_magnified_composite_reads_no_slack() {
 #[test]
 fn gpu_view_callback_receives_composed_raster_factor() {
     let paint = Rc::new(RefCell::new(DepthTriangle::new(Some(16.0))));
-    let img = VisualRig::new()
-        .size(UVec2::new(96, 96))
+    let img = VisualRig::new(UVec2::new(96, 96))
         .scale(SystemScale::new(2.0).unwrap())
         .frame(|ui| {
             Panel::zstack()
@@ -244,9 +236,12 @@ fn gpu_view_callback_receives_composed_raster_factor() {
     assert_eq!(paint.borrow().last_scale_factor, 2.0);
     assert_eq!(paint.borrow().last_raster_factor, 3.0);
 
-    for &(x, y, expected) in &[(36, 36, [0, 255, 0, 255]), (60, 60, [0, 0, 255, 255])] {
+    for &(x, y, expected) in &[
+        (36, 36, SrgbaU8::rgb(0, 255, 0)),
+        (60, 60, SrgbaU8::rgb(0, 0, 255)),
+    ] {
         fixtures::assert_px(
-            img.get_pixel(x, y).0,
+            img.texel(UVec2::new(x, y)),
             expected,
             format_args!("pixel ({x},{y})"),
         );

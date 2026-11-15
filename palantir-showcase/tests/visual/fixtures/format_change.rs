@@ -3,33 +3,26 @@
 //! format (`WgpuBackend::prepare_format`), and the uploaded image texture
 //! survives with no re-upload.
 
-#![expect(
-    clippy::disallowed_types,
-    reason = "an outside consumer of the published surface, where naming a wgpu type is the point"
-)]
-
 use palantir::glam::UVec2;
 use palantir::wgpu::TextureFormat;
-use palantir::widget::Shape;
 use palantir::{
-    Block, Border, Button, Chrome, Configure, Corners, Image, ImageHandle, Panel, RgbaF32, Sizing,
-    TargetFormat, Ui,
+    Block, Border, Button, Chrome, Configure, Corners, Image, ImageHandle, ImagePaint, Panel,
+    RgbaF32, Shape, SizeSpec, Sizing, TargetFormat, Ui,
 };
 
 use crate::goldens;
 use crate::visual_rig::VisualRig;
-use palantir::widget::ImagePaint;
 
 /// A scene touching several format-dependent pipelines: a bordered rounded frame around a labeled button.
 fn scene(ui: &mut Ui) {
     Panel::vstack()
         .auto_id()
         .padding(16.0)
-        .size((Sizing::FILL, Sizing::FILL))
+        .size(SizeSpec::FILL)
         .show(ui, |ui| {
             Block::new()
                 .id_salt("card")
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .chrome(
                     Chrome::rounded(RgbaF32::srgb(0.20, 0.30, 0.55), Corners::all(12.0))
                         .with_border(Border::new(RgbaF32::srgb(0.65, 0.80, 1.00), 2.0)),
@@ -48,14 +41,13 @@ fn scene(ui: &mut Ui) {
 /// after BGRA reordering every render matches the first.
 #[test]
 fn format_changes_render_identically() {
-    let mut h = VisualRig::new();
-    h.size(UVec2::new(200, 120));
+    let mut h = VisualRig::new(UVec2::new(200, 120));
     let before = h.format(TextureFormat::Rgba8UnormSrgb).frame(scene).image;
 
     // Guard against a vacuous comparison: the card's center must differ from the clear color.
     assert_ne!(
-        before.get_pixel(2, 2).0,
-        before.get_pixel(100, 60).0,
+        before.texel(UVec2::new(2, 2)),
+        before.texel(UVec2::new(100, 60)),
         "scene drew nothing distinct from the background — comparison would be vacuous",
     );
 
@@ -89,7 +81,7 @@ fn image_scene(ui: &mut Ui, image: &ImageHandle) {
     Panel::zstack()
         .auto_id()
         .padding(8.0)
-        .size((Sizing::FILL, Sizing::FILL))
+        .size(SizeSpec::FILL)
         .show(ui, |ui| {
             ui.add_shape(Shape::rect(), ImagePaint::new(image.clone()));
         });
@@ -99,7 +91,7 @@ fn image_scene(ui: &mut Ui, image: &ImageHandle) {
 /// texture (`Rgba8UnormSrgb`): no drop or re-upload, identical pixels.
 #[test]
 fn images_survive_format_change_without_reupload() {
-    let mut h = VisualRig::new();
+    let mut h = VisualRig::new(UVec2::new(128, 128));
     let image = h
         .host
         .ui()
@@ -107,11 +99,7 @@ fn images_survive_format_change_without_reupload() {
         .expect("fixture image fits every supported GPU");
     let scene = |ui: &mut Ui| image_scene(ui, &image);
 
-    let before = h
-        .size(UVec2::new(128, 128))
-        .format(TextureFormat::Rgba8UnormSrgb)
-        .frame(scene)
-        .image;
+    let before = h.format(TextureFormat::Rgba8UnormSrgb).frame(scene).image;
     assert_eq!(
         h.host.gpu_image_cache_len(),
         1,
@@ -140,10 +128,6 @@ fn images_survive_format_change_without_reupload() {
 #[test]
 #[should_panic(expected = "a render target's format must be sRGB or float")]
 fn a_unorm_target_is_refused() {
-    let mut h = VisualRig::new();
-    let _ = h
-        .size(UVec2::new(32, 32))
-        .format(TextureFormat::Rgba8Unorm)
-        .frame(scene)
-        .image;
+    let mut h = VisualRig::new(UVec2::new(32, 32));
+    let _ = h.format(TextureFormat::Rgba8Unorm).frame(scene).image;
 }

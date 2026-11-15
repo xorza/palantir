@@ -5,6 +5,7 @@
 //! light-dark edge.
 
 use half::f16;
+use palantir::glam::UVec2;
 use palantir::{RgbaF32, SrgbaU8};
 
 /// A frame of linear RGBA in `f32`, rows top down.
@@ -78,12 +79,13 @@ fn taps(from: usize, to: usize) -> Vec<Taps> {
 }
 
 impl Shrink {
-    pub(crate) fn new(from: (usize, usize), to: (usize, usize)) -> Self {
+    pub(crate) fn new(from: UVec2, to: UVec2) -> Self {
+        let px = |v: u32| usize::try_from(v).expect("a frame's side fits a usize");
         Self {
-            width: to.0,
-            height: to.1,
-            columns: taps(from.0, to.0),
-            rows: taps(from.1, to.1),
+            width: px(to.x),
+            height: px(to.y),
+            columns: taps(px(from.x), px(to.x)),
+            rows: taps(px(from.y), px(to.y)),
             across: Vec::new(),
         }
     }
@@ -124,6 +126,7 @@ fn blend(texels: &[[f32; 4]], taps: &Taps, stride: usize, offset: usize) -> [f32
 #[cfg(test)]
 mod tests {
     use palantir::RgbaF32;
+    use palantir::glam::UVec2;
 
     use crate::downscale::{Linear, Shrink, taps};
 
@@ -157,10 +160,12 @@ mod tests {
             texels: values.iter().map(|&v| [v, v, v, 1.0]).collect(),
         };
         let mut rgba = Vec::new();
-        Shrink::new((2, 2), (1, 1)).encode(&frame(2, 2, &[0.0, 1.0, 1.0, 0.0]), &mut rgba);
+        Shrink::new(UVec2::new(2, 2), UVec2::new(1, 1))
+            .encode(&frame(2, 2, &[0.0, 1.0, 1.0, 0.0]), &mut rgba);
         assert_eq!(rgba, [188, 188, 188, 255]);
         assert_eq!(RgbaF32::new(0.5, 0.5, 0.5, 1.0).to_srgba8().r, 188);
-        Shrink::new((3, 1), (2, 1)).encode(&frame(3, 1, &[0.0, 1.0, 0.0]), &mut rgba);
+        Shrink::new(UVec2::new(3, 1), UVec2::new(2, 1))
+            .encode(&frame(3, 1, &[0.0, 1.0, 0.0]), &mut rgba);
         let third = 1.0 / 3.0;
         assert_eq!(RgbaF32::new(third, third, third, 1.0).to_srgba8().r, 156);
         assert_eq!(rgba, [156, 156, 156, 255, 156, 156, 156, 255]);

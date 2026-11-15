@@ -16,13 +16,13 @@ use crate::primitives::effect::effect_params::EffectParams;
 /// blends. [`Self::new`] lays out the effect's own parameter type, which must be f32 lanes alone,
 /// so the name and its parameters agree by construction; a theme file names the effect and lists
 /// its lanes in order, as Flutter's `FragmentShader.setFloat` and Skia's runtime-effect uniforms
-/// take them, and [`Ui::set_theme`](crate::Ui::set_theme) holds their count to the loaded effect's.
+/// take them, and [`Ui::set_scheme_theme`](crate::Ui::set_scheme_theme) holds their count to the loaded effect's.
 ///
 /// Refused: the name and the parameters as two fields, which a caller could set apart; an
 /// allocation of the bytes, which every material built in a frame would pay; any parameter type,
 /// which a blend could not read and a theme file could not hold; more lanes, which every paint
 /// would carry. A larger or integer parameter struct paints through an
-/// [`EffectPaint`](crate::widget::EffectPaint).
+/// [`EffectPaint`](crate::EffectPaint).
 #[derive(Clone, Copy, PartialEq)]
 #[must_use]
 pub struct MaterialEffect {
@@ -127,11 +127,6 @@ impl MaterialEffect {
     /// The lanes as the bytes the effect reads.
     pub(crate) fn bytes(&self) -> &[u8] {
         bytemuck::cast_slice(self.params())
-    }
-
-    /// The lanes as `U`, which the loaded effect takes, its lane count checked against these.
-    pub(crate) fn read<U: EffectParams>(&self) -> U {
-        bytemuck::pod_read_unaligned(self.bytes())
     }
 
     /// Each lane mapped by `f`, the name and count kept: the spring arithmetic.

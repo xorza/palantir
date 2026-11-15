@@ -1,4 +1,4 @@
-//! [`HostHandle`] and [`UserEvent`]: the cross-thread channel into a running [`WinitHost`](super::WinitHost).
+//! [`HostHandle`]: the cross-thread channel into a running [`WinitHost`](super::WinitHost), which sends it [`UserEvent`]s.
 
 use std::fmt;
 use std::sync::Arc;
@@ -7,72 +7,13 @@ use std::sync::mpsc;
 
 use winit::event_loop::EventLoopProxy;
 
-use crate::host::winit::error::HostDisconnected;
-use crate::host::winit::frame_log::FrameLog;
-use crate::host::winit::frame_summary::FrameSummary;
+use crate::host::winit::error::HostHandleError;
+use crate::host::winit::frame_log::{FrameLog, LoggedFrame};
 use crate::host::winit::owned_input_event::OwnedInputEvent;
-use crate::host::winit::remote::{LoseTask, QueryTask, ReadTask, Remote, ShotAsk};
-use crate::host::winit::system_preferences::SystemReport;
+use crate::host::winit::remote::Remote;
+use crate::host::winit::user_event::UserEvent;
 use crate::host::winit::wake_latch::WakeLatch;
 use crate::window::window_token::WindowToken;
-
-/// A main-thread closure scheduled via [`HostHandle::run_on_main`].
-pub(super) type MainTask<T> = Box<dyn FnOnce(&mut T) + Send>;
-
-/// Events delivered through [`HostHandle`] to the event loop. Generic over `T`
-/// so [`Self::RunOnMain`] carries a typed closure. Window lifecycle is an
-/// in-frame action ([`Ui::open_window`](crate::Ui::open_window)), so a
-/// background thread wanting a window pokes a `Repaint`.
-pub(crate) enum UserEvent<T> {
-    /// Wakes the loop for one redraw of the named window; one in flight a window, which the
-    /// latch holds.
-    Repaint(WindowToken, WakeLatch),
-    /// Input for the named window, delivered as its OS input is.
-    Input(WindowToken, OwnedInputEvent),
-    /// Runs a closure on the main thread with `&mut` the app, then every window follows what it
-    /// changed.
-    RunOnMain(MainTask<T>),
-    /// Runs a closure with `&mut` the app and the named window's `Ui` between two of its frames,
-    /// then runs a frame; dropped unrun when the window is gone.
-    Query(WindowToken, QueryTask<T>),
-    /// Runs a closure with the app and the named window's `Ui` between two of its frames, and runs
-    /// no frame; dropped unrun when the window is gone.
-    Read(WindowToken, ReadTask<T>),
-    /// Asks the named window for a screenshot, which its frame hands back when it lands.
-    Shot(WindowToken, ShotAsk),
-    /// Runs a closure with the host's device between two of the named window's frames, which
-    /// loses it, then runs a frame, which opens a new one; dropped unrun when the window is gone.
-    LoseDevice(WindowToken, LoseTask),
-    /// The system's settings moved, as one of their sources reports from its thread.
-    System(SystemReport),
-    /// The system warns of low memory, as its watch reports from its thread.
-    MemoryPressure,
-    /// Asks the event loop to exit.
-    Quit,
-}
-
-impl<T> fmt::Debug for UserEvent<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Repaint(token, _) => f
-                .debug_tuple("Repaint")
-                .field(token)
-                .finish_non_exhaustive(),
-            Self::Input(token, event) => f.debug_tuple("Input").field(token).field(event).finish(),
-            Self::RunOnMain(_) => f.write_str("RunOnMain(..)"),
-            Self::Query(token, _) => f.debug_tuple("Query").field(token).finish_non_exhaustive(),
-            Self::Read(token, _) => f.debug_tuple("Read").field(token).finish_non_exhaustive(),
-            Self::Shot(token, ask) => f.debug_tuple("Shot").field(token).field(ask).finish(),
-            Self::LoseDevice(token, _) => f
-                .debug_tuple("LoseDevice")
-                .field(token)
-                .finish_non_exhaustive(),
-            Self::System(report) => f.debug_tuple("System").field(report).finish(),
-            Self::MemoryPressure => f.write_str("MemoryPressure"),
-            Self::Quit => f.write_str("Quit"),
-        }
-    }
-}
 
 /// Thread-safe, cheaply `Clone` handle to a running
 /// [`WinitHost<T>`](super::WinitHost); obtain one via
@@ -91,11 +32,11 @@ pub(super) enum EventSender<T: 'static> {
 }
 
 impl<T: 'static> EventSender<T> {
-    fn send(&self, event: UserEvent<T>) -> Result<(), HostDisconnected> {
+    fn send(&self, event: UserEvent<T>) -> Result<(), HostHandleError> {
         match self {
-            Self::Proxy(proxy) => proxy.send_event(event).map_err(|_| HostDisconnected),
+            Self::Proxy(proxy) => proxy.send_event(event).map_err(|_| HostHandleError),
             #[cfg(test)]
-            Self::Channel(sender) => sender.send(event).map_err(|_| HostDisconnected),
+            Self::Channel(sender) => sender.send(event).map_err(|_| HostHandleError),
         }
     }
 }
@@ -132,18 +73,21 @@ impl<T: 'static> HostHandle<T> {
     }
 
     /// Delivers `event` to `window` before its next frame, as the window's OS input is, stamped
-    /// with the window's input clock, then runs a frame; [`FrameSummary::sent_events`] counts the
+    /// with the window's input clock, then runs a frame; the summary's
+    /// [`sent_events`](crate::host::winit::frame_summary::FrameSummary::sent_events) counts the
     /// event. Events reach the window in the order they are sent. Dropped silently unless the
-    /// window is open. Crate-private, so a [`Remote`], which counts what it sends,
-    /// is the one sender: input from another made its settle end early.
+    /// window is open. Crate-private, so a [`Remote`], which counts what it sends, is the one
+    /// sender: input from another made its settle end early.
     pub(crate) fn send_input(&self, window: WindowToken, event: OwnedInputEvent) {
         self.send(UserEvent::Input(window, event)).ok();
     }
 
-    /// The last frame `window` ran, [`FrameSummary::AT_OPEN`] until it runs one, or `None` when it
-    /// is not open: before it opens, after it closes, and once the loop ends. A window skips its
-    /// frames while hidden, so its summary holds still.
-    pub(crate) fn last_frame(&self, window: WindowToken) -> Option<FrameSummary> {
+    /// The last frame `window` ran,
+    /// [`FrameSummary::AT_OPEN`](crate::host::winit::frame_summary::FrameSummary::AT_OPEN) until it
+    /// runs one, with the opening that ran it, or `None` when it is not open: before it opens,
+    /// after it closes, and once the loop ends. A window skips its frames while hidden, so its
+    /// summary holds still.
+    pub(crate) fn last_frame(&self, window: WindowToken) -> Option<LoggedFrame> {
         self.frame_log.get(window)
     }
 
@@ -164,13 +108,13 @@ impl<T: 'static> HostHandle<T> {
     ///
     /// # Errors
     ///
-    /// [`HostDisconnected`] when the event loop has exited; `f` is dropped
+    /// [`HostHandleError`] when the event loop has exited; `f` is dropped
     /// unrun. This is the only method that reports delivery, as the only one
     /// whose loss discards a state mutation.
     pub fn run_on_main(
         &self,
         f: impl FnOnce(&mut T) + Send + 'static,
-    ) -> Result<(), HostDisconnected> {
+    ) -> Result<(), HostHandleError> {
         self.send(UserEvent::RunOnMain(Box::new(f)))
     }
 
@@ -185,32 +129,7 @@ impl<T: 'static> HostHandle<T> {
         Remote::new(self.clone(), window)
     }
 
-    pub(crate) fn send(&self, event: UserEvent<T>) -> Result<(), HostDisconnected> {
+    pub(crate) fn send(&self, event: UserEvent<T>) -> Result<(), HostHandleError> {
         self.sender.send(event)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::host::winit::handle::UserEvent;
-    use crate::host::winit::wake_latch::WakeLatch;
-    use crate::primitives::input::input_event::InputEvent;
-    use crate::window::window_token::WindowToken;
-
-    #[test]
-    fn user_event_debug_formats_every_variant_without_an_app_bound() {
-        let repaint: UserEvent<()> = UserEvent::Repaint(WindowToken(7), WakeLatch::default());
-        let task = UserEvent::RunOnMain(Box::new(|(): &mut ()| {}));
-        let quit: UserEvent<()> = UserEvent::Quit;
-        let input: UserEvent<()> =
-            UserEvent::Input(WindowToken(2), InputEvent::ImeCommit("ok").into());
-
-        assert_eq!(format!("{repaint:?}"), "Repaint(WindowToken(7), ..)");
-        assert_eq!(format!("{task:?}"), "RunOnMain(..)");
-        assert_eq!(format!("{quit:?}"), "Quit");
-        assert_eq!(
-            format!("{input:?}"),
-            r#"Input(WindowToken(2), OwnedInputEvent { event: ImeCommit(""), text: "ok" })"#
-        );
     }
 }

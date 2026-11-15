@@ -8,20 +8,16 @@
     reason = "test fixtures cast non-negative sizes, coordinates, indices and color channels"
 )]
 
-use image::RgbaImage;
-use palantir::Fit;
+use palantir::Image;
 use palantir::glam::{UVec2, Vec2};
-use palantir::widget::Shape;
 use palantir::{
-    ColorScheme, Configure, IconSet, IconTable, Panel, Rect, RgbaF32, Sizing, SystemScale, Text,
-    TextStyle, Ui,
+    ColorScheme, Configure, Fit, IconPaint, IconSet, IconTable, Panel, Rect, RgbaF32, Sizing,
+    SrgbaU8, SystemScale, Text, TextStyle, Ui,
 };
 use std::ops;
-use std::rc::Rc;
 
 use crate::fixtures;
 use crate::visual_rig::VisualRig;
-use palantir::widget::IconPaint;
 
 /// Fills its 8x8 viewBox with one color, so every covered pixel is opaque. Marked
 /// tintable, so the expected value is the tint alone.
@@ -30,12 +26,12 @@ const SOLID_SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0
 /// Two opaque halves, as a color icon whose own colors must survive.
 const HALVES_SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><rect width="4" height="8" fill="#e63c3c"/><rect x="4" width="4" height="8" fill="#3c78e6"/></svg>"##;
 
-const LEFT: [u8; 4] = [0xe6, 0x3c, 0x3c, 255];
-const RIGHT: [u8; 4] = [0x3c, 0x78, 0xe6, 255];
+const LEFT: SrgbaU8 = SrgbaU8::hex(0xe63c3c);
+const RIGHT: SrgbaU8 = SrgbaU8::hex(0x3c78e6);
 
 /// The fixture set: `halves` and `solid`.
-pub(crate) fn atlas() -> Rc<IconTable> {
-    Rc::new(IconTable::from_svgs([("halves", HALVES_SVG), ("solid", SOLID_SVG)]).unwrap())
+pub(crate) fn atlas() -> IconTable {
+    IconTable::from_svgs([("halves", HALVES_SVG), ("solid", SOLID_SVG)]).unwrap()
 }
 
 /// Assert every interior pixel of a 20x20 solid cell at `at` is `tint`: the whole
@@ -43,7 +39,7 @@ pub(crate) fn atlas() -> Rc<IconTable> {
 /// stopping a pixel short of each edge to leave the rasterizer's boundary row out.
 /// `RgbaF32::srgb` is encoded back on write, so the expected bytes are the authored
 /// ones.
-fn assert_cell_interior(img: &RgbaImage, at: Vec2, tint: [f32; 3]) {
+fn assert_cell_interior(img: &Image, at: Vec2, tint: [f32; 3]) {
     let (ox, oy) = (at.x as u32, at.y as u32);
     let expected = tint.map(|c| (c * 255.0f32).round() as u8);
     for dy in 1..19 {
@@ -51,8 +47,8 @@ fn assert_cell_interior(img: &RgbaImage, at: Vec2, tint: [f32; 3]) {
             let (x, y) = (ox + dx, oy + dy);
             let [r, g, b] = expected;
             fixtures::assert_px(
-                img.get_pixel(x, y).0,
-                [r, g, b, 255],
+                img.texel(UVec2::new(x, y)),
+                SrgbaU8::rgb(r, g, b),
                 format_args!("({x},{y}) is the tint, opaque"),
             );
         }
@@ -61,50 +57,36 @@ fn assert_cell_interior(img: &RgbaImage, at: Vec2, tint: [f32; 3]) {
 
 /// [`assert_cell_interior`] plus one pixel outside each side, proving the raster is
 /// the box's size; only for cells with nothing near them.
-fn assert_solid_cell(img: &RgbaImage, at: Vec2, tint: [f32; 3]) {
+fn assert_solid_cell(img: &Image, at: Vec2, tint: [f32; 3]) {
     assert_cell_interior(img, at, tint);
     let (ox, oy) = (at.x as u32, at.y as u32);
     for (dx, dy) in [(-2, 10), (10, -2), (22, 10), (10, 22)] {
         let (x, y) = (ox.wrapping_add_signed(dx), oy.wrapping_add_signed(dy));
         fixtures::assert_px(
-            img.get_pixel(x, y).0,
-            [0, 0, 0, 255],
+            img.texel(UVec2::new(x, y)),
+            SrgbaU8::rgb(0, 0, 0),
             format_args!(
                 "({x},{y}) = {:?} must still be the clear color",
-                img.get_pixel(x, y).0
+                img.texel(UVec2::new(x, y))
             ),
         );
     }
 }
 
 /// One frame on black at `scale`, with `scene` on a full-surface canvas and the [`atlas`] loaded.
-fn render(size: UVec2, scale: SystemScale, mut scene: impl FnMut(&mut Ui, &IconSet)) -> RgbaImage {
-    let atlas = atlas();
-    VisualRig::new()
-        .size(size)
-        .scale(scale)
-        .clear(RgbaF32::BLACK)
-        .frame(|ui| {
-            let icons = ui.load_icons(Rc::clone(&atlas));
-            fixtures::canvas(ui, |ui| scene(ui, &icons));
-        })
-        .image
+fn render(size: UVec2, scale: SystemScale, mut scene: impl FnMut(&mut Ui, &IconSet)) -> Image {
+    fixtures::render(
+        VisualRig::new(size).scale(scale).clear(RgbaF32::BLACK),
+        |ui| {
+            let icons = ui.load_icons(atlas());
+            scene(ui, &icons);
+        },
+    )
 }
 
 /// Icon `name` of `icons`, filling its cell.
 fn icon(icons: &IconSet, name: &str) -> IconPaint {
     IconPaint::new(icons.by_name(name).expect("fixture icon")).fit(Fit::Fill)
-}
-
-/// `icon` in a cell over `at`.
-fn cell(ui: &mut Ui, at: Rect, icon: IconPaint) {
-    Panel::zstack()
-        .id_salt(("cell", at.min.x as i32, at.min.y as i32))
-        .at(at.min)
-        .size((Sizing::fixed(at.size.w), Sizing::fixed(at.size.h)))
-        .show(ui, |ui| {
-            ui.add_shape(Shape::rect(), icon);
-        });
 }
 
 /// A tintable icon reaches the framebuffer as coverage times the tint, filling
@@ -113,7 +95,7 @@ fn cell(ui: &mut Ui, at: Rect, icon: IconPaint) {
 fn tintable_icon_fills_its_exact_pixel_box_with_the_tint() {
     let tint = RgbaF32::srgb(0.2, 0.8, 0.4);
     let img = render(UVec2::new(48, 48), SystemScale::ONE, |ui, icons| {
-        cell(
+        fixtures::cell(
             ui,
             Rect::new(6.0, 6.0, 20.0, 20.0),
             icon(icons, "solid").tint(tint),
@@ -128,7 +110,7 @@ fn tintable_icon_fills_its_exact_pixel_box_with_the_tint() {
 #[test]
 fn color_icon_keeps_its_own_colors_under_a_tint() {
     let img = render(UVec2::new(48, 32), SystemScale::ONE, |ui, icons| {
-        cell(
+        fixtures::cell(
             ui,
             Rect::new(8.0, 4.0, 32.0, 24.0),
             icon(icons, "halves").tint(RgbaF32::srgb(1.0, 0.0, 0.0)),
@@ -138,7 +120,7 @@ fn color_icon_keeps_its_own_colors_under_a_tint() {
     // The cell spans x 8..40, so the seam is x = 24; sample inside each half.
     for (x, half) in [(14, LEFT), (34, RIGHT)] {
         fixtures::assert_px(
-            img.get_pixel(x, 16).0,
+            img.texel(UVec2::new(x, 16)),
             half,
             format_args!(
                 "({x}, 16) is the authored color: a color icon must not take the tint's RGB"
@@ -156,7 +138,7 @@ fn icon_rasterizes_to_whole_physical_pixels_at_fractional_scale() {
         UVec2::new(48, 48),
         SystemScale::new(1.5).unwrap(),
         |ui, icons| {
-            cell(
+            fixtures::cell(
                 ui,
                 Rect::new(4.0, 4.0, 20.0, 20.0),
                 icon(icons, "solid").tint(RgbaF32::WHITE),
@@ -164,8 +146,8 @@ fn icon_rasterizes_to_whole_physical_pixels_at_fractional_scale() {
         },
     );
 
-    let lit = |x: u32, y: u32| img.get_pixel(x, y).0[0] > 200;
-    let dark = |x: u32, y: u32| img.get_pixel(x, y).0[0] < 40;
+    let lit = |x: u32, y: u32| img.texel(UVec2::new(x, y)).r > 200;
+    let dark = |x: u32, y: u32| img.texel(UVec2::new(x, y)).r < 40;
 
     assert!(lit(6, 20), "left edge pixel 6 must be covered");
     assert!(lit(35, 20), "right edge pixel 35 must be covered");
@@ -189,23 +171,23 @@ fn icon_rasterizes_to_whole_physical_pixels_at_fractional_scale() {
 #[test]
 fn desaturate_grays_a_color_icon_by_its_luminance() {
     let img = render(UVec2::new(48, 32), SystemScale::ONE, |ui, icons| {
-        cell(
+        fixtures::cell(
             ui,
             Rect::new(8.0, 4.0, 32.0, 24.0),
             icon(icons, "halves").tint(RgbaF32::WHITE).desaturate(true),
         );
     });
 
-    let left = img.get_pixel(14, 16).0;
-    let right = img.get_pixel(34, 16).0;
+    let left = img.texel(UVec2::new(14, 16));
+    let right = img.texel(UVec2::new(34, 16));
     for (label, px, expected) in [("left", left, 125u8), ("right", right, 124)] {
         assert!(
-            px[0] == px[1] && px[1] == px[2],
+            px.r == px.g && px.g == px.b,
             "{label} half = {px:?} must be neutral gray after desaturation",
         );
         fixtures::assert_px(
             px,
-            [expected, expected, expected, 255],
+            SrgbaU8::rgb(expected, expected, expected),
             format_args!("{label} half is its luminance, opaque"),
         );
     }
@@ -245,7 +227,7 @@ fn an_icon_recorded_over_a_label_stays_on_top_of_it() {
     };
     let img = render(UVec2::new(96, 72), SystemScale::ONE, |ui, icons| {
         label(ui, "under", Vec2::new(6.0, 6.0));
-        cell(
+        fixtures::cell(
             ui,
             Rect::new(20.0, 6.0, 20.0, 20.0),
             icon(icons, "solid").tint(tint),
@@ -268,7 +250,7 @@ fn an_icon_recorded_over_a_label_stays_on_top_of_it() {
     // 20..40 box.
     let any_lit = |xs: ops::Range<u32>, ys: ops::Range<u32>| {
         ys.flat_map(|y| xs.clone().map(move |x| (x, y)))
-            .any(|(x, y)| img.get_pixel(x, y).0[0] > 32)
+            .any(|(x, y)| img.texel(UVec2::new(x, y)).r > 32)
     };
     assert!(any_lit(6..20, 6..26), "the label left of the icon");
     assert!(any_lit(40..52, 6..26), "the label right of the icon");
@@ -285,7 +267,7 @@ fn an_icon_past_the_raster_cap_fills_its_box() {
             UVec2::new(680, 680),
             SystemScale::new(2.0).unwrap(),
             |ui, icons| {
-                cell(
+                fixtures::cell(
                     ui,
                     Rect::new(20.0, 20.0, 300.0, 300.0),
                     icon(icons, name).tint(RgbaF32::WHITE),
@@ -294,8 +276,8 @@ fn an_icon_past_the_raster_cap_fills_its_box() {
         )
     };
     let img = capped("solid");
-    let lit = |x: u32, y: u32| img.get_pixel(x, y).0[0] > 200;
-    let dark = |x: u32, y: u32| img.get_pixel(x, y).0[0] < 40;
+    let lit = |x: u32, y: u32| img.texel(UVec2::new(x, y)).r > 200;
+    let dark = |x: u32, y: u32| img.texel(UVec2::new(x, y)).r < 40;
     assert!(lit(41, 340) && lit(638, 340), "the left and right edges");
     assert!(lit(340, 41) && lit(340, 638), "the top and bottom edges");
     assert!(dark(38, 340) && dark(642, 340), "nothing past the box");
@@ -305,7 +287,7 @@ fn an_icon_past_the_raster_cap_fills_its_box() {
     let img = capped("halves");
     for (x, half) in [(60, LEFT), (620, RIGHT)] {
         fixtures::assert_px(
-            img.get_pixel(x, 340).0,
+            img.texel(UVec2::new(x, 340)),
             half,
             format_args!("({x}, 340) is its half's color"),
         );

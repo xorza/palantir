@@ -15,22 +15,21 @@ use std::sync::Barrier;
 use std::thread;
 
 /// A `w`×`h` image of one texel.
-fn solid(w: u32, h: u32, [r, g, b, a]: [u8; 4]) -> Image {
+fn solid(w: u32, h: u32, texel: SrgbaU8) -> Image {
     let mut image = Image::blank(UVec2::new(w, h));
-    image.texels_mut().fill(SrgbaU8::new(r, g, b, a));
+    image.texels_mut().fill(texel);
     image
 }
 
-/// `image` with the texel at column `x`, row `y` set to `rgba`.
-fn with_texel(mut image: Image, x: u32, y: u32, [r, g, b, a]: [u8; 4]) -> Image {
-    let idx = (y * image.size().x + x) as usize;
-    image.texels_mut()[idx] = SrgbaU8::new(r, g, b, a);
+/// `image` with the texel at column `x`, row `y` set to `texel`.
+fn with_texel(mut image: Image, x: u32, y: u32, texel: SrgbaU8) -> Image {
+    image.row_mut(y)[x as usize] = texel;
     image
 }
 
 #[test]
 fn identical_images_pass_exactly() {
-    let img = solid(8, 8, [10, 20, 30, 255]);
+    let img = solid(8, 8, SrgbaU8::rgb(10, 20, 30));
     let report = Tolerance::EXACT.diff(&img, &img);
     assert_eq!(report.max_channel_delta, 0);
     assert_eq!(report.differing_pixels, 0);
@@ -41,8 +40,8 @@ fn identical_images_pass_exactly() {
 /// A pixel differs on any channel difference; the verdict bounds the differing count and the worst delta.
 #[test]
 fn the_verdict_bounds_both_the_count_and_the_delta() {
-    let e = solid(10, 10, [100, 100, 100, 255]);
-    let a = with_texel(e.clone(), 3, 4, [103, 100, 100, 255]);
+    let e = solid(10, 10, SrgbaU8::rgb(100, 100, 100));
+    let a = with_texel(e.clone(), 3, 4, SrgbaU8::rgb(103, 100, 100));
 
     let exact = Tolerance::EXACT.diff(&a, &e);
     assert_eq!(exact.max_channel_delta, 3);
@@ -63,8 +62,8 @@ fn the_verdict_bounds_both_the_count_and_the_delta() {
 /// The diff map marks every differing pixel and dims the rest of `actual` to a quarter.
 #[test]
 fn the_diff_map_marks_every_differing_pixel() {
-    let e = solid(2, 1, [100, 100, 100, 255]);
-    let a = with_texel(e.clone(), 1, 0, [101, 100, 100, 255]);
+    let e = solid(2, 1, SrgbaU8::rgb(100, 100, 100));
+    let a = with_texel(e.clone(), 1, 0, SrgbaU8::rgb(101, 100, 100));
     let report = Tolerance::EXACT.diff(&a, &e);
     assert_eq!(
         report.diff_image.texels(),
@@ -106,7 +105,7 @@ fn failures_leave_artifacts_updates_rewrite_and_passes_clear() {
         max_delta: 2,
         max_pixels: 16,
     });
-    let red = |v: u8| solid(4, 4, [v, 10, 10, 255]);
+    let red = |v: u8| solid(4, 4, SrgbaU8::rgb(v, 10, 10));
     let (base, near, far) = (red(10), red(11), red(50));
     let golden = goldens.golden_path("g");
     let output = dir.0.join("output").join("g");
@@ -163,7 +162,7 @@ fn failures_leave_artifacts_updates_rewrite_and_passes_clear() {
 #[test]
 fn goldens_record_and_hold_their_adapter() {
     let dir = Scratch::new("adapter");
-    let image = solid(2, 2, [1, 2, 3, 255]);
+    let image = solid(2, 2, SrgbaU8::rgb(1, 2, 3));
     let sidecar = dir.0.join("golden").join("adapter.txt");
     let first = Goldens::new(&dir.0).with_adapter("GPU A");
     first.check("g", &image, OnMismatch::Rewrite);
@@ -224,7 +223,7 @@ fn orphans_are_the_goldens_no_name_claims() {
     let dir = Scratch::new("orphans");
     let goldens = Goldens::new(&dir.0).with_adapter("GPU A");
     assert!(goldens.orphans([]).is_empty(), "no directory, no orphans");
-    let image = solid(1, 1, [0, 0, 0, 255]);
+    let image = solid(1, 1, SrgbaU8::rgb(0, 0, 0));
     for name in ["kept", "old", "older"] {
         goldens.check(name, &image, OnMismatch::Rewrite);
     }

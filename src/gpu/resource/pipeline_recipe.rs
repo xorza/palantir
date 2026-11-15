@@ -1,6 +1,5 @@
 //! The render-pipeline descriptor recipe every pipeline module builds through, so descriptor flags can't drift.
 
-use crate::gpu::device::device_requirements::IMMEDIATES_BYTES;
 use crate::gpu::device::gpu::Gpu;
 
 /// Render-pipeline recipe. Callers supply what varies (label, shader, layout, entry points, override constants, vertex buffers, topology, color format, writes, blend); [`Self::build`] fills the project-wide defaults (single color target, no depth attachment, no MSAA, no multiview). The built [`wgpu::RenderPipeline`] outlives the recipe.
@@ -102,20 +101,6 @@ pub(crate) struct Pipeline {
     pub(crate) pipeline: wgpu::RenderPipeline,
     /// A handle on the layout; wgpu compares handles by the object they name.
     pub(crate) layout: wgpu::PipelineLayout,
-}
-
-/// Build the layout a recipe's [`PipelineRecipe::layout`] takes. Every pipeline declares the same immediate-region size, [`IMMEDIATES_BYTES`], taken by `PalantirImmediates`.
-pub(crate) fn pipeline_layout(
-    gpu: &Gpu,
-    label: &'static str,
-    bind_group_layouts: &[Option<&wgpu::BindGroupLayout>],
-) -> wgpu::PipelineLayout {
-    gpu.device
-        .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some(label),
-            bind_group_layouts,
-            immediate_size: IMMEDIATES_BYTES,
-        })
 }
 
 /// An attribute at shader `location` reading `format` at byte `offset` of its vertex: an

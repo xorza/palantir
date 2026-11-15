@@ -13,7 +13,7 @@ use crate::gpu::device::power_preference::PowerPreference;
 use crate::gpu::device::requested_gpu::{GpuRequest, RequestedGpu};
 use crate::gpu::error::{GpuRequestError, SurfaceError, SurfaceStartError};
 use crate::gpu::frame::gpu_timings::FrameTiming;
-use crate::gpu::surface::window_surface::WindowSurface;
+use crate::gpu::surface::window_surface::{WindowSurface, swapchain_mode};
 use crate::window::vsync::Vsync;
 use std::fmt;
 
@@ -53,6 +53,9 @@ pub(crate) struct SurfaceManager {
     /// Sealed at startup, and asked for again by a recovery. Its pacing is app-global; both
     /// states map to automatic policies every surface accepts.
     cfg: HostGpuConfig,
+    /// The largest 2D texture side of the device the windows draw with now, which each surface
+    /// keeps its extent inside.
+    max_extent: NonZeroU32,
 }
 
 /// What [`SurfaceManager::start`] opens the device for: the first window and the display it lives
@@ -100,9 +103,8 @@ impl SurfaceManager {
             instance,
             adapter,
             cfg,
+            max_extent: gpu.max_texture_dimension(),
         };
-        // Clamped here, before the host core that keeps the cap exists.
-        let size = Self::clamp_extent(gpu.max_texture_dim(), size);
         let first_surface = surfaces.build_window_surface(surface, size)?;
         Ok(SurfaceStartup {
             surfaces,
@@ -134,7 +136,8 @@ impl SurfaceManager {
         let RequestedGpu { adapter, gpu } = open_device(&instance, self.cfg, &raw)?;
         self.instance = instance;
         self.adapter = adapter;
-        *surface = self.rebuilt(raw, surface, gpu.max_texture_dim())?;
+        self.max_extent = gpu.max_texture_dimension();
+        *surface = self.rebuilt(raw, surface)?;
         Ok(gpu)
     }
 }
@@ -151,7 +154,7 @@ fn open_device(
         power_preference: cfg.power_preference,
         optional: match cfg.timing {
             FrameTiming::Off => wgpu::Features::empty(),
-            FrameTiming::On => DeviceRequirements::GPU_TIMING_FEATURES,
+            FrameTiming::On => DeviceRequirements::GPU_STATS_FEATURES,
         },
         compatible_surface: Some(surface),
     }
@@ -173,16 +176,7 @@ where
 }
 
 impl SurfaceManager {
-    /// A surface extent the device can back: at least one texel, at most
-    /// `max_texture_dimension_2d`. Takes the limit so the host can clamp before
-    /// borrowing the window.
-    pub(crate) fn clamp_extent(max_texture_dim: NonZeroU32, size: UVec2) -> UVec2 {
-        let max = max_texture_dim.get();
-        UVec2::new(size.x.clamp(1, max), size.y.clamp(1, max))
-    }
-
-    /// Create a surface for an additional window, of a `size` already clamped by
-    /// [`Self::clamp_extent`].
+    /// Create a surface for an additional window, of `size` inside what the device backs.
     pub(crate) fn make_surface<W>(
         &self,
         window: &Arc<W>,
@@ -195,7 +189,7 @@ impl SurfaceManager {
         self.build_window_surface(surface, size)
     }
 
-    /// Make `window`'s `surface` again, at its size inside `max_texture_dim` and its pacing,
+    /// Make `window`'s `surface` again, at its size inside what the device backs and its pacing,
     /// configured on its first [`WindowSurface::prepare`]: after the platform lost it, or on the
     /// device a recovery attached. The old one goes first, as in [`Self::reopen`]; on a failure the
     /// surface reads lost, and the host tries again.
@@ -203,32 +197,30 @@ impl SurfaceManager {
         &self,
         window: &Arc<W>,
         surface: &mut WindowSurface,
-        max_texture_dim: NonZeroU32,
     ) -> Result<(), SurfaceError>
     where
         W: wgpu::DisplayAndWindowHandle + fmt::Debug + 'static,
     {
         surface.release();
         let raw = create_surface(&self.instance, window)?;
-        *surface = self.rebuilt(raw, surface, max_texture_dim)?;
+        *surface = self.rebuilt(raw, surface)?;
         Ok(())
     }
 
-    /// `raw` configured as `old` was: its size inside `max_texture_dim`, and its pacing.
+    /// `raw` configured as `old` was: its size inside what the device backs, and its pacing.
     fn rebuilt(
         &self,
         raw: wgpu::Surface<'static>,
         old: &WindowSurface,
-        max_texture_dim: NonZeroU32,
     ) -> Result<WindowSurface, SurfaceError> {
-        let mut surface =
-            self.build_window_surface(raw, Self::clamp_extent(max_texture_dim, old.size()))?;
+        let mut surface = self.build_window_surface(raw, old.size())?;
         let _ = surface.set_vsync(old.vsync());
         Ok(surface)
     }
 
-    /// Pick an sRGB format and bundle `surface` with a fresh configuration of `size`, without
-    /// calling `surface.configure`; the first [`WindowSurface::prepare`] applies it.
+    /// Pick an sRGB format and bundle `surface` with a fresh configuration of `size`, held inside
+    /// what the device backs, without calling `surface.configure`; the first
+    /// [`WindowSurface::prepare`] applies it.
     fn build_window_surface(
         &self,
         surface: wgpu::Surface<'static>,
@@ -236,31 +228,7 @@ impl SurfaceManager {
     ) -> Result<WindowSurface, SurfaceError> {
         let caps = surface.get_capabilities(&self.adapter);
         let config = build_surface_config(&caps, size, self.cfg.vsync)?;
-        Ok(WindowSurface::new(surface, config))
-    }
-}
-
-/// The swapchain policy `vsync` asks for. Both are automatic policies every
-/// surface accepts, so either applies to a live swapchain directly.
-pub(super) const fn swapchain_mode(vsync: Vsync) -> wgpu::PresentMode {
-    match vsync {
-        Vsync::On => wgpu::PresentMode::AutoVsync,
-        Vsync::Off => wgpu::PresentMode::AutoNoVsync,
-    }
-}
-
-/// Which [`Vsync`] state `mode` paces like. A configuration holds only the
-/// two modes [`swapchain_mode`] writes; the match names every mode, so none
-/// reads as either through a catch-all arm. Free to keep graphics-API types out
-/// of `crate::window`.
-pub(super) const fn vsync_of(mode: wgpu::PresentMode) -> Vsync {
-    match mode {
-        wgpu::PresentMode::AutoVsync | wgpu::PresentMode::Fifo | wgpu::PresentMode::FifoRelaxed => {
-            Vsync::On
-        }
-        wgpu::PresentMode::AutoNoVsync
-        | wgpu::PresentMode::Immediate
-        | wgpu::PresentMode::Mailbox => Vsync::Off,
+        Ok(WindowSurface::new(surface, config, self.max_extent))
     }
 }
 

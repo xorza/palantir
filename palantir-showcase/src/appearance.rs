@@ -6,8 +6,9 @@ use palantir::{
     WidgetId,
 };
 
+use crate::scaffold;
+use crate::scaffold::per_scheme::PerScheme;
 use crate::scaffold::tokens::M;
-use crate::support;
 
 /// The accent seeds the rail offers beside the stock accent: Tailwind's 500 step of blue, teal,
 /// green, orange, pink and violet (<https://tailwindcss.com/docs/colors>), each solved per scheme
@@ -30,11 +31,9 @@ pub(crate) struct Appearance {
     /// The focus page's ring: its color, `None` for the accent's, and its width.
     ring_color: Option<RgbaF32>,
     ring_width: f32,
-    light: Palette,
-    dark: Palette,
-    /// Each seed of [`SEEDS`] solved for the light and the dark scheme, once, for the rail to show.
-    light_seeds: [RgbaF32; SEEDS.len()],
-    dark_seeds: [RgbaF32; SEEDS.len()],
+    palettes: PerScheme<Palette>,
+    /// Each seed of [`SEEDS`] solved for each scheme, once, for the rail to show.
+    seed_accents: PerScheme<[RgbaF32; SEEDS.len()]>,
     /// Moved by every edit; each window builds its themes once a generation, as each window's
     /// `Ui` holds its own.
     generation: u64,
@@ -47,19 +46,14 @@ impl Appearance {
             seed: None,
             ring_color: None,
             ring_width: M.stroke.line,
-            light: Palette::LIGHT,
-            dark: Palette::DARK,
-            light_seeds: SEEDS.map(|seed| accent_for(seed, ColorScheme::Light)),
-            dark_seeds: SEEDS.map(|seed| accent_for(seed, ColorScheme::Dark)),
+            palettes: PerScheme::of(|scheme| Palette::for_scheme(scheme).clone()),
+            seed_accents: PerScheme::of(|scheme| SEEDS.map(|seed| accent_for(seed, scheme))),
             generation: 1,
         }
     }
 
     pub(crate) const fn palette(&self, scheme: ColorScheme) -> &Palette {
-        match scheme {
-            ColorScheme::Light => &self.light,
-            ColorScheme::Dark => &self.dark,
-        }
+        self.palettes.get(scheme)
     }
 
     pub(crate) const fn seed(&self) -> Option<RgbaF32> {
@@ -68,10 +62,7 @@ impl Appearance {
 
     /// Each seed of [`SEEDS`] as `scheme` solves it.
     pub(crate) const fn seed_accents(&self, scheme: ColorScheme) -> &[RgbaF32; SEEDS.len()] {
-        match scheme {
-            ColorScheme::Light => &self.light_seeds,
-            ColorScheme::Dark => &self.dark_seeds,
-        }
+        self.seed_accents.get(scheme)
     }
 
     /// Accent the tour with `seed`, or with each palette's own for `None`; a seed is solved per
@@ -81,13 +72,10 @@ impl Appearance {
             return;
         }
         self.seed = seed;
-        for scheme in [ColorScheme::Light, ColorScheme::Dark] {
+        for scheme in ColorScheme::ALL {
             let stock = Palette::for_scheme(scheme);
             let accent = seed.map_or(stock.accent, |seed| accent_for(seed, scheme));
-            let palette = match scheme {
-                ColorScheme::Light => &mut self.light,
-                ColorScheme::Dark => &mut self.dark,
-            };
+            let palette = self.palettes.get_mut(scheme);
             palette.accent = accent;
             palette.border_focused = accent;
         }
@@ -147,11 +135,11 @@ impl Appearance {
             if *applied == self.generation {
                 return;
             }
-            for scheme in [ColorScheme::Light, ColorScheme::Dark] {
+            for scheme in ColorScheme::ALL {
                 let palette = self.palette(scheme);
                 let mut theme = Theme::from_parts(palette, &M);
                 theme.focus_ring = self.ring(scheme);
-                ui.set_theme(scheme, theme)
+                ui.set_scheme_theme(scheme, theme)
                     .expect("a theme built from parts names no press effect");
             }
             *applied = self.generation;
@@ -194,14 +182,14 @@ pub(crate) fn accent_for(seed: RgbaF32, scheme: ColorScheme) -> RgbaF32 {
     if p.on_accent.luminance() < p.accent.luminance() {
         if holds(at(s, 1.0)) {
             let rise = |x: f32| v + (1.0 - v) * x;
-            at(s, rise(support::bisect(|x| holds(at(s, rise(x))))))
+            at(s, rise(scaffold::bisect(|x| holds(at(s, rise(x))))))
         } else {
             let cut = |x: f32| s * (1.0 - x);
-            at(cut(support::bisect(|x| holds(at(cut(x), 1.0)))), 1.0)
+            at(cut(scaffold::bisect(|x| holds(at(cut(x), 1.0)))), 1.0)
         }
     } else {
         let fall = |x: f32| v * (1.0 - x);
-        at(s, fall(support::bisect(|x| holds(at(s, fall(x))))))
+        at(s, fall(scaffold::bisect(|x| holds(at(s, fall(x))))))
     }
 }
 
@@ -221,7 +209,7 @@ mod tests {
     #[test]
     fn any_seed_holds_the_floors_nearest_to_itself() {
         let extra = [0x0000ff, 0xffff00, 0x808080, 0x000000, 0xffffff].map(RgbaF32::hex);
-        for scheme in [ColorScheme::Light, ColorScheme::Dark] {
+        for scheme in ColorScheme::ALL {
             let p = Palette::for_scheme(scheme);
             for seed in SEEDS.into_iter().chain(extra) {
                 let accent = accent_for(seed, scheme);

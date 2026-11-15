@@ -1,4 +1,4 @@
-//! What one [`TextGlyphs::line`](crate::widget::TextGlyphs::line) call lays out.
+//! What one [`TextGlyphs::line`](crate::TextGlyphs::line) call lays out.
 
 use crate::text::glyph_font::GlyphFont;
 

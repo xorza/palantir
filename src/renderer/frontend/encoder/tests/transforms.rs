@@ -79,7 +79,7 @@ fn a_turned_strokes_payload_carries_its_pivot_in_the_logical_frame() {
         });
         let cmds = h.encode_paint();
         let spin = match (spun, cmds.calls.as_slice()) {
-            (Spun::Polyline, [PaintCall::Stroke(p)]) => {
+            (Spun::Polyline, [PaintCall::Stroke(p, spin)]) => {
                 let StrokePath::Polyline(path) = p.path else {
                     panic!("a polyline strokes a polyline, got {:?}", p.path);
                 };
@@ -89,16 +89,16 @@ fn a_turned_strokes_payload_carries_its_pivot_in_the_logical_frame() {
                     "owner-local box"
                 );
                 assert_eq!(p.origin, Vec2::new(30.0, 0.0));
-                p.spin
+                *spin
             }
-            (Spun::Arc, [PaintCall::Stroke(p)]) => {
+            (Spun::Arc, [PaintCall::Stroke(p, spin)]) => {
                 assert_eq!(
                     p.path,
                     StrokePath::Curve(CurveBasis::Arc(arc)),
                     "the basis stays owner-local"
                 );
                 assert_eq!(p.origin, Vec2::new(30.0, 0.0));
-                p.spin
+                *spin
             }
             _ => panic!("{spun:?}: expected one draw, got {:?}", cmds.kinds()),
         };

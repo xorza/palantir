@@ -3,23 +3,27 @@
 use crate::common::content_hash::ContentHash;
 use crate::common::hash::Hasher;
 use crate::common::span::Span;
+use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::layout::align::Align;
 use crate::primitives::math::float_hash::FloatHash;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
-use crate::primitives::paint::image::ImageFit;
+use crate::primitives::paint::image::image_filter::{ImageDownsample, ImageFilter};
+use crate::primitives::paint::image::image_placement::ImagePlacement;
 use crate::primitives::text::recorded_text::RecordedText;
+use crate::shape::geometry::box_geometry::{BoxGeometry, BoxOutline};
 use crate::shape::geometry::closed_geometry::ClosedGeometry;
 use crate::shape::geometry::point_placement::PointPlacement;
 use crate::shape::geometry::stroke_geometry::StrokeGeometry;
-use crate::shape::lower::LoweredPaint;
 use crate::shape::paint::capture_params::CaptureParams;
 use crate::shape::paint::closed_paint::ClosedPaint;
 use crate::shape::paint::image_source::ImageSource;
 use crate::shape::paint::lowered_brush::{BrushHash, LoweredBrush};
+use crate::shape::paint::lowered_paint::LoweredPaint;
 use crate::shape::paint::lowered_stroke::LoweredStroke;
 use crate::text::shaping_font::ShapingFont;
 use crate::text::wrap::TextWrap;
@@ -65,7 +69,7 @@ pub(crate) enum ShapeRecord {
         /// Lowered text storage and its content hash; arena-backed input is normalized into the active record store first, so span and hash can't come from different passes.
         text: RecordedText,
         color: RgbaF16,
-        /// The face and metrics to shape in, as [`TextShape`](crate::widget::TextShape) authors them with the family keyed by the store's shaper; [`TextShapeKey`](crate::text::key::TextShapeKey) is minted from it.
+        /// The face and metrics to shape in, as [`TextShape`](crate::TextShape) authors them with the family keyed by the store's shaper; [`TextShapeKey`](crate::text::key::TextShapeKey) is minted from it.
         ///
         /// `line_height` is a resolved px leading fed to `Metrics::new` (authoring sets `size * line_height_factor`); carrying px keeps widget conventions out of the shaper and gives different leading distinct buffers.
         font: ShapingFont,
@@ -118,6 +122,29 @@ impl TextAnchor {
 }
 
 impl ShapeRecord {
+    /// The record of a [`GpuView`](crate::GpuView)'s target `id` at redraw `epoch`, which no
+    /// lowering makes: the view's paint lives in the `Ui`'s `GpuViews` by the owner's `WidgetId`.
+    /// Its placement is neutral: the owner's rect, untinted, a `Fill` fit, which resolves to the
+    /// rect at full UV against the encoder's zero intrinsic size.
+    pub(crate) const fn gpu_view(id: TextureId, epoch: u64) -> Self {
+        Self::Closed {
+            geometry: ClosedGeometry::Box(BoxGeometry {
+                local_rect: None,
+                outline: BoxOutline::Rect(Corners::ZERO),
+            }),
+            paint: ClosedPaint::Image {
+                tint: RgbaF16::WHITE,
+                source: ImageSource::GpuView { id, epoch },
+                placement: ImagePlacement::FILL,
+                min_filter: ImageFilter::Linear,
+                mag_filter: ImageFilter::Linear,
+                // A view's target is allocated to the rect it composites into, so it is
+                // never minified and has no footprint to cover.
+                downsample: ImageDownsample::Single,
+            },
+        }
+    }
+
     /// What the record reads as a backdrop over the pixels before it: a box's or a triangle's
     /// material or a backdrop effect's, each where it captures; `None` for every other record.
     pub(crate) const fn backdrop_capture(&self) -> Option<CaptureParams> {
@@ -226,7 +253,7 @@ fn hash_closed_paint(paint: &ClosedPaint, h: &mut Hasher) {
         ClosedPaint::Image {
             tint,
             source,
-            fit,
+            placement,
             min_filter,
             mag_filter,
             downsample,
@@ -255,10 +282,10 @@ fn hash_closed_paint(paint: &ClosedPaint, h: &mut Hasher) {
                     h.write_u64(*epoch);
                 }
             }
-            // The fit (including `Tile`'s UV transform, which changes every pan/zoom placement),
-            // both sampling filters and the minification tap mode: two 1-bit filters in the low
-            // bits, the 3-variant `downsample` above.
-            hash_fit(fit, h);
+            // The placement (including `Tile`'s UV transform, which changes every pan/zoom
+            // placement), both sampling filters and the minification tap mode: two 1-bit filters
+            // in the low bits, the 3-variant `downsample` above.
+            hash_placement(placement, h);
             h.write_u8(
                 (*min_filter as u8) | ((*mag_filter as u8) << 1) | ((*downsample as u8) << 2),
             );
@@ -282,8 +309,7 @@ fn hash_closed_paint(paint: &ClosedPaint, h: &mut Hasher) {
         // `RecordStore`; the span is frame-local.
         ClosedPaint::Effect {
             content_hash,
-            backdrop: _,
-            outside: _,
+            read: _,
             effect: _,
             params: _,
             images: _,
@@ -299,19 +325,25 @@ fn hash_brush(fill: LoweredBrush, h: &mut Hasher) {
     h.write_u64(payload);
 }
 
-/// Fold an [`ImageFit`] into the shape hash: the discriminant plus, for `Tile`, the
-/// UV transform bits.
-fn hash_fit(fit: &ImageFit, h: &mut Hasher) {
-    mem::discriminant(fit).hash(h);
-    if let ImageFit::Tile { offset, scale } = fit {
-        offset.hash_visual(h);
-        scale.hash_visual(h);
+/// Fold an [`ImagePlacement`] into the shape hash: a tag, then the fit or `Tile`'s UV transform
+/// bits.
+fn hash_placement(placement: &ImagePlacement, h: &mut Hasher) {
+    match placement {
+        ImagePlacement::Fit(fit) => {
+            h.write_u8(0);
+            h.write_u8(*fit as u8);
+        }
+        ImagePlacement::Tile { offset, scale } => {
+            h.write_u8(1);
+            offset.hash_visual(h);
+            scale.hash_visual(h);
+        }
     }
 }
 
 /// **The backstop behind the shape setters' checks**: `Shapes::push` debug-asserts this on each lowered record.
 ///
-/// An assertion, not a check: by here a gradient sits behind a `GradientId` and a triangle's `radius` went through `radius.max(0.0)`, so a clean record proves nothing. Bulk inputs arrive as a `bbox` under the AABB NaN contract.
+/// An assertion, not a check: by here a gradient sits behind a `GradientId` and a triangle's `radius` went through its clamp to the inradius, so a clean record proves nothing. Bulk inputs arrive as a `bbox` under the AABB NaN contract.
 impl NanCheck for ShapeRecord {
     fn has_nan(&self) -> bool {
         match self {

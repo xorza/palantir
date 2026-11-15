@@ -11,7 +11,8 @@ use glam::Vec2;
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct RootSlot {
     pub(crate) first_node: NodeId,
-    pub(crate) placement: Placement,
+    /// Where an overlay's root sits on the surface; `None` for ordinary content, which fills it.
+    pub(crate) placement: Option<Placement>,
     /// The layer the root asked for, which can sit below its plane's (see `Forest::push_layer`);
     /// `Main` for ordinary content.
     pub(crate) layer: Layer,
@@ -22,19 +23,13 @@ impl RootSlot {
     ///
     /// `LayoutEngine::run` measures at it and keys the root's run by it, so the two agree.
     pub(crate) fn available(&self, surface: Rect) -> Size {
-        if self.layer == Layer::Main {
-            surface.size
-        } else {
-            self.placement.available(surface)
-        }
+        self.placement
+            .map_or(surface.size, |placement| placement.available(surface))
     }
 
     /// Where this root's slot of `size` starts.
     pub(crate) fn origin(&self, size: Size, surface: Rect) -> Vec2 {
-        if self.layer == Layer::Main {
-            surface.min
-        } else {
-            self.placement.origin(size, surface)
-        }
+        self.placement
+            .map_or(surface.min, |placement| placement.origin(size, surface))
     }
 }

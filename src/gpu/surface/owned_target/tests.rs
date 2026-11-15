@@ -1,11 +1,10 @@
 use crate::gpu::device::gpu_wait::GpuWait;
 use crate::gpu::surface::owned_target::OwnedTarget;
-use crate::gpu::test_gpu::{TestGpu, headless_test_gpu, isolated_headless_test_gpu};
+use crate::gpu::test_gpu::{headless_test_gpu, isolated_headless_test_gpu};
 use crate::gpu::texel::TargetSpec;
 use crate::internals::panic_probe;
+use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use glam::UVec2;
-use image::Rgba;
-use std::iter;
 
 /// A 3 × 2 texture cleared to (0.2, 0.4, 0.6, 1.0) reads back as six pixels of
 /// (51, 102, 153, 255) — 0.2 · 255 = 51, 0.4 · 255 = 102, 0.6 · 255 = 153 — in both
@@ -27,15 +26,16 @@ fn a_cleared_texture_reads_back_in_rgba_order() {
                 usage: OwnedTarget::USAGES,
             },
         );
-        clear(&gpu, target.texture());
+        gpu.clear(target.texture(), CLEAR);
         let image = target.read_back();
-        assert_eq!(image.dimensions(), (3, 2), "{format:?}");
+        assert_eq!(image.size(), UVec2::new(3, 2), "{format:?}");
         assert!(
             image
-                .pixels()
-                .all(|pixel| *pixel == Rgba([51, 102, 153, 255])),
+                .texels()
+                .iter()
+                .all(|&texel| texel == SrgbaU8::rgb(51, 102, 153)),
             "{format:?}: {:?}",
-            image.pixels().collect::<Vec<_>>()
+            image.texels()
         );
     }
 }
@@ -55,7 +55,7 @@ fn a_texel_copy_keeps_its_staging_buffer() {
             usage: OwnedTarget::USAGES,
         },
     );
-    clear(&gpu, target.texture());
+    gpu.clear(target.texture(), CLEAR);
     let mut texels = Vec::new();
     assert_eq!(target.copy_texels(&mut texels), GpuWait::Done);
     assert_eq!(texels, [51, 102, 153, 255].repeat(6));
@@ -76,7 +76,7 @@ fn a_texel_copy_keeps_its_staging_buffer() {
 fn a_bad_extent_panics_with_its_rule() {
     let gpu = headless_test_gpu();
     let handles = &*gpu;
-    let max = handles.max_texture_dim().get();
+    let max = handles.max_texture_dimension().get();
     let rule = format!("a target's size is 1..={max} physical pixels per side");
     let spec = |size| TargetSpec {
         label: "palantir.owned_target.extent",
@@ -98,31 +98,10 @@ fn a_bad_extent_panics_with_its_rule() {
     assert_eq!(small.texture().usage(), OwnedTarget::USAGES);
 }
 
-fn clear(gpu: &TestGpu, texture: &wgpu::Texture) {
-    let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-    let mut encoder = gpu
-        .device
-        .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-    drop(encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-        label: Some("palantir.read_back.test.clear"),
-        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-            view: &view,
-            depth_slice: None,
-            resolve_target: None,
-            ops: wgpu::Operations {
-                load: wgpu::LoadOp::Clear(wgpu::Color {
-                    r: 0.2,
-                    g: 0.4,
-                    b: 0.6,
-                    a: 1.0,
-                }),
-                store: wgpu::StoreOp::Store,
-            },
-        })],
-        depth_stencil_attachment: None,
-        timestamp_writes: None,
-        occlusion_query_set: None,
-        multiview_mask: None,
-    }));
-    gpu.queue.submit(iter::once(encoder.finish()));
-}
+/// The color the read-back tests clear to.
+const CLEAR: wgpu::Color = wgpu::Color {
+    r: 0.2,
+    g: 0.4,
+    b: 0.6,
+    a: 1.0,
+};

@@ -1,4 +1,4 @@
-use crate::image_registry::error::ImageTooLarge;
+use crate::image_registry::error::ImageSizeError;
 use crate::image_registry::texture_limit::TextureLimit;
 use glam::UVec2;
 use std::num::NonZeroU32;
@@ -12,7 +12,7 @@ fn the_reported_ceiling_is_the_one_enforced() {
     for size in [UVec2::new(5, 1), UVec2::new(1, 5)] {
         assert_eq!(
             limit.accepts(size),
-            Err(ImageTooLarge {
+            Err(ImageSizeError {
                 size,
                 max_dimension: 4,
             }),

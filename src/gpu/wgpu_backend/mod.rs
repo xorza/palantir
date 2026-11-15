@@ -52,7 +52,7 @@
 
 use crate::common::tracy;
 use crate::diagnostics::gpu_pass_stats::{BatchKind, PassCounts};
-use crate::effect::effect_store::EffectModule;
+use crate::effect::effect_registry::EffectRegistry;
 use crate::gpu::atlas::atlas_textures::AtlasTextures;
 use crate::gpu::atlas::page_list::MAX_PAGES;
 use crate::gpu::atlas::row_texture::RowTexture;
@@ -61,9 +61,10 @@ use crate::gpu::backdrop::backdrops::{BackdropFrame, Backdrops};
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::pass_traffic::PassTraffic;
 use crate::gpu::frame::debug_overlay::{self, DebugOverlay, OverlayDraw};
-use crate::gpu::frame::frame_passes::{ColorLoad, FramePasses, FrameShape, PassStep, TargetKind};
+use crate::gpu::frame::frame_passes::{FramePasses, FrameShape, PassStep, TargetKind};
 use crate::gpu::frame::gpu_timings::{BackdropPhase, FrameTiming, GpuTimings, Mark};
 use crate::gpu::frame::main_segment::MainSegment;
+use crate::gpu::frame::schedule::ColorLoad;
 use crate::gpu::frame::schedule::{RenderStep, RunSpan, Schedule};
 use crate::gpu::frame::submission::{Route, Submission};
 use crate::gpu::pipeline::atlas_binding::ATLAS_GROUP;
@@ -76,8 +77,8 @@ use crate::gpu::pipeline::effect_pipeline::{
     EffectBatch, EffectPipeline, EffectStores, EffectUpload,
 };
 use crate::gpu::pipeline::format_pipelines::{FormatPipelines, PipelineCensus, Programs};
+use crate::gpu::pipeline::frame_variant::FrameVariant;
 use crate::gpu::pipeline::image_pipeline::{ImageBatch, ImagePipeline, ImageTextures};
-use crate::gpu::pipeline::instanced_pipeline::FrameVariant;
 use crate::gpu::pipeline::mesh_pipeline::{MeshBatch, MeshPipeline, MeshUpload};
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
 use crate::gpu::pipeline::quad_pipeline::cutout_placements::{CutoutPlacements, CutoutPlacing};
@@ -96,13 +97,14 @@ use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::resource::upload_staging::UploadStaging;
 use crate::gpu::resource::wgpu_image_store::WgpuImageStore;
 use crate::gpu::surface::backbuffer::Backbuffer;
-use crate::gpu::surface::capture::{Capture, CaptureBlit, CaptureSource, TexelOrder};
+use crate::gpu::surface::capture::{Capture, CaptureBlit, CaptureSource, ChannelOrder};
 use crate::gpu::surface::damage_canvas::DamageCanvas;
 use crate::gpu::surface::render_target::RenderTarget;
 use crate::gpu::texel::TargetFormat;
 use crate::gpu::wgpu_backend::backend_resources::BackendResources;
 use crate::gpu::wgpu_backend::display_frames::DisplayFrames;
 use crate::gpu::wgpu_backend::render_stream::{RenderStream, StreamPasses};
+use crate::primitives::effect::effect_kind::KindId;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::identity::backdrop_key::BackdropKey;
 use crate::primitives::paint::color::RgbaF32;
@@ -153,8 +155,8 @@ pub(crate) struct WgpuBackend {
     /// The registered images; host recorders create, rewrite and free them through the
     /// `ImageRegistry` the host built over this `Rc`.
     image_store: Rc<WgpuImageStore>,
-    /// The loaded effects' pipelines; the host's `EffectRegistry` loads through this `Rc`.
-    effect_store: Rc<WgpuEffectStore>,
+    /// The loaded effects' pipelines on this device, built from the host's `EffectRegistry`.
+    effect_store: WgpuEffectStore,
     gpu_view_targets: GpuViewTargets,
     blit: BlitPipeline,
     icon: IconBackend,
@@ -187,10 +189,9 @@ struct TimingSupport {
 #[derive(Clone, Copy, Debug)]
 struct FrameDraw<'a> {
     fmt: &'a FormatPipelines,
-    /// The format's effect pipelines and every effect's module, from the effect store's borrow
-    /// held across the frame's passes.
+    /// The format's effect pipelines and every effect's kind, at its id.
     effects: &'a [ClipVariant],
-    effect_modules: &'a [EffectModule],
+    effect_kinds: &'a [KindId],
     /// The blit into the target's format, which presents the backbuffer.
     blit: &'a wgpu::RenderPipeline,
     buffer: &'a RenderBuffer,
@@ -274,13 +275,11 @@ impl<'a> FrameTarget<'a> {
 /// scissors it repaints, picked together per frame.
 #[derive(Clone, Copy, Debug)]
 struct MainPass<'a> {
-    color_view: &'a wgpu::TextureView,
-    /// The texture `color_view` views, which a backdrop's capture copies out of.
-    color: &'a wgpu::Texture,
+    /// What the pass paints into, whose texture a backdrop's capture copies out of; a damage
+    /// canvas moves the viewport onto the surface.
+    target: FrameTarget<'a>,
     clear: wgpu::Color,
     scissors: &'a RepaintScissors,
-    /// Whether `color` is a damage canvas, which the viewport moves the surface onto.
-    canvas: bool,
 }
 
 /// What recording a frame's main pass cost the host, and the calls it recorded.
@@ -297,8 +296,8 @@ struct SegmentPass<'a, 't> {
     segment: MainSegment,
     runs: RunSpan,
     load: ColorLoad,
-    /// The stream's timestamp queries, when timing is on.
-    timings: Option<&'t mut GpuTimings>,
+    /// The stream's timings.
+    timings: &'t mut GpuTimings,
 }
 
 /// One pass's draws: the frame's, and the recorder they record through.
@@ -306,16 +305,14 @@ struct SegmentPass<'a, 't> {
 struct DrawCtx<'a, 'p> {
     draw: FrameDraw<'a>,
     rec: &'p mut PassRecorder<'a>,
-    /// The stream's timestamp queries, when timing is on.
-    timings: Option<&'p mut GpuTimings>,
+    /// The stream's timings.
+    timings: &'p mut GpuTimings,
 }
 
 impl DrawCtx<'_, '_> {
     /// Record `body`, a batch of `kind`, under its timing mark and its debug group.
     fn batch(&mut self, kind: BatchKind, body: impl FnOnce(&mut Self)) {
-        if let Some(t) = self.timings.as_deref_mut() {
-            t.mark(self.rec, kind);
-        }
+        self.timings.mark(self.rec, kind);
         self.rec.push_marker(kind.label());
         body(self);
         self.rec.pop_marker();
@@ -334,12 +331,11 @@ struct CanvasCut<'a> {
 struct FrameSteps<'a, 't> {
     draw: FrameDraw<'a>,
     main: MainPass<'a>,
-    frame_target: FrameTarget<'a>,
     target: RenderTarget<'a>,
     /// The target's view, where a pass writes it.
     surface_view: Option<&'a wgpu::TextureView>,
-    /// The stream's timestamp queries, when timing is on.
-    timings: Option<&'t mut GpuTimings>,
+    /// The stream's timings.
+    timings: &'t mut GpuTimings,
 }
 
 /// What [`WgpuBackend::upload_frame`] uploads for: the submission, its stream, the target's
@@ -360,10 +356,10 @@ impl WgpuBackend {
     /// a window first notes a target of the format ([`Self::prepare_format`]).
     pub(crate) fn new(gpu: Gpu, resources: BackendResources<'_>, timing: FrameTiming) -> Self {
         let image_store = Rc::clone(resources.image_store);
-        let effect_store = Rc::clone(resources.effect_store);
         let texture_binding = resources.texture_binding;
+        let effect_store = WgpuEffectStore::new(&gpu, &texture_binding);
         let atlas = AtlasPool::new(PoolConfig::of_device(
-            gpu.max_texture_dim().get(),
+            gpu.max_texture_dimension().get(),
             gpu.pass_traffic(),
         ));
         let gradient = RowTexture::new(&gpu, atlas.rows().capacity());
@@ -430,30 +426,11 @@ impl WgpuBackend {
         }
     }
 
-    /// The registered images, which the next device's backend holds too.
-    pub(crate) const fn image_store(&self) -> &Rc<WgpuImageStore> {
-        &self.image_store
-    }
-
-    /// The loaded effects, which the next device's backend builds again.
-    pub(crate) const fn effect_store(&self) -> &Rc<WgpuEffectStore> {
-        &self.effect_store
-    }
-
-    /// Whether this backend times frames, which the next device's does too.
-    pub(crate) const fn frame_timing(&self) -> FrameTiming {
-        if self.timing.is_some() {
-            FrameTiming::On
-        } else {
-            FrameTiming::Off
-        }
-    }
-
     /// A stream for `owner`'s frames, timed where the backend times frames.
     pub(crate) fn open_stream(&self, owner: RenderOwnerId) -> RenderStream {
-        let timings = self
-            .timing
-            .map(|support| GpuTimings::new(&self.gpu, support.period_ns, support.features));
+        let timings = self.timing.map_or(GpuTimings::Off, |support| {
+            GpuTimings::new(&self.gpu, support.period_ns, support.features)
+        });
         RenderStream::new(owner, timings)
     }
 
@@ -461,13 +438,14 @@ impl WgpuBackend {
     /// it: before the frame that paints it, so its first submit compiles nothing. Only
     /// `wgpu::RenderPipeline`s carry the color-target format, so a new format costs a few
     /// pipeline compiles and no image re-upload or glyph re-rasterization.
-    pub(crate) fn prepare_format(&mut self, format: TargetFormat) {
+    pub(crate) fn prepare_format(&mut self, format: TargetFormat, effects: &EffectRegistry) {
         if !self.pipelines.contains_key(&format) {
             let built = FormatPipelines::new(&self.gpu, format.get(), &self.programs);
             self.pipelines.insert(format, built);
         }
         self.blit.ensure(&self.gpu, format.get());
-        self.effect_store.ensure_format(&self.gpu, format.get());
+        self.effect_store
+            .ensure_format(&self.gpu, effects, format.get());
     }
 
     /// Render one frame of `stream` into `target`. Skip frames never reach this method.
@@ -556,7 +534,7 @@ impl WgpuBackend {
         let StreamPasses {
             backbuffer,
             canvas,
-            mut timings,
+            timings,
         } = stream.passes();
         let frame_target = if via_backbuffer {
             let bb = backbuffer.expect("a frame through the backbuffer made it");
@@ -597,17 +575,16 @@ impl WgpuBackend {
             slots: AtlasSlots::of(&self.atlas),
         };
         self.ensure_pipelines(format, buffer, variant);
-        let effects = self.effect_store.read();
         let main_pass = self.run_steps(
             FrameSteps {
                 draw: FrameDraw {
                     fmt: &self.pipelines[&format],
-                    effects: &effects
-                        .attached
+                    effects: &self
+                        .effect_store
                         .for_format(format.get())
                         .expect("a window notes its target's format before it records")
                         .effects,
-                    effect_modules: &effects.modules,
+                    effect_kinds: self.effect_store.kinds(),
                     blit: self.blit.get(format.get()),
                     buffer,
                     variant,
@@ -615,33 +592,25 @@ impl WgpuBackend {
                     origin: frame_target.origin(),
                 },
                 main: MainPass {
-                    color_view: frame_target.color_view(),
-                    color: frame_target.color(),
+                    target: frame_target,
                     clear: wgpu_color(submission.clear),
                     scissors: repaint_scissors,
-                    canvas: frame_target.kind() == TargetKind::Canvas,
                 },
-                frame_target,
                 target,
                 surface_view: surface_view.as_deref(),
-                timings: timings.as_deref_mut(),
+                timings: &mut *timings,
             },
             &mut encoder,
         );
 
-        if let Some(t) = timings.as_deref_mut() {
-            t.finish(&mut encoder);
-        }
+        timings.finish(&mut encoder);
         self.staging.finish_and_recall_on_submit(&encoder);
         self.gpu.queue.submit(iter::once(encoder.finish()));
-        drop(effects);
         // Every frame, timing on or off, as it costs two `Instant::now()` calls.
         let stats = submission.stats;
-        stats.record_main_pass_cpu(main_pass.cpu);
-        stats.record_pass_counts(main_pass.counts);
-        if let Some(t) = timings {
-            t.after_submit(&self.gpu, stats);
-        }
+        stats.main_pass_cpu = Some(main_pass.cpu);
+        stats.pass_counts = main_pass.counts;
+        timings.after_submit(&self.gpu, stats);
 
         // After the frame's draws, before the tenants drain, so they learn of the decay's
         // evictions this submit.
@@ -732,17 +701,16 @@ impl WgpuBackend {
         let FrameSteps {
             draw,
             main,
-            frame_target,
             target,
             surface_view,
-            mut timings,
+            timings,
         } = steps;
         let mut started = None;
         let mut main_pass_cpu = None;
         let mut counts = PassCounts::ZERO;
         for &step in self.passes.steps() {
             match step {
-                PassStep::Dim => self.run_dim_pass(draw, main.color_view, encoder),
+                PassStep::Dim => self.run_dim_pass(draw, main.target.color_view(), encoder),
                 PassStep::Main {
                     segment,
                     runs,
@@ -758,7 +726,7 @@ impl WgpuBackend {
                             segment,
                             runs,
                             load,
-                            timings: timings.as_deref_mut(),
+                            timings: &mut *timings,
                         },
                         encoder,
                     ));
@@ -770,24 +738,13 @@ impl WgpuBackend {
                 PassStep::Break { at } => {
                     let breaks = &self.backdrops.breaks()[at];
                     let mark = |phase| Mark::Backdrop { at, phase };
-                    encoder_mark(
-                        timings.as_deref_mut(),
-                        encoder,
-                        mark(BackdropPhase::CaptureStart),
-                    );
-                    self.backdrops.copy_break(encoder, breaks, main.color);
-                    encoder_mark(
-                        timings.as_deref_mut(),
-                        encoder,
-                        mark(BackdropPhase::BlurStart),
-                    );
+                    timings.encoder_mark(encoder, mark(BackdropPhase::CaptureStart));
+                    self.backdrops
+                        .copy_break(encoder, breaks, main.target.color());
+                    timings.encoder_mark(encoder, mark(BackdropPhase::BlurStart));
                     self.backdrops
                         .blur_break(encoder, breaks, &self.atlas_textures);
-                    encoder_mark(
-                        timings.as_deref_mut(),
-                        encoder,
-                        mark(BackdropPhase::BlurEnd),
-                    );
+                    timings.encoder_mark(encoder, mark(BackdropPhase::BlurEnd));
                 }
                 PassStep::CanvasOut => {
                     let FrameTarget::Canvas {
@@ -795,7 +752,7 @@ impl WgpuBackend {
                         bb,
                         origin,
                         rects,
-                    } = frame_target
+                    } = main.target
                     else {
                         unreachable!("the plan copies a canvas out only from a canvas");
                     };
@@ -804,12 +761,13 @@ impl WgpuBackend {
                     }
                 }
                 PassStep::BackbufferOut => {
-                    let bb = frame_target
+                    let bb = main
+                        .target
                         .backbuffer()
                         .expect("the plan puts a backbuffer out only through one");
-                    encoder_mark(timings.as_deref_mut(), encoder, Mark::CopyOutStart);
+                    timings.encoder_mark(encoder, Mark::CopyOutStart);
                     bb.present_onto(encoder, target, draw.blit, self.gpu.backbuffer_out());
-                    encoder_mark(timings.as_deref_mut(), encoder, Mark::CopyOutEnd);
+                    timings.encoder_mark(encoder, Mark::CopyOutEnd);
                 }
                 PassStep::Overlay => {
                     let view = surface_view.expect("the outline writes the target");
@@ -834,6 +792,7 @@ impl WgpuBackend {
         } = upload;
         let Submission {
             store,
+            effects,
             buffer,
             gpu_views,
             clear,
@@ -883,9 +842,8 @@ impl WgpuBackend {
             .image
             .upload(&mut ctx, buffer.images.instance());
         // Paint every GpuView composited this frame into its off-screen target before
-        // the main pass samples it, then free this submitter's targets absent from
-        // `buffer.live_targets` (a wider set than those painted, so an unchanged view keeps
-        // its texture). Eviction is owner-scoped because the backend serves every window.
+        // the main pass samples it, then free this submitter's targets its window no longer
+        // records (a wider set than those painted, so an unchanged view keeps its texture). Eviction is owner-scoped because the backend serves every window.
         self.gpu_view_targets.paint_gpu_views(
             &mut ctx,
             buffer.frame_views(),
@@ -898,7 +856,7 @@ impl WgpuBackend {
         );
         self.programs.curve.upload(&mut ctx, &buffer.curves);
         self.effect_store
-            .prepare(ctx.gpu, buffer.effects.key(), clipping);
+            .prepare(ctx.gpu, effects, buffer.effects.key(), clipping);
         self.programs.effect.upload(
             &mut ctx,
             EffectStores {
@@ -970,8 +928,7 @@ impl WgpuBackend {
         // Both tenants' inserts are in, so the pages take their final size: the textures follow,
         // a grow's copy first, then the groups over them, then each tenant's quads and the rasters
         // it queued, staged through the belt.
-        self.atlas_textures
-            .commit(ctx.gpu, ctx.encoder, &mut self.atlas);
+        self.atlas_textures.commit(&mut ctx, &mut self.atlas);
         self.atlas_group.follow(ctx.gpu, &self.atlas_textures);
         self.backdrops.follow(ctx.gpu, &self.atlas_textures);
         self.programs.quad.prepare_cutouts(
@@ -1035,22 +992,22 @@ impl WgpuBackend {
             segment,
             runs,
             load,
-            mut timings,
+            timings,
         } = segment_pass;
         let MainPass {
-            color_view,
-            color: _,
+            target: pass_target,
             clear,
             scissors,
-            canvas,
         } = main;
+        let color_view = pass_target.color_view();
+        let canvas = pass_target.kind() == TargetKind::Canvas;
         let load_op = match load {
             ColorLoad::Clear => wgpu::LoadOp::Clear(clear),
             ColorLoad::Load => wgpu::LoadOp::Load,
         };
         // The descriptor covers basic mode; with `TIMESTAMP_QUERY_INSIDE_PASSES` we write inline
         // via `segment_begin` / `segment_end` for one gap-free stream.
-        let timestamp_writes = timings.as_deref().and_then(|t| t.pass_writes(segment));
+        let timestamp_writes = timings.pass_writes(segment);
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("palantir.renderer.main.pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -1067,9 +1024,7 @@ impl WgpuBackend {
             occlusion_query_set: None,
             multiview_mask: None,
         });
-        if let Some(t) = timings.as_deref_mut() {
-            t.segment_begin(&mut pass, segment);
-        }
+        timings.segment_begin(&mut pass, segment);
         if canvas {
             // The surface's viewport, moved so its `origin` lands on the canvas's pixel 0: the
             // same clip space as on the backbuffer, a whole number of pixels away.
@@ -1090,7 +1045,7 @@ impl WgpuBackend {
         let mut ctx = DrawCtx {
             draw,
             rec: &mut rec,
-            timings: timings.as_deref_mut(),
+            timings: &mut *timings,
         };
         let schedule = |damage_scissor| Schedule {
             buffer: draw.buffer,
@@ -1107,9 +1062,7 @@ impl WgpuBackend {
                 }
             }
         }
-        if let Some(t) = timings {
-            t.segment_end(&mut rec, segment);
-        }
+        timings.segment_end(&mut rec, segment);
         rec.counts()
     }
 
@@ -1221,7 +1174,7 @@ impl WgpuBackend {
                         EffectBatch {
                             keys: buffer.effects.key(),
                             instances: buffer.effects.instance(),
-                            modules: draw.effect_modules,
+                            kinds: draw.effect_kinds,
                             items,
                             groups: &effect_groups,
                             backdrops: self.backdrops.groups(),
@@ -1285,7 +1238,7 @@ impl WgpuBackend {
         let backbuffer = stream
             .backbuffer()
             .expect("a frame with a screenshot request paints through the backbuffer");
-        let needs_blit = TexelOrder::of(backbuffer.texture().format()) == TexelOrder::Blit;
+        let needs_blit = ChannelOrder::of(backbuffer.texture().format()).is_none();
         if needs_blit {
             self.blit.ensure(&self.gpu, Capture::FORMAT);
         }
@@ -1298,11 +1251,6 @@ impl WgpuBackend {
             blit,
         };
         Capture::start(&self.gpu, source, region)
-    }
-
-    /// Run the map callbacks of the copies the device has finished, without waiting for the rest.
-    pub(crate) fn poll(&self) {
-        self.gpu.poll();
     }
 
     /// Hand `owner`'s backdrop ledger, through `forget`, each backdrop whose result the shared
@@ -1353,22 +1301,24 @@ impl WgpuBackend {
                     .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                         label: Some("palantir.atlas.purge"),
                     });
-            self.atlas_textures
-                .commit(&self.gpu, &mut encoder, &mut self.atlas);
+            // A purge runs between frames, on the pool's display frame, through the belt every
+            // frame writes through, each round a submit of its own.
+            let mut ctx = GpuCtx::new(
+                &self.gpu,
+                &mut self.staging,
+                &mut encoder,
+                self.atlas.frame(),
+            );
+            self.atlas_textures.commit(&mut ctx, &mut self.atlas);
             if !more {
-                let mut ctx = GpuCtx::new(
-                    &self.gpu,
-                    &mut self.staging,
-                    &mut encoder,
-                    self.atlas.frame(),
-                );
                 self.gradient
                     .upload(&mut ctx, self.atlas.rows_mut().flush());
-                self.staging.finish_and_recall_on_submit(&encoder);
-                self.gpu.queue.submit(iter::once(encoder.finish()));
+            }
+            self.staging.finish_and_recall_on_submit(&encoder);
+            self.gpu.queue.submit(iter::once(encoder.finish()));
+            if !more {
                 break;
             }
-            self.gpu.queue.submit(iter::once(encoder.finish()));
         }
         debug_assert!(!more, "a purge lands within MAX_PAGES + 1 rounds");
         self.frame_group.follow(&self.gpu, self.gradient.row_view());
@@ -1390,13 +1340,6 @@ impl WgpuBackend {
             placements: &mut self.cutout_placements,
             pool: &mut self.atlas,
         }
-    }
-}
-
-/// Timestamp `mark` between passes, where the frame is timed.
-fn encoder_mark(timings: Option<&mut GpuTimings>, encoder: &mut wgpu::CommandEncoder, mark: Mark) {
-    if let Some(t) = timings {
-        t.encoder_mark(encoder, mark);
     }
 }
 
@@ -1458,15 +1401,38 @@ pub(crate) mod internals {
     #[cfg(test)]
     use crate::gpu::device::pass_traffic::PassTraffic;
     #[cfg(test)]
+    use crate::gpu::frame::gpu_timings::FrameTiming;
+    #[cfg(test)]
+    use crate::gpu::pipeline::effect_pipeline::wgpu_effect_store::WgpuEffectStore;
     use crate::gpu::pipeline::format_pipelines::FormatPipelines;
     #[cfg(test)]
     use crate::gpu::raster::raster_atlas::counters::AtlasCounts;
     use crate::gpu::resource::staging_target::StagingTarget;
+    #[cfg(test)]
+    use crate::gpu::resource::wgpu_image_store::WgpuImageStore;
     use crate::gpu::texel::TargetFormat;
     use crate::gpu::wgpu_backend::WgpuBackend;
     use crate::renderer::row_table::RowTable;
+    #[cfg(test)]
+    use std::rc::Rc;
 
     impl WgpuBackend {
+        /// The registered images, which the next device's backend holds too.
+        #[cfg(test)]
+        pub(crate) const fn image_store(&self) -> &Rc<WgpuImageStore> {
+            &self.image_store
+        }
+
+        /// Whether this backend times frames, which the next device's does too.
+        #[cfg(test)]
+        pub(crate) const fn frame_timing(&self) -> FrameTiming {
+            if self.timing.is_some() {
+                FrameTiming::On
+            } else {
+                FrameTiming::Off
+            }
+        }
+
         /// The pool's gradient row table.
         #[cfg(test)]
         pub(crate) const fn rows(&self) -> &RowTable {
@@ -1535,7 +1501,8 @@ pub(crate) mod internals {
             let formats: Vec<TargetFormat> = self.pipelines.keys().copied().collect();
             self.pipelines.clear();
             for format in formats {
-                self.prepare_format(format);
+                let built = FormatPipelines::new(&self.gpu, format.get(), &self.programs);
+                self.pipelines.insert(format, built);
             }
         }
 
@@ -1552,6 +1519,12 @@ pub(crate) mod internals {
             (0..MAX_PAGES)
                 .filter(|&idx| list.page(idx).is_some())
                 .count()
+        }
+
+        /// The effects' pipelines on this device.
+        #[cfg(test)]
+        pub(crate) const fn effect_store(&self) -> &WgpuEffectStore {
+            &self.effect_store
         }
 
         /// The pipelines built for `format`.

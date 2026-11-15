@@ -1,7 +1,7 @@
+use crate::primitives::input::focus_policy::FocusPolicy;
 use crate::primitives::input::input_event::InputEvent;
 use crate::primitives::input::keyboard::key_text::KeyText;
 use crate::primitives::input::pointer::PointerButton;
-use crate::primitives::input::policy::FocusPolicy;
 use crate::primitives::input::shortcut::Shortcut;
 use crate::widgets::text_edit::tests::*;
 
@@ -589,7 +589,7 @@ fn caret_click_is_scale_invariant_under_zoom() {
 
     // The same field fraction must hit the same glyph at any zoom; the click arrives post-transform.
     fn caret_at_scale(scale: f32) -> usize {
-        let mut h = Harness::new(WIDE);
+        let mut h = Harness::new(WIDE).with_fixture_font_size();
         let mut buf = String::from("abcdefghij");
         let id = WidgetId::from_hash("scaled-ed");
         let render = |ui: &mut Ui, buf: &mut String| {
@@ -689,8 +689,8 @@ fn a_tap_places_the_caret() {
     assert_eq!(h.state::<TextEditState>(ed_id).unwrap().edit.caret, 5);
 
     // Mono, 8 px per char: x = inner.min + 14 is 1.75 glyphs in, so caret 2.
-    let rect = h.arranged(ed_id);
-    let inner_left = h.ui().theme().text_edit.defaults.padding.to_array()[0];
+    let rect = h.layout_rect(ed_id);
+    let inner_left = h.ui().theme().text_edit.defaults.padding.left();
     let mid = rect.unwrap().size.h * 0.5;
     h.click(h.point_in(ed_id, Vec2::new(inner_left + 14.0, mid)));
     h.frame(Field::PADDED.scene(&mut buf));

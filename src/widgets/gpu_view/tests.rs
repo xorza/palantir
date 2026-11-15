@@ -1,5 +1,6 @@
 use super::*;
 use crate::host::harness::Harness;
+use crate::primitives::layout::sizing::Sizing;
 use crate::shape::paint::closed_paint::ClosedPaint;
 
 use crate::damage::Damage;
@@ -9,13 +10,13 @@ use crate::image_registry::texture_limit::TextureLimit;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::sense::Sense;
-use crate::primitives::layout::align::{Align, HAlign, VAlign};
+use crate::primitives::layout::align::{HAlign, VAlign};
 use crate::renderer::frontend::Frontend;
 use crate::renderer::render_plan::RenderPlan;
 use crate::scene::layer::Layer;
 use crate::shape::paint::image_source::ImageSource;
 use crate::shape::record::ShapeRecord;
-use crate::widget_core::configure::ThemeDefaults;
+use crate::widget_core::configure::ConfigureDefaults;
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};
 use std::num::NonZeroU32;
@@ -123,14 +124,14 @@ fn an_attach_moves_the_view_ceiling_in_the_next_build() {
     let mut frontend = Frontend::for_test();
     let target_size = |frontend: &mut Frontend| {
         frontend.build_alone(h.ui().frame_scene(), plan);
-        frontend.buffer.frame_targets[0].full
+        frontend.buffer().frame_targets[0].full
     };
     assert_eq!(target_size(&mut frontend), UVec2::splat(100));
     frontend.attach_device(TextureLimit::from_device(NonZeroU32::new(50).unwrap()));
     assert_eq!(target_size(&mut frontend), UVec2::splat(50));
 }
 
-/// Retention keys on what the frame recorded, painting on what it damaged: a view culled from a partial repaint keeps its target and `GpuPaint::init` doesn't re-run. One recorded frame composed twice (a `Full` plan draws it, a distant `Partial` doesn't) must give the same live roster, which the window driver lists from the window's views after each build.
+/// Retention keys on what the frame recorded, painting on what it damaged: a view culled from a partial repaint keeps its target and `GpuPaint::init` doesn't re-run. One recorded frame composed twice (a `Full` plan draws it, a distant `Partial` doesn't) must give the same live roster, which the backend reads off the window's views.
 #[test]
 fn the_live_roster_lists_a_view_the_damage_plan_culls() {
     let mut h = Harness::mono(UVec2::new(200, 200));
@@ -138,7 +139,7 @@ fn the_live_roster_lists_a_view_the_damage_plan_culls() {
         GpuView::new(&scene())
             .id(WidgetId::from_hash("gpu_view_retained"))
             .size((Sizing::fixed(100.0), Sizing::fixed(100.0)))
-            .align(Align::new(HAlign::Right, VAlign::Bottom))
+            .align((HAlign::Right, VAlign::Bottom))
             .show(ui);
     });
 
@@ -148,19 +149,21 @@ fn the_live_roster_lists_a_view_the_damage_plan_culls() {
         damage,
     };
 
+    let roster = |h: &Harness| {
+        let mut live = Vec::new();
+        h.frames().gpu_views().collect_live_targets(&mut live);
+        live
+    };
     frontend.build_alone(h.frames().ui().frame_scene(), plan(Damage::Full));
-    h.frames()
-        .gpu_views()
-        .collect_live_targets(&mut frontend.buffer.live_targets);
     assert_eq!(
-        frontend.buffer.frame_targets.len(),
+        frontend.buffer().frame_targets.len(),
         1,
         "a full repaint paints the view",
     );
-    let live = frontend.buffer.live_targets.clone();
+    let live = roster(&h);
     assert_eq!(
         live,
-        [frontend.buffer.frame_targets[0].id],
+        [frontend.buffer().frame_targets[0].id],
         "the roster names the view's target",
     );
 
@@ -170,15 +173,13 @@ fn the_live_roster_lists_a_view_the_damage_plan_culls() {
         h.frames().ui().frame_scene(),
         plan(Damage::Partial(elsewhere)),
     );
-    h.frames()
-        .gpu_views()
-        .collect_live_targets(&mut frontend.buffer.live_targets);
     assert!(
-        frontend.buffer.frame_targets.is_empty(),
+        frontend.buffer().frame_targets.is_empty(),
         "the view is outside the damage region, so nothing repaints it",
     );
     assert_eq!(
-        frontend.buffer.live_targets, live,
+        roster(&h),
+        live,
         "but it is still recorded, so its target must not be freed",
     );
 }

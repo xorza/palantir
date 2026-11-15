@@ -9,8 +9,8 @@
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::packed::fill_axis::FillAxis;
-use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
+use crate::primitives::paint::fill_kind::FillKind;
 use crate::primitives::paint::lut_row::LutRow;
 use crate::renderer::render_buffer::fill_form::FillForm;
 use crate::renderer::render_buffer::shape_form::ShapeForm;

@@ -1,12 +1,15 @@
 //! Text measurement and wrapping. The left column is single-text wrapping in a box the knobs size (`TextWrap::WrapWithOverflow` and the intrinsic-min overflow rule); the right is composition: Grid Auto under constraint, a property grid, and a chat row whose Fill message column reflows live.
 
+use crate::scaffold;
+use crate::scaffold::Col;
 use crate::scaffold::api;
+use crate::scaffold::kit::Kit;
+use crate::scaffold::knob::Knob;
+use crate::scaffold::section::Section;
 use crate::scaffold::tokens::M;
-use crate::support;
-use crate::support::{Col, Kit, Knob, Section};
 use palantir::{
-    Block, Button, Chrome, Configure, Corners, Grid, Panel, RgbaF32, Sizing, Text, TextWrap, Track,
-    Ui, WidgetId,
+    Block, Button, Chrome, Configure, Corners, Grid, Panel, RgbaF32, SizeSpec, Sizing, Text,
+    TextWrap, Track, Ui, WidgetId,
 };
 
 const PARAGRAPH: &str = "The quick brown fox jumps over the lazy dog. \
@@ -32,7 +35,7 @@ impl Default for State {
 pub(crate) fn build(ui: &mut Ui, k: Kit) {
     let state_id = WidgetId::from_hash("showcase::text::state");
     ui.with_state::<State, _>(state_id, |ui, s| {
-        support::cols(ui, |ui, col| match col {
+        scaffold::cols(ui, |ui, col| match col {
             Col::Left => wrapping(ui, k, s),
             Col::Right => compositions(ui, k),
         });
@@ -43,7 +46,7 @@ fn wrapping(ui: &mut Ui, k: Kit, s: &mut State) {
     Section::new("Single line")
         .apis(&[api!(type Text)])
         .show(ui, k, |ui| {
-            support::note(ui, k, "With no width to fit, text hugs its natural width.");
+            scaffold::note(ui, k, "With no width to fit, text hugs its natural width.");
             Text::new("The quick brown fox jumps over the lazy dog")
                 .style(&k.t.body())
                 .show(ui);
@@ -52,7 +55,7 @@ fn wrapping(ui: &mut Ui, k: Kit, s: &mut State) {
     Section::new("Wrapping")
         .apis(&[api!(Text::text_wrap)])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "A paragraph in a box of the width and at the size the knobs set: it wraps \
@@ -84,7 +87,7 @@ fn wrapping(ui: &mut Ui, k: Kit, s: &mut State) {
     Section::new("Overflow")
         .apis(&[api!(type TextWrap)])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "Wrapping breaks only between words: a word wider than its 40 px slot \
@@ -102,21 +105,21 @@ fn wrapping(ui: &mut Ui, k: Kit, s: &mut State) {
     Section::new("Label overflow")
         .apis(&[api!(Button::text_wrap)])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "A fixed-width button cuts a long label at its box. Single-line wrapping lets the \
                  label run past the box; a Hug-width button grows to fit.",
             );
-            support::well(ui, k, |ui| {
-                support::row(ui, |ui| {
+            scaffold::well(ui, k, |ui| {
+                scaffold::row(ui, |ui| {
                     Button::new()
                         .size((Sizing::fixed(140.0), Sizing::HUG))
                         .label("Screenshot 2026-05-28 at 01.21.25.png")
                         .show(ui);
                     Button::new().label("fits its content").show(ui);
                 });
-                support::row(ui, |ui| {
+                scaffold::row(ui, |ui| {
                     Button::new()
                         .size((Sizing::fixed(140.0), Sizing::HUG))
                         .text_wrap(TextWrap::SingleLine)
@@ -156,7 +159,7 @@ fn compositions(ui: &mut Ui, k: Kit) {
     Section::new("Two Hug columns")
         .apis(&[api!(Track::HUG)])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "Under a width limit the paragraph wraps to fit, and the label beside it keeps \
@@ -183,13 +186,13 @@ fn compositions(ui: &mut Ui, k: Kit) {
     Section::new("Property grid")
         .apis(&[api!(Track::FILL)])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "A Hug label column and a Fill value column that wraps.",
             );
             Grid::new()
-                .size((Sizing::FILL, Sizing::HUG))
+                .size(SizeSpec::FILL_W)
                 .cols([Track::HUG, Track::FILL])
                 .rows([Track::HUG, Track::HUG, Track::HUG])
                 .line_gap(6.0)
@@ -221,14 +224,14 @@ fn compositions(ui: &mut Ui, k: Kit) {
         });
 
     Section::new("Chat").show(ui, k, |ui| {
-        support::note(
+        scaffold::note(
             ui,
             k,
             "A Fixed avatar and a Fill message. Resize the window and the messages wrap \
                  again.",
         );
         Panel::vstack()
-            .size((Sizing::FILL, Sizing::HUG))
+            .size(SizeSpec::FILL_W)
             .gap(8.0)
             .show(ui, |ui| {
                 ChatRow {
@@ -271,7 +274,7 @@ impl ChatRow {
         } = self;
         Panel::hstack()
             .id_salt(("chat-row", key))
-            .size((Sizing::FILL, Sizing::HUG))
+            .size(SizeSpec::FILL_W)
             .gap(10.0)
             .show(ui, |ui| {
                 Block::new()
@@ -282,7 +285,7 @@ impl ChatRow {
                 Text::new(message)
                     .id_salt(("message", key))
                     .style(&k.t.body())
-                    .size((Sizing::FILL, Sizing::HUG))
+                    .size(SizeSpec::FILL_W)
                     .text_wrap(TextWrap::WrapWithOverflow)
                     .show(ui);
             });

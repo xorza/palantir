@@ -75,30 +75,24 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::input_event::InputEvent;
 use crate::primitives::input::interaction::input_delta::InputDelta;
 use crate::primitives::input::interaction::response::Response;
-use crate::primitives::input::keyboard::key::Key;
+use crate::primitives::input::interaction::wheel_delta::WheelDelta;
 use crate::primitives::input::keyboard::modifiers::Modifiers;
 use crate::primitives::input::pointer::PointerButton;
 use crate::primitives::input::sense::Sense;
 use crate::primitives::input::shortcut::{Shortcut, ShortcutMods};
 use crate::primitives::input::zoom_factor::ZoomFactor;
-use crate::primitives::reduction::Reduction;
 use crate::renderer::row_table::RowTable;
 use crate::theme::color_scheme::ColorScheme;
 use crate::ui::Ui;
 use crate::ui::app::{App, RecordPass};
-use crate::ui::frame_report::FrameReport;
+use crate::ui::frame_report::{FrameReport, RecordedFrame};
 use crate::ui::inspected_widget::InspectedWidget;
 use crate::ui::window_frames::present::{FrameSpec, TargetKey};
 use crate::window::window_commands::WindowCommand;
 use crate::window::window_token::WindowToken;
 use glam::{UVec2, Vec2};
+use std::num::NonZeroU32;
 use std::time::{Duration, Instant};
-
-/// The ambient font size this crate's unit tests frame at, pinned so the default text size can
-/// move without their hand-computed text metrics moving with it, as the visual suite pins its
-/// palette. A harness outside those tests keeps the stock theme, as a host does.
-#[cfg(test)]
-const FIXTURE_FONT_SIZE: f32 = 16.0;
 
 /// One window with no desktop: its frames, its input and its clock, stepped by the caller. See
 /// the module doc for the rules a frame follows.
@@ -137,8 +131,40 @@ pub struct Harness {
     /// the double-click interval from.
     last_press: Option<Duration>,
     pace: SettlePace,
-    /// Every change the frames made to a window, oldest first ([`log_window_command`]).
-    window_commands: Vec<WindowCommand>,
+    /// The changes the last frame made to a window, in the order filed
+    /// ([`WindowLog::file`]).
+    windows: WindowLog,
+}
+
+/// What a harness keeps of the windows its frames open and close: the last frame's commands, and
+/// the windows they hold open, which an open of one already open leaves out, as a host ignores
+/// it. Bounded by the windows an app opens, each held once.
+#[derive(Debug, Default)]
+struct WindowLog {
+    commands: Vec<WindowCommand>,
+    open: Vec<WindowToken>,
+}
+
+impl WindowLog {
+    /// Keep `commands`, a frame's, in place of the last frame's. Every close is kept: the
+    /// harness's own window can close and come back with no open, as an app launched again in it
+    /// does, and close again.
+    fn file(&mut self, commands: impl IntoIterator<Item = WindowCommand>) {
+        self.commands.clear();
+        for command in commands {
+            let token = command.token();
+            let held = self.open.iter().position(|&open| open == token);
+            match (&command, held) {
+                (WindowCommand::Open { .. }, Some(_)) => continue,
+                (WindowCommand::Open { .. }, None) => self.open.push(token),
+                (WindowCommand::Close(_), Some(idx)) => {
+                    self.open.swap_remove(idx);
+                }
+                (WindowCommand::Close(_), None) => {}
+            }
+            self.commands.push(command);
+        }
+    }
 }
 
 /// How far a harness's frames run, with the window's size: kept by the texture of a window that
@@ -223,12 +249,8 @@ impl Harness {
             held: [None; PointerButton::COUNT],
             last_press: None,
             pace,
-            window_commands: Vec::new(),
+            windows: WindowLog::default(),
         };
-        #[cfg(test)]
-        {
-            harness.ui_mut().theme_mut().text.font_size = FIXTURE_FONT_SIZE;
-        }
         harness.sync_display();
         harness.mark_warm();
         harness
@@ -242,13 +264,18 @@ impl Harness {
 
     /// Run one frame of a whole [`App`], as a host does, after the frames held input owes.
     pub fn frame_app(&mut self, app: &mut impl App) -> FrameReport {
+        self.frame_app_recorded(app).report()
+    }
+
+    /// [`Self::frame_app`] with the render plan and the passes behind its report.
+    pub(crate) fn frame_app_recorded(&mut self, app: &mut impl App) -> RecordedFrame {
         self.deliver_held_input(app);
         self.drive(app)
     }
 
     /// Exactly one frame, delivering nothing held.
     pub fn step(&mut self, mut record: impl FnMut(&mut Ui)) -> FrameReport {
-        self.drive(&mut record)
+        self.drive(&mut record).report()
     }
 
     /// The value pass A of one frame of `record` returned.
@@ -325,12 +352,12 @@ impl Harness {
     }
 
     /// Give the window `size` physical pixels from the next frame on, which reads the change as a
-    /// resize. At [`Depth::Gpu`](crate::Depth::Gpu) a new texture holds it, and the frame paints
+    /// resize. At [`HarnessDepth::Gpu`](crate::HarnessDepth::Gpu) a new texture holds it, and the frame paints
     /// whole.
     ///
     /// # Panics
     ///
-    /// At [`Depth::Gpu`](crate::Depth::Gpu), when either side is zero or past the device's
+    /// At [`HarnessDepth::Gpu`](crate::HarnessDepth::Gpu), when either side is zero or past the device's
     /// largest 2D texture.
     pub fn resize(&mut self, size: UVec2) -> &mut Self {
         match &mut self.paint {
@@ -358,7 +385,7 @@ impl Harness {
 
     /// Report the monitor's refresh rate, which repaint wakes coalesce to, from the next frame
     /// on; `None` reports none.
-    pub fn set_refresh_millihertz(&mut self, millihertz: Option<u32>) -> &mut Self {
+    pub fn set_refresh_millihertz(&mut self, millihertz: Option<NonZeroU32>) -> &mut Self {
         self.window.refresh_millihertz = millihertz;
         self.sync_display();
         self
@@ -368,33 +395,28 @@ impl Harness {
     /// start, reports nothing, so [`Preference::System`](crate::Preference::System)
     /// shows the fallback. The next frame shows the resolved scheme.
     pub fn set_system_color_scheme(&mut self, scheme: Option<ColorScheme>) -> &mut Self {
-        self.window
-            .set_preferences(|preferences| preferences.color_scheme = scheme);
+        self.window.set_system_color_scheme(scheme);
         self
     }
 
     /// Report the system as asking for less motion, or not, as the winit host reports the
-    /// desktop's; `false` at the start. See [`Ui::is_motion_reduced`].
+    /// desktop's; `false` at the start. See [`Ui::reductions`].
     pub fn set_system_motion_reduced(&mut self, reduced: bool) -> &mut Self {
-        self.window
-            .set_preferences(|preferences| preferences.reductions.motion = Reduction::of(reduced));
+        self.window.set_system_motion_reduced(reduced);
         self
     }
 
     /// Report the system as asking for less transparency, or not, as the winit host reports the
-    /// desktop's; `false` at the start. See [`Ui::is_transparency_reduced`].
+    /// desktop's; `false` at the start. See [`Ui::reductions`].
     pub fn set_system_transparency_reduced(&mut self, reduced: bool) -> &mut Self {
-        self.window.set_preferences(|preferences| {
-            preferences.reductions.transparency = Reduction::of(reduced);
-        });
+        self.window.set_system_transparency_reduced(reduced);
         self
     }
 
     /// Report the system's power-saver mode as on, or not, as the winit host reports the
-    /// desktop's; `false` at the start. See [`Ui::is_power_reduced`].
+    /// desktop's; `false` at the start. See [`Ui::reductions`].
     pub fn set_system_power_reduced(&mut self, reduced: bool) -> &mut Self {
-        self.window
-            .set_preferences(|preferences| preferences.reductions.power = Reduction::of(reduced));
+        self.window.set_system_power_reduced(reduced);
         self
     }
 
@@ -516,7 +538,7 @@ impl Harness {
     #[track_caller]
     pub fn scroll_pixels(&mut self, at: impl Into<Locator>, delta: Vec2) -> InputDelta {
         self.hover(at);
-        self.on_input(InputEvent::ScrollPixels(delta))
+        self.on_input(InputEvent::Scroll(WheelDelta::pixels(delta)))
     }
 
     /// Move the pointer to `at` and scroll by `delta` lines, as a notched wheel does; positive
@@ -528,7 +550,7 @@ impl Harness {
     #[track_caller]
     pub fn scroll_lines(&mut self, at: impl Into<Locator>, delta: Vec2) -> InputDelta {
         self.hover(at);
-        self.on_input(InputEvent::scroll_lines(delta))
+        self.on_input(InputEvent::Scroll(WheelDelta::notches(delta)))
     }
 
     /// Move the pointer to `at` and pinch by `factor`: above 1 zooms in.
@@ -594,10 +616,18 @@ impl Harness {
         }
     }
 
-    /// Type `text` as key taps, one a character, each typing it.
+    /// Type `text` as key taps, one a character, each typing it; a newline taps Enter and a tab
+    /// Tab.
+    ///
+    /// # Panics
+    ///
+    /// When `text` holds another control character, which no key types.
+    #[track_caller]
     pub fn type_text(&mut self, text: &str) -> InputDelta {
         text.chars().fold(InputDelta::default(), |delta, c| {
-            either(delta, self.key(Key::Char(c)))
+            let key = play::typed_key(c)
+                .unwrap_or_else(|| panic!("{c:?} is a control character no key types"));
+            either(delta, self.key(key))
         })
     }
 
@@ -623,7 +653,7 @@ impl Harness {
     }
 
     /// `id`'s visible rect in the last frame: after transforms and clips, what the pointer hits.
-    /// [`Self::arranged`] is the rect a layout test means; the two differ only under a
+    /// [`Self::layout_rect`] is the rect a layout test means; the two differ only under a
     /// transform or a clip.
     pub fn rect(&self, id: WidgetId) -> Option<Rect> {
         self.ui().response_for(id).rect
@@ -631,7 +661,7 @@ impl Harness {
 
     /// `id`'s arranged rect in the last frame: before transforms, not clipped; `None` when `id`
     /// did not arrange in it.
-    pub fn arranged(&self, id: WidgetId) -> Option<Rect> {
+    pub fn layout_rect(&self, id: WidgetId) -> Option<Rect> {
         self.ui().response_for(id).layout_rect
     }
 
@@ -678,13 +708,13 @@ impl Harness {
         self.ui().state::<S>(id)
     }
 
-    /// Every window the frames opened or closed, oldest first: a harness has one window, and
-    /// records the rest. An open of a window the log holds open is not recorded, as a host ignores
-    /// it: an app that opens a window each frame, as one does here, where only the harness's own
-    /// window is open, records one open. Every close is recorded: the harness's own window can
-    /// close and come back with no open, as an app launched again in it does, and close again.
+    /// The windows the last frame opened or closed, in the order called, as
+    /// [`OffscreenHost::window_commands`](crate::OffscreenHost::window_commands) reads them: a
+    /// harness has one window, and records the rest. An open of a window an earlier frame opened
+    /// and none closed is left out, as a host ignores it: an app that opens a window each frame
+    /// shows one open, on the first.
     pub fn window_commands(&self) -> &[WindowCommand] {
-        &self.window_commands
+        &self.windows.commands
     }
 
     /// The text on the window's clipboard, `None` when it holds none.
@@ -701,17 +731,14 @@ impl Harness {
 
     /// Put `text` on the window's clipboard, for a paste to come.
     pub fn set_clipboard_text(&mut self, text: &str) -> &mut Self {
-        self.ui()
-            .clipboard()
-            .set_text(text)
-            .expect("the harness clipboard is in memory");
+        self.ui().clipboard().set_text(text);
         self
     }
 
     /// Block until the device finished every frame painted so far, and the copies of their
     /// screenshots are back, so a screenshot asked lands in the next frame. Returns how the wait
     /// ended: [`GpuWait::Done`], or why the copies did not come back. Below
-    /// [`Depth::Gpu`](crate::Depth::Gpu) nothing paints, and it is done at once.
+    /// [`HarnessDepth::Gpu`](crate::HarnessDepth::Gpu) nothing paints, and it is done at once.
     pub fn wait_for_gpu(&self) -> GpuWait {
         match &self.paint {
             HarnessPaint::Record { .. } | HarnessPaint::Compose { .. } => GpuWait::Done,
@@ -734,13 +761,13 @@ impl Harness {
 
     /// Whether the device this harness paints with is lost, as
     /// [`OffscreenHost::is_device_lost`](crate::OffscreenHost::is_device_lost) reads it; never
-    /// below [`Depth::Gpu`](crate::Depth::Gpu). A frame then runs the app and paints nothing
+    /// below [`HarnessDepth::Gpu`](crate::HarnessDepth::Gpu). A frame then runs the app and paints nothing
     /// until [`Self::recover`] hands the harness a new device.
     pub fn is_device_lost(&self) -> bool {
         self.gpu().is_some_and(Gpu::is_lost)
     }
 
-    /// The device this harness paints with; none below [`Depth::Gpu`](crate::Depth::Gpu).
+    /// The device this harness paints with; none below [`HarnessDepth::Gpu`](crate::HarnessDepth::Gpu).
     pub(crate) const fn gpu(&self) -> Option<&Gpu> {
         match &self.paint {
             HarnessPaint::Record { .. } | HarnessPaint::Compose { .. } => None,
@@ -755,14 +782,14 @@ impl Harness {
     ///
     /// # Panics
     ///
-    /// Below [`Depth::Gpu`](crate::Depth::Gpu), which paints with no device; when either side of
-    /// the window's physical size, [`Display::physical`](crate::Display::physical) of
+    /// Below [`HarnessDepth::Gpu`](crate::HarnessDepth::Gpu), which paints with no device; when either side of
+    /// the window's physical size, [`Display::physical_size`](crate::Display::physical_size) of
     /// [`Self::ui`]'s display, is past `gpu`'s largest 2D texture, which a smaller GPU can hold,
     /// as [`HarnessBuilder::build`] and [`Self::resize`] panic past it; and if `gpu` cannot run
     /// Palantir's pipelines, as [`HarnessBuilder::build`] says.
     pub fn recover(&mut self, gpu: Gpu) {
         let HarnessPaint::Gpu { target, device } = &mut self.paint else {
-            panic!("a harness below Depth::Gpu paints with no device to recover");
+            panic!("a harness below HarnessDepth::Gpu paints with no device to recover");
         };
         *target = OwnedTarget::window(
             &gpu,
@@ -775,7 +802,7 @@ impl Harness {
 
     /// Render one frame of `app` at the clock as it stands, where [`Self::at`] parks it, and write
     /// the window's pixels into `pixels` in the target's format
-    /// ([`Depth::Gpu`](crate::Depth::Gpu)'s `format`): rows top down with no
+    /// ([`HarnessDepth::Gpu`](crate::HarnessDepth::Gpu)'s `format`): rows top down with no
     /// padding, 4 bytes a pixel of 8-bit sRGB RGBA by default, 8 of `Rgba16Float`. That frame
     /// alone: no held input is delivered, the clock does not move, and no frame waits for the
     /// picture to land, as [a session's shot](crate::AgentWindow::shot) does. For a recording,
@@ -783,7 +810,7 @@ impl Harness {
     ///
     /// # Errors
     ///
-    /// [`PlayError::NoPixels`] below [`Depth::Gpu`](crate::Depth::Gpu),
+    /// [`PlayError::NoPixels`] below [`HarnessDepth::Gpu`](crate::HarnessDepth::Gpu),
     /// [`PlayError::DeviceLost`] when the device is lost before the pixels come back, and
     /// [`PlayError::GpuTimedOut`] when it does not finish the frame in time; `pixels` is left
     /// empty on either.
@@ -816,14 +843,14 @@ impl Harness {
     }
 
     /// One frame of `app` at the harness's time: record to the harness's depth, keep the window
-    /// commands, and paint onto the target at [`Depth::Gpu`](crate::Depth::Gpu) while the device
+    /// commands, and paint onto the target at [`HarnessDepth::Gpu`](crate::HarnessDepth::Gpu) while the device
     /// lives.
-    fn drive(&mut self, app: &mut impl App) -> FrameReport {
+    fn drive(&mut self, app: &mut impl App) -> RecordedFrame {
         if let Some(at) = self.earliest_repaint_at {
             self.time = self.time.max(at);
         }
         let now = self.time;
-        let report = match &mut self.paint {
+        let recorded = match &mut self.paint {
             HarnessPaint::Record { size } => {
                 self.window
                     .record_frame(app, HarnessPaint::unpainted(*size), now)
@@ -845,11 +872,9 @@ impl Harness {
                 now,
             ),
         };
-        for command in self.window.drain_commands() {
-            log_window_command(&mut self.window_commands, command);
-        }
-        self.earliest_repaint_at = report.earliest_repaint_at;
-        report
+        self.windows.file(self.window.drain_commands());
+        self.earliest_repaint_at = recorded.earliest_repaint_at;
+        recorded
     }
 
     /// Frames of `app` until it settles, as [a session's settle](crate::AgentWindow::settle) runs
@@ -857,7 +882,7 @@ impl Harness {
     /// [`settle_frames`](crate::HarnessBuilder::settle_frames): a frame a busy app's wake brought
     /// is its progress, and the wait for the next wake starts again after each.
     fn settle_frames_of(&mut self, app: &mut impl App) -> Result<u32, PlayError> {
-        let first = self.ui().record_frame_id();
+        let first = self.ui().record_frame_idx();
         let began = Instant::now();
         let busy_limit = self.pace.background_wait.saturating_mul(BUSY_SETTLE_WAITS);
         let mut asking = 0;
@@ -872,9 +897,9 @@ impl Harness {
                     return Err(PlayError::DeviceLost);
                 }
                 asking += 1;
-                if asking == self.pace.settle_frames {
+                if asking == self.pace.settle_frames.get() {
                     return Err(PlayError::Unsettled {
-                        frames: self.pace.settle_frames,
+                        frames_recorded: play::frames_recorded(first, self.ui().record_frame_idx()),
                     });
                 }
                 if screenshots {
@@ -892,7 +917,7 @@ impl Harness {
                 continue;
             }
             if !busy {
-                return Ok(play::frames_recorded(first, self.ui().record_frame_id()));
+                return Ok(play::frames_recorded(first, self.ui().record_frame_idx()));
             }
             if !self.window.wait_for_wake(self.pace.background_wait) {
                 return Err(PlayError::Busy {
@@ -942,20 +967,6 @@ impl Harness {
     }
 }
 
-/// Append `command` to `log` unless it opens a window the log holds open: the last command for
-/// it is an open already.
-fn log_window_command(log: &mut Vec<WindowCommand>, command: WindowCommand) {
-    let token = command.token();
-    let held_open = matches!(command, WindowCommand::Open { .. })
-        && matches!(
-            log.iter().rev().find(|logged| logged.token() == token),
-            Some(WindowCommand::Open { .. })
-        );
-    if !held_open {
-        log.push(command);
-    }
-}
-
 /// What a wait for the device means to a player. A wait that timed out ends the step: the device
 /// hangs, and another wait would hold the caller for the whole bound again, as many as
 /// [`settle_frames`](crate::HarnessBuilder::settle_frames) times.
@@ -979,11 +990,21 @@ pub(crate) mod internals {
     use crate::damage::Damage;
     use crate::damage::region::{CollapsedDamage, DamageRegion, MergePolicy};
     use crate::host::harness::{Harness, HarnessPaint};
+    use crate::primitives::paint::image::Image;
     use crate::renderer::frontend::BuildPlan;
     use crate::renderer::render_buffer::RenderBuffer;
     use crate::renderer::render_plan::RenderPlan;
     use crate::renderer::row_table::RowTable;
+    use crate::ui::Ui;
+    use crate::ui::frame_report::RecordedFrame;
     use crate::ui::window_frames::WindowFrames;
+
+    /// The ambient font size this crate's unit tests frame at, pinned so the default text size
+    /// can move without their hand-computed text metrics moving with it, as the visual suite pins
+    /// its palette. Every other harness keeps the stock theme, as a host does.
+    #[cfg(test)]
+    const FIXTURE_FONT_SIZE: f32 = 16.0;
+
     #[cfg(test)]
     use crate::{
         gpu::atlas::atlas_format::AtlasFormat,
@@ -993,16 +1014,14 @@ pub(crate) mod internals {
         primitives::identity::widget_id::WidgetId,
         primitives::input::input_event::InputEvent,
         primitives::input::interaction::input_delta::InputDelta,
-        primitives::layout::sizing::Sizing,
+        primitives::layout::sizing::SizeSpec,
         primitives::math::animatable::Animatable,
         renderer::frontend::Frontend,
         renderer::frontend::encoder::Encoder,
         scene::endpoint::Endpoint,
         scene::layer::Layer,
         scene::tree::node_id::NodeId,
-        ui::Ui,
         ui::app::{App, RecordPass},
-        ui::frame_report::FrameReport,
         ui::resources::UiResources,
         widget_core::configure::Configure,
         widgets::panel::Panel,
@@ -1010,7 +1029,6 @@ pub(crate) mod internals {
     };
     #[cfg(test)]
     use glam::{UVec2, Vec2};
-    use image::RgbaImage;
 
     impl HarnessPaint {
         /// The row table a build outside a painted frame registers its gradients in: the device
@@ -1018,10 +1036,12 @@ pub(crate) mod internals {
         ///
         /// # Panics
         ///
-        /// At [`Depth::Record`](crate::Depth::Record), which builds no draw list.
+        /// At [`HarnessDepth::Record`](crate::HarnessDepth::Record), which builds no draw list.
         pub(super) fn rows_mut(&mut self) -> &mut RowTable {
             match self {
-                Self::Record { .. } => panic!("a harness at Depth::Record builds no draw list"),
+                Self::Record { .. } => {
+                    panic!("a harness at HarnessDepth::Record builds no draw list")
+                }
                 Self::Compose { rows, .. } => rows,
                 Self::Gpu { device, .. } => device.rows_mut(),
             }
@@ -1029,6 +1049,11 @@ pub(crate) mod internals {
     }
 
     impl Harness {
+        /// [`Self::frame`] with the render plan and the passes behind its report.
+        pub(crate) fn frame_recorded(&mut self, mut record: impl FnMut(&mut Ui)) -> RecordedFrame {
+            self.frame_app_recorded(&mut record)
+        }
+
         /// Snap paint edges to physical pixels from the next frame on, or not, as a host's
         /// options flip it.
         #[cfg(test)]
@@ -1044,7 +1069,7 @@ pub(crate) mod internals {
 
         /// The draw list the last composed or painted frame built.
         pub(crate) const fn render_buffer(&self) -> &RenderBuffer {
-            &self.window.cpu.frontend.buffer
+            self.window.cpu.frontend.buffer()
         }
 
         /// Build the draw list of the last frame's scene by `plan`, its backdrops left out, and
@@ -1052,21 +1077,21 @@ pub(crate) mod internals {
         ///
         /// # Panics
         ///
-        /// At [`Depth::Record`](crate::Depth::Record), which builds no draw list.
+        /// At [`HarnessDepth::Record`](crate::HarnessDepth::Record), which builds no draw list.
         pub(crate) fn rebuild(&mut self, plan: RenderPlan) -> &RenderBuffer {
             self.window.cpu.frontend.build(
                 self.window.frames.ui().frame_scene(),
                 BuildPlan::without_backdrops(plan, self.paint.rows_mut()),
             );
-            &self.window.cpu.frontend.buffer
+            self.window.cpu.frontend.buffer()
         }
 
         /// Build the draw list of the whole retained scene, as a full repaint does; at
-        /// [`Depth::Compose`](crate::Depth::Compose), it paints nothing.
+        /// [`HarnessDepth::Compose`](crate::HarnessDepth::Compose), it paints nothing.
         ///
         /// # Panics
         ///
-        /// At [`Depth::Record`](crate::Depth::Record), which builds no draw list.
+        /// At [`HarnessDepth::Record`](crate::HarnessDepth::Record), which builds no draw list.
         pub fn paint_full(&mut self) {
             let plan = RenderPlan {
                 clear: self.ui().theme().window_bg,
@@ -1082,10 +1107,10 @@ pub(crate) mod internals {
         ///
         /// # Panics
         ///
-        /// Below [`Depth::Gpu`](crate::Depth::Gpu), which paints no pixels.
-        pub fn read_back(&self) -> RgbaImage {
+        /// Below [`HarnessDepth::Gpu`](crate::HarnessDepth::Gpu), which paints no pixels.
+        pub fn read_back(&self) -> Image {
             let HarnessPaint::Gpu { target, .. } = &self.paint else {
-                panic!("a harness below Depth::Gpu paints no pixels");
+                panic!("a harness below HarnessDepth::Gpu paints no pixels");
             };
             target.read_back()
         }
@@ -1120,14 +1145,14 @@ pub(crate) mod internals {
     #[derive(Debug)]
     pub(crate) struct Passes<R> {
         values: Vec<R>,
-        report: FrameReport,
+        recorded: RecordedFrame,
     }
 
     #[cfg(test)]
     impl<R> Passes<R> {
-        /// What the frame reported to its host.
-        pub(crate) const fn report(&self) -> &FrameReport {
-            &self.report
+        /// The frame as its host saw it.
+        pub(crate) const fn recorded(&self) -> &RecordedFrame {
+            &self.recorded
         }
 
         /// Pass A's value.
@@ -1164,7 +1189,7 @@ pub(crate) mod internals {
             match &self.paint {
                 HarnessPaint::Gpu { device, .. } => device.backend().backdrop_blurs(),
                 HarnessPaint::Record { .. } | HarnessPaint::Compose { .. } => {
-                    panic!("a harness below Depth::Gpu runs no blur")
+                    panic!("a harness below HarnessDepth::Gpu runs no blur")
                 }
             }
         }
@@ -1176,7 +1201,7 @@ pub(crate) mod internals {
                     device.backend().atlas_scratch_texels(AtlasFormat::Rgba16F)
                 }
                 HarnessPaint::Record { .. } | HarnessPaint::Compose { .. } => {
-                    panic!("a harness below Depth::Gpu keeps no result")
+                    panic!("a harness below HarnessDepth::Gpu keeps no result")
                 }
             }
         }
@@ -1186,7 +1211,7 @@ pub(crate) mod internals {
             match &self.paint {
                 HarnessPaint::Gpu { device, .. } => device.backend().atlas_decayed(),
                 HarnessPaint::Record { .. } | HarnessPaint::Compose { .. } => {
-                    panic!("a harness below Depth::Gpu holds no pool")
+                    panic!("a harness below HarnessDepth::Gpu holds no pool")
                 }
             }
         }
@@ -1198,15 +1223,22 @@ pub(crate) mod internals {
                     device.backend().image_store().read_effect_groups().len()
                 }
                 HarnessPaint::Record { .. } | HarnessPaint::Compose { .. } => {
-                    panic!("a harness below Depth::Gpu binds no image")
+                    panic!("a harness below HarnessDepth::Gpu binds no image")
                 }
             }
         }
 
-        /// A window of `size` that shapes with the mono fallback, whose metrics this crate's
-        /// tests compute by hand.
+        /// A window of `size` that shapes with the mono fallback at [`FIXTURE_FONT_SIZE`], whose
+        /// metrics this crate's tests compute by hand.
         pub(crate) fn mono(size: UVec2) -> Self {
-            Self::builder(size).mono().build()
+            Self::builder(size).mono().build().with_fixture_font_size()
+        }
+
+        /// This harness framing at [`FIXTURE_FONT_SIZE`], for a test that computes text metrics
+        /// by hand.
+        pub(crate) fn with_fixture_font_size(mut self) -> Self {
+            self.ui_mut().theme_mut().text.font_size = FIXTURE_FONT_SIZE;
+            self
         }
 
         /// [`Self::mono`] with a cold recorder: frame 1 runs the warmup pass.
@@ -1241,23 +1273,23 @@ pub(crate) mod internals {
         /// [`Self::frame_passes`] over exactly one frame, as [`Self::step`].
         pub(crate) fn step_passes<R>(&mut self, mut record: impl FnMut(&mut Ui) -> R) -> Passes<R> {
             let mut values = Vec::new();
-            let report = self.step(|ui| {
+            let recorded = self.drive(&mut |ui: &mut Ui| {
                 let value = record(ui);
                 if ui.record_pass() != RecordPass::Warmup {
                     values.push(value);
                 }
             });
-            Passes { values, report }
+            Passes { values, recorded }
         }
 
         /// One frame of `record` with the damage baseline dropped, as after a lost target: it
         /// repaints whole.
         pub(crate) fn frame_without_baseline(
             &mut self,
-            record: impl FnMut(&mut Ui),
-        ) -> FrameReport {
+            mut record: impl FnMut(&mut Ui),
+        ) -> RecordedFrame {
             self.window.frames.invalidate_target_contents();
-            self.step(record)
+            self.drive(&mut record)
         }
 
         /// Frames of `app` until one asks no repaint, as a session's settle runs them; the frames
@@ -1276,7 +1308,7 @@ pub(crate) mod internals {
             self.frame_value(|ui| {
                 Panel::hstack()
                     .auto_id()
-                    .size((Sizing::FILL, Sizing::FILL))
+                    .size(SizeSpec::FILL)
                     .show(ui, &mut f)
                     .inner
             })

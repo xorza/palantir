@@ -1,6 +1,7 @@
 //! [`ScreenshotLane`]: a window's screenshots, from the ask to the image.
 
 use crate::display::Display;
+use crate::gpu::device::gpu::Gpu;
 use crate::gpu::surface::capture::Capture;
 use crate::gpu::wgpu_backend::WgpuBackend;
 use crate::gpu::wgpu_backend::render_stream::RenderStream;
@@ -61,6 +62,11 @@ impl ScreenshotLane {
         !self.requests.is_empty()
     }
 
+    /// How many asks the window owes an image: asked and not painted, or on their way back.
+    pub(super) fn len(&self) -> usize {
+        self.requests.len() + self.pending.len()
+    }
+
     /// Whether a screenshot is on its way back from the device, which a later frame lands.
     pub(super) fn has_pending(&self) -> bool {
         !self.pending.is_empty()
@@ -90,9 +96,10 @@ impl ScreenshotLane {
     /// The oldest screenshot the device has finished, or none. A copy the device failed, as only a
     /// lost one does, goes back to the requests, and the next frame that paints takes it again; a
     /// copy a lost device never finishes goes back when a new device attaches.
-    pub(super) fn take_landed(&mut self, backend: &WgpuBackend) -> Option<Screenshot> {
+    pub(super) fn take_landed(&mut self, gpu: &Gpu) -> Option<Screenshot> {
         if !self.pending.is_empty() {
-            backend.poll();
+            // The map callbacks of the copies the device finished, without waiting for the rest.
+            gpu.poll();
         }
         // Each failed ask is older than the asks queued since, so it goes ahead of them, in order.
         let mut requeued = 0;

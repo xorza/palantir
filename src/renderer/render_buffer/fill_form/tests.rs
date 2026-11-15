@@ -1,6 +1,6 @@
 use crate::internals::panic_probe;
-use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::brush::gradient::Spread;
+use crate::primitives::paint::fill_kind::FillKind;
 use crate::renderer::render_buffer::fill_form::{FillBrush, FillForm};
 use crate::renderer::render_buffer::shape_form::ShapeForm;
 

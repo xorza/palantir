@@ -1,14 +1,9 @@
 //! Pixel-level shadow fixtures.
-#![expect(
-    clippy::disallowed_methods,
-    reason = "a demo of the crate, whose frames owe no two systems the same bits"
-)]
-
-use image::{Rgba, RgbaImage};
+use palantir::Image;
 use palantir::glam::{IVec2, UVec2, Vec2};
-use palantir::widget::Shape;
 use palantir::{
-    Border, Chrome, ClipMode, Configure, Corners, Panel, Rect, RgbaF32, Shadow, Sizing, Ui,
+    Border, Chrome, ClipMode, Configure, Corners, Panel, Rect, RgbaF32, Shadow, ShadowKind, Shape,
+    Sizing, SrgbaU8, Ui,
 };
 use std::f64::consts::SQRT_2;
 
@@ -24,16 +19,12 @@ const CLEAR: RgbaF32 = RgbaF32::WHITE;
 const INK: RgbaF32 = RgbaF32::srgba(0.0, 0.0, 0.0, 0.85);
 
 /// One frame over `clear`, with `scene` on a full-surface canvas.
-fn render(clear: RgbaF32, mut scene: impl FnMut(&mut Ui)) -> RgbaImage {
-    VisualRig::new()
-        .size(VIEWPORT)
-        .clear(clear)
-        .frame(|ui| fixtures::canvas(ui, &mut scene))
-        .image
+fn render(clear: RgbaF32, mut scene: impl FnMut(&mut Ui)) -> Image {
+    fixtures::render(VisualRig::new(VIEWPORT).clear(clear), &mut scene)
 }
 
 /// `shadow` of `source` over white.
-fn render_shadow(source: Rect, corners: impl Into<Corners>, shadow: Shadow) -> RgbaImage {
+fn render_shadow(source: Rect, corners: impl Into<Corners>, shadow: Shadow) -> Image {
     let corners = corners.into();
     render(CLEAR, |ui| {
         ui.add_shape(Shape::rect().at(source).corners(corners), shadow);
@@ -52,24 +43,28 @@ fn under_ink(coverage: f64) -> u8 {
 }
 
 /// Each channel's distance between `a` and `b`.
-fn channel_deltas<'a>(a: &'a RgbaImage, b: &'a RgbaImage) -> impl Iterator<Item = u8> + 'a {
-    a.as_raw()
+fn channel_deltas<'a>(a: &'a Image, b: &'a Image) -> impl Iterator<Item = u8> + 'a {
+    a.as_srgba8()
         .iter()
-        .zip(b.as_raw())
+        .zip(b.as_srgba8())
         .map(|(&x, &y)| x.abs_diff(y))
 }
 
 /// `image` with every pixel in each of `holes` set to the clear color, so
 /// shadow shapes compare without their (clipped) sources.
-fn without(image: &RgbaImage, holes: &[Rect]) -> RgbaImage {
+fn without(image: &Image, holes: &[Rect]) -> Image {
     let mut out = image.clone();
-    for hole in holes {
-        for y in hole.min.y as u32..hole.max().y as u32 {
-            for x in hole.min.x as u32..hole.max().x as u32 {
-                out.put_pixel(x, y, Rgba([255; 4]));
-            }
+    out.fill_with(|at| {
+        let inside = holes.iter().any(|hole| {
+            (hole.min.x as u32..hole.max().x as u32).contains(&at.x)
+                && (hole.min.y as u32..hole.max().y as u32).contains(&at.y)
+        });
+        if inside {
+            SrgbaU8::rgb(255, 255, 255)
+        } else {
+            image.texel(at)
         }
-    }
+    });
     out
 }
 
@@ -197,8 +192,8 @@ fn negative_spread_deflates_drop_and_inset_shadow_geometry() {
 fn a_spread_moves_the_shadow_radius_by_the_css_rule() {
     let circle = Rect::new(90.0, 70.0, 40.0, 40.0);
     // 85 % black over white leaves 0.15 linear, which encodes to sRGB 107.
-    let dark = |img: &RgbaImage, x: u32, y: u32| img.get_pixel(x, y).0[0] < 120;
-    let clear = |img: &RgbaImage, x: u32, y: u32| img.get_pixel(x, y).0[0] > 245;
+    let dark = |img: &Image, x: u32, y: u32| img.texel(UVec2::new(x, y)).r < 120;
+    let clear = |img: &Image, x: u32, y: u32| img.texel(UVec2::new(x, y)).r > 245;
 
     let grown = render_shadow(
         circle,
@@ -253,7 +248,7 @@ fn inset_chrome_shadow_paints_over_the_fill_inside_the_border() {
         offset: Vec2::ZERO,
         blur: 4.0,
         spread: 0.0,
-        inset: true,
+        kind: ShadowKind::Inset,
     };
     let boxed = |on_chrome: bool| {
         render(CLEAR, |ui| {
@@ -280,7 +275,7 @@ fn inset_chrome_shadow_paints_over_the_fill_inside_the_border() {
     };
     let chrome = boxed(true);
     goldens::assert_same("shadow_inset_chrome", &chrome, &boxed(false));
-    let red = |x: u32, y: u32| chrome.get_pixel(x, y).0[0];
+    let red = |x: u32, y: u32| chrome.texel(UVec2::new(x, y)).r;
     assert!(red(110, 90) >= 228, "the middle is the bare fill");
     assert!(red(44, 90) < 215, "the padding edge is in shadow");
 }
@@ -325,7 +320,7 @@ fn a_drop_shadow_is_clipped_inside_a_translucent_box() {
                 &goldens::crop(&bare, band),
             );
         }
-        let below = |img: &RgbaImage| img.get_pixel(110, 145).0[0];
+        let below = |img: &Image| img.texel(UVec2::new(110, 145)).r;
         assert!(
             below(&shadowed) < below(&bare) - 20,
             "{label}: the shadow shows below the box",
@@ -416,8 +411,8 @@ impl BlurredBox {
 /// - in an inset shadow whose hole spread 25 closes, shadow throughout.
 #[test]
 fn a_blurred_shadow_is_the_box_convolved_with_the_gaussian() {
-    let probe = |img: &RgbaImage, x: u32, y: u32, want: f64, what: &str| {
-        let got = img.get_pixel(x, y).0[0];
+    let probe = |img: &Image, x: u32, y: u32, want: f64, what: &str| {
+        let got = img.texel(UVec2::new(x, y)).r;
         let want = under_ink(want);
         assert!(
             got.abs_diff(want) <= 2,
@@ -525,7 +520,7 @@ fn a_drop_shadow_quad_holds_its_edge_ramp_and_its_tail() {
         Shadow::drop(INK, Vec2::new(0.75, 50.0), 0.0),
     );
     for (x, coverage) in [(39, 0.0), (40, 0.25), (41, 1.0), (100, 0.75), (101, 0.0)] {
-        let got = img.get_pixel(x, 90).0[0];
+        let got = img.texel(UVec2::new(x, 90)).r;
         let want = under_ink(coverage);
         assert!(
             got.abs_diff(want) <= 1,
@@ -548,7 +543,7 @@ fn a_drop_shadow_quad_holds_its_edge_ramp_and_its_tail() {
         "the tail past 3σ shows",
     );
     for x in 176..196 {
-        let got = img.get_pixel(x, 90).0[0];
+        let got = img.texel(UVec2::new(x, 90)).r;
         let want = gray(reference.coverage(Vec2::new(x as f32 + 0.5, 90.5)));
         assert!(
             got.abs_diff(want) <= 1,
@@ -582,7 +577,11 @@ fn cutout_grid(ui: &mut Ui) {
                             offset: Vec2::new(3.0, 5.0),
                             blur,
                             spread: if inset { 4.0 } else { 2.0 },
-                            inset,
+                            kind: if inset {
+                                ShadowKind::Inset
+                            } else {
+                                ShadowKind::Drop
+                            },
                         },
                     );
                 }
@@ -607,7 +606,11 @@ fn cutout_grid(ui: &mut Ui) {
                     offset: Vec2::new(3.0, 5.0),
                     blur: 16.0,
                     spread: if inset { 4.0 } else { 2.0 },
-                    inset,
+                    kind: if inset {
+                        ShadowKind::Inset
+                    } else {
+                        ShadowKind::Drop
+                    },
                 },
             );
         }
@@ -622,8 +625,8 @@ fn cutout_grid(ui: &mut Ui) {
 #[test]
 fn baked_cutout_tables_match_the_shaded_cutout() {
     let size = UVec2::new(800, 1840);
-    let mut baked = VisualRig::new();
-    let mut shaded = VisualRig::new();
+    let mut baked = VisualRig::new(size);
+    let mut shaded = VisualRig::new(size);
     shaded.host.disable_cutout_tables();
     let [baked, shaded] = [&mut baked, &mut shaded]
         .map(|harness| harness.size(size).clear(CLEAR).frame(cutout_grid).image);
@@ -746,7 +749,11 @@ fn template_case_shadow(ui: &mut Ui, case: TemplateCase, at: Rect) {
             offset: case.offset,
             blur: case.blur,
             spread: case.spread,
-            inset: case.inset,
+            kind: if case.inset {
+                ShadowKind::Inset
+            } else {
+                ShadowKind::Drop
+            },
         },
     );
 }
@@ -807,8 +814,8 @@ fn a_shadow_template_matches_the_full_form() {
         (SWEEP_COLS as f32 * SWEEP_CELL) as u32,
         (rows as f32 * SWEEP_CELL) as u32,
     );
-    let mut template = VisualRig::new();
-    let mut full = VisualRig::new();
+    let mut template = VisualRig::new(size);
+    let mut full = VisualRig::new(size);
     full.host.disable_shadow_template();
     let [template, full] = [&mut template, &mut full]
         .map(|harness| harness.size(size).clear(CLEAR).frame(template_sweep).image);
@@ -837,8 +844,8 @@ fn a_shadow_template_matches_the_full_form() {
             for y in band.min.y as u32..band.max().y as u32 {
                 for x in band.min.x as u32..band.max().x as u32 {
                     assert_eq!(
-                        template.get_pixel(x, y),
-                        full.get_pixel(x, y),
+                        template.texel(UVec2::new(x, y)),
+                        full.texel(UVec2::new(x, y)),
                         "case {i} {case:?}: pixel ({x}, {y}) inside the source",
                     );
                 }

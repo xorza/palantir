@@ -48,7 +48,7 @@ impl IconTable {
     /// Panics unless `icons` holds at most 65 536 entries (the most one set
     /// indexes) sorted by [`IconDefinition::name`] with no name twice, each
     /// [`IconDefinition::svg`] lies inside `svg`, and each
-    /// [`IconDefinition::view_box`] is [positive](crate::widget::domain::positive) on
+    /// [`IconDefinition::view_box`] is [positive](crate::widget::domain::is_positive) on
     /// both axes. In a `const`, the panic is a build error.
     #[track_caller]
     pub const fn baked(icons: &'static [IconDefinition], svg: &'static [u8]) -> Self {
@@ -120,8 +120,8 @@ impl IconTable {
         }
         let blob_len = blob_len(sources.iter().map(|(_, svg)| svg.len()))
             .map_err(|bytes| IconTableError::TooLarge { bytes })?;
-        let mut surveyed: Vec<(Cow<'static, str>, &str, SvgFacts)> =
-            Vec::with_capacity(sources.len());
+        let mut blob: Vec<u8> = Vec::with_capacity(blob_len);
+        let mut icons: Vec<IconDefinition> = Vec::with_capacity(sources.len());
         for (name, svg) in sources {
             let facts = match SvgFacts::of(svg.as_bytes()) {
                 Ok(facts) => facts,
@@ -132,11 +132,6 @@ impl IconTable {
                     });
                 }
             };
-            surveyed.push((name, svg, facts));
-        }
-        let mut blob: Vec<u8> = Vec::with_capacity(blob_len);
-        let mut icons: Vec<IconDefinition> = Vec::with_capacity(surveyed.len());
-        for (name, svg, facts) in surveyed {
             let start = u32::try_from(blob.len()).expect("inside the blob checked above");
             let len = u32::try_from(svg.len()).expect("inside the blob checked above");
             blob.extend_from_slice(svg.as_bytes());

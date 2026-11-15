@@ -38,7 +38,7 @@ pub(super) enum DropTarget {
 impl DropTarget {
     pub(super) const fn drop(self) -> DockDrop {
         match self {
-            Self::Slot { group, idx } => DockDrop::Into { group, idx },
+            Self::Slot { group, idx } => DockDrop::Join { group, idx },
             Self::Region { drop, .. } => drop,
         }
     }
@@ -80,7 +80,7 @@ impl PaneGeometry {
             (pane.max().y - strip.max().y).max(0.0),
         );
         let join = DropTarget::Region {
-            drop: DockDrop::Into { group, idx: tabs },
+            drop: DockDrop::Join { group, idx: tabs },
             wash: content,
         };
         if !can_split || center_box(content, edge_fraction).contains(p) {

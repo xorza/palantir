@@ -2,7 +2,7 @@
 //! them: the winit host reads them from the desktop, a headless host takes them from its builder
 //! and its setters.
 
-use crate::primitives::reduction::Reductions;
+use crate::primitives::reduction::{Reduction, Reductions};
 use crate::theme::color_scheme::ColorScheme;
 use crate::ui::resources::UiResources;
 use std::time::Duration;
@@ -25,8 +25,23 @@ impl SystemPreferences {
     pub(crate) const NONE: Self = Self {
         color_scheme: None,
         double_click: None,
-        reductions: Reductions::FULL,
+        reductions: Reductions::NONE,
     };
+
+    /// Report the system as asking for less motion, or not.
+    pub(crate) const fn set_motion_reduced(&mut self, reduced: bool) {
+        self.reductions.motion = Reduction::of(reduced);
+    }
+
+    /// Report the system as asking for less transparency, or not.
+    pub(crate) const fn set_transparency_reduced(&mut self, reduced: bool) {
+        self.reductions.transparency = Reduction::of(reduced);
+    }
+
+    /// Report the system's power-saver mode as on, or not.
+    pub(crate) const fn set_power_reduced(&mut self, reduced: bool) {
+        self.reductions.power = Reduction::of(reduced);
+    }
 
     /// Write the settings into the host's shared cells: the scheme, the motion, the transparency
     /// and the power always, as an absent scheme is an answer; the double-click time only when
@@ -89,12 +104,12 @@ mod tests {
         assert!(SystemPreferences::NONE.apply(&resources));
         assert_eq!(resources.settings().system_color_scheme(), None);
         assert_eq!(resources.settings().double_click_interval(), ms(250));
-        assert_eq!(resources.settings().system_reductions(), Reductions::FULL);
+        assert_eq!(resources.settings().system_reductions(), Reductions::NONE);
 
         let saver = SystemPreferences {
             reductions: Reductions {
                 power: Reduction::Reduced,
-                ..Reductions::FULL
+                ..Reductions::NONE
             },
             ..SystemPreferences::NONE
         };

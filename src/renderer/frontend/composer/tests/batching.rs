@@ -17,7 +17,7 @@ use crate::renderer::frontend::composer::tests::support::{
     TestPolyline, clip, clip_rounded, curve, draw, effect, icon, image, image_payload, inked_text,
     lanes, listed, mesh, params, params_unsnapped, rows_of, run, text, text_runs,
 };
-use crate::renderer::frontend::paint_sink::PaintSink;
+use crate::renderer::frontend::paint_sink::{DrawAnimation, PaintSink};
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_shadow_payload::DrawShadowPayload;
 use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
@@ -266,14 +266,14 @@ fn compose_shadow_outer_halo_after_text_splits_group() {
         |b, _arena| {
             text(b, Rect::new(39.0, 60.0, 2.0, 10.0));
             b.draw(
-                DrawShadowPayload::new(
-                    PlacedBox {
+                DrawShadowPayload {
+                    source: PlacedBox {
                         rect: source,
                         corners: Corners::ZERO,
                     },
-                    LoweredShadow::lower(Shadow::drop(RgbaF32::BLACK, Vec2::ZERO, sigma)),
-                ),
-                1.0,
+                    shadow: LoweredShadow::lower(Shadow::drop(RgbaF32::BLACK, Vec2::ZERO, sigma)),
+                },
+                DrawAnimation::STILL,
             );
         },
         &params(1.0, UVec2::new(200, 200)),
@@ -329,9 +329,8 @@ fn a_clipped_text_run_batches_unless_it_turns() {
                             key: TextShapeKey::fixture(),
                             span: Span::default(),
                         },
-                        spin,
                     },
-                    1.0,
+                    DrawAnimation { alpha: 1.0, spin },
                 );
                 b.pop_clip();
             },
@@ -387,12 +386,14 @@ fn the_viewport_edge_cuts_a_run_but_not_its_batch() {
                     key: TextShapeKey::fixture(),
                     span: Span::default(),
                 },
+            },
+            DrawAnimation {
+                alpha: 1.0,
                 spin: Some(Spin {
                     pivot: rect.center(),
                     angle: 0.5,
                 }),
             },
-            1.0,
         );
     };
     let buf = run(
@@ -454,8 +455,8 @@ fn compose_rounded_clip_change_keeps_the_text_batch() {
     let chain = |t: usize| &buf.rounded_clips[buf.texts[t].clip.span().range()];
     assert_eq!(chain(0).len(), 1);
     assert_eq!(chain(1).len(), 1);
-    assert_eq!(chain(0)[0].corners.to_array()[0], 4.0);
-    assert_eq!(chain(1)[0].corners.to_array()[0], 8.0);
+    assert_eq!(chain(0)[0].corners.top_left(), 4.0);
+    assert_eq!(chain(1)[0].corners.top_left(), 8.0);
 }
 
 /// A culled higher-kind draw does not split the text batch: the cull runs before the overlap test.
@@ -750,7 +751,7 @@ fn images_between_labels_coalesce_text_the_same_way() {
                 let x = i as f32 * 100.0;
                 buf.draw(
                     image_payload(Rect::new(x, 0.0, 16.0, 16.0), TextureId(1)),
-                    1.0,
+                    DrawAnimation::STILL,
                 );
                 text(buf, Rect::new(x + 20.0, 0.0, 60.0, 16.0));
             }
@@ -807,7 +808,7 @@ fn text_batch_drains_past_a_non_overlapping_image() {
             text(buf, Rect::new(0.0, 0.0, 60.0, 16.0));
             buf.draw(
                 image_payload(Rect::new(100.0, 0.0, 16.0, 16.0), TextureId(1)),
-                1.0,
+                DrawAnimation::STILL,
             );
             // Over the image, so this run flushes the group.
             text(buf, Rect::new(110.0, 0.0, 60.0, 16.0));

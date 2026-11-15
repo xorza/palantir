@@ -1,6 +1,6 @@
 //! [`FillForm`]: the pipeline key of a fill, its shape's form and its brush's.
 
-use crate::primitives::packed::fill_kind::FillKind;
+use crate::primitives::paint::fill_kind::FillKind;
 use crate::renderer::render_buffer::shape_form::ShapeForm;
 
 /// The brush half of a fill's pipeline key, pinned as `FILL_BRUSH`, so a solid fill's pipeline

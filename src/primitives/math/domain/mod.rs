@@ -10,14 +10,13 @@
 //! | [`offset`] | finite | panic |
 //! | [`length`] | finite, `>= 0` | panic |
 //! | [`extent`] | `>= 0`, `+inf` allowed | panic |
-//! | [`gap`] | a length that rounds to at most `65504` in f16 (one lane: below `65520`) | panic |
+//! | [`length_lane`] | a length that rounds to at most `65504` in f16 (one lane: below `65520`) | panic |
 //! | [`lane`] | rounds to within `±65504` in f16 (below `65520`), on top of its own kind | panic |
 //! | [`positive`] | finite, `> 0` | panic |
 //! | [`factor`] | finite, `>= 0` | panic |
-//! | [`refractive_index`] | finite, `>= 1` | panic |
+//! | [`is_refractive_index`] | finite, `>= 1` | predicate alone; a lens raises it to 1 |
 //! | [`angle`] | finite | panic |
 //! | [`color`] | every channel a [`lane`] | panic |
-//! | [`count`] | `>= 1` | panic |
 //! | [`power_of_two_in`] | a power of two in `1..=max` | panic |
 //! | [`f64::range`] | both ends finite | panic; the order is kept |
 //! | [`f64::bounds`] | neither end NaN, infinity allowed | panic; the ends ordered low to high |
@@ -32,21 +31,18 @@
 use crate::primitives::packed::half_simd::F16x4;
 use crate::primitives::paint::color::RgbaF32;
 
-pub mod f64;
-pub(crate) mod file;
-pub mod vec2;
+pub(crate) mod f64;
+pub(crate) mod vec2;
 
 /// Float comparisons at UI tolerance, below 8-bit color precision and sub-pixel resolution.
 pub const EPS: f32 = 1.0e-4;
 
-/// The largest [`gap`]: the largest finite f16, since containers pack gaps into half-precision lanes.
-pub const MAX_GAP: f32 = F16x4::MAX_LANE;
-
 /// The largest magnitude of a length or offset a file holds, in logical px. wgpu's default
 /// `max_texture_dimension_2d` is 8192, so no window is larger and no part past it can show; and
-/// seven such values sum below [`MAX_GAP`], so a sum that code packs into an f16 lane stays
-/// finite. [`MAX_GAP`] itself would not: two values at it overflow when code adds them.
-pub const MAX_FILE_LENGTH: f32 = 8192.0;
+/// seven such values sum below the largest [`length_lane`], the largest finite f16, so a sum that
+/// code packs into an f16 lane stays finite. A length lane at that bound would not: two of them
+/// overflow when code adds them.
+pub(crate) const MAX_FILE_LENGTH: f32 = 8192.0;
 
 pub(crate) const OFFSET_RULE: &str = "an offset must be finite";
 pub(crate) const FILE_LENGTH_RULE: &str =
@@ -56,17 +52,15 @@ pub(crate) const FONT_LENGTH_RULE: &str =
     "font size and line height must be finite and above the UI epsilon";
 pub(crate) const LENGTH_RULE: &str = "a length must be finite and not negative";
 pub(crate) const EXTENT_RULE: &str = "an extent must not be negative or NaN";
-pub(crate) const GAP_RULE: &str =
-    "a gap must be finite, not negative, and round to at most 65504 in f16";
+pub(crate) const LENGTH_LANE_RULE: &str =
+    "a length packed into an f16 lane must be finite, not negative, and round to at most 65504";
 pub(crate) const LANE_RULE: &str = "a value packed into an f16 lane must round to within ±65504";
 pub(crate) const POSITIVE_RULE: &str = "a positive value must be finite and above zero";
 pub(crate) const FACTOR_RULE: &str = "a factor must be finite and not negative";
 pub(crate) const ANGLE_RULE: &str = "an angle must be finite";
-pub(crate) const REFRACTIVE_INDEX_RULE: &str = "a refractive index must be finite and at least 1";
 pub(crate) const FRACTION_RULE: &str = "a fraction must be in 0..=1";
 pub(crate) const COLOR_RULE: &str =
     "a color must have finite channels that round to within ±65504 in f16";
-pub(crate) const COUNT_RULE: &str = "a count must be at least 1";
 pub(crate) const POWER_OF_TWO_RULE: &str =
     "the value must be a power of two no larger than its maximum";
 pub(crate) const RANGE_RULE: &str = "a range must have finite ends";
@@ -74,14 +68,8 @@ pub(crate) const BOUNDS_RULE: &str = "bounds must not be NaN";
 
 /// True if `v` is within [`EPS`] of zero.
 #[inline]
-pub const fn is_approx_zero(v: f32) -> bool {
+pub(crate) const fn is_approx_zero(v: f32) -> bool {
     v.abs() <= EPS
-}
-
-/// True if `a` and `b` are within [`EPS`] of each other; false if either is NaN.
-#[inline]
-pub const fn approx_eq(a: f32, b: f32) -> bool {
-    is_approx_zero(a - b)
 }
 
 /// True if `v` would produce no visible paint as a magnitude (stroke width, alpha); NaN counts.
@@ -92,17 +80,17 @@ pub const fn is_invisible(v: f32) -> bool {
 
 /// `n / d`, or zero when `d` carries no paintable magnitude (a negative `d` included, being a distance that came out backwards).
 #[inline]
-pub const fn share_of(n: f32, d: f32) -> f32 {
+pub(crate) const fn share_of(n: f32, d: f32) -> f32 {
     if is_invisible(d) { 0.0 } else { n / d }
 }
 
-/// Where `pos` sits along a track of `extent` as a 0..1 share, for a centered object of width `band`. Usable travel is `extent - band`; none left yields zero. Unclamped, see [`fraction_or`].
+/// Where `pos` sits along a track of `extent` as a 0..1 share, for a centered object of width `band`. Usable travel is `extent - band`; none left yields zero. Unclamped.
 #[inline]
 pub const fn band_fraction(pos: f32, extent: f32, band: f32) -> f32 {
     share_of(pos - band * 0.5, extent - band)
 }
 
-/// True if `v` is an [`offset`]: finite.
+/// True if `v` is an *offset*: finite.
 #[inline]
 pub const fn is_offset(v: f32) -> bool {
     v.is_finite()
@@ -115,12 +103,12 @@ pub const fn is_offset(v: f32) -> bool {
 /// Panics unless [`is_offset`]`(v)`.
 #[inline]
 #[track_caller]
-pub const fn offset(v: f32) -> f32 {
+pub(crate) const fn offset(v: f32) -> f32 {
     assert!(is_offset(v), "{}", OFFSET_RULE);
     v
 }
 
-/// True if `v` is a [`length`]: finite and not negative.
+/// True if `v` is a *length*: finite and not negative.
 ///
 /// Bounded by `f32::MAX`, not `is_finite`, here and in the other signed kinds: LLVM folds
 /// `is_finite() && v >= 0.0` into one class test, which x86 lowers to a dozen integer ops where
@@ -137,12 +125,12 @@ pub const fn is_length(v: f32) -> bool {
 /// Panics unless [`is_length`]`(v)`.
 #[inline]
 #[track_caller]
-pub const fn length(v: f32) -> f32 {
+pub(crate) const fn length(v: f32) -> f32 {
     assert!(is_length(v), "{}", LENGTH_RULE);
     v
 }
 
-/// True if `v` is an [`extent`]: not negative, and not NaN.
+/// True if `v` is an *extent*: not negative, and not NaN.
 #[inline]
 pub const fn is_extent(v: f32) -> bool {
     v >= 0.0
@@ -155,7 +143,7 @@ pub const fn is_extent(v: f32) -> bool {
 /// Panics unless [`is_extent`]`(v)`.
 #[inline]
 #[track_caller]
-pub const fn extent(v: f32) -> f32 {
+pub(crate) const fn extent(v: f32) -> f32 {
     assert!(is_extent(v), "{}", EXTENT_RULE);
     v
 }
@@ -179,26 +167,26 @@ pub(crate) const fn is_file_offset(v: f32) -> bool {
     is_offset(v) && v.abs() <= MAX_FILE_LENGTH
 }
 
-/// True if `v` is a [`gap`]: a [length](is_length) that is a [lane](is_lane) too.
+/// True if `v` is a *length lane*: a [length](is_length) that is a [lane](is_lane) too, as a
+/// container's gaps and a box's corner radii pack into f16 lanes.
 #[inline]
-pub const fn is_gap(v: f32) -> bool {
+pub const fn is_length_lane(v: f32) -> bool {
     is_length(v) && is_lane(v)
 }
 
-/// `v`, which must be a *gap*: a length and a [lane], as a container packs its gaps into f16
-/// lanes.
+/// `v`, which must be a *length lane*: a length and a [lane].
 ///
 /// # Panics
 ///
-/// Panics unless [`is_gap`]`(v)`.
+/// Panics unless [`is_length_lane`]`(v)`.
 #[inline]
 #[track_caller]
-pub const fn gap(v: f32) -> f32 {
-    assert!(is_gap(v), "{}", GAP_RULE);
+pub(crate) const fn length_lane(v: f32) -> f32 {
+    assert!(is_length_lane(v), "{}", LENGTH_LANE_RULE);
     v
 }
 
-/// True if `v` is a [`lane`]: it rounds to a finite f16, within ±65504.
+/// True if `v` is a *lane*: it rounds to a finite f16, within ±65504.
 #[inline]
 pub const fn is_lane(v: f32) -> bool {
     F16x4::fits_lane(v)
@@ -217,7 +205,7 @@ pub(crate) const fn are_lanes<const N: usize>(vs: [f32; N]) -> bool {
     ok
 }
 
-/// True if every value of `vs` is a [`length`] and a [`lane`], so a factor too: an [`extent`]
+/// True if every value of `vs` is a [length lane](is_length_lane), so a factor too: an [`extent`]
 /// on top of a lane, which bounds it. Unordered, as [`are_lanes`].
 #[inline]
 pub(crate) const fn are_length_lanes<const N: usize>(vs: [f32; N]) -> bool {
@@ -239,12 +227,12 @@ pub(crate) const fn are_length_lanes<const N: usize>(vs: [f32; N]) -> bool {
 /// Panics unless [`is_lane`]`(v)`.
 #[inline]
 #[track_caller]
-pub const fn lane(v: f32) -> f32 {
+pub(crate) const fn lane(v: f32) -> f32 {
     assert!(is_lane(v), "{}", LANE_RULE);
     v
 }
 
-/// True if `v` is [`positive`]: finite and above zero.
+/// True if `v` is *positive*: finite and above zero.
 #[inline]
 pub const fn is_positive(v: f32) -> bool {
     v > 0.0 && v <= f32::MAX
@@ -257,12 +245,12 @@ pub const fn is_positive(v: f32) -> bool {
 /// Panics unless [`is_positive`]`(v)`.
 #[inline]
 #[track_caller]
-pub const fn positive(v: f32) -> f32 {
+pub(crate) const fn positive(v: f32) -> f32 {
     assert!(is_positive(v), "{}", POSITIVE_RULE);
     v
 }
 
-/// True if `v` is a [`factor`]: finite and not negative, a [length](is_length)'s rule under the
+/// True if `v` is a *factor*: finite and not negative, a [length](is_length)'s rule under the
 /// name of a multiplier.
 #[inline]
 pub const fn is_factor(v: f32) -> bool {
@@ -277,31 +265,18 @@ pub const fn is_factor(v: f32) -> bool {
 /// Panics unless [`is_factor`]`(v)`.
 #[inline]
 #[track_caller]
-pub const fn factor(v: f32) -> f32 {
+pub(crate) const fn factor(v: f32) -> f32 {
     assert!(is_factor(v), "{}", FACTOR_RULE);
     v
 }
 
-/// True if `n` is a [`refractive_index`]: finite and at least 1.
+/// True if `n` is a *refractive index*: finite and at least 1.
 #[inline]
 pub const fn is_refractive_index(n: f32) -> bool {
     n >= 1.0 && n <= f32::MAX
 }
 
-/// `n`, which must be a *refractive index*: finite and at least 1, as no glass bends light away
-/// from the normal on entry.
-///
-/// # Panics
-///
-/// Panics unless [`is_refractive_index`]`(n)`.
-#[inline]
-#[track_caller]
-pub const fn refractive_index(n: f32) -> f32 {
-    assert!(is_refractive_index(n), "{}", REFRACTIVE_INDEX_RULE);
-    n
-}
-
-/// True if `v` is an [`angle`]: finite, an [offset](is_offset)'s rule under the name of an angle.
+/// True if `v` is an *angle*: finite, an [offset](is_offset)'s rule under the name of an angle.
 #[inline]
 pub const fn is_angle(v: f32) -> bool {
     is_offset(v)
@@ -314,7 +289,7 @@ pub const fn is_angle(v: f32) -> bool {
 /// Panics unless [`is_angle`]`(v)`.
 #[inline]
 #[track_caller]
-pub const fn angle(v: f32) -> f32 {
+pub(crate) const fn angle(v: f32) -> f32 {
     assert!(is_angle(v), "{}", ANGLE_RULE);
     v
 }
@@ -335,32 +310,14 @@ pub const fn is_color(c: RgbaF32) -> bool {
 /// Panics unless [`is_color`]`(c)`.
 #[inline]
 #[track_caller]
-pub const fn color(c: RgbaF32) -> RgbaF32 {
+pub(crate) const fn color(c: RgbaF32) -> RgbaF32 {
     assert!(is_color(c), "{}", COLOR_RULE);
     c
 }
 
-/// True if `n` is a [`count`]: at least 1.
-#[inline]
-pub const fn is_count(n: u32) -> bool {
-    n >= 1
-}
-
-/// `n`, which must be a *count*: at least 1.
-///
-/// # Panics
-///
-/// Panics unless [`is_count`]`(n)`.
-#[inline]
-#[track_caller]
-pub const fn count(n: u32) -> u32 {
-    assert!(is_count(n), "{}", COUNT_RULE);
-    n
-}
-
 /// True if `n` is a power of two in `1..=max`.
 #[inline]
-pub const fn is_power_of_two_in(n: u32, max: u32) -> bool {
+pub(crate) const fn is_power_of_two_in(n: u32, max: u32) -> bool {
     n.is_power_of_two() && n <= max
 }
 
@@ -371,7 +328,7 @@ pub const fn is_power_of_two_in(n: u32, max: u32) -> bool {
 /// Panics unless [`is_power_of_two_in`]`(n, max)`.
 #[inline]
 #[track_caller]
-pub const fn power_of_two_in(n: u32, max: u32) -> u32 {
+pub(crate) const fn power_of_two_in(n: u32, max: u32) -> u32 {
     assert!(is_power_of_two_in(n, max), "{}", POWER_OF_TWO_RULE);
     n
 }
@@ -384,7 +341,7 @@ pub const fn is_fraction(v: f32) -> bool {
 
 /// `v` as a *fraction*: clamped into `0..=1`, `0` when not finite.
 #[inline]
-pub const fn fraction(v: f32) -> f32 {
+pub(crate) const fn fraction(v: f32) -> f32 {
     fraction_or(v, 0.0)
 }
 
@@ -395,7 +352,7 @@ pub const fn fraction(v: f32) -> f32 {
 /// When `fallback` is outside `0..=1`.
 #[inline]
 #[track_caller]
-pub const fn fraction_or(v: f32, fallback: f32) -> f32 {
+pub(crate) const fn fraction_or(v: f32, fallback: f32) -> f32 {
     assert!(
         is_fraction(fallback),
         "a fraction's fallback must itself be in 0..=1",
@@ -409,7 +366,7 @@ pub const fn fraction_or(v: f32, fallback: f32) -> f32 {
 
 /// `v` as a *turn*: wrapped into `0..1`, `0` when not finite. A hue is a turn.
 #[inline]
-pub const fn turn(v: f32) -> f32 {
+pub(crate) const fn turn(v: f32) -> f32 {
     let t = v - v.floor();
     // A hair under zero wraps to `1 - ε`, which rounds to `1.0`.
     if t.is_nan() || t >= 1.0 { 0.0 } else { t }
@@ -417,7 +374,7 @@ pub const fn turn(v: f32) -> f32 {
 
 /// `i` as an *index* into `len` items: clamped to the last, `None` when empty. Display only; the caller's index is untouched.
 #[inline]
-pub const fn idx(i: usize, len: usize) -> Option<usize> {
+pub(crate) const fn idx(i: usize, len: usize) -> Option<usize> {
     if len == 0 {
         None
     } else if i < len {
@@ -441,7 +398,7 @@ pub(crate) const fn raised_to(v: f32, floor: f32) -> f32 {
 /// When `min` is no length.
 #[inline]
 #[track_caller]
-pub const fn length_at_least(v: f32, min: f32) -> f32 {
+pub(crate) const fn length_at_least(v: f32, min: f32) -> f32 {
     assert!(is_length(min), "a length's floor must itself be a length");
     v.max(min)
 }

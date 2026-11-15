@@ -2,95 +2,20 @@
 //! lives in [`crate::image_registry`].
 
 pub(crate) mod error;
+pub(crate) mod image_filter;
+pub(crate) mod image_placement;
 
-use crate::primitives::geometry::rect::Rect;
-use crate::primitives::geometry::size::Size;
-use crate::primitives::math::domain;
-use crate::primitives::math::domain::vec2;
-use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::primitives::paint::image::error::ImageDataError;
-use glam::{UVec2, Vec2};
-
-/// How an image's intrinsic size maps onto its paint rect, as CSS `object-fit`.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub enum ImageFit {
-    /// Stretch to fill the rect exactly, ignoring aspect ratio. The default.
-    #[default]
-    Fill,
-    /// Preserve aspect ratio and fit inside the rect, letterboxing.
-    Contain,
-    /// Preserve aspect ratio and fill the rect, cropping the longer axis
-    /// (centered).
-    Cover,
-    /// Paint at intrinsic pixel size, centered; a larger image overflows
-    /// uncropped. CSS `object-fit: none`, named for what it keeps, as the variant `None` would
-    /// shadow `Option::None` under a glob import and in a match.
-    Natural,
-    /// Repeat across the paint rect. The UV is taken raw from `offset` and
-    /// `scale` (intrinsic size ignored) and wrapped with `fract()` in the
-    /// shader: `scale` is the repeat count (`uv_size`), `offset` the scroll
-    /// phase (`uv_min`).
-    Tile {
-        /// Scroll phase, as a raw UV origin.
-        offset: Vec2,
-        /// Repeats across the paint rect, as a raw UV extent.
-        scale: Vec2,
-    },
-}
-
-impl ImageFit {
-    /// Panics unless a `Tile`'s `offset` is an offset and each axis of its `scale` is positive.
-    #[track_caller]
-    pub(crate) const fn validate(self) {
-        if let Self::Tile { offset, scale } = self {
-            let _ = vec2::offset(offset);
-            let _ = domain::positive(scale.x);
-            let _ = domain::positive(scale.y);
-        }
-    }
-}
-
-/// How texels are interpolated when an image paints at a size other than its
-/// intrinsic one; [`ImagePaint`](crate::widget::ImagePaint) picks it
-/// separately for minification and magnification. Implemented as a UV
-/// texel-center snap, so every combination shares one sampler and bind group.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-#[serde(rename_all = "lowercase")]
-pub enum ImageFilter {
-    /// Bilinear smoothing. The default.
-    #[default]
-    Linear,
-    /// Hard texel edges, for pixel art and checkerboards.
-    Nearest,
-}
-
-/// Extra taps taken when an image minifies, and how they combine.
-///
-/// One bilinear tap reads a 2×2 neighborhood however far the image shrinks,
-/// and which texels it reads moves with the fractional UV, so panning makes
-/// fine detail scintillate. Spreading taps across the pixel's derivative
-/// footprint stops that.
-///
-/// Opt in via [`ImagePaint::downsample`](crate::widget::ImagePaint::downsample);
-/// the taps cost fill rate. Magnified and 1:1 draws take the single tap.
-/// Coverage is exact to 8× minification (the tap grid is capped); past that it
-/// is an evenly spread sample of the footprint.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum ImageDownsample {
-    /// One bilinear tap. The default.
-    #[default]
-    Single,
-    /// Average the taps: the area filter, right for photographic content.
-    Mean,
-    /// Keep the brightest tap by luminance, so a point source survives
-    /// minification (averaging a one-texel star over a 5×5 footprint costs it
-    /// 25× of its peak). Whole taps win, keeping color, but it reads brighter
-    /// than the true average.
-    Peak,
-}
+use glam::UVec2;
+#[cfg(feature = "png")]
+use image::ImageEncoder as _;
+#[cfg(feature = "png")]
+use image::codecs::png::PngEncoder;
+#[cfg(feature = "png")]
+use std::io;
+use std::num::NonZeroU32;
 
 /// A CPU pixel buffer: straight (non-premultiplied) sRGB RGBA8. The backend
 /// premultiplies on upload to a `Rgba8UnormSrgb` texture, since filtering
@@ -147,6 +72,36 @@ impl Image {
         bytemuck::cast_slice(&self.pixels)
     }
 
+    /// The texel at `at`, column then row.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `at` lies inside [`Self::size`].
+    #[track_caller]
+    pub fn texel(&self, at: UVec2) -> SrgbaU8 {
+        assert!(
+            at.x < self.size.x && at.y < self.size.y,
+            "texel {at} lies outside an image of {}",
+            self.size
+        );
+        self.texels()[(at.y * self.size.x + at.x) as usize]
+    }
+
+    /// This image `factor` times as large on each axis, each texel a `factor` × `factor` block,
+    /// as a nearest filter shows it.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the larger size makes [`Self::blank`] panic.
+    #[track_caller]
+    #[must_use]
+    pub fn magnified(&self, factor: NonZeroU32) -> Self {
+        let factor = factor.get();
+        let mut out = Self::blank(self.size * factor);
+        out.fill_with(|at| self.texel(at / factor));
+        out
+    }
+
     /// The texels' bytes, row-major, four a texel in `r, g, b, a` order: the layout
     /// [`Self::from_srgba8`] takes, for a codec or a clipboard that wants bytes.
     pub fn as_srgba8(&self) -> &[u8] {
@@ -156,6 +111,44 @@ impl Image {
     /// The texels, for writing.
     pub fn texels_mut(&mut self) -> &mut [SrgbaU8] {
         bytemuck::cast_slice_mut(&mut self.pixels)
+    }
+
+    /// The PNG in `bytes`, its texels converted to 8-bit sRGB RGBA.
+    ///
+    /// # Errors
+    ///
+    /// The decoder's error, or the image's when it has no texel, as an [`io::Error`].
+    #[cfg(feature = "png")]
+    pub fn from_png(bytes: &[u8]) -> io::Result<Self> {
+        let decoded = image::load_from_memory_with_format(bytes, image::ImageFormat::Png)
+            .map_err(|error| match error {
+                image::ImageError::IoError(error) => error,
+                error => io::Error::other(error),
+            })?
+            .into_rgba8();
+        let size = UVec2::new(decoded.width(), decoded.height());
+        Self::from_srgba8(size, decoded.into_raw()).map_err(io::Error::other)
+    }
+
+    /// Write this image to `out` as an 8-bit RGBA PNG, its bytes as they are.
+    ///
+    /// # Errors
+    ///
+    /// The encoder's or the writer's error, as an [`io::Error`].
+    #[cfg(feature = "png")]
+    pub fn write_png(&self, mut out: impl io::Write) -> io::Result<()> {
+        PngEncoder::new(&mut out)
+            .write_image(
+                &self.pixels,
+                self.size.x,
+                self.size.y,
+                image::ExtendedColorType::Rgba8,
+            )
+            .map_err(|error| match error {
+                image::ImageError::IoError(error) => error,
+                error => io::Error::other(error),
+            })?;
+        out.flush()
     }
 
     /// Every texel from its position, column then row, row by row.
@@ -202,14 +195,9 @@ impl Image {
     /// it averages premultiplied linear light, as the frame blends, since an average of encoded
     /// bytes darkens every edge between light and dark. Rows go through one at a time, decoded and
     /// filtered across as the tent first reads them, so the scratch is a few rows, not the image.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `max_side` is 0.
     #[must_use]
-    pub fn fitted(&self, max_side: u32) -> Self {
-        assert!(max_side > 0, "a fitted image has at least one texel a side");
-        let size = fitted_size(self.size, max_side);
+    pub fn fitted(&self, max_side: NonZeroU32) -> Self {
+        let size = fitted_size(self.size, max_side.get());
         if size == self.size {
             return self.clone();
         }
@@ -320,80 +308,34 @@ fn rgba8_len(size: UVec2) -> Result<usize, ImageDataError> {
         .ok_or(ImageDataError::LengthOverflow { size })
 }
 
-/// Where a fitted image paints, and which part of the texture shows.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct FitRect {
-    pub(crate) rect: Rect,
-    pub(crate) uv_min: Vec2,
-    pub(crate) uv_size: Vec2,
-}
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use glam::UVec2;
 
-impl FitRect {
-    const fn whole(rect: Rect) -> Self {
-        Self {
-            rect,
-            uv_min: Vec2::ZERO,
-            uv_size: Vec2::ONE,
+    use crate::primitives::paint::color::srgba_u8::SrgbaU8;
+    use crate::primitives::paint::image::Image;
+
+    impl Image {
+        /// The `size` texels at `min` and past it, as a test compares a region with a whole read.
+        ///
+        /// # Panics
+        ///
+        /// Unless the region lies inside the image and holds a texel.
+        #[track_caller]
+        #[must_use]
+        pub fn cropped(&self, min: UVec2, size: UVec2) -> Self {
+            let mut crop = Self::blank(size);
+            crop.fill_with(|at| self.texel(min + at));
+            crop
         }
-    }
-}
 
-impl ImageFit {
-    /// Fit an image of `intrinsic` logical px into `base`. The one resolver:
-    /// the encoder draws with it and the cascade bounds damage by its `rect`.
-    ///
-    /// An empty `intrinsic` or `base` paints `base` at full UV.
-    pub(crate) const fn resolve(self, base: Rect, intrinsic: Size) -> FitRect {
-        let Size { w: iw, h: ih } = intrinsic;
-        let (bw, bh) = (base.size.w, base.size.h);
-        if iw <= 0.0 || ih <= 0.0 || bw <= 0.0 || bh <= 0.0 {
-            return FitRect::whole(base);
-        }
-        match self {
-            Self::Fill => FitRect::whole(base),
-            Self::Contain => {
-                let scale = (bw / iw).min(bh / ih);
-                FitRect::whole(centered_in(base, intrinsic.scaled_by(scale)))
-            }
-            Self::Cover => {
-                // The larger axis ratio decides the scale; the UV crops the overhang.
-                let scale = (bw / iw).max(bh / ih);
-                let uv_w = bw / (iw * scale);
-                let uv_h = bh / (ih * scale);
-                FitRect {
-                    rect: base,
-                    uv_min: Vec2::new((1.0 - uv_w) * 0.5, (1.0 - uv_h) * 0.5),
-                    uv_size: Vec2::new(uv_w, uv_h),
-                }
-            }
-            Self::Natural => FitRect::whole(centered_in(base, intrinsic)),
-            // The shader wraps the raw UV with `fract`.
-            Self::Tile { offset, scale } => FitRect {
-                rect: base,
-                uv_min: offset,
-                uv_size: scale,
-            },
-        }
-    }
-}
-
-/// A box of `size` centered inside `base`.
-const fn centered_in(base: Rect, size: Size) -> Rect {
-    Rect {
-        min: Vec2::new(
-            base.min.x + (base.size.w - size.w) * 0.5,
-            base.min.y + (base.size.h - size.h) * 0.5,
-        ),
-        size,
-    }
-}
-
-impl NanCheck for ImageFit {
-    #[inline]
-    fn has_nan(&self) -> bool {
-        match self {
-            Self::Fill | Self::Contain | Self::Cover | Self::Natural => false,
-            Self::Tile { offset, scale } => offset.has_nan() || scale.has_nan(),
+        /// Each texel with where it lies, row by row, as a test walks every pixel of a read.
+        pub fn enumerate_texels(&self) -> impl Iterator<Item = (UVec2, SrgbaU8)> + '_ {
+            let width = self.size.x;
+            self.texels().iter().enumerate().map(move |(idx, &texel)| {
+                let idx = idx as u32;
+                (UVec2::new(idx % width, idx / width), texel)
+            })
         }
     }
 }

@@ -1,9 +1,8 @@
 //! Occlusion pruning at fractional coordinates: an opaque quad over another must paint what the pair paints when no pruning can apply.
 
-use image::RgbaImage;
+use palantir::Image;
 use palantir::glam::UVec2;
-use palantir::widget::Shape;
-use palantir::{Configure, Panel, Rect, RgbaF32, Sizing, Ui};
+use palantir::{Configure, Panel, Rect, RgbaF32, Shape, SizeSpec, Ui};
 
 use crate::fixtures;
 use crate::goldens;
@@ -26,9 +25,8 @@ enum Grouping {
     Split,
 }
 
-fn render_fractional_layers(grouping: Grouping) -> RgbaImage {
-    VisualRig::unsnapped()
-        .size(VIEWPORT)
+fn render_fractional_layers(grouping: Grouping) -> Image {
+    VisualRig::unsnapped(VIEWPORT)
         .clear(CLEAR)
         .frame(|ui| {
             assert!(!ui.display().pixel_snap());
@@ -39,7 +37,7 @@ fn render_fractional_layers(grouping: Grouping) -> RgbaImage {
                     Grouping::Split => {
                         Panel::canvas()
                             .auto_id()
-                            .size((Sizing::FILL, Sizing::FILL))
+                            .size(SizeSpec::FILL)
                             .clip_rect()
                             .show(ui, |ui| add_layer(ui, RgbaF32::srgb(0.0, 0.0, 1.0)));
                     }

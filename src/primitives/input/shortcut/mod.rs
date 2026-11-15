@@ -201,17 +201,33 @@ impl FromStr for Shortcut {
                 None => (None, text),
             },
         };
-        let mut mods = ShortcutMods::NONE;
-        for named in mods_text.into_iter().flat_map(|mods| mods.split('+')) {
+        let mods = match mods_text {
+            Some(text) => text.parse()?,
+            None => ShortcutMods::NONE,
+        };
+        Ok(Self::new(mods, parse_key(key_text.trim())?))
+    }
+}
+
+/// Modifiers joined by `+`, case-blind, as [`Shortcut`]'s parse reads the ones before its key:
+/// `ctrl+shift`, `Alt`. `ctrl` and `cmd` are the primary command key, `meta`, `super` and `win`
+/// the Super key; a name twice is the same modifier. Empty text, or an empty name between two
+/// `+`, is refused: no modifier is [`ShortcutMods::NONE`], which needs no text.
+impl FromStr for ShortcutMods {
+    type Err = ParseShortcutError;
+
+    fn from_str(text: &str) -> Result<Self, Self::Err> {
+        let mut mods = Self::NONE;
+        for named in text.split('+') {
             match named.trim().to_ascii_lowercase().as_str() {
-                "ctrl" | "cmd" => mods.insert(ShortcutMods::CTRL),
-                "shift" => mods.insert(ShortcutMods::SHIFT),
-                "alt" => mods.insert(ShortcutMods::ALT),
-                "meta" | "super" | "win" => mods.insert(ShortcutMods::META),
+                "ctrl" | "cmd" => mods.insert(Self::CTRL),
+                "shift" => mods.insert(Self::SHIFT),
+                "alt" => mods.insert(Self::ALT),
+                "meta" | "super" | "win" => mods.insert(Self::META),
                 _ => return Err(ParseShortcutError::Modifier),
             }
         }
-        Ok(Self::new(mods, parse_key(key_text.trim())?))
+        Ok(mods)
     }
 }
 

@@ -7,7 +7,6 @@ use crate::primitives::paint::chrome::Chrome;
 use crate::theme::look::WidgetLook;
 use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
-use crate::theme::text_style_overrides::TextStyleOverrides;
 use glam::Vec2;
 
 /// Visuals for [`crate::DockView`], dock-specific only: dividers read [`Theme::splitter`](crate::Theme::splitter) and pane strips [`Theme::tabs`](crate::Theme::tabs), leaving the drag feedback.
@@ -27,10 +26,10 @@ pub struct DockTheme {
     /// The chip trailing the pointer while a tab is dragged.
     pub ghost: WidgetLook,
     /// Inset between the ghost chip's edges and its label.
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::padding")]
+    #[serde(deserialize_with = "crate::primitives::file::padding")]
     pub ghost_padding: Spacing,
     /// Where the ghost chip sits relative to the pointer.
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::offset2")]
+    #[serde(deserialize_with = "crate::primitives::file::offset2")]
     pub ghost_offset: Vec2,
 }
 
@@ -40,11 +39,10 @@ impl DockTheme {
         Self {
             preview: Chrome::rounded(p.accent.with_alpha8(46), m.radius.mark)
                 .with_border(Border::new(p.accent, m.stroke.fine)),
-            ghost: WidgetLook {
-                chrome: Chrome::rounded(p.surround, Corners::all(m.radius.card))
+            ghost: WidgetLook::new(
+                Chrome::rounded(p.surround, Corners::all(m.radius.card))
                     .with_border(Border::new(p.accent, m.stroke.hairline)),
-                text: TextStyleOverrides::NONE,
-            },
+            ),
             ghost_padding: m.row_padding(),
             ghost_offset: Vec2::new(m.space.md, m.space.lg),
         }

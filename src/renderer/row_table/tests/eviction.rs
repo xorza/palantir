@@ -2,7 +2,7 @@
 //! grow to its ceiling, or fall back.
 
 use crate::common::counters::CounterSet;
-use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
+use crate::primitives::paint::brush::gradient::Gradient;
 use crate::renderer::row_table::tests::support::{
     assert_real_row, baked, distinct_grad, fill_rows, magenta, ramp, runs, table,
 };
@@ -262,7 +262,7 @@ fn a_full_table_grows_within_a_frame() {
 #[test]
 fn growth_leaves_resident_rows_and_their_texels() {
     let mut table = RowTable::default();
-    let resident: Vec<LinearGradient> = (0..(SOFT_ROWS - 1)).map(distinct_grad).collect();
+    let resident: Vec<Gradient> = (0..(SOFT_ROWS - 1)).map(distinct_grad).collect();
     let before: Vec<u32> = resident.iter().map(|g| table.register(&g.ramp).0).collect();
     let texels = table.row_texels(before[0]);
     table.register(&ramp(999_900));

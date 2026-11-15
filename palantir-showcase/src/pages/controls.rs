@@ -4,16 +4,18 @@
 //! right column demos ButtonTheme styling and a progress bar; below, `Expander` disclosure.
 
 use crate::appearance::Appearance;
+use crate::scaffold;
+use crate::scaffold::Col;
 use crate::scaffold::api;
+use crate::scaffold::kit::Kit;
+use crate::scaffold::knob::Knob;
+use crate::scaffold::section::Section;
 use crate::scaffold::tokens::M;
-use crate::support;
-use crate::support::{Col, Kit, Knob, Section};
-use palantir::widget::AnimationRequest;
 use palantir::{
-    Animated, AnimationSpec, Axis, Border, Button, ButtonTheme, Checkbox, Chrome, ComboBox,
-    Configure, Corners, DragValue, Expander, ExpanderTheme, Panel, ProgressBar, RadioGroup,
-    RgbaF32, Separator, Sizing, Slider, SlotDefaults, Spinner, StatefulLook, Switch, Text,
-    TextEdit, TextStyleOverrides, Tooltip, Ui, WidgetId, WidgetLook, fmt,
+    Animated, AnimationRequest, AnimationSpec, Axis, Border, Button, ButtonTheme, Checkbox, Chrome,
+    ComboBox, Configure, Corners, DragValue, Expander, ExpanderTheme, Panel, ProgressBar,
+    RadioGroup, RgbaF32, Separator, SizeSpec, Sizing, Slider, SlotDefaults, Spinner, StatefulLook,
+    Switch, Text, TextEdit, TextStyleOverrides, Tooltip, Ui, WidgetId, WidgetLook, fmt,
 };
 
 static REGIONS: [&str; 5] = [
@@ -58,7 +60,7 @@ struct State {
     wifi: bool,
     bluetooth: bool,
     metered: bool,
-    region: &'static &'static str,
+    region: &'static str,
     updates: Updates,
     volume: f64,
     fps: i64,
@@ -78,7 +80,7 @@ impl Default for State {
             wifi: true,
             bluetooth: false,
             metered: false,
-            region: &REGIONS[0],
+            region: REGIONS[0],
             updates: Updates::Automatic,
             volume: 0.6,
             fps: 120,
@@ -98,7 +100,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit, look: &Appearance) {
     };
 
     ui.with_state::<State, _>(state_id(), |ui, s| {
-        support::cols(ui, |ui, col| match col {
+        scaffold::cols(ui, |ui, col| match col {
             Col::Left => Section::new("Settings form")
                 .apis(&[
                     api!(Panel::disabled),
@@ -121,12 +123,12 @@ pub(crate) fn build(ui: &mut Ui, k: Kit, look: &Appearance) {
 /// its widgets' state, as palantir sweeps the state of unrecorded widgets; `keep_body` keeps it.
 fn disclosure(ui: &mut Ui, k: Kit, s: &mut State) {
     let animated = animated_expander(&ui.theme().expander);
-    support::cols(ui, |ui, col| match col {
+    scaffold::cols(ui, |ui, col| match col {
         Col::Left => {
             Expander::new("Open by default")
                 .start_open(true)
                 .show(ui, |ui| {
-                    support::note(
+                    scaffold::note(
                         ui,
                         k,
                         "A plain section. The reveal snaps, as the stock expander theme \
@@ -136,7 +138,7 @@ fn disclosure(ui: &mut Ui, k: Kit, s: &mut State) {
             Expander::new("Animated reveal")
                 .style(&animated)
                 .show(ui, |ui| {
-                    support::note(
+                    scaffold::note(
                         ui,
                         k,
                         "The same widget with an animation on its theme. The first open \
@@ -150,7 +152,7 @@ fn disclosure(ui: &mut Ui, k: Kit, s: &mut State) {
                 .start_open(true)
                 .show(ui, |ui| {
                     TextEdit::new(&mut s.skipped_note)
-                        .size((Sizing::FILL, Sizing::HUG))
+                        .size(SizeSpec::FILL_W)
                         .show(ui);
                 });
             Expander::new("Keeps its body")
@@ -158,10 +160,10 @@ fn disclosure(ui: &mut Ui, k: Kit, s: &mut State) {
                 .keep_body(true)
                 .show(ui, |ui| {
                     TextEdit::new(&mut s.kept_note)
-                        .size((Sizing::FILL, Sizing::HUG))
+                        .size(SizeSpec::FILL_W)
                         .show(ui);
                 });
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "Click into both fields, collapse both, then reopen: the upper field's caret \
@@ -200,14 +202,14 @@ fn form(ui: &mut Ui, k: Kit, s: &mut State, themes: &Themes) {
             group(ui, k, "DEVICE");
             TextEdit::new(&mut s.device_name)
                 .id(device_name_id())
-                .size((Sizing::FILL, Sizing::HUG))
+                .size(SizeSpec::FILL_W)
                 .show(ui);
 
             Separator::horizontal().show(ui);
             group(ui, k, "NETWORK");
             Switch::new(&mut s.airplane).label("Airplane mode").show(ui);
             Panel::vstack()
-                .size((Sizing::FILL, Sizing::HUG))
+                .size(SizeSpec::FILL_W)
                 .gap(M.space.md)
                 .disabled(s.airplane)
                 .show(ui, |ui| {
@@ -217,9 +219,9 @@ fn form(ui: &mut Ui, k: Kit, s: &mut State, themes: &Themes) {
                         .id(metered_id())
                         .label("Treat as metered")
                         .show(ui);
-                    support::row(ui, |ui| {
+                    scaffold::row(ui, |ui| {
                         Text::new("Region").style(&k.t.caption()).show(ui);
-                        ComboBox::new(&mut s.region, &REGIONS)
+                        ComboBox::new(&mut s.region, REGIONS)
                             .size((Sizing::fixed(170.0), Sizing::HUG))
                             .show(ui);
                     });
@@ -242,7 +244,7 @@ fn form(ui: &mut Ui, k: Kit, s: &mut State, themes: &Themes) {
 
             Separator::horizontal().show(ui);
             group(ui, k, "AUDIO & VIDEO");
-            support::row(ui, |ui| {
+            scaffold::row(ui, |ui| {
                 Slider::new(&mut s.volume, 0.0..=1.0)
                     .size((Sizing::fill(1.0), Sizing::HUG))
                     .show(ui);
@@ -252,7 +254,7 @@ fn form(ui: &mut Ui, k: Kit, s: &mut State, themes: &Themes) {
                     .min_size((36.0, 0.0))
                     .show(ui);
             });
-            support::row(ui, |ui| {
+            scaffold::row(ui, |ui| {
                 DragValue::new(&mut s.fps)
                     .speed(0.25)
                     .range(24.0..=240.0)
@@ -312,7 +314,7 @@ fn form(ui: &mut Ui, k: Kit, s: &mut State, themes: &Themes) {
             // The bar shows only while a sync runs, so the form holds no empty track at rest.
             if s.syncing {
                 ProgressBar::new(frac).show(ui);
-                support::row(ui, |ui| {
+                scaffold::row(ui, |ui| {
                     Spinner::new().size(16.0).show(ui);
                     let pct = fmt!(ui, "syncing {:.0}%", frac * 100.0);
                     Text::new(pct).style(&k.t.caption()).show(ui);
@@ -325,18 +327,18 @@ fn side(ui: &mut Ui, k: Kit, s: &mut State, themes: &Themes) {
     Section::new("Button themes")
         .apis(&[api!(type ButtonTheme), api!(ButtonTheme::accent)])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "The default and palantir's accent, then an outlined and a danger ButtonTheme of \
                  the page's own, each beside its disabled look.",
             );
-            support::well(ui, k, |ui| {
-                support::row(ui, |ui| {
+            scaffold::well(ui, k, |ui| {
+                scaffold::row(ui, |ui| {
                     Button::new().label("default").show(ui);
                     Button::new().label("disabled").disabled(true).show(ui);
                 });
-                support::row(ui, |ui| {
+                scaffold::row(ui, |ui| {
                     Button::new().style(&themes.accent).label("accent").show(ui);
                     Button::new()
                         .style(&themes.accent)
@@ -344,7 +346,7 @@ fn side(ui: &mut Ui, k: Kit, s: &mut State, themes: &Themes) {
                         .disabled(true)
                         .show(ui);
                 });
-                support::row(ui, |ui| {
+                scaffold::row(ui, |ui| {
                     Button::new()
                         .style(&themes.outlined)
                         .label("outlined")
@@ -355,7 +357,7 @@ fn side(ui: &mut Ui, k: Kit, s: &mut State, themes: &Themes) {
                         .disabled(true)
                         .show(ui);
                 });
-                support::row(ui, |ui| {
+                scaffold::row(ui, |ui| {
                     Button::new().style(&themes.danger).label("danger").show(ui);
                     Button::new()
                         .style(&themes.danger)
@@ -369,13 +371,13 @@ fn side(ui: &mut Ui, k: Kit, s: &mut State, themes: &Themes) {
     Section::new("Progress")
         .apis(&[api!(ProgressBar::new)])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "A bar for work whose share is known, set here by hand. The Motion page holds the \
                  spinner, for work whose share is not.",
             );
-            support::well(ui, k, |ui| {
+            scaffold::well(ui, k, |ui| {
                 Knob {
                     label: "done",
                     range: 0.0..=1.0,
@@ -404,18 +406,9 @@ fn outlined_style(k: Kit, base: &ButtonTheme) -> ButtonTheme {
     };
     ButtonTheme {
         unselected: StatefulLook {
-            normal: WidgetLook {
-                chrome: chrome(RgbaF32::TRANSPARENT, border),
-                text: TextStyleOverrides::NONE,
-            },
-            hovered: WidgetLook {
-                chrome: chrome(accent.with_alpha(0.18), border),
-                text: TextStyleOverrides::NONE,
-            },
-            active: WidgetLook {
-                chrome: chrome(accent.with_alpha(0.35), border),
-                text: TextStyleOverrides::NONE,
-            },
+            normal: WidgetLook::new(chrome(RgbaF32::TRANSPARENT, border)),
+            hovered: WidgetLook::new(chrome(accent.with_alpha(0.18), border)),
+            active: WidgetLook::new(chrome(accent.with_alpha(0.35), border)),
             disabled: WidgetLook {
                 chrome: chrome(
                     RgbaF32::TRANSPARENT,
@@ -432,7 +425,7 @@ fn outlined_style(k: Kit, base: &ButtonTheme) -> ButtonTheme {
 /// moves toward white, which only raises that contrast; disabled, it is the theme's button.
 fn danger_style(k: Kit, base: &ButtonTheme) -> ButtonTheme {
     let red = k.swatch.red;
-    let ink = support::on_swatch_style().color;
+    let ink = scaffold::on_swatch_style().color;
     let look = |toward_white: f32| {
         let fill = RgbaF32::new(
             red.r + (1.0 - red.r) * toward_white,
@@ -453,18 +446,6 @@ fn danger_style(k: Kit, base: &ButtonTheme) -> ButtonTheme {
             disabled: base.unselected.disabled.clone(),
         },
         ..base.clone()
-    }
-}
-
-#[cfg(feature = "internals")]
-pub(crate) mod internals {
-    use palantir::Ui;
-
-    use crate::pages::controls::{State, state_id};
-
-    /// The bytes the form's field holds.
-    pub(crate) fn device_name_len(ui: &mut Ui) -> usize {
-        ui.with_state::<State, _>(state_id(), |_, s| s.device_name.len())
     }
 }
 

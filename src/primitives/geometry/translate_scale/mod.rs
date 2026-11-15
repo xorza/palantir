@@ -58,8 +58,8 @@ impl TranslateScale {
     /// # Panics
     ///
     /// Panics unless both translation axes are
-    /// [offsets](crate::widget::domain::offset) and `scale` is
-    /// [positive](crate::widget::domain::positive).
+    /// [offsets](crate::widget::domain::is_offset) and `scale` is
+    /// [positive](crate::widget::domain::is_positive).
     #[track_caller]
     pub const fn new(translation: Vec2, scale: f32) -> Self {
         Self {
@@ -83,7 +83,7 @@ impl TranslateScale {
     ///
     /// # Panics
     ///
-    /// Panics unless both axes of `t` are [offsets](crate::widget::domain::offset).
+    /// Panics unless both axes of `t` are [offsets](crate::widget::domain::is_offset).
     #[track_caller]
     pub const fn from_translation(t: Vec2) -> Self {
         Self::new(t, 1.0)
@@ -93,7 +93,7 @@ impl TranslateScale {
     ///
     /// # Panics
     ///
-    /// Panics unless `s` is [positive](crate::widget::domain::positive).
+    /// Panics unless `s` is [positive](crate::widget::domain::is_positive).
     #[track_caller]
     pub const fn from_scale(s: f32) -> Self {
         Self::new(Vec2::ZERO, s)
@@ -156,7 +156,7 @@ impl TranslateScale {
     }
 
     /// Map a point through this transform. For a direction or offset, which
-    /// translation does not apply to, use [`Self::inverse_vector`].
+    /// translation does not apply to, use [`Self::apply_vector`].
     pub const fn apply_point(self, p: Vec2) -> Vec2 {
         Vec2::new(
             p.x * self.scale + self.translation.x,
@@ -172,7 +172,13 @@ impl TranslateScale {
         )
     }
 
-    /// Undo this transform for a direction or offset (no translation).
+    /// Map a direction or offset through this transform: scaled, not translated.
+    pub const fn apply_vector(self, v: Vec2) -> Vec2 {
+        Vec2::new(v.x * self.scale, v.y * self.scale)
+    }
+
+    /// Undo this transform for a direction or offset (no translation): the `w` that
+    /// [`Self::apply_vector`] maps to `v`.
     pub const fn inverse_vector(self, v: Vec2) -> Vec2 {
         Vec2::new(v.x / self.scale, v.y / self.scale)
     }

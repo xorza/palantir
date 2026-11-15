@@ -7,12 +7,14 @@ use crate::common::time::MAX_ANIMATION_DT;
 use crate::damage::DamageBase;
 use crate::display::Display;
 use crate::display::frame_stamp::FrameStamp;
-use crate::primitives::input::policy::{InputPolicy, InputSignal};
+use crate::primitives::input::input_policy::{InputPolicy, InputSignal};
 use crate::ui::frame_runtime::FrameClassifyInput;
 use crate::ui::frame_runtime::FramePlan;
 use crate::ui::frame_runtime::FrameRuntime;
 use crate::ui::frame_runtime::RecordBaseline;
 use crate::ui::frame_runtime::wake::WakeReasons;
+use crate::ui::resources::app_settings::ResolvedPreferences;
+use std::num::NonZeroU32;
 
 #[derive(Clone, Copy, Debug)]
 struct Case {
@@ -36,7 +38,7 @@ const BASELINE: RecordBaseline = RecordBaseline {
     font_epoch: 7,
     effect_epoch: 4,
     device_epoch: 1,
-    reductions: Reductions::FULL,
+    reductions: Reductions::NONE,
 };
 
 /// A warm frame with only an animation wake pending paints without recording.
@@ -159,7 +161,7 @@ fn frame_classification_covers_external_entry_facts() {
             recorded: Some(RecordBaseline {
                 reductions: Reductions {
                     transparency: Reduction::Reduced,
-                    ..Reductions::FULL
+                    ..Reductions::NONE
                 },
                 ..BASELINE
             }),
@@ -173,7 +175,7 @@ fn frame_classification_covers_external_entry_facts() {
             recorded: Some(RecordBaseline {
                 reductions: Reductions {
                     power: Reduction::Reduced,
-                    ..Reductions::FULL
+                    ..Reductions::NONE
                 },
                 ..BASELINE
             }),
@@ -187,7 +189,7 @@ fn frame_classification_covers_external_entry_facts() {
             recorded: Some(RecordBaseline {
                 reductions: Reductions {
                     motion: Reduction::Reduced,
-                    ..Reductions::FULL
+                    ..Reductions::NONE
                 },
                 ..BASELINE
             }),
@@ -316,7 +318,7 @@ fn a_frame_takes_its_reduced_frame_rate_slot_within_the_slack() {
     let interval = ns(33_333_333);
     let slack = ns(8_333_333);
     let display = Display {
-        refresh_millihertz: Some(60_000),
+        refresh_millihertz: NonZeroU32::new(60_000),
         ..Display::default()
     };
     let first = Duration::from_millis(10);
@@ -324,7 +326,10 @@ fn a_frame_takes_its_reduced_frame_rate_slot_within_the_slack() {
     let at = |held: Option<Duration>, time: Duration, frame_rate: Reduction| {
         let mut runtime = FrameRuntime {
             stamp: FrameStamp::new(display, time),
-            frame_rate,
+            preferences: ResolvedPreferences {
+                frame_rate,
+                ..ResolvedPreferences::default()
+            },
             earliest_repaint_at: held,
             ..FrameRuntime::default()
         };
@@ -356,7 +361,7 @@ fn a_frame_takes_its_reduced_frame_rate_slot_within_the_slack() {
         assert_eq!(at(held, time, Reduction::Reduced), want, "{label}");
     }
     assert_eq!(
-        at(Some(slot), slot, Reduction::Full),
+        at(Some(slot), slot, Reduction::Unreduced),
         None,
         "a full frame rate"
     );

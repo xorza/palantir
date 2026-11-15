@@ -6,9 +6,13 @@ use std::marker::PhantomData;
 
 use serde::de;
 
-use crate::primitives::effect::effect_kind::{ColorEffect, EffectKind, EffectTypes};
+use crate::primitives::effect::effect_kind::{BackdropEffect, ColorEffect, EffectKind};
 use crate::primitives::effect::effect_params::EffectParams;
+use crate::primitives::effect::effect_types::EffectTypes;
+use crate::primitives::effect::press_params::PressParams;
 use crate::primitives::identity::inline_name::InlineName;
+use crate::primitives::paint::material::frosted_params::FrostedParams;
+use crate::primitives::paint::material::glass_params::GlassParams;
 
 /// An effect's name with its parameter type and kind erased, as it sits inline: 23 bytes and its
 /// length, 24 in all, as a material holds one in every paint that wears it and each copy of that
@@ -29,6 +33,14 @@ pub struct EffectName<U: EffectParams, K: EffectKind = ColorEffect> {
 }
 
 impl<U: EffectParams, K: EffectKind> EffectName<U, K> {
+    /// A stock effect's name, in palantir's [`RESERVED_PREFIX`].
+    const fn reserved(name: &str) -> Self {
+        match Self::named(name) {
+            Some(name) => name,
+            None => panic!("a stock name fits an inline name"),
+        }
+    }
+
     /// The longest name an effect holds, in bytes.
     pub const MAX_NAME_LEN: usize = ErasedEffectName::MAX_LEN;
 
@@ -74,6 +86,38 @@ impl<U: EffectParams, K: EffectKind> EffectName<U, K> {
 pub(crate) struct CheckedEffectName {
     pub(crate) name: ErasedEffectName,
     pub(crate) types: EffectTypes,
+}
+
+/// The prefix of every name palantir loads itself, which
+/// [`Ui::load_effect`](crate::Ui::load_effect) refuses, so an app's effect never replaces a stock
+/// one a theme names.
+pub(crate) const RESERVED_PREFIX: &str = "palantir.";
+
+impl EffectName<PressParams> {
+    /// Material's flat ripple, as Compose's `RippleAnimation` draws it: a disc of the press
+    /// color that grows from the press to the widget's center. Material's times are 0.225 s to
+    /// enter and 0.15 s to exit.
+    pub const RIPPLE: Self = Self::reserved("palantir.ripple");
+
+    /// Android's sparkle ripple, ported from AOSP's `RippleShader`: a soft disc of the press
+    /// color under a ring of sparkles of its highlight. Android's times are 0.45 s to enter and
+    /// 0.375 s to exit. Under the power saver it paints [`Self::RIPPLE`], whose disc costs a
+    /// fraction of the sparkles' noise.
+    pub const SPARKLE: Self = Self::reserved("palantir.sparkle");
+}
+
+impl EffectName<FrostedParams, BackdropEffect> {
+    /// Frosted glass: what the material reads, its color saturated as CSS `saturate()` scales it
+    /// and grained, so a fill over it reads as a material, as Apple's materials deepen theirs.
+    pub const FROSTED: Self = Self::reserved("palantir.frosted");
+}
+
+impl EffectName<GlassParams, BackdropEffect> {
+    /// Glass: what the material reads, bent through the input's lens across a rounded bezel at
+    /// its edge, every wavelength at its own index where the lens disperses, with the lamp's glint,
+    /// then saturated and grained as [`EffectName::FROSTED`] is. A material over it reads past its
+    /// box as far as the lens bends a ray.
+    pub const GLASS: Self = Self::reserved("palantir.glass");
 }
 
 impl<U: EffectParams, K: EffectKind> Clone for EffectName<U, K> {

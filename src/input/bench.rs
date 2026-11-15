@@ -5,7 +5,7 @@
 //! Cases, each under `atomic/input/cpu/`:
 //! - `pointer_move_stream`: one `PointerMoved` along the cursor path.
 //! - `click_stream`: press, input frame, release, input frame.
-//! - `scroll_stream`: `ScrollPixels` against a scroll target.
+//! - `scroll_stream`: pixel scrolls against a scroll target.
 //! - `mixed_stream`: interleaved moves, scroll and an occasional click, one input frame per burst.
 
 use crate::bench::backends::Backend;
@@ -13,9 +13,10 @@ use crate::bench::kind::{Kind, Scale};
 use crate::display::system_scale::SystemScale;
 use crate::host::harness::Harness;
 use crate::primitives::input::input_event::InputEvent;
+use crate::primitives::input::interaction::wheel_delta::WheelDelta;
 use crate::primitives::input::pointer::PointerButton;
 use crate::primitives::input::sense::Sense;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::primitives::math::libm_ext::Libm;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
@@ -37,25 +38,25 @@ const GRID_ROWS: usize = 8;
 fn build_ui(ui: &mut Ui) {
     Panel::zstack()
         .auto_id()
-        .size((Sizing::FILL, Sizing::FILL))
+        .size(SizeSpec::FILL)
         .show(ui, |ui| {
             // Bottom layer: a dense grid of Buttons (`Sense::CLICK` + focusable) before any overlap stack.
             Panel::vstack()
                 .auto_id()
                 .gap(0.0)
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| {
                     for r in 0..GRID_ROWS {
                         Panel::hstack()
                             .id_salt(("grid-row", r))
                             .gap(0.0)
-                            .size((Sizing::FILL, Sizing::FILL))
+                            .size(SizeSpec::FILL)
                             .show(ui, |ui| {
                                 for c in 0..GRID_COLS {
                                     Button::new()
                                         .id_salt(("cell", r, c))
                                         .label("·")
-                                        .size((Sizing::FILL, Sizing::FILL))
+                                        .size(SizeSpec::FILL)
                                         .show(ui);
                                 }
                             });
@@ -65,7 +66,7 @@ fn build_ui(ui: &mut Ui) {
             // Overlap stack: OVERLAP_LAYERS full-rect frames piled in a ZStack, so every pointer position is the worst case for the reverse hit scan; Sense rotates HOVER/CLICK/DRAG/SCROLL so all hit-test filters walk a populated path.
             Panel::zstack()
                 .auto_id()
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| {
                     for i in 0..OVERLAP_LAYERS {
                         let sense = match i % 4 {
@@ -77,7 +78,7 @@ fn build_ui(ui: &mut Ui) {
                         Block::new()
                             .id_salt(("ovl", i))
                             .sense(sense)
-                            .size((Sizing::FILL, Sizing::FILL))
+                            .size(SizeSpec::FILL)
                             .show(ui);
                     }
                 });
@@ -85,7 +86,7 @@ fn build_ui(ui: &mut Ui) {
             // Scrollable region over the viewport center so `hit_test_targets` finds a scroll target.
             Scroll::both()
                 .auto_id()
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| {
                     Panel::vstack()
                         .auto_id()
@@ -156,10 +157,10 @@ pub(crate) fn atomic(c: &mut Criterion) {
         let mut i: u32 = 0;
         b.iter(|| {
             let t = i as f32 * 0.05;
-            let d = ui.on_input(InputEvent::ScrollPixels(Vec2::new(
+            let d = ui.on_input(InputEvent::Scroll(WheelDelta::pixels(Vec2::new(
                 t.libm_cos() * 5.0,
                 (t * 0.7).libm_cos() * 5.0,
-            )));
+            ))));
             i = i.wrapping_add(1);
             black_box(d);
         });

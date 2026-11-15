@@ -45,12 +45,12 @@ use std::process::{Child, Command, ExitCode, Stdio};
 use std::time::Duration;
 
 use palantir::glam::{UVec2, Vec2};
-use palantir::{Depth, Harness, RequestedGpu, Scroll, SystemScale};
+use palantir::{ErrorChain, Harness, HarnessDepth, RequestedGpu, Scroll, SystemScale};
 
 use crate::deck::{Deck, SLIDE, SLIDES};
 use crate::downscale::{Linear, Shrink};
 use crate::motion::View;
-use crate::script::Runner;
+use crate::script::{Click, Runner};
 use crate::timeline::{frame_time, whole_bars};
 
 /// What a run renders.
@@ -146,25 +146,18 @@ impl Render {
     }
 }
 
-#[expect(
-    clippy::default_trait_access,
-    reason = "the device features are wgpu's type, which only palantir's gpu module names"
-)]
 fn run(args: &Args) -> Result<(), String> {
     let render = match args.mode {
         Mode::Final { .. } => Render::FINAL,
         Mode::Preview { .. } | Mode::Png { .. } => Render::PREVIEW,
     };
-    let gpu = RequestedGpu::headless(
-        palantir::PowerPreference::HighPerformance,
-        Default::default(),
-    )
-    .map_err(|error| error.to_string())?
-    .gpu;
+    let gpu = RequestedGpu::headless(palantir::PowerPreference::HighPerformance)
+        .map_err(|error| ErrorChain(&error).to_string())?
+        .gpu;
     let depth = if render.float {
-        Depth::gpu_float(gpu)
+        HarnessDepth::gpu_float(gpu)
     } else {
-        Depth::gpu(gpu)
+        HarnessDepth::gpu(gpu)
     };
     let mut h = Harness::builder(render.size())
         .system_scale(SystemScale::new(render.scale).unwrap())
@@ -179,9 +172,10 @@ fn run(args: &Args) -> Result<(), String> {
         match beat {
             Beat::Settle => h
                 .capture(deck, &mut Vec::new())
-                .map_err(|e| e.to_string())?,
+                .map_err(|e| ErrorChain(&e).to_string())?,
             Beat::Frame(n) => {
-                h.capture(deck, &mut pixels).map_err(|e| e.to_string())?;
+                h.capture(deck, &mut pixels)
+                    .map_err(|e| ErrorChain(&e).to_string())?;
                 sink.frame(n, &pixels)?;
             }
             Beat::SlideEnd { k, length } => {
@@ -237,7 +231,10 @@ fn play(
                 end = Some(start + whole_bars(done));
             }
             deck.cursor = runner.cursor();
-            deck.click = runner.last_click().map(|(at, place)| (start + at, place));
+            deck.click = runner.last_click().map(|click| Click {
+                at: start + click.at,
+                ..click
+            });
             place_camera(h, runner.camera());
             h.at(now);
             beat(Beat::Frame(n), h, deck)?;
@@ -272,8 +269,16 @@ enum Sink {
     Final {
         sub: Linear,
         pair: Linear,
-        deliveries: Vec<(Shrink, Encoder, Vec<u8>)>,
+        deliveries: Vec<Delivery>,
     },
+}
+
+/// One size the final render delivers: its area filter, its encoder, and the bytes it encodes.
+#[derive(Debug)]
+struct Delivery {
+    shrink: Shrink,
+    encoder: Encoder,
+    rgba: Vec<u8>,
 }
 
 impl Sink {
@@ -294,14 +299,11 @@ impl Sink {
                 std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
                 let full = Render::FINAL.size();
                 let delivery = |name: &str, size: UVec2, level| -> Result<_, String> {
-                    Ok((
-                        Shrink::new(
-                            (full.x as usize, full.y as usize),
-                            (size.x as usize, size.y as usize),
-                        ),
-                        Encoder::spawn(&dir.join(name), size, level, audio)?,
-                        Vec::new(),
-                    ))
+                    Ok(Delivery {
+                        shrink: Shrink::new(full, size),
+                        encoder: Encoder::spawn(&dir.join(name), size, level, audio)?,
+                        rgba: Vec::new(),
+                    })
                 };
                 Self::Final {
                     sub: Linear::default(),
@@ -339,7 +341,12 @@ impl Sink {
                 }
                 sub.load(pixels, size.x as usize, size.y as usize);
                 pair.average(sub);
-                for (shrink, encoder, rgba) in deliveries {
+                for Delivery {
+                    shrink,
+                    encoder,
+                    rgba,
+                } in deliveries
+                {
                     shrink.encode(pair, rgba);
                     encoder.write(rgba)?;
                 }
@@ -353,7 +360,7 @@ impl Sink {
             Self::Preview(encoder) => encoder.finish(length),
             Self::Png { .. } => Ok(()),
             Self::Final { deliveries, .. } => {
-                for (_, encoder, _) in deliveries {
+                for Delivery { encoder, .. } in deliveries {
                     encoder.finish(length)?;
                 }
                 Ok(())
@@ -443,7 +450,7 @@ impl Encoder {
     /// shorter stream's (`-shortest`), so a track that ends early leaves the picture whole.
     fn finish(mut self, length: Duration) -> Result<(), String> {
         drop(self.child.stdin.take());
-        let status = self.child.wait().map_err(|e| e.to_string())?;
+        let status = self.child.wait().map_err(|e| ErrorChain(&e).to_string())?;
         if !status.success() {
             return Err(format!(
                 "ffmpeg failed on {}: {status}",
@@ -470,7 +477,7 @@ impl Encoder {
             .args(["-movflags", "+faststart"])
             .arg(&self.out)
             .status()
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| ErrorChain(&e).to_string())?;
         if !status.success() {
             return Err(format!(
                 "ffmpeg failed muxing {}: {status}",
@@ -485,7 +492,7 @@ impl Encoder {
 mod tests {
     use palantir::glam::{UVec2, Vec2};
     use palantir::internals::headless_test_gpu;
-    use palantir::{Depth, Harness, SystemScale};
+    use palantir::{Harness, HarnessDepth, SystemScale};
 
     use crate::Beat;
     use crate::deck::{self, Deck};
@@ -499,7 +506,7 @@ mod tests {
     fn no_slide_collides_an_explicit_id() {
         let mut h = Harness::builder(UVec2::new(320, 180))
             .system_scale(SystemScale::new(0.25).unwrap())
-            .depth(Depth::Compose)
+            .depth(HarnessDepth::Compose)
             .build();
         let mut d = Deck::new();
         deck::dress(h.ui_mut());
@@ -522,7 +529,7 @@ mod tests {
         let render = |gpu| {
             let mut h = Harness::builder(UVec2::new(320, 180))
                 .system_scale(SystemScale::new(0.25).unwrap())
-                .depth(Depth::gpu(gpu))
+                .depth(HarnessDepth::gpu(gpu))
                 .build();
             let mut d = Deck::new();
             deck::dress(h.ui_mut());

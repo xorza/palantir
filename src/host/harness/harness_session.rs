@@ -35,7 +35,7 @@ impl<A: App> AgentWindow<A> for HarnessSession<'_, A> {
     ///
     /// [`StepError`], naming the step it stopped at.
     fn play<X: Locate<A>>(&mut self, actions: &[Action<X>]) -> Result<u32, StepError> {
-        let first = self.harness.ui().record_frame_id();
+        let first = self.harness.ui().record_frame_idx();
         let mut stage = HarnessStage {
             h: self.harness,
             app: self.app,
@@ -43,7 +43,7 @@ impl<A: App> AgentWindow<A> for HarnessSession<'_, A> {
         play::play_all(&mut stage, actions)?;
         Ok(play::frames_recorded(
             first,
-            self.harness.ui().record_frame_id(),
+            self.harness.ui().record_frame_idx(),
         ))
     }
 
@@ -72,8 +72,9 @@ impl<A: App> AgentWindow<A> for HarnessSession<'_, A> {
     ///
     /// # Errors
     ///
-    /// [`PlayError::NoPixels`] below [`Depth::Gpu`](crate::Depth::Gpu),
-    /// [`PlayError::EmptyRegion`] for a region outside the window, [`PlayError::DeviceLost`] when
+    /// [`PlayError::NoPixels`] below [`HarnessDepth::Gpu`](crate::HarnessDepth::Gpu),
+    /// [`PlayError::EmptyRegion`] for a region outside the window, [`PlayError::ScreenshotsFull`]
+    /// while the window owes as many as it holds, [`PlayError::DeviceLost`] when
     /// the device is lost, [`PlayError::GpuTimedOut`] when it does not finish the frame in time,
     /// and [`PlayError::Unsettled`] when the picture has not landed after the builder's
     /// [`settle_frames`](crate::HarnessBuilder::settle_frames).
@@ -82,14 +83,12 @@ impl<A: App> AgentWindow<A> for HarnessSession<'_, A> {
         if !h.paint.paints() {
             return Err(PlayError::NoPixels);
         }
-        let asked = h
-            .ui_mut()
-            .request_screenshot(region)
-            .ok_or(PlayError::EmptyRegion)?;
+        let asked = h.ui_mut().request_screenshot(region)?;
         // The frame paints the image; once the device's copy is back, the next frame lands it,
         // after any image an earlier ask is owed, one a frame.
+        let first = h.ui().record_frame_idx();
         h.next_frame(self.app);
-        for _ in 0..h.pace.settle_frames {
+        for _ in 0..h.pace.settle_frames.get() {
             device_answered(h.wait_for_gpu())?;
             h.next_frame(self.app);
             if let Some(shot) = h.ui().screenshot_taken(asked) {
@@ -101,7 +100,7 @@ impl<A: App> AgentWindow<A> for HarnessSession<'_, A> {
             return Err(PlayError::DeviceLost);
         }
         Err(PlayError::Unsettled {
-            frames: h.pace.settle_frames,
+            frames_recorded: play::frames_recorded(first, h.ui().record_frame_idx()),
         })
     }
 
@@ -130,9 +129,9 @@ impl<A: App> AgentWindow<A> for HarnessSession<'_, A> {
     ///
     /// # Errors
     ///
-    /// [`PlayError::NoPixels`] below [`Depth::Gpu`](crate::Depth::Gpu).
+    /// [`PlayError::NoDevice`] below [`HarnessDepth::Gpu`](crate::HarnessDepth::Gpu).
     fn lose_device(&mut self) -> Result<(), PlayError> {
-        self.harness.gpu().ok_or(PlayError::NoPixels)?.lose();
+        self.harness.gpu().ok_or(PlayError::NoDevice)?.lose();
         Ok(())
     }
 }

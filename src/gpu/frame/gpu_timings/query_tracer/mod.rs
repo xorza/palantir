@@ -1,11 +1,11 @@
-//! The tracer of a device that writes timestamps: `wgpu` timestamp and pipeline-statistics queries (see `DeviceRequirements::GPU_TIMING_FEATURES`).
+//! The tracer of a device that writes timestamps: `wgpu` timestamp and pipeline-statistics queries (see `DeviceRequirements::GPU_STATS_FEATURES`).
 //!
 //! - `TIMESTAMP_QUERY_INSIDE_PASSES` writes a timestamp at every category transition in `render_runs`, attributed per [`BatchKind`]; off, only pass begin/end are timed. Where the main pass breaks at a backdrop, the break's start and end are timestamped, and the captures and blurs between count in no category.
 //! - `PIPELINE_STATISTICS_QUERY` brackets each pass of the main pass, and the frame publishes their sum.
 //! - `TIMESTAMP_QUERY_INSIDE_ENCODERS` brackets the backbuffer copy-out at [`COPY_OUT_IDX`], published as [`GpuPassStats::last_copy_out`], and each backdrop break's captures and blurs at [`BACKDROP_IDX`], published as their sums.
 //!
 //! A frame's queries resolve in a later frame, once the queue said the frame's work is done, and
-//! read back after that frame completes: publishing lags two frames. A Metal device on a recent macOS
+//! read back after that frame completes: publishing lags [`LAG_FRAMES`] frames. A Metal device on a recent macOS
 //! reads a timestamp resolved in the command buffer that wrote it, or in one submitted
 //! before the CPU learned it completed, as the value written before it (wgpu #9414); resolving
 //! after the work-done callback reads right on every backend.
@@ -15,6 +15,7 @@ use crate::gpu::device::gpu::Gpu;
 use crate::gpu::frame::gpu_timings::{BackdropPhase, Mark};
 use crate::gpu::frame::main_segment::MainSegment;
 use crate::gpu::resource::map_state::MapState;
+use crate::gpu::resource::read_buffer::ReadBuffer;
 use std::array;
 use std::mem;
 use std::ops::Range;
@@ -50,9 +51,16 @@ const STATS_QUERY_BYTES: u64 = STATS_FIELD_COUNT as u64 * BYTES_PER_U64;
 const MAX_STATS_PASSES: u32 = 16;
 const STATS_BUFFER_BYTES: u64 = MAX_STATS_PASSES as u64 * STATS_QUERY_BYTES;
 
-/// Slots in rotation: one the recorded frame writes, one whose frame waits for the queue, one whose
-/// resolve maps; with every slot busy a frame goes unmeasured.
-const SLOTS: usize = 3;
+/// Frames from a frame's write to its publish where the queue's callbacks run inside a submit
+/// alone, as the frame path runs them: frame `f`'s work-done callback lands in submit `f + 1`,
+/// `finish(f + 2)` resolves its slot and `after_submit(f + 2)` maps it, the map lands in submit
+/// `f + 3`, and `after_submit(f + 3)` publishes and frees the slot.
+const LAG_FRAMES: usize = 3;
+
+/// Slots in rotation: a slot is busy from its frame's write to its publish, so the frame after the
+/// publish finds it free. A GPU slower than a frame finds every slot busy, and that frame goes
+/// unmeasured: the newest is dropped, as wgpu-profiler drops it, so the older ones still publish.
+const SLOTS: usize = LAG_FRAMES + 1;
 
 const PIPELINE_STATS_FLAGS: wgpu::PipelineStatisticsTypes =
     wgpu::PipelineStatisticsTypes::VERTEX_SHADER_INVOCATIONS
@@ -77,26 +85,66 @@ enum SlotState {
 #[derive(Debug)]
 struct Slot {
     query_set: wgpu::QuerySet,
-    /// The pipeline-statistics query, when the device has `PIPELINE_STATISTICS_QUERY`.
-    stats_query_set: Option<wgpu::QuerySet>,
-    timestamps_buffer: wgpu::Buffer,
-    timestamps_map: MapState,
+    timestamps: ReadBuffer,
     timestamps_count: u32,
-    /// Kind of the segment between timestamps `i` and `i+1`, saved at `finish()`, `None` for a
-    /// break between passes; empty in basic mode.
-    segment_kinds: Vec<Option<BatchKind>>,
-    copied_out: bool,
-    /// The backdrop breaks whose timestamps the slot holds.
-    backdrop_breaks: u32,
-    /// The passes whose pipeline statistics the slot holds; `None` when the frame had more than
-    /// [`MAX_STATS_PASSES`].
-    stats_passes: Option<u32>,
-    stats_buffer: Option<wgpu::Buffer>,
-    /// Kept beside `stats_buffer`, idle where there is none.
-    stats_map: MapState,
+    /// The pipeline-statistics queries, on a device with `PIPELINE_STATISTICS_QUERY`.
+    stats: Option<SlotStats>,
+    /// What the frame recorded beside its timestamps, swapped in at `finish()`.
+    record: FrameRecord,
     /// Set by the queue's work-done callback once the frame that wrote the slot completed.
     done: Arc<AtomicBool>,
     state: SlotState,
+}
+
+/// A slot's pipeline-statistics query set and the buffer its sums read back through.
+#[derive(Debug)]
+struct SlotStats {
+    query_set: wgpu::QuerySet,
+    read: ReadBuffer,
+}
+
+/// What a frame records beside its timestamps: the cursor fills one, and `finish()` swaps it into
+/// the frame's slot, so neither copies it nor allocates.
+#[derive(Debug)]
+struct FrameRecord {
+    /// Kind of the segment between timestamps `i` and `i+1`, `None` for a break between passes;
+    /// empty in basic mode.
+    segment_kinds: Vec<Option<BatchKind>>,
+    copied_out: bool,
+    /// The backdrop breaks timed.
+    backdrop_breaks: u32,
+    /// The passes that opened a pipeline-statistics query, counting those past
+    /// [`MAX_STATS_PASSES`].
+    stats_passes: u32,
+}
+
+impl FrameRecord {
+    fn new() -> Self {
+        Self {
+            segment_kinds: Vec::with_capacity(MAX_TIMESTAMPS as usize),
+            copied_out: false,
+            backdrop_breaks: 0,
+            stats_passes: 0,
+        }
+    }
+
+    /// Empty for the next frame, its capacity kept.
+    fn reset(&mut self) {
+        self.segment_kinds.clear();
+        self.copied_out = false;
+        self.backdrop_breaks = 0;
+        self.stats_passes = 0;
+    }
+
+    /// The passes whose pipeline statistics publish; `None` when the frame had more than
+    /// [`MAX_STATS_PASSES`], whose sums the queries cannot hold.
+    const fn stats_passes(&self) -> Option<u32> {
+        if self.stats_passes <= MAX_STATS_PASSES {
+            Some(self.stats_passes)
+        } else {
+            None
+        }
+    }
 }
 
 /// Where the frame being recorded stands in its queries.
@@ -105,17 +153,11 @@ struct Cursor {
     next_idx: u32,
     /// Kind in flight since the last timestamp; `None` before the first `mark()` (recorded as [`BatchKind::Setup`]).
     cur_kind: Option<BatchKind>,
-    segment_kinds: Vec<Option<BatchKind>>,
     /// The last pass ended at a break, whose end the next pass's start timestamps.
     broken: bool,
     /// A break found no room for its timestamps, so the frame attributes no time by kind.
     kinds_void: bool,
-    copied_out: bool,
-    /// The backdrop breaks timed this frame.
-    backdrop_breaks: u32,
-    /// The passes that opened a pipeline-statistics query this frame, counting those past
-    /// [`MAX_STATS_PASSES`].
-    stats_passes: u32,
+    record: FrameRecord,
 }
 
 impl Cursor {
@@ -127,7 +169,7 @@ impl Cursor {
         kind: Option<BatchKind>,
     ) {
         pass.write_timestamp(set, self.next_idx);
-        self.segment_kinds.push(kind);
+        self.record.segment_kinds.push(kind);
         self.next_idx += 1;
     }
 
@@ -137,8 +179,8 @@ impl Cursor {
         pass: &mut wgpu::RenderPass<'_>,
         set: Option<&wgpu::QuerySet>,
     ) {
-        let idx = self.stats_passes;
-        self.stats_passes += 1;
+        let idx = self.record.stats_passes;
+        self.record.stats_passes += 1;
         if let Some(set) = set.filter(|_| idx < MAX_STATS_PASSES) {
             pass.begin_pipeline_statistics_query(set, idx);
         }
@@ -146,7 +188,7 @@ impl Cursor {
 
     /// Close the query [`Self::begin_pipeline_stats`] opened, if it opened one.
     fn end_pipeline_stats(&self, pass: &mut wgpu::RenderPass<'_>, set: Option<&wgpu::QuerySet>) {
-        if set.is_some() && self.stats_passes <= MAX_STATS_PASSES {
+        if set.is_some() && self.record.stats_passes <= MAX_STATS_PASSES {
             pass.end_pipeline_statistics_query();
         }
     }
@@ -184,40 +226,31 @@ impl QueryTracer {
                 mapped_at_creation: false,
             })
         };
-        let staging = |label, size| {
-            gpu.device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some(label),
-                size,
-                usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            })
-        };
         let slots = array::from_fn(|i| Slot {
             query_set: gpu.device.create_query_set(&wgpu::QuerySetDescriptor {
                 label: Some("palantir.gpu_timings.timestamps"),
                 ty: wgpu::QueryType::Timestamp,
                 count: QUERY_COUNT,
             }),
-            stats_query_set: pipeline_stats.then(|| {
-                gpu.device.create_query_set(&wgpu::QuerySetDescriptor {
-                    label: Some("palantir.gpu_timings.stats"),
-                    ty: wgpu::QueryType::PipelineStatistics(PIPELINE_STATS_FLAGS),
-                    count: MAX_STATS_PASSES,
-                })
-            }),
-            timestamps_buffer: staging(
+            timestamps: ReadBuffer::new(
+                gpu,
                 "palantir.gpu_timings.timestamps.staging",
                 TIMESTAMP_BUFFER_BYTES,
             ),
-            timestamps_map: MapState::new(),
             timestamps_count: 0,
-            segment_kinds: Vec::with_capacity(MAX_TIMESTAMPS as usize),
-            copied_out: false,
-            backdrop_breaks: 0,
-            stats_passes: Some(0),
-            stats_buffer: pipeline_stats
-                .then(|| staging("palantir.gpu_timings.stats.staging", STATS_BUFFER_BYTES)),
-            stats_map: MapState::new(),
+            stats: pipeline_stats.then(|| SlotStats {
+                query_set: gpu.device.create_query_set(&wgpu::QuerySetDescriptor {
+                    label: Some("palantir.gpu_timings.stats"),
+                    ty: wgpu::QueryType::PipelineStatistics(PIPELINE_STATS_FLAGS),
+                    count: MAX_STATS_PASSES,
+                }),
+                read: ReadBuffer::new(
+                    gpu,
+                    "palantir.gpu_timings.stats.staging",
+                    STATS_BUFFER_BYTES,
+                ),
+            }),
+            record: FrameRecord::new(),
             done: Arc::new(AtomicBool::new(false)),
             state: if i == 0 {
                 SlotState::Writing
@@ -241,12 +274,9 @@ impl QueryTracer {
             cursor: Cursor {
                 next_idx: 0,
                 cur_kind: None,
-                segment_kinds: Vec::with_capacity(MAX_TIMESTAMPS as usize),
                 broken: false,
                 kinds_void: false,
-                copied_out: false,
-                backdrop_breaks: 0,
-                stats_passes: 0,
+                record: FrameRecord::new(),
             },
         }
     }
@@ -280,7 +310,7 @@ impl QueryTracer {
         if segment.opens() {
             cursor.next_idx = 0;
             cursor.cur_kind = None;
-            cursor.segment_kinds.clear();
+            cursor.record.segment_kinds.clear();
             cursor.broken = false;
             cursor.kinds_void = false;
         }
@@ -346,7 +376,7 @@ impl QueryTracer {
             Mark::RunEnd => 1,
             Mark::CopyOutStart => COPY_OUT_IDX,
             Mark::CopyOutEnd => {
-                self.cursor.copied_out = true;
+                self.cursor.record.copied_out = true;
                 COPY_OUT_IDX + 1
             }
             Mark::Backdrop { at, phase } => {
@@ -354,7 +384,7 @@ impl QueryTracer {
                     return;
                 };
                 if phase == BackdropPhase::BlurEnd {
-                    self.cursor.backdrop_breaks = at + 1;
+                    self.cursor.record.backdrop_breaks = at + 1;
                 }
                 BACKDROP_IDX + 3 * at + phase as u32
             }
@@ -368,9 +398,9 @@ impl QueryTracer {
     /// value before it, so no slot resolves in the frame that wrote it. The next frame writes into
     /// a free slot, or goes unmeasured while every slot is busy.
     pub(super) fn finish(&mut self, encoder: &mut wgpu::CommandEncoder) {
-        let copied_out = mem::take(&mut self.cursor.copied_out);
-        let backdrop_breaks = mem::take(&mut self.cursor.backdrop_breaks);
-        let stats_passes = mem::take(&mut self.cursor.stats_passes);
+        if self.cursor.kinds_void {
+            self.cursor.record.segment_kinds.fill(None);
+        }
         if let Some(at) = self.writing.take() {
             // Basic mode is 2 (the descriptor wrote 0/1); per-batch is what the segments and `mark()` accumulated.
             let count = if self.inside_passes {
@@ -380,20 +410,12 @@ impl QueryTracer {
             };
             let slot = &mut self.slots[at];
             slot.timestamps_count = count;
-            slot.segment_kinds.clear();
-            let kinds = &self.cursor.segment_kinds;
-            if self.cursor.kinds_void {
-                slot.segment_kinds.resize(kinds.len(), None);
-            } else {
-                slot.segment_kinds.extend(kinds.iter().copied());
-            }
-            slot.stats_passes = (stats_passes <= MAX_STATS_PASSES).then_some(stats_passes);
-            slot.copied_out = copied_out;
-            slot.backdrop_breaks = backdrop_breaks;
+            mem::swap(&mut slot.record, &mut self.cursor.record);
             slot.done.store(false, Release);
             slot.state = SlotState::Submitted;
             self.submitted = Some(at);
         }
+        self.cursor.record.reset();
         self.resolve_done(encoder);
         self.writing = self.free_slot();
     }
@@ -433,7 +455,7 @@ impl QueryTracer {
                 .on_submitted_work_done(move || done.store(true, Release));
         }
         for slot in &mut self.slots {
-            if slot.state == SlotState::Resolving && slot.timestamps_map.is_idle() {
+            if slot.state == SlotState::Resolving && slot.timestamps.map().is_idle() {
                 slot.map();
             }
         }
@@ -445,16 +467,14 @@ impl QueryTracer {
             if slot.state != SlotState::Resolving {
                 continue;
             }
-            if !maps_landed(&slot.timestamps_map, &slot.stats_map) {
+            if !slot.maps_landed() {
                 continue;
             }
-            if slot.timestamps_map.has_failed() || slot.stats_map.has_failed() {
+            if slot.map_failed() {
                 slot.discard();
             } else {
                 slot.consume(&mut publisher);
             }
-            slot.timestamps_map.clear();
-            slot.stats_map.clear();
             slot.state = SlotState::Free;
         }
         if self.writing.is_none() {
@@ -469,15 +489,17 @@ fn writing_set(slots: &[Slot; SLOTS], writing: Option<usize>) -> Option<&wgpu::Q
     writing.map(|at| &slots[at].query_set)
 }
 
-/// The pipeline-statistics query set of the slot the frame being recorded writes into, if any.
-fn stats_set(slots: &[Slot; SLOTS], writing: Option<usize>) -> Option<&wgpu::QuerySet> {
-    slots[writing?].stats_query_set.as_ref()
+/// Whether a slot's maps have landed, mapped or failed: its timestamps', which every map begins,
+/// and its statistics', where it has them.
+fn maps_landed(timestamps: &MapState, stats: Option<&MapState>) -> bool {
+    !timestamps.is_idle()
+        && !timestamps.is_pending()
+        && stats.is_none_or(|stats| !stats.is_pending())
 }
 
-/// Whether a slot's maps have landed, mapped or failed: its timestamps', which every map begins,
-/// and its statistics', idle where the slot has none.
-fn maps_landed(timestamps: &MapState, stats: &MapState) -> bool {
-    !timestamps.is_idle() && !timestamps.is_pending() && !stats.is_pending()
+/// The pipeline-statistics query set of the slot the frame being recorded writes into, if any.
+fn stats_set(slots: &[Slot; SLOTS], writing: Option<usize>) -> Option<&wgpu::QuerySet> {
+    slots[writing?].stats.as_ref().map(|stats| &stats.query_set)
 }
 
 impl Slot {
@@ -494,32 +516,32 @@ impl Slot {
             encoder.copy_buffer_to_buffer(
                 timestamps_resolve,
                 offset,
-                &self.timestamps_buffer,
+                self.timestamps.buffer(),
                 offset,
                 u64::from(range.end - range.start) * BYTES_PER_U64,
             );
         };
+        let record = &self.record;
         copy(0..self.timestamps_count, 0);
-        if self.copied_out {
+        if record.copied_out {
             copy(COPY_OUT_IDX..COPY_OUT_IDX + 2, COPY_OUT_OFFSET);
         }
-        if self.backdrop_breaks > 0 {
+        if record.backdrop_breaks > 0 {
             copy(
-                BACKDROP_IDX..BACKDROP_IDX + 3 * self.backdrop_breaks,
+                BACKDROP_IDX..BACKDROP_IDX + 3 * record.backdrop_breaks,
                 BACKDROP_OFFSET,
             );
         }
-        if let (Some(set), Some(resolve), Some(staging), Some(passes)) = (
-            &self.stats_query_set,
+        if let (Some(stats), Some(resolve), Some(passes)) = (
+            &self.stats,
             stats_resolve,
-            &self.stats_buffer,
-            self.stats_passes.filter(|&passes| passes > 0),
+            record.stats_passes().filter(|&passes| passes > 0),
         ) {
-            encoder.resolve_query_set(set, 0..passes, resolve, 0);
+            encoder.resolve_query_set(&stats.query_set, 0..passes, resolve, 0);
             encoder.copy_buffer_to_buffer(
                 resolve,
                 0,
-                staging,
+                stats.read.buffer(),
                 0,
                 u64::from(passes) * STATS_QUERY_BYTES,
             );
@@ -529,49 +551,49 @@ impl Slot {
     /// Start mapping this slot's staging buffers, which land once the submit that resolved them
     /// completed.
     fn map(&self) {
-        self.timestamps_map.map_read(&self.timestamps_buffer);
-        if let Some(stats_buf) = &self.stats_buffer {
-            self.stats_map.map_read(stats_buf);
+        self.timestamps.map_read();
+        if let Some(stats) = &self.stats {
+            stats.read.map_read();
         }
     }
 
-    /// Unmap whatever mapped, after either mapping failed.
+    /// Whether the slot's maps have landed ([`maps_landed`]).
+    fn maps_landed(&self) -> bool {
+        maps_landed(
+            self.timestamps.map(),
+            self.stats.as_ref().map(|stats| stats.read.map()),
+        )
+    }
+
+    /// Whether either landed map failed, which only a lost device does.
+    fn map_failed(&self) -> bool {
+        self.timestamps.map().has_failed()
+            || self
+                .stats
+                .as_ref()
+                .is_some_and(|stats| stats.read.map().has_failed())
+    }
+
+    /// Drop the slot's landed maps, after either failed.
     fn discard(&self) {
-        if self.timestamps_map.is_mapped() {
-            self.timestamps_buffer.unmap();
-        }
-        if self.stats_map.is_mapped()
-            && let Some(stats_buf) = &self.stats_buffer
-        {
-            stats_buf.unmap();
+        self.timestamps.discard();
+        if let Some(stats) = &self.stats {
+            stats.read.discard();
         }
     }
 
     /// Publish this slot's landed readback and unmap it.
     fn consume(&self, publisher: &mut Publisher<'_>) {
-        let ts_range = self
-            .timestamps_buffer
-            .slice(..)
-            .get_mapped_range()
-            .expect("map timestamps range");
-        publisher.timestamps(
-            &ts_range,
-            &self.segment_kinds,
-            self.timestamps_count as usize,
-        );
-        publisher.copy_out(&ts_range, self.copied_out);
-        publisher.backdrops(&ts_range, self.backdrop_breaks);
-        drop(ts_range);
-        self.timestamps_buffer.unmap();
-
-        if let Some(stats_buf) = &self.stats_buffer {
-            let s_range = stats_buf
-                .slice(..)
-                .get_mapped_range()
-                .expect("map stats range");
-            publisher.stats(&s_range, self.stats_passes);
-            drop(s_range);
-            stats_buf.unmap();
+        let record = &self.record;
+        self.timestamps.read(|ts| {
+            publisher.timestamps(ts, &record.segment_kinds, self.timestamps_count as usize);
+            publisher.copy_out(ts, record.copied_out);
+            publisher.backdrops(ts, record.backdrop_breaks);
+        });
+        if let Some(stats) = &self.stats {
+            stats
+                .read
+                .read(|bytes| publisher.stats(bytes, record.stats_passes()));
         }
     }
 }
@@ -590,8 +612,8 @@ impl Publisher<'_> {
     fn timestamps(&mut self, ts: &[u8], segment_kinds: &[Option<BatchKind>], count: usize) {
         // Pass duration = last - first. The per-kind table clears on every measured frame, so a begin/end-only frame doesn't keep stale values.
         if count >= 2 {
-            self.sink.record_pass(self.span(ts, 0, count - 1));
-            self.sink.clear_kinds();
+            self.sink.pass = Some(self.span(ts, 0, count - 1));
+            self.sink.kinds = [None; BatchKind::COUNT];
         }
         if count >= 3 {
             let mut per_kind = [Duration::ZERO; BatchKind::COUNT];
@@ -606,7 +628,7 @@ impl Publisher<'_> {
             }
             for kind in BatchKind::ALL {
                 if seen[kind.idx()] {
-                    self.sink.record_kind(kind, per_kind[kind.idx()]);
+                    self.sink.kinds[kind.idx()] = Some(per_kind[kind.idx()]);
                 }
             }
         }
@@ -615,7 +637,7 @@ impl Publisher<'_> {
     fn copy_out(&mut self, ts: &[u8], copied_out: bool) {
         let begin = COPY_OUT_IDX as usize;
         let time = copied_out.then(|| self.span(ts, begin, begin + 1));
-        self.sink.record_copy_out(time);
+        self.sink.copy_out = time;
     }
 
     /// The sums of `breaks` backdrop breaks' capture and blur times; a frame with none clears
@@ -628,17 +650,17 @@ impl Publisher<'_> {
                 .fold(Duration::ZERO, Duration::saturating_add)
         };
         let timed = breaks > 0;
-        self.sink.record_backdrops(BackdropTimes {
+        self.sink.backdrops = BackdropTimes {
             captures: timed.then(|| sum(0, 1)),
             blurs: timed.then(|| sum(1, 2)),
-        });
+        };
     }
 
     /// The sums of `passes` passes' counters, in `wgpu::PipelineStatisticsTypes` order; `None`
     /// publishes none, for a frame of more passes than the queries hold.
     fn stats(&mut self, bytes: &[u8], passes: Option<u32>) {
         let Some(passes) = passes else {
-            self.sink.record_pipeline_stats(None);
+            self.sink.stats = None;
             return;
         };
         let mut values = [0u64; STATS_FIELD_COUNT];
@@ -647,12 +669,12 @@ impl Publisher<'_> {
                 *v = v.saturating_add(tick(bytes, pass * STATS_FIELD_COUNT + i));
             }
         }
-        self.sink.record_pipeline_stats(Some(PipelineStats {
+        self.sink.stats = Some(PipelineStats {
             vertex_shader_invocations: values[0],
             clipper_invocations: values[1],
             clipper_primitives_out: values[2],
             fragment_shader_invocations: values[3],
-        }));
+        });
     }
 
     #[expect(
@@ -675,22 +697,24 @@ fn tick(bytes: &[u8], idx: usize) -> u64 {
 
 #[cfg(test)]
 mod internals {
-    use crate::gpu::frame::gpu_timings::query_tracer::{QueryTracer, SlotState, maps_landed};
+    use crate::gpu::frame::gpu_timings::query_tracer::{QueryTracer, SlotState};
     use std::sync::atomic::Ordering::Acquire;
 
     impl QueryTracer {
         /// Whether every callback the slots wait on has run: each submitted frame's work-done,
         /// and each resolving slot's maps. Another thread's poll can run them after a wait on the
         /// device returns, so a test waits for this through `Gpu::wait_until`.
+        /// Whether every callback the tracer asked the queue for has landed. A slot `finish`
+        /// closed and no submit sent yet asked for none.
         pub(super) fn callbacks_landed(&self) -> bool {
-            self.slots.iter().all(|slot| match slot.state {
-                SlotState::Submitted => slot.done.load(Acquire),
-                SlotState::Resolving => {
-                    slot.timestamps_map.is_idle()
-                        || maps_landed(&slot.timestamps_map, &slot.stats_map)
-                }
-                SlotState::Free | SlotState::Writing => true,
-            })
+            self.slots
+                .iter()
+                .enumerate()
+                .all(|(at, slot)| match slot.state {
+                    SlotState::Submitted => self.submitted == Some(at) || slot.done.load(Acquire),
+                    SlotState::Resolving => slot.timestamps.map().is_idle() || slot.maps_landed(),
+                    SlotState::Free | SlotState::Writing => true,
+                })
         }
     }
 }

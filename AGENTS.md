@@ -29,7 +29,7 @@ at the swapchain write. A top-level module imports only modules to its left
 
 ```text
 common → primitives → {animation, text, display, window, clipboard, image_registry,
-                       diagnostics}
+                       diagnostics, effect}
        → shape → icons → scene → layout → cascade → {damage, input}
        → renderer → gpu → theme → ui → widget_core → widgets → driver → host
 ```
@@ -67,6 +67,13 @@ A subsystem's decisions sit in an `AGENTS.md` beside it; read it before changing
   spelling of the canonical one, obsolete, unidiomatic or ambiguous.
 - **Match its neighbors**: read what new surface will sit beside and match its names, argument
   shapes and order.
+- **`palantir::widget` holds what only a widget's author names**: an item sits there only when no
+  root-exported method takes or returns it, so the shapes and paints `Ui::add_shape` takes are at
+  the root. A trait that only bounds a root method's parameter (`Animatable` on `Ui::animate`)
+  stays in `widget`, as an app names it only to implement it, and so does what only a `widget`
+  type's methods hand out. `widget::domain` exports each kind's predicate, which a `# Panics` doc
+  links, item by item; the checkers that assert stay crate-private, as a caller wants to test a
+  value, not to panic on it.
 - **An exported item that breaks a rule below is a bug.** `cargo drive surface` writes the surface
   to `.notes/API_SURFACE.md`, which CI compares with the tree
   (`cargo install --locked --git https://github.com/xorza/drive`).
@@ -75,6 +82,10 @@ A subsystem's decisions sit in an `AGENTS.md` beside it; read it before changing
 
 - **Builder**, consumed by `show`, `build` or `Ui::add_shape`: setters are bare, take and return
   `Self`.
+- **Typestate builder**: a builder whose last type parameter names a mode that changes what
+  `show` returns or which constructors and methods exist, its common mode the default, as
+  `Menu<'a, O = TriggerOwned>`: the setters sit in one `impl` over every mode. Refused: a mode
+  checked at run time, whose wrong branch is an `unreachable!`.
 - **Value**, stored, passed or compared: a chaining setter is `with_*`, and one without `self`
   constructs, as `Vec::with_capacity`; a shorthand with no argument keeps its adjective
   (`TextStyle::bold`).
@@ -86,6 +97,11 @@ A subsystem's decisions sit in an `AGENTS.md` beside it; read it before changing
 - **Error**, `*Error`: an enum of the cases a caller tells apart; a foreign cause as `source`,
   never also in `Display`
   ([error-handling project group](https://blog.rust-lang.org/inside-rust/2021/07/01/What-the-error-handling-project-group-is-working-towards.html)).
+  A one-case error is a struct named for what failed, as std's `ParseIntError` and `RecvError`.
+  A case that wraps another error is transparent where it adds no context, its `Display` the
+  inner one's and its `source` the inner one's `source`, as `PlayError::Locate` is; one that
+  adds context names its own failure and returns the inner error from `source`. A test walks
+  every exported chain and holds that no message prints twice.
 
 ### Names
 
@@ -102,7 +118,7 @@ A subsystem's decisions sit in an `AGENTS.md` beside it; read it before changing
   line, a color for text, a tint for a mesh, `ImagePaint`, `IconPaint`, `EffectPaint`. *Fill* is
   a box's brush; *brush* a color or a gradient; *border* a box's edge, inside its rect; *stroke* a
   line's paint, centered on its path; *tint* multiplies an image, an icon or a mesh; *fit* is how a
-  point shape or an icon fills its rect.
+  point shape, an icon or an image fills its rect.
 - **`Chrome` is a node's box**, its corners and its `Paint`, a node's box and a modal's scrim alike,
   as Flutter's `BoxDecoration`; `with_fill`, `with_border` and the rest are sugar over `Paint`'s.
   `bg` is a background color alone. Refused: `background` for a `Chrome`, which holds more than a
@@ -149,7 +165,11 @@ Every public input meets two questions, as WPF asks them: *validation* of the va
 2. **Validation follows the source**: per-frame authoring takes a release `assert!` with
    `#[track_caller]`, an exception to `debug_assert!` on hot paths, as a wrong value never draws
    quietly; cold configuration a release `assert!`; data from outside the program an `Option` for
-   one rule, a `Result` with an error enum for several.
+   one rule, a `Result` with an error enum for several. A rule a type can hold needs no assert:
+   a count of at least one is a `NonZeroU16` or `NonZeroU32`, and a rate that may be unknown an
+   `Option<NonZeroU32>`, so zero cannot be passed
+   ([C-VALIDATE](https://rust-lang.github.io/api-guidelines/dependability.html#c-validate):
+   static enforcement first).
 3. **Plain data stays plain**, checked where it enters a widget, a shape or a node.
 4. **A theme file is checked on load** by the same predicates as a call site.
 5. **An index into a list that changes is coerced**; a handle the crate minted that names nothing

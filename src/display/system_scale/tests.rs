@@ -1,6 +1,4 @@
-use crate::display::scale_factor_is_valid;
 use crate::display::system_scale::SystemScale;
-use crate::display::user_scale::UserScale;
 
 /// A scale from `MIN` to `MAX` stands as given, unclamped; outside them, or not a number, is
 /// refused. `ONE` is the default.
@@ -24,19 +22,6 @@ fn a_scale_in_range_stands_and_the_rest_is_refused() {
     }
     assert_eq!(SystemScale::new(f32::NAN), None);
     assert_eq!(SystemScale::default(), SystemScale::ONE);
-}
-
-/// The bounds keep the product valid under every user scale, which is why a frame only
-/// debug-asserts it.
-#[test]
-fn every_user_scale_keeps_the_product_in_range() {
-    for system in [SystemScale::MIN, SystemScale::MAX] {
-        let system = SystemScale::new(system).unwrap();
-        for user in [UserScale::MIN, UserScale::MAX] {
-            let product = UserScale::new(user).unwrap().applied_to(system);
-            assert!(scale_factor_is_valid(product), "{system:?} × {user}");
-        }
-    }
 }
 
 /// The windowed door keeps a usable platform scale and replaces one that names no density with

@@ -4,7 +4,7 @@
 use crate::host::harness::Harness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::anchor::Anchor;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::SizeSpec;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::combo_box::{ComboBox, ComboBoxList};
@@ -32,14 +32,14 @@ enum Opener {
     ModalInModal,
 }
 
-fn dropdown(ui: &mut Ui, selected: &mut &'static &'static str) {
-    ComboBox::new(selected, &OPTIONS).id(combo()).show(ui);
+fn dropdown(ui: &mut Ui, selected: &mut &'static str) {
+    ComboBox::new(selected, OPTIONS).id(combo()).show(ui);
 }
 
-fn record(ui: &mut Ui, opener: Opener, selected: &mut &'static &'static str) {
+fn record(ui: &mut Ui, opener: Opener, selected: &mut &'static str) {
     Panel::vstack()
         .id(menu_trigger())
-        .size((Sizing::FILL, Sizing::FILL))
+        .size(SizeSpec::FILL)
         .show(ui, |ui| match opener {
             Opener::Modal => {
                 Modal::new().auto_id().show(ui, |ui| dropdown(ui, selected));
@@ -72,11 +72,11 @@ fn a_dropdown_opens_and_picks_inside_every_overlay() {
         Opener::Menu,
         Opener::ModalInModal,
     ] {
-        let mut selected = &OPTIONS[0];
+        let mut selected = OPTIONS[0];
         let mut h = Harness::mono(UVec2::new(400, 300));
         h.frame(|ui| {
             if matches!(opener, Opener::Menu) {
-                Menu::open(ui, menu_trigger(), Vec2::new(20.0, 20.0));
+                Menu::open_at(ui, menu_trigger(), Vec2::new(20.0, 20.0));
             }
             record(ui, opener, &mut selected);
         });
@@ -106,7 +106,7 @@ fn a_dropdown_opens_and_picks_inside_every_overlay() {
         );
         h.click(last_row);
         h.frame(|ui| record(ui, opener, &mut selected));
-        assert_eq!(*selected, "Three", "{opener:?}: the last row was picked");
+        assert_eq!(selected, "Three", "{opener:?}: the last row was picked");
         assert!(
             h.rect(list).is_none(),
             "{opener:?}: the pick closed the list"

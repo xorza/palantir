@@ -95,7 +95,7 @@ pub(crate) fn steps(k: usize) -> Vec<Step> {
 
 /// Blend the window's theme to `theme` under [`MORPH`].
 fn morph(ui: &mut Ui, theme: Theme) {
-    ui.set_theme(
+    ui.set_scheme_theme(
         ColorScheme::Dark,
         Theme {
             transition: MORPH,

@@ -9,6 +9,7 @@ use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::pass_traffic::PassTraffic;
 use crate::gpu::pipeline::atlas_binding::ATLAS_GROUP;
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
+use crate::gpu::pipeline::quad_pipeline::SHADOW_INSTANCE_ATTRS;
 use crate::gpu::pipeline::quad_pipeline::cutout_placements::CutoutPlacements;
 use crate::gpu::pipeline::quad_pipeline::cutout_plan::{BakeTable, CornerTables, CutoutPlan};
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
@@ -74,7 +75,7 @@ struct StagedBake {
 impl CutoutTables {
     /// The tables for the quad `shader` (`vs_cutout_bake`, `fs_cutout_bake`).
     pub(crate) fn new(gpu: &Gpu, shader: &wgpu::ShaderModule) -> Self {
-        let bake_layout = pipeline_recipe::pipeline_layout(gpu, "palantir.quad.cutouts.pl", &[]);
+        let bake_layout = gpu.pipeline_layout("palantir.quad.cutouts.pl", &[]);
         let bake_pipeline = PipelineRecipe {
             vertex_entry: "vs_cutout_bake",
             vertex_buffers: &[Some(BAKE_LAYOUT)],
@@ -136,11 +137,10 @@ impl CutoutTables {
     /// and a copy each onto its page (`StagingTarget`). The staging steps down with the frames that
     /// bake nothing too.
     fn bake(&mut self, ctx: &mut GpuCtx<'_>, textures: &AtlasTextures) {
-        let staged = match self.traffic {
-            PassTraffic::Drawn => UVec2::ZERO,
-            PassTraffic::WholeTarget => self.plan_staging(ctx.gpu),
-        };
-        self.staging.decay(ctx.gpu, ctx.frame, staged);
+        if self.traffic == PassTraffic::WholeTarget {
+            self.plan_staging(ctx.gpu);
+        }
+        self.staging.decay(ctx.gpu, ctx.frame);
         if self.bakes.is_empty() {
             return;
         }
@@ -196,13 +196,13 @@ impl CutoutTables {
     }
 
     /// Place each bake in the staging target, in rounds that each fit the device's edge, into
-    /// [`Self::copies`], and reserve the staging for the largest; the texels the frame draws there.
-    fn plan_staging(&mut self, gpu: &Gpu) -> UVec2 {
+    /// [`Self::copies`], and reserve the staging for the largest.
+    fn plan_staging(&mut self, gpu: &Gpu) {
         self.copies.clear();
         if self.bakes.is_empty() {
-            return UVec2::ZERO;
+            return;
         }
-        let edge = gpu.max_texture_dim().get();
+        let edge = gpu.max_texture_dimension().get();
         self.staging_packer
             .reset(u16::try_from(edge).unwrap_or(u16::MAX));
         let mut round = 0;
@@ -229,7 +229,6 @@ impl CutoutTables {
             });
         }
         self.staging.reserve(gpu, extent);
-        extent
     }
 
     /// Bake into the staging target, a pass a round, each round's bakes copied onto their pages
@@ -319,10 +318,9 @@ const BAKE_LAYOUT: wgpu::VertexBufferLayout<'static> = pipeline_recipe::vertex_l
     &BAKE_ATTRS,
 );
 
-/// Past the quad's own lanes, `QUAD_INSTANCE_ATTRS`, as `vs_shadow` reads it.
-/// The shadow pipeline's location past a shadow's own (`SHADOW_INSTANCE_ATTRS`).
+/// The shadow pipeline's location past a shadow's own, as `vs_shadow` reads it.
 const CORNER_ATTRS: [wgpu::VertexAttribute; 1] = [vertex_attr(
-    9,
+    SHADOW_INSTANCE_ATTRS.len() as u32,
     wgpu::VertexFormat::Uint32x4,
     offset_of!(CornerTables, 0),
 )];

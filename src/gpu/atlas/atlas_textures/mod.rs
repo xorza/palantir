@@ -5,11 +5,12 @@ pub(crate) mod move_draw;
 
 use crate::gpu::atlas::AtlasPool;
 use crate::gpu::atlas::atlas_format::{AtlasFormat, PerFormat};
-use crate::gpu::atlas::atlas_textures::move_draw::{MoveDraw, MoveRect, MoveRun};
+use crate::gpu::atlas::atlas_textures::move_draw::{MoveDraw, MoveRun};
 use crate::gpu::atlas::page_list::{MAX_PAGES, Move, PageList};
 use crate::gpu::atlas::scratch_cache::ScratchId;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::pass_traffic::PassTraffic;
+use crate::gpu::resource::gpu_ctx::GpuCtx;
 use crate::gpu::texel;
 use crate::gpu::texel::TargetSpec;
 use glam::UVec2;
@@ -41,15 +42,13 @@ struct Bound {
 
 impl Bound {
     fn new(gpu: &Gpu, label: &str, format: AtlasFormat, size: UVec2) -> Self {
-        let texture = texel::texture_2d(
-            gpu,
-            TargetSpec {
-                label,
-                size,
-                format: texture_format(format),
-                usage: USAGE,
-            },
-        );
+        let texture = TargetSpec {
+            label,
+            size,
+            format: texture_format(format),
+            usage: USAGE,
+        }
+        .texture(gpu);
         Self {
             view: texture.create_view(&wgpu::TextureViewDescriptor::default()),
             texture,
@@ -63,7 +62,7 @@ impl Bound {
 
 /// A page's texture and the opening of its slot it was made for ([`Page::epoch`]).
 ///
-/// [`Page::epoch`]: crate::gpu::atlas::page_list::Page::epoch
+/// [`Page::epoch`]: crate::gpu::atlas::page_list::page::Page::epoch
 #[derive(Debug)]
 struct PageTexture {
     bound: Bound,
@@ -182,24 +181,26 @@ impl ListTextures {
                     "a commit's moves leave one page"
                 );
                 for page in 0..MAX_PAGES {
-                    let mut landing = moves
-                        .iter()
-                        .filter(|m| usize::from(m.to.page) == page)
-                        .peekable();
-                    let Some(&first) = landing.peek() else {
+                    let Some(first) = moves.iter().find(|m| usize::from(m.to.page) == page) else {
                         continue;
                     };
                     let to = dest(first);
-                    let edge = to.bound.size().x;
+                    debug_assert_eq!(
+                        to.bound.size().x,
+                        list.page(page)
+                            .expect("a move lands on an open page")
+                            .edge(),
+                        "the page a run was staged for is the one it lands on"
+                    );
                     draw.record(
                         gpu,
                         encoder,
                         MoveRun {
                             format: self.format,
+                            page,
                             source: &source(first).bound.view,
                             dest: &to.bound.view,
                         },
-                        landing.map(|&m| MoveRect::of(m, edge)),
                     );
                 }
             }
@@ -224,11 +225,12 @@ impl ListTextures {
 /// How a device moves a drain's items between pages: by copy commands where a pass moves its
 /// whole target, as a draw onto a page would load and store all of it, and by one draw a
 /// destination page elsewhere, WebRender's two routes (`src/gpu/AGENTS.md`, Atlases), the
-/// budget's [`MoveBudget::of`](crate::gpu::atlas::page_list::MoveBudget::of) beside it.
+/// budget's [`MoveBudget::of`](crate::gpu::atlas::page_list::move_budget::MoveBudget::of) beside it.
 #[derive(Debug)]
 enum Mover {
     Copy,
-    Draw(MoveDraw),
+    /// Boxed, as the draw's pipelines and buffer dwarf the copy's nothing.
+    Draw(Box<MoveDraw>),
 }
 
 impl Mover {
@@ -236,7 +238,7 @@ impl Mover {
     fn of(gpu: &Gpu, traffic: PassTraffic) -> Self {
         match traffic {
             PassTraffic::WholeTarget => Self::Copy,
-            PassTraffic::Drawn => Self::Draw(MoveDraw::new(gpu)),
+            PassTraffic::Drawn => Self::Draw(Box::new(MoveDraw::new(gpu))),
         }
     }
 }
@@ -264,19 +266,15 @@ impl AtlasTextures {
         }
     }
 
-    /// Make every texture follow `pool`, a grow's and the drains' copies recorded on `encoder`,
-    /// the moves taken from `pool`: ahead of every upload, bake and draw that writes or reads them.
-    pub(crate) fn commit(
-        &mut self,
-        gpu: &Gpu,
-        encoder: &mut wgpu::CommandEncoder,
-        pool: &mut AtlasPool,
-    ) {
+    /// Make every texture follow `pool`, a grow's and the drains' copies recorded on `ctx`'s
+    /// encoder, the moves taken from `pool`: ahead of every upload, bake and draw that writes or
+    /// reads them.
+    pub(crate) fn commit(&mut self, ctx: &mut GpuCtx<'_>, pool: &mut AtlasPool) {
         if let Mover::Draw(draw) = &mut self.mover {
-            draw.begin();
+            draw.stage(ctx, pool);
         }
         for (format, textures) in self.lists.iter_mut() {
-            textures.commit(gpu, encoder, pool.list(format), &mut self.mover);
+            textures.commit(ctx.gpu, ctx.encoder, pool.list(format), &mut self.mover);
         }
         pool.forget_moves();
     }
@@ -337,7 +335,7 @@ pub(crate) mod internals {
     use crate::gpu::atlas::AtlasPool;
     use crate::gpu::atlas::atlas_format::AtlasFormat;
     use crate::gpu::atlas::atlas_textures::{AtlasTextures, ListTextures};
-    use crate::gpu::atlas::page_list::Page;
+    use crate::gpu::atlas::page_list::page::Page;
     use crate::gpu::atlas_memory::{self, AtlasUse};
 
     impl ListTextures {

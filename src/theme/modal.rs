@@ -4,8 +4,9 @@ use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
-use crate::theme::metrics::Metrics;
+use crate::theme::metrics::{FloatMaterial, MaterialRefusal, Metrics};
 use crate::theme::palette::Palette;
+use crate::theme::text_style::TextStyle;
 
 /// Visuals for [`crate::widgets::modal::Modal`]. Builder overrides (`.chrome(...)` / `.scrim(...)`) win; these defaults fill in.
 #[derive(
@@ -41,10 +42,10 @@ pub struct ModalTheme {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scrim_material: Option<Material>,
     /// Padding inside the panel, applied when the builder leaves it unset.
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::padding")]
+    #[serde(deserialize_with = "crate::primitives::file::padding")]
     pub padding: Spacing,
     /// Minimum panel width in logical px; the panel hugs its content above it.
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
+    #[serde(deserialize_with = "crate::primitives::file::length")]
     pub min_width: f32,
 }
 
@@ -63,7 +64,18 @@ impl ModalTheme {
             padding: Spacing::all(m.space.xl),
             min_width: 280.0,
         };
-        m.dress_float(&mut theme.panel, &mut theme.panel_material, p.text);
+        if let Some(float) = &m.float_material {
+            theme.try_dress(float, &TextStyle::from_parts(p, m)).ok();
+        }
         theme
+    }
+
+    /// Dress the panel in `float`, held for `ambient`'s ink, as the modal's content is the app's.
+    pub(super) fn try_dress(
+        &mut self,
+        float: &FloatMaterial,
+        ambient: &TextStyle,
+    ) -> Result<(), MaterialRefusal> {
+        float.try_dress(&mut self.panel, &mut self.panel_material, ambient.color)
     }
 }

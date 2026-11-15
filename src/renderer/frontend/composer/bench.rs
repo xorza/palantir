@@ -11,6 +11,7 @@
 
 use crate::bench::backends::Backend;
 use crate::bench::kind::{Kind, Scale};
+use crate::cascade::blur_plan::BlurPlan;
 use crate::cascade::plane_backdrop::PlaneBackdrop;
 use crate::common::span::Span;
 use crate::display::Display;
@@ -27,9 +28,9 @@ use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::line_style::{LineCap, LineJoin};
-use crate::renderer::backdrop_captures::BackdropTicket;
+use crate::renderer::backdrop_captures::{BackdropTicket, TicketResult};
 use crate::renderer::frontend::composer::rect_grid;
-use crate::renderer::frontend::paint_sink::PaintSink;
+use crate::renderer::frontend::paint_sink::{DrawAnimation, PaintSink};
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_closed_payload::DrawClosedPayload;
 use crate::renderer::frontend::payload::draw_closed_payload::closed_effect::{
@@ -42,16 +43,15 @@ use crate::renderer::frontend::payload::draw_stroke_payload::{
     DrawStrokePayload, PolylinePath, StrokePath,
 };
 use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
-use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::render_buffer::backdrop_row::BackdropCapture;
 use crate::renderer::render_buffer::draw_run::Lane;
+use crate::renderer::render_buffer::gpu_fill::GpuFill;
 use crate::renderer::render_buffer::image_flags::ImageFlags;
 use crate::shape::geometry::box_geometry::PlacedBox;
 use crate::shape::geometry::closed_geometry::PlacedClosed;
 use crate::shape::geometry::curve_basis::CurveBasis;
 use crate::shape::geometry::stroke_geometry::PolylineColorSpan;
-use crate::shape::paint::blur_plan::BlurPlan;
 use crate::shape::paint::lowered_border::LoweredBorder;
 use crate::shape::paint::lowered_material::LoweredMaterial;
 use crate::text::key::TextShapeKey;
@@ -86,7 +86,6 @@ impl ComposeBench {
             cmds.draw(
                 DrawStrokePayload {
                     origin: Vec2::ZERO,
-                    spin: None,
                     path: StrokePath::Curve(CurveBasis::Cubic(CubicBezier {
                         p0: Vec2::new(16.0, 64.0),
                         p1: Vec2::new(48.0, 64.0),
@@ -98,9 +97,9 @@ impl ComposeBench {
                         ..Default::default()
                     },
                     width: 2.0,
-                    ..Default::default()
+                    ..DrawStrokePayload::fixture()
                 },
-                1.0,
+                DrawAnimation::STILL,
             );
         }
         Self::new(cmds, UVec2::splat(128))
@@ -312,7 +311,6 @@ impl QuadCase {
                             join: LineJoin::Miter,
                         }),
                         origin: Vec2::ZERO,
-                        spin: None,
                         fill: GpuFill {
                             color: RgbaF32::WHITE.to_f16(),
                             ..Default::default()
@@ -320,7 +318,7 @@ impl QuadCase {
                         width: 2.0,
                         cap: LineCap::Butt,
                     },
-                    1.0,
+                    DrawAnimation::STILL,
                 );
             }
         }
@@ -413,17 +411,17 @@ impl ClipCase {
 
 fn push_quad(cmds: &mut PaintCapture, rect: Rect) {
     cmds.draw(
-        DrawClosedPayload::new(
-            PlacedClosed::Box(PlacedBox {
+        DrawClosedPayload {
+            geometry: PlacedClosed::Box(PlacedBox {
                 rect,
                 corners: Corners::ZERO,
             }),
-            ClosedFill::new(
+            paint: ClosedFill::new(
                 BrushSource::Solid(RgbaF32::WHITE.to_f16()),
                 LoweredBorder::NONE,
             ),
-        ),
-        1.0,
+        },
+        DrawAnimation::STILL,
     );
 }
 
@@ -445,24 +443,24 @@ fn push_backdrop(cmds: &mut PaintCapture, rect: Rect, i: u32) {
                     .region(footprint, footprint.max())
                     .expect("a bench backdrop paints"),
             },
-            captures: false,
+            result: TicketResult::Held,
         },
         reach: material.capture.reach,
     };
     cmds.draw(
-        DrawClosedPayload::new(
-            PlacedClosed::Box(PlacedBox {
+        DrawClosedPayload {
+            geometry: PlacedClosed::Box(PlacedBox {
                 rect,
                 corners: Corners::ZERO,
             }),
-            ClosedEffect::material(
+            paint: ClosedEffect::material(
                 material,
                 read,
                 BrushSource::Solid(RgbaF32::new(1.0, 1.0, 1.0, 0.25).to_f16()),
                 LoweredBorder::NONE,
             ),
-        ),
-        1.0,
+        },
+        DrawAnimation::STILL,
     );
 }
 
@@ -475,9 +473,8 @@ fn push_mesh(cmds: &mut PaintCapture, bbox: Rect) {
             tint: RgbaF32::WHITE.to_f16(),
             vertices: Span::new(0, 3),
             idxs: Span::new(0, 3),
-            spin: None,
         },
-        1.0,
+        DrawAnimation::STILL,
     );
 }
 
@@ -501,9 +498,8 @@ fn push_text(cmds: &mut PaintCapture, rect: Rect) {
                 key: TextShapeKey::fixture(),
                 span: Span::default(),
             },
-            spin: None,
         },
-        1.0,
+        DrawAnimation::STILL,
     );
 }
 
@@ -514,7 +510,6 @@ fn push_image(cmds: &mut PaintCapture, rect: Rect) {
                 rect,
                 corners: Corners::ZERO,
             }),
-            spin: None,
             paint: ClosedImage {
                 rect,
                 uv_min: Vec2::ZERO,
@@ -525,7 +520,7 @@ fn push_image(cmds: &mut PaintCapture, rect: Rect) {
                 view: None,
             },
         },
-        1.0,
+        DrawAnimation::STILL,
     );
 }
 

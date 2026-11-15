@@ -4,6 +4,8 @@
 mod decay;
 
 use super::*;
+use crate::gpu::atlas::tenant::Tenant;
+use crate::gpu::device::pass_traffic::PassTraffic;
 
 /// An `R8` list of `first` and `page` edges and `soft` bytes on a device of 16384.
 fn list(first: u32, page: u32, soft: u64) -> PageList {
@@ -41,7 +43,7 @@ fn a_list_packs_doubles_its_first_page_then_opens_pages() {
     assert_eq!(list.slots(), PageSlots::FIRST, "no page open");
     let mut evictions = Evictions::default();
     let mut alloc = |list: &mut PageList, size| {
-        list.allocate(Tenant::Glyphs, size, 0, &mut evictions)
+        list.allocate(Tenant::Glyphs.owner(), size, 0, &mut evictions)
             .unwrap()
             .handle
     };
@@ -69,7 +71,12 @@ fn a_list_packs_doubles_its_first_page_then_opens_pages() {
         [5 * 32 * 32, 100 * 100]
     );
     assert_eq!(
-        list.allocate(Tenant::Glyphs, UVec2::new(129, 1), 0, &mut evictions),
+        list.allocate(
+            Tenant::Glyphs.owner(),
+            UVec2::new(129, 1),
+            0,
+            &mut evictions
+        ),
         Err(AtlasError::Oversized {
             size: UVec2::new(129, 1),
             edge: 128
@@ -80,7 +87,8 @@ fn a_list_packs_doubles_its_first_page_then_opens_pages() {
 /// Over the soft budget of two 64 pages, `8192` bytes, the list evicts before it grows, and takes
 /// neither an item drawn this frame or the last nor a pinned one: at frame 2, `a`, stamped at 1, and
 /// pinned `b` stay, and the clock takes `c` for `i` and `d`, an icon, for `j`, each new item in its
-/// victim's place, each victim queued for its own tenant and stale. With every item kept, the
+/// victim's place, each victim queued for its own tenant with the tag it was filed under, its
+/// index, and stale. With every item kept, the
 /// list grows past the budget, to a third page, rather than refuse.
 #[test]
 fn over_budget_a_list_evicts_what_no_frame_holds() {
@@ -94,14 +102,13 @@ fn over_budget_a_list_evicts_what_no_frame_holds() {
     ];
     let items: Vec<AtlasHandle> = (0..8)
         .map(|i| {
-            list.allocate(
-                *tenants.get(i).unwrap_or(&Tenant::Glyphs),
-                square(32),
-                0,
-                &mut evictions,
-            )
-            .unwrap()
-            .handle
+            let owner = ItemOwner {
+                tenant: tenants.get(i).copied().unwrap_or(Tenant::Glyphs),
+                tag: i as u32,
+            };
+            list.allocate(owner, square(32), 0, &mut evictions)
+                .unwrap()
+                .handle
         })
         .collect();
     assert_eq!(list.bytes(), 2 * 64 * 64, "two pages, at the budget");
@@ -110,18 +117,24 @@ fn over_budget_a_list_evicts_what_no_frame_holds() {
     list.pin(b);
 
     let i = list
-        .allocate(Tenant::Glyphs, square(32), 2, &mut evictions)
+        .allocate(Tenant::Glyphs.owner(), square(32), 2, &mut evictions)
         .unwrap()
         .handle;
     assert_eq!(at(&list, i), (0, U16Vec2::new(0, 32)), "c's place");
     assert_eq!(list.placement(c), None, "c is stale");
     let j = list
-        .allocate(Tenant::Glyphs, square(32), 2, &mut evictions)
+        .allocate(Tenant::Glyphs.owner(), square(32), 2, &mut evictions)
         .unwrap()
         .handle;
     assert_eq!(at(&list, j), (0, U16Vec2::new(32, 32)), "d's place");
-    assert_eq!(evictions.queues[Tenant::Glyphs as usize], [c]);
-    assert_eq!(evictions.queues[Tenant::Icons as usize], [d]);
+    assert_eq!(
+        evictions.evicted(Tenant::Glyphs),
+        [Evicted { handle: c, tag: 2 }]
+    );
+    assert_eq!(
+        evictions.evicted(Tenant::Icons),
+        [Evicted { handle: d, tag: 3 }]
+    );
     assert_eq!(
         list.bytes(),
         2 * 64 * 64,
@@ -134,7 +147,7 @@ fn over_budget_a_list_evicts_what_no_frame_holds() {
     list.stamp(i, 2);
     list.stamp(j, 2);
     let k = list
-        .allocate(Tenant::Glyphs, square(32), 2, &mut evictions)
+        .allocate(Tenant::Glyphs.owner(), square(32), 2, &mut evictions)
         .unwrap()
         .handle;
     assert_eq!(
@@ -153,15 +166,15 @@ fn at_the_hard_cap_a_list_refuses_until_a_frame_frees_one() {
     let mut list = list(32, 32, 0);
     let mut evictions = Evictions::default();
     for _ in 0..MAX_PAGES {
-        list.allocate(Tenant::Glyphs, square(32), 0, &mut evictions)
+        list.allocate(Tenant::Glyphs.owner(), square(32), 0, &mut evictions)
             .unwrap();
     }
     assert_eq!(
-        list.allocate(Tenant::Glyphs, square(32), 1, &mut evictions),
+        list.allocate(Tenant::Glyphs.owner(), square(32), 1, &mut evictions),
         Err(AtlasError::Full)
     );
     let fresh = list
-        .allocate(Tenant::Glyphs, square(32), 2, &mut evictions)
+        .allocate(Tenant::Glyphs.owner(), square(32), 2, &mut evictions)
         .unwrap()
         .handle;
     assert_eq!(
@@ -169,7 +182,7 @@ fn at_the_hard_cap_a_list_refuses_until_a_frame_frees_one() {
         (0, U16Vec2::ZERO),
         "the first page's, evicted"
     );
-    assert_eq!(evictions.queues[Tenant::Glyphs as usize].len(), 1);
+    assert_eq!(evictions.handles(Tenant::Glyphs).len(), 1);
 }
 
 /// With no evictable item on a shelf that takes a 64 × 32 item, the list empties a whole shelf: on
@@ -182,20 +195,25 @@ fn a_tall_item_frees_bottom_shelves_until_rows_hold_it() {
     let mut evictions = Evictions::default();
     let items: Vec<AtlasHandle> = (0..16)
         .map(|_| {
-            list.allocate(Tenant::Glyphs, square(16), 0, &mut evictions)
+            list.allocate(Tenant::Glyphs.owner(), square(16), 0, &mut evictions)
                 .unwrap()
                 .handle
         })
         .collect();
     let tall = list
-        .allocate(Tenant::Glyphs, UVec2::new(64, 32), 2, &mut evictions)
+        .allocate(
+            Tenant::Glyphs.owner(),
+            UVec2::new(64, 32),
+            2,
+            &mut evictions,
+        )
         .unwrap()
         .handle;
     assert_eq!(at(&list, tall), (0, U16Vec2::new(0, 32)));
     let evicted: Vec<AtlasHandle> = [12, 13, 14, 15, 8, 9, 10, 11]
         .map(|idx| items[idx])
         .to_vec();
-    assert_eq!(evictions.queues[Tenant::Glyphs as usize], evicted);
+    assert_eq!(evictions.handles(Tenant::Glyphs), evicted);
     assert_eq!(list.bytes(), 64 * 64, "no grow");
 }
 
@@ -210,7 +228,7 @@ fn a_draining_page_takes_no_allocation_until_an_insert_needs_it() {
     let mut list = list(32, 32, 1 << 20);
     let mut evictions = Evictions::default();
     let mut insert = |list: &mut PageList| {
-        list.allocate(Tenant::Glyphs, square(16), 0, &mut evictions)
+        list.allocate(Tenant::Glyphs.owner(), square(16), 0, &mut evictions)
             .unwrap()
             .handle
     };
@@ -256,7 +274,7 @@ fn a_released_slot_serves_the_next_insert_at_a_new_generation() {
     let mut list = list(32, 32, 1 << 20);
     let mut evictions = Evictions::default();
     let first = list
-        .allocate(Tenant::Glyphs, square(8), 0, &mut evictions)
+        .allocate(Tenant::Glyphs.owner(), square(8), 0, &mut evictions)
         .unwrap();
     assert_eq!(list.placement(first.handle), Some(first.placement));
     assert_eq!(first.placement.size, U16Vec2::splat(8));
@@ -265,12 +283,12 @@ fn a_released_slot_serves_the_next_insert_at_a_new_generation() {
     assert_eq!(list.placement(first), None);
     assert_eq!(list.stamp(first, 1), None);
     let second = list
-        .allocate(Tenant::Icons, square(8), 1, &mut evictions)
+        .allocate(Tenant::Icons.owner(), square(8), 1, &mut evictions)
         .unwrap()
         .handle;
     assert_eq!(
-        (second.idx, second.generation),
-        (first.idx, first.generation + 1)
+        (second.key.idx, second.key.generation),
+        (first.key.idx, first.key.generation + 1)
     );
     assert_eq!(list.page(0).unwrap().live_texels(), 64);
 
@@ -313,7 +331,12 @@ fn a_frame_moves_within_its_device_budget() {
 fn a_pinned_item_is_not_released() {
     let mut list = list(32, 32, 1 << 20);
     let item = list
-        .allocate(Tenant::Glyphs, square(8), 0, &mut Evictions::default())
+        .allocate(
+            Tenant::Glyphs.owner(),
+            square(8),
+            0,
+            &mut Evictions::default(),
+        )
         .unwrap()
         .handle;
     list.pin(item);
@@ -325,7 +348,12 @@ fn a_pinned_item_is_not_released() {
 fn an_item_is_not_unpinned_past_its_pins() {
     let mut list = list(32, 32, 1 << 20);
     let item = list
-        .allocate(Tenant::Glyphs, square(8), 0, &mut Evictions::default())
+        .allocate(
+            Tenant::Glyphs.owner(),
+            square(8),
+            0,
+            &mut Evictions::default(),
+        )
         .unwrap()
         .handle;
     list.unpin(item, 0);
@@ -356,7 +384,7 @@ fn edges_hold_to_the_device_and_scratch_counts_in_the_bytes() {
     assert!(wide.prefers_scratch(UVec2::new(10, 513)));
     let id = wide
         .scratch_mut()
-        .acquire(UVec2::splat(100), Tenant::Backdrops, 0)
+        .acquire(UVec2::splat(100), Tenant::Backdrops.owner(), 0)
         .unwrap();
     assert_eq!(wide.scratch().size(id), Some(UVec2::splat(128)));
     assert_eq!(wide.bytes(), 128 * 128);
@@ -366,8 +394,13 @@ fn edges_hold_to_the_device_and_scratch_counts_in_the_bytes() {
 #[should_panic(expected = "a page closed under its items")]
 fn a_page_is_not_closed_under_its_items() {
     let mut list = list(32, 32, 1 << 20);
-    list.allocate(Tenant::Glyphs, square(8), 0, &mut Evictions::default())
-        .unwrap();
+    list.allocate(
+        Tenant::Glyphs.owner(),
+        square(8),
+        0,
+        &mut Evictions::default(),
+    )
+    .unwrap();
     list.close_page(0);
 }
 
@@ -383,7 +416,7 @@ fn a_shelf_no_insert_can_free_latches_until_a_release() {
     let mut evictions = Evictions::default();
     let items: Vec<AtlasHandle> = (0..16)
         .map(|_| {
-            list.allocate(Tenant::Glyphs, square(16), 0, &mut evictions)
+            list.allocate(Tenant::Glyphs.owner(), square(16), 0, &mut evictions)
                 .unwrap()
                 .handle
         })
@@ -394,7 +427,7 @@ fn a_shelf_no_insert_can_free_latches_until_a_release() {
     }
     for _ in 0..2 {
         assert_eq!(
-            list.allocate(Tenant::Glyphs, square(32), 2, &mut evictions),
+            list.allocate(Tenant::Glyphs.owner(), square(32), 2, &mut evictions),
             Err(AtlasError::Full)
         );
     }
@@ -403,14 +436,11 @@ fn a_shelf_no_insert_can_free_latches_until_a_release() {
         list.release(handle);
     }
     let tall = list
-        .allocate(Tenant::Glyphs, square(32), 2, &mut evictions)
+        .allocate(Tenant::Glyphs.owner(), square(32), 2, &mut evictions)
         .unwrap()
         .handle;
     assert_eq!(at(&list, tall), (0, U16Vec2::ZERO));
-    assert_eq!(
-        evictions.queues[Tenant::Glyphs as usize],
-        [items[3], items[1]]
-    );
+    assert_eq!(evictions.handles(Tenant::Glyphs), [items[3], items[1]]);
 }
 
 /// A dry shelf latched for a 16 × 8 item at frame 3 covers, that frame, an item no shorter and no

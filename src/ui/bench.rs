@@ -43,7 +43,7 @@ use crate::diagnostics::gpu_pass_stats::BatchKind;
 use crate::gpu::bench_gpu::{BenchGpu, Timing};
 use crate::gpu::surface::owned_target::OwnedTarget;
 use crate::host::harness::Harness;
-use crate::host::harness::harness_builder::Depth;
+use crate::host::harness::harness_builder::HarnessDepth;
 use crate::host::offscreen::{OffscreenHost, OffscreenTime};
 use crate::primitives::input::input_event::InputEvent;
 use crate::primitives::input::keyboard::key::Key;
@@ -86,9 +86,9 @@ fn bench_theme() -> Theme {
 /// Motion, transparency and power whole, whatever the host's settings say.
 fn force_full_effects(ui: &mut Ui) {
     ui.set_preferences(UiPreferences {
-        motion: Preference::Fixed(Reduction::Full),
-        transparency: Preference::Fixed(Reduction::Full),
-        power: Preference::Fixed(Reduction::Full),
+        motion: Preference::Fixed(Reduction::Unreduced),
+        transparency: Preference::Fixed(Reduction::Unreduced),
+        power: Preference::Fixed(Reduction::Unreduced),
         ..ui.preferences()
     });
 }
@@ -97,7 +97,8 @@ fn force_full_effects(ui: &mut Ui) {
 /// second, at once.
 pub(crate) fn settle_look(ui: &mut Ui, n: u32) {
     if n == 1 {
-        ui.set_theme(ColorScheme::Dark, bench_theme()).unwrap();
+        ui.set_scheme_theme(ColorScheme::Dark, bench_theme())
+            .unwrap();
     }
 }
 
@@ -188,7 +189,7 @@ impl CpuHarness {
     fn new(time: OffscreenTime) -> Self {
         let mut h = Harness::builder(BENCH_SURFACE)
             .system_scale(BENCH_DPR)
-            .depth(Depth::Compose)
+            .depth(HarnessDepth::Compose)
             .build();
         force_full_effects(h.ui_mut());
         Self {
@@ -210,7 +211,7 @@ impl CpuHarness {
             }
         };
         self.h.at(time);
-        self.h.frame(record).paint()
+        self.h.frame(record).paint
     }
 }
 
@@ -340,7 +341,7 @@ impl Arm {
             return;
         }
         let roomy = ui.theme().text.font_size == Metrics::DEFAULT.text.body;
-        ui.set_theme(
+        ui.set_scheme_theme(
             ColorScheme::Dark,
             Theme {
                 transition: THEMING,
@@ -391,8 +392,8 @@ impl Arm {
             let mut step = || {
                 self.advance(&mut state, n);
                 let paint = frame(&mut state, n);
-                let typed = self != Self::Typing
-                    || state.scene.field_len() == usize::from(n.is_multiple_of(2));
+                let typed =
+                    self != Self::Typing || state.field_len == usize::from(n.is_multiple_of(2));
                 n = n.wrapping_add(1);
                 (paint, typed)
             };
@@ -488,7 +489,7 @@ fn gpu_frame<S: Scene>(
     let mut app = |ui: &mut Ui| state.record(ui);
     host.set_system_scale(BENCH_DPR)
         .frame(target.as_target(), &mut app)
-        .paint()
+        .paint
 }
 
 /// One arm's frames on the device: its host and the targets it renders at.

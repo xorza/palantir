@@ -18,9 +18,9 @@ pub(crate) struct EntryRow {
     pub(crate) rect: Rect,
     /// The cumulative ancestor transform mapping this node's layout rect into
     /// unclipped surface space, `IDENTITY` when untransformed. Surfaced via
-    /// `ResponseState::transform` to localize surface-space vectors.
+    /// `Response::transform` to localize surface-space vectors.
     pub(crate) transform: TranslateScale,
     /// Effective disabled (self or any ancestor). Stored, not acted on:
-    /// `ResponseState::merge_disabled` empties a disabled widget's response.
+    /// `Response::merge_disabled` empties a disabled widget's response.
     pub(crate) disabled: bool,
 }

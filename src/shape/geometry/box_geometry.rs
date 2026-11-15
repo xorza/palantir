@@ -6,6 +6,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::math::float_hash::FloatHash;
 use crate::primitives::math::nan::NanCheck;
+use crate::shape::geometry;
 use glam::Vec2;
 use std::hash::{Hash as _, Hasher as _};
 
@@ -21,10 +22,8 @@ pub(crate) struct BoxGeometry {
 impl BoxGeometry {
     /// The box in an owner of `owner_size`, owner-local.
     pub(crate) fn place(self, owner_size: Size) -> PlacedBox {
-        self.outline.place(self.local_rect.unwrap_or(Rect {
-            min: Vec2::ZERO,
-            size: owner_size,
-        }))
+        self.outline
+            .place(geometry::layout_rect(self.local_rect, owner_size))
     }
 
     /// Feed the geometry into a record's hash.

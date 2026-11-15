@@ -7,10 +7,11 @@ use crate::primitives::identity::effect_id::EffectId;
 use crate::primitives::identity::icon_handle::IconHandle;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
-use crate::primitives::paint::image::{ImageDownsample, ImageFilter, ImageFit};
-use crate::shape::lower::LoweredPaint;
+use crate::primitives::paint::image::image_filter::{ImageDownsample, ImageFilter};
+use crate::primitives::paint::image::image_placement::ImagePlacement;
 use crate::shape::paint::capture_params::CaptureParams;
 use crate::shape::paint::image_source::ImageSource;
+use crate::shape::paint::lowered_paint::LoweredPaint;
 
 /// The paint of a closed shape's record, which the shape in [`ShapeRecord::Closed`] holds beside
 /// it, as `Ui::add_shape` takes the two.
@@ -26,7 +27,7 @@ pub(crate) enum ClosedPaint {
     Image {
         tint: RgbaF16,
         source: ImageSource,
-        fit: ImageFit,
+        placement: ImagePlacement,
         min_filter: ImageFilter,
         mag_filter: ImageFilter,
         downsample: ImageDownsample,
@@ -34,30 +35,47 @@ pub(crate) enum ClosedPaint {
     /// A baked SVG icon over a square-cornered box, rasterized at the exact physical size into the
     /// icon atlas. The [`IconHandle`] carries the viewBox, so `fit` needs no registry lookup.
     /// `tint` multiplies a tintable icon whole and a color icon's alpha only, see
-    /// [`IconPaint`](crate::widget::IconPaint).
+    /// [`IconPaint`](crate::IconPaint).
     Icon {
         handle: IconHandle,
         fit: Fit,
         tint: RgbaF16,
         /// Draws a color icon as its own luminance, see
-        /// [`IconPaint::desaturate`](crate::widget::IconPaint::desaturate).
+        /// [`IconPaint::desaturate`](crate::IconPaint::desaturate).
         desaturate: bool,
     },
     /// An app-written effect over the shape, which may exceed the owner. `params` indexes the
     /// `RecordStore`'s parameter words; `content_hash` covers the effect, those words, its images,
     /// its backdrop and its halo.
     Effect {
-        /// What a backdrop effect captures under it; `None` for a color effect.
-        backdrop: Option<CaptureParams>,
-        /// A color effect's halo, logical px past the shape, outside it alone; `None` paints over
-        /// the shape.
-        outside: Option<f32>,
+        read: RecordedRead,
         effect: EffectId,
         params: Span,
         /// Into `RecordStore::effect_images`.
         images: Span,
         content_hash: ContentHash,
     },
+}
+
+/// What an app's effect reads besides its inputs, by its kind, as its record holds it.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum RecordedRead {
+    /// A color effect, over the shape, or a halo `outside` it alone, logical px past it.
+    Color { outside: Option<f32> },
+    /// A backdrop effect, over what it captures under it.
+    Backdrop { capture: CaptureParams },
+}
+
+impl RecordedRead {
+    /// How far past its shape the paint reaches, logical px: a halo's reach, else 0.
+    pub(crate) const fn halo_reach(self) -> f32 {
+        match self {
+            Self::Color {
+                outside: Some(reach),
+            } => reach,
+            Self::Color { outside: None } | Self::Backdrop { .. } => 0.0,
+        }
+    }
 }
 
 impl ClosedPaint {
@@ -70,7 +88,7 @@ impl ClosedPaint {
                 ..
             }) => Some(material.capture),
             Self::Effect {
-                backdrop: Some(capture),
+                read: RecordedRead::Backdrop { capture },
                 ..
             } => Some(*capture),
             _ => None,
@@ -87,11 +105,14 @@ impl NanCheck for ClosedPaint {
                 shadow,
                 material,
             }) => fill.has_nan() || border.has_nan() || shadow.has_nan() || material.has_nan(),
-            Self::Image { tint, fit, .. } => tint.has_nan() || fit.has_nan(),
+            Self::Image {
+                tint, placement, ..
+            } => tint.has_nan() || placement.has_nan(),
             Self::Icon { tint, .. } => tint.has_nan(),
-            Self::Effect {
-                backdrop, outside, ..
-            } => backdrop.has_nan() || outside.is_some_and(f32::is_nan),
+            Self::Effect { read, .. } => match read {
+                RecordedRead::Color { outside } => outside.is_some_and(f32::is_nan),
+                RecordedRead::Backdrop { capture } => capture.has_nan(),
+            },
         }
     }
 }

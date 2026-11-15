@@ -55,7 +55,7 @@ impl Sizing {
     ///
     /// # Panics
     ///
-    /// Panics unless `value` is a [length](crate::widget::domain::length).
+    /// Panics unless `value` is a [length](crate::widget::domain::is_length).
     #[inline]
     #[track_caller]
     pub const fn fixed(value: f32) -> Self {
@@ -63,18 +63,18 @@ impl Sizing {
     }
 
     /// A share of remaining space in proportion to `weight` across `Fill`
-    /// siblings. `weight`: a *length*.
+    /// siblings. `weight`: a *factor*.
     ///
     /// A zero weight takes no share (as WPF's `0*`) and is stored as
     /// `fixed(0.0)`, so [`Self::fill_weight`] answers `None` for it.
     ///
     /// # Panics
     ///
-    /// Panics unless `weight` is a [length](crate::widget::domain::length).
+    /// Panics unless `weight` is a [factor](crate::widget::domain::is_factor).
     #[inline]
     #[track_caller]
     pub const fn fill(weight: f32) -> Self {
-        let weight = domain::length(weight);
+        let weight = domain::factor(weight);
         if weight == 0.0 {
             Self(SizingValue::Fixed(0.0))
         } else {
@@ -164,8 +164,8 @@ impl hash::Hash for Sizing {
 /// - `Fill(w)` is `-w`: the weight is positive, so the sign bit is set.
 /// - `Hug` is `+∞`, which both others exclude.
 ///
-/// `Configure::size` takes `impl Into<SizeSpec>`: `.size(100.0)`,
-/// `.size(Sizing::FILL)`, `.size((Sizing::FILL, 40.0))`.
+/// `Configure::size` takes `impl Into<SizeSpec>`: `.size(100.0)`, `.size(Sizing::FILL)`,
+/// `.size((Sizing::FILL, 40.0))`, and the named specs, as `.size(SizeSpec::FILL_W)`.
 #[derive(Clone, Copy)]
 pub struct SizeSpec {
     w_packed: u32,
@@ -175,7 +175,7 @@ pub struct SizeSpec {
 impl Default for SizeSpec {
     #[inline]
     fn default() -> Self {
-        Self::new(Sizing::HUG, Sizing::HUG)
+        Self::HUG
     }
 }
 
@@ -204,6 +204,18 @@ const fn decode_sizing(packed: u32) -> Sizing {
 }
 
 impl SizeSpec {
+    /// Fill both axes.
+    pub const FILL: Self = Self::new(Sizing::FILL, Sizing::FILL);
+
+    /// Hug both axes: the content's size, the default.
+    pub const HUG: Self = Self::new(Sizing::HUG, Sizing::HUG);
+
+    /// Fill the width and hug the height, as a row in a column does.
+    pub const FILL_W: Self = Self::new(Sizing::FILL, Sizing::HUG);
+
+    /// Hug the width and fill the height, as a column in a row does.
+    pub const FILL_H: Self = Self::new(Sizing::HUG, Sizing::FILL);
+
     /// Both axes, packed into eight bytes.
     #[inline]
     pub const fn new(w: Sizing, h: Sizing) -> Self {
@@ -292,7 +304,7 @@ mod tests {
     use crate::primitives::geometry::size::Size;
     use crate::primitives::layout::sizing::{SizeSpec, Sizing};
     use crate::primitives::math::domain;
-    use crate::widget_core::configure::{Configure, ThemeDefaults};
+    use crate::widget_core::configure::{Configure, ConfigureDefaults};
     use crate::widget_core::widget::Widget;
 
     /// The two shares always partition 1.0, an out-of-range input clamps, and
@@ -363,7 +375,7 @@ mod tests {
     #[test]
     fn constructors_accept_only_finite_valid_payloads() {
         const FIXED: &str = domain::LENGTH_RULE;
-        const FILL: &str = domain::LENGTH_RULE;
+        const FILL: &str = domain::FACTOR_RULE;
         type Case = (&'static str, fn() -> Sizing);
 
         assert_eq!(Sizing::fixed(f32::MAX).fixed_value(), Some(f32::MAX));
@@ -407,5 +419,23 @@ mod tests {
             let site = panic_probe::panic_site(domain::LENGTH_RULE, record);
             assert_eq!(site, format!("{}:{line}", file!()), "case {n}");
         }
+    }
+
+    /// `FILL_W` fills the width and hugs the height, as the tuple spells it, and `Sizing::FILL`
+    /// converts to both axes filling.
+    #[test]
+    fn the_named_specs_are_their_tuples() {
+        assert_eq!(
+            SizeSpec::FILL_W,
+            SizeSpec::from((Sizing::FILL, Sizing::HUG))
+        );
+        assert_eq!(
+            (SizeSpec::FILL_W.w(), SizeSpec::FILL_W.h()),
+            (Sizing::FILL, Sizing::HUG)
+        );
+        assert_eq!(
+            SizeSpec::from(Sizing::FILL),
+            SizeSpec::new(Sizing::FILL, Sizing::FILL)
+        );
     }
 }

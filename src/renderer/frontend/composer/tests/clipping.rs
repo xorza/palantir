@@ -309,7 +309,7 @@ fn push_clip_rounded_lands_radius_on_group_and_inherits_through_rect() {
     assert_eq!(outer_chain.len(), 1, "single rounded clip → depth-1 chain");
     let outer_r = outer_chain[0];
     // DPR=2 → radius doubles 8→16, rect (10,20,100,80) → (20,40,200,160).
-    assert_eq!(outer_r.corners.to_array()[0], 16.0);
+    assert_eq!(outer_r.corners.top_left(), 16.0);
     assert_eq!(outer_r.mask_rect.min, Vec2::new(20.0, 40.0));
     assert_eq!(outer_r.mask_rect.size, Size::new(200.0, 160.0));
     assert_eq!(outer, Some(URect::new(20, 40, 200, 160)));
@@ -360,7 +360,7 @@ fn push_clip_rounded_nested_builds_outer_inner_chain() {
     let outer = chain(0);
     assert_eq!(outer.len(), 1);
     assert_eq!(outer[0].mask_rect, Rect::new(10.0, 10.0, 200.0, 200.0));
-    assert_eq!(outer[0].corners.to_array()[0], 8.0);
+    assert_eq!(outer[0].corners.top_left(), 8.0);
 
     let nested = chain(1);
     assert_eq!(
@@ -369,7 +369,7 @@ fn push_clip_rounded_nested_builds_outer_inner_chain() {
         "the outer holds the inner and leaves its chain"
     );
     assert_eq!(nested[0].mask_rect, Rect::new(20.0, 20.0, 100.0, 100.0));
-    assert_eq!(nested[0].corners.to_array()[0], 4.0);
+    assert_eq!(nested[0].corners.top_left(), 4.0);
 
     // Rect clip under both: inherits the inner's chain verbatim.
     assert_eq!(

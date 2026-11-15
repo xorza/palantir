@@ -30,7 +30,7 @@ impl Study {
     /// Run the study over `S` with `args`, its command line past its name.
     pub(super) fn run<S: Scene>(self, args: Vec<String>) -> ExitCode {
         match self {
-            Self::DamageSweep => damage::sweep::run::<S>(args),
+            Self::DamageSweep => damage::bench::sweep::run::<S>(args),
             Self::AtlasMemory => atlas_memory::bench::study::<S>(&args),
         }
     }

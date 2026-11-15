@@ -1,21 +1,18 @@
 //! Shapes that must hash apart, and the spans that must not count.
 
 use crate::common::hash;
-use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::cubic_bezier::CubicBezier;
 use crate::primitives::geometry::fit::Fit;
 use crate::primitives::identity::effect_id::EffectId;
-use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::math::domain::EPS;
 use crate::primitives::paint::border::Border;
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::image::{ImageDownsample, ImageFilter};
 use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::paint::stroke::Stroke;
 use crate::shape::geometry::arc_geometry::ArcGeometry;
 use crate::shape::geometry::bezier_geometry::BezierGeometry;
-use crate::shape::geometry::box_geometry::{BoxGeometry, BoxOutline};
 use crate::shape::geometry::triangle_geometry::TriangleGeometry;
+use crate::shape::paint::closed_paint::RecordedRead;
 use crate::shape::paint::curve_ramp::CurveRamp;
 use crate::shape::paint::lowered_border::LoweredBorder;
 use crate::shape::paint::lowered_shadow::LoweredShadow;
@@ -64,8 +61,7 @@ fn quad_shapes_hash_apart() {
             outline: sharp,
         }),
         paint: ClosedPaint::Effect {
-            backdrop: None,
-            outside: None,
+            read: RecordedRead::Color { outside: None },
             effect: EffectId(0),
             params: Span::default(),
             images: Span::default(),
@@ -176,7 +172,7 @@ fn image_source_hashes_apart_by_source() {
         paint: ClosedPaint::Image {
             tint: RgbaF32::WHITE.to_f16(),
             source,
-            fit: ImageFit::Fill,
+            placement: ImagePlacement::FILL,
             min_filter: ImageFilter::Linear,
             mag_filter: ImageFilter::Linear,
             downsample: ImageDownsample::Single,
@@ -250,7 +246,7 @@ fn shape_image_hash_distinguishes_handle_dimensions_tint_and_filters() {
                     size,
                     generation: 0,
                 },
-                fit: ImageFit::Fill,
+                placement: ImagePlacement::FILL,
                 min_filter,
                 mag_filter,
                 downsample: ImageDownsample::Single,

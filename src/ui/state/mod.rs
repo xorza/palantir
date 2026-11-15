@@ -8,7 +8,7 @@
 //! through `Memory::sweep` once per frame; each store `swap_remove`s the row and patches the
 //! swapped neighbor via the `owners` vec in O(1).
 
-use crate::primitives::identity::typed_stores::{Drained, TypedStore, TypedStores};
+use crate::common::typed_stores::{Drained, TypedStore, TypedStores};
 use crate::primitives::identity::widget_id::{WidgetId, WidgetIdMap, WidgetIdSet};
 
 /// What a read or a lend of a lent row panics with.

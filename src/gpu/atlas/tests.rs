@@ -4,7 +4,8 @@
 use crate::common::expiry_window::EXPIRY_FRAMES;
 use crate::gpu::atlas::atlas_format::AtlasFormat;
 use crate::gpu::atlas::atlas_handle::{Allocation, AtlasHandle, Placement};
-use crate::gpu::atlas::page_list::{MAX_PAGES, Page, PageListConfig};
+use crate::gpu::atlas::page_list::page::Page;
+use crate::gpu::atlas::page_list::{MAX_PAGES, PageListConfig};
 use crate::gpu::atlas::scratch_cache::ScratchId;
 use crate::gpu::atlas::tenant::Tenant;
 use crate::gpu::atlas::{AtlasPool, error::AtlasError};
@@ -50,7 +51,7 @@ fn the_pool_agrees_with_a_model_over_a_seeded_run() {
             0..=4 => {
                 let size = UVec2::new(1 + rng.below(40) as u32, 1 + rng.below(40) as u32);
                 let tenant = tenants[rng.below(tenants.len() as u64) as usize];
-                match pool.allocate(AtlasFormat::R8, tenant, size) {
+                match pool.allocate(AtlasFormat::R8, tenant.owner(), size) {
                     Ok(Allocation { handle, placement }) => {
                         assert_eq!(pool.placement(handle), Some(placement), "step {step}");
                         assert_eq!(placement.size.as_uvec2(), size, "step {step}");
@@ -116,7 +117,7 @@ fn the_pool_agrees_with_a_model_over_a_seeded_run() {
         }
         for tenant in tenants {
             drained.clear();
-            drained.extend(pool.drain_evicted(tenant));
+            drained.extend(pool.drain_evicted(tenant).map(|evicted| evicted.handle));
             for &handle in &drained {
                 let held = model
                     .remove(&key(handle))
@@ -141,7 +142,7 @@ fn the_pool_agrees_with_a_model_over_a_seeded_run() {
 
 /// The model's key of `handle`.
 const fn key(handle: AtlasHandle) -> (u32, u32) {
-    (handle.idx, handle.generation)
+    (handle.key.idx, handle.key.generation)
 }
 
 /// Every invariant the model holds the pool to after `step`.
@@ -215,7 +216,7 @@ fn a_scratch_texture_idles_then_expires_with_the_frames() {
     let id = pool
         .acquire_scratch(
             AtlasFormat::Rgba16F,
-            Tenant::Backdrops,
+            Tenant::Backdrops.owner(),
             UVec2::new(1936, 1088),
         )
         .unwrap();
@@ -251,7 +252,7 @@ fn a_burst_past_one_page_decays_within_the_bounds() {
     pool.advance_to(1);
     let burst: Vec<AtlasHandle> = (0..5000)
         .map(|_| {
-            pool.allocate(AtlasFormat::R8, Tenant::Glyphs, UVec2::splat(32))
+            pool.allocate(AtlasFormat::R8, Tenant::Glyphs.owner(), UVec2::splat(32))
                 .unwrap()
                 .handle
         })
@@ -311,20 +312,20 @@ fn a_purge_keeps_what_this_frame_drew_and_what_is_pinned() {
     let mut pool = AtlasPool::uniform(32, 32, 1 << 20);
     let items: Vec<AtlasHandle> = (0..6)
         .map(|_| {
-            pool.allocate(AtlasFormat::R8, Tenant::Glyphs, UVec2::splat(16))
+            pool.allocate(AtlasFormat::R8, Tenant::Glyphs.owner(), UVec2::splat(16))
                 .unwrap()
                 .handle
         })
         .collect();
     assert!(pool.list(AtlasFormat::R8).page(1).is_some());
     let idle = pool
-        .acquire_scratch(AtlasFormat::R8, Tenant::Backdrops, UVec2::splat(64))
+        .acquire_scratch(AtlasFormat::R8, Tenant::Backdrops.owner(), UVec2::splat(64))
         .unwrap();
     let held = pool
-        .acquire_scratch(AtlasFormat::R8, Tenant::Backdrops, UVec2::splat(64))
+        .acquire_scratch(AtlasFormat::R8, Tenant::Backdrops.owner(), UVec2::splat(64))
         .unwrap();
     let undrawn = pool
-        .acquire_scratch(AtlasFormat::R8, Tenant::Backdrops, UVec2::splat(64))
+        .acquire_scratch(AtlasFormat::R8, Tenant::Backdrops.owner(), UVec2::splat(64))
         .unwrap();
     pool.release_scratch(idle);
     pool.advance_to(4);
@@ -339,7 +340,10 @@ fn a_purge_keeps_what_this_frame_drew_and_what_is_pinned() {
         .map(|&handle| pool.placement(handle).is_some())
         .collect();
     assert_eq!(live, [true, false, true, false, false, false]);
-    let evicted: Vec<AtlasHandle> = pool.drain_evicted(Tenant::Glyphs).collect();
+    let evicted: Vec<AtlasHandle> = pool
+        .drain_evicted(Tenant::Glyphs)
+        .map(|evicted| evicted.handle)
+        .collect();
     assert_eq!(evicted, [items[1], items[3], items[4], items[5]]);
     let list = pool.list(AtlasFormat::R8);
     assert!(list.page(1).is_none(), "the emptied page closed");
@@ -347,7 +351,10 @@ fn a_purge_keeps_what_this_frame_drew_and_what_is_pinned() {
     assert_eq!(list.scratch().texels(), 64 * 64, "the drawn scratch alone");
     assert_eq!(pool.scratch_size(held), Some(UVec2::splat(64)));
     assert_eq!(pool.scratch_size(undrawn), None);
-    let taken: Vec<ScratchId> = pool.drain_evicted_scratch(Tenant::Backdrops).collect();
+    let taken: Vec<ScratchId> = pool
+        .drain_evicted_scratch(Tenant::Backdrops)
+        .map(|evicted| evicted.id)
+        .collect();
     assert_eq!(taken, [undrawn]);
 }
 
@@ -363,7 +370,7 @@ fn a_purge_goes_on_round_by_round_to_one_page() {
     let mut pool = AtlasPool::uniform(32, 128, 1 << 30);
     let items: Vec<AtlasHandle> = (0..40)
         .map(|_| {
-            pool.allocate(AtlasFormat::R8, Tenant::Glyphs, UVec2::splat(32))
+            pool.allocate(AtlasFormat::R8, Tenant::Glyphs.owner(), UVec2::splat(32))
                 .unwrap()
                 .handle
         })
@@ -398,7 +405,7 @@ fn the_move_budget_goes_round_the_lists() {
     for format in [AtlasFormat::R8, AtlasFormat::Rgba8] {
         let items: Vec<AtlasHandle> = (0..256 + 40)
             .map(|_| {
-                pool.allocate(format, Tenant::Glyphs, UVec2::splat(8))
+                pool.allocate(format, Tenant::Glyphs.owner(), UVec2::splat(8))
                     .unwrap()
                     .handle
             })

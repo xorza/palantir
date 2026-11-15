@@ -41,7 +41,7 @@ impl ZoomConfig {
     /// # Panics
     ///
     /// Panics unless both range ends and `step` are
-    /// [positive](crate::widget::domain::positive).
+    /// [positive](crate::widget::domain::is_positive).
     #[track_caller]
     pub const fn new(range: RangeInclusive<f32>, step: f32) -> Self {
         let a = domain::positive(*range.start());

@@ -1,6 +1,4 @@
-use crate::host::harness::Harness;
 use crate::internals::panic_probe;
-use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::geometry::translate_scale::TranslateScale;
@@ -15,28 +13,16 @@ use crate::primitives::layout::layout_mode::LayoutMode;
 use crate::primitives::layout::scroll_axes::ScrollAxes;
 use crate::primitives::layout::sizing::SizeSpec;
 use crate::primitives::layout::visibility::Visibility;
-use crate::primitives::math::domain::{self, MAX_GAP};
-use crate::primitives::packed::serde::LaneCodec;
-use crate::primitives::paint::border::Border;
-use crate::primitives::paint::chrome::Chrome;
-use crate::primitives::paint::color::RgbaF32;
-use crate::scene::node::Node;
+use crate::primitives::math::domain;
+use crate::primitives::packed::half_simd::F16x4;
 use crate::scene::node::id_recipe::{IdRecipe, ScopedRecipe};
 use crate::scene::node::node_mode::NodeMode;
-use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::configure::ThemeDefaults;
+use crate::widget_core::configure::ConfigureDefaults;
 use crate::widget_core::widget::Ident;
 use crate::widget_core::widget::Widget;
-use crate::widgets::menu::menu_item::MenuItem;
-use crate::widgets::scroll::Scroll;
-use crate::widgets::{block::Block, button::Button, grid::Grid, panel::Panel, text::Text};
-use glam::{UVec2, Vec2};
-
-fn node_of<W: Configure>(widget: &mut W) -> &mut Node {
-    let Configurator { widget } = widget.configure();
-    &mut widget.node
-}
+use glam::Vec2;
+use std::num::NonZeroU16;
 
 /// The `default_*` family fills in only where the caller stayed silent (the trait's half of "explicit wins, the theme fills the rest"). A `#[track_caller]` auto id must not count as set, or `default_id` is unreachable.
 #[test]
@@ -108,7 +94,9 @@ fn builder_setters_cover_the_complete_external_node_surface() {
         .padding(padding)
         .margin(margin)
         .at(pos)
-        .grid_cell(GridCell::at(2, 3).with_span(4, 5))
+        .grid_cell(
+            GridCell::at(2, 3).with_span(NonZeroU16::new(4).unwrap(), NonZeroU16::new(5).unwrap()),
+        )
         .gap(6.0)
         .line_gap(7.0)
         .justify(Justify::SpaceBetween)
@@ -131,7 +119,7 @@ fn builder_setters_cover_the_complete_external_node_surface() {
     assert_eq!(widget.authored().pos(), pos);
     assert_eq!(
         widget.authored().grid_cell(),
-        GridCell::at(2, 3).with_span(4, 5)
+        GridCell::at(2, 3).with_span(NonZeroU16::new(4).unwrap(), NonZeroU16::new(5).unwrap())
     );
     assert_eq!(widget.authored().gap(), Some(6.0));
     assert_eq!(widget.authored().line_gap(), Some(7.0));
@@ -169,24 +157,6 @@ fn authored_readers_answer_the_defaults_before_anything_is_set() {
     assert!(!widget.authored().focusable());
     assert_eq!(widget.authored().visibility(), Visibility::Visible);
     assert_eq!(widget.authored().transform(), TranslateScale::IDENTITY);
-}
-
-#[test]
-fn widget_specific_node_setters_reach_the_inner_node() {
-    let transform = TranslateScale::new(Vec2::new(4.0, 5.0), 2.0);
-    let mut panel = Panel::hstack().transform(transform);
-    let mut grid = Grid::new().transform(transform);
-    assert_eq!(node_of(&mut panel).transform, transform);
-    assert_eq!(node_of(&mut grid).transform, transform);
-
-    let mut item = MenuItem::new("Open").disabled(false);
-    assert!(!node_of(&mut item).flags.is_disabled());
-
-    let mut scroll = Scroll::both().zoomable();
-    assert_eq!(
-        node_of(&mut scroll).flags.sense(),
-        Sense::SCROLL | Sense::PINCH,
-    );
 }
 
 #[test]
@@ -265,9 +235,11 @@ fn node_bounds_coerce_their_order_and_validate_their_kinds() {
 fn packed_gaps_accept_f16_boundaries_and_reject_invalid_values() {
     type Case = (&'static str, fn() -> Widget);
 
-    let valid = Widget::hstack().gap(MAX_GAP).line_gap(MAX_GAP);
-    assert_eq!(valid.authored().gap(), Some(MAX_GAP));
-    assert_eq!(valid.authored().line_gap(), Some(MAX_GAP));
+    let valid = Widget::hstack()
+        .gap(F16x4::MAX_LANE)
+        .line_gap(F16x4::MAX_LANE);
+    assert_eq!(valid.authored().gap(), Some(F16x4::MAX_LANE));
+    assert_eq!(valid.authored().line_gap(), Some(F16x4::MAX_LANE));
 
     let cases: &[Case] = &[
         ("negative gap", || Widget::hstack().gap(-1.0)),
@@ -293,158 +265,13 @@ fn packed_gaps_accept_f16_boundaries_and_reject_invalid_values() {
     ];
 
     for &(_label, build) in cases {
-        panic_probe::assert_panics_with(domain::GAP_RULE, build);
+        panic_probe::assert_panics_with(domain::LENGTH_LANE_RULE, build);
     }
-}
-
-fn assert_distinct(label: &str, a: WidgetId, b: WidgetId) {
-    assert_ne!(
-        a, b,
-        "{label}: two `.auto_id()` calls on different lines produced the same id — \
-         `Configure::auto_id` is missing `#[track_caller]`."
-    );
-}
-
-fn id_of<W: Configure>(mut w: W) -> WidgetId {
-    // No parent context: `IdRecipe::raw_id(None)` yields the bare id.
-    w.configure().widget.ident.recipe().raw_id(None)
-}
-
-/// Pin: [`Configure::auto_id`] is `#[track_caller]` and resolves a stable id at the call site: two calls on different lines give distinct `WidgetId`s. The cases cover every public widget constructor.
-#[test]
-fn auto_id_propagates_track_caller_through_every_widget() {
-    type Case = (&'static str, fn() -> (WidgetId, WidgetId));
-    let cases: &[Case] = &[
-        ("Button", || {
-            (
-                id_of(Button::new().auto_id()),
-                id_of(Button::new().auto_id()),
-            )
-        }),
-        ("Block", || {
-            (id_of(Block::new().auto_id()), id_of(Block::new().auto_id()))
-        }),
-        ("Grid", || {
-            (id_of(Grid::new().auto_id()), id_of(Grid::new().auto_id()))
-        }),
-        ("Text", || {
-            (
-                id_of(Text::new("x").auto_id()),
-                id_of(Text::new("x").auto_id()),
-            )
-        }),
-        ("Panel::hstack", || {
-            (
-                id_of(Panel::hstack().auto_id()),
-                id_of(Panel::hstack().auto_id()),
-            )
-        }),
-        ("Panel::vstack", || {
-            (
-                id_of(Panel::vstack().auto_id()),
-                id_of(Panel::vstack().auto_id()),
-            )
-        }),
-        ("Panel::zstack", || {
-            (
-                id_of(Panel::zstack().auto_id()),
-                id_of(Panel::zstack().auto_id()),
-            )
-        }),
-        ("Panel::canvas", || {
-            (
-                id_of(Panel::canvas().auto_id()),
-                id_of(Panel::canvas().auto_id()),
-            )
-        }),
-        ("Panel::wrap_hstack", || {
-            (
-                id_of(Panel::wrap_hstack().auto_id()),
-                id_of(Panel::wrap_hstack().auto_id()),
-            )
-        }),
-        ("Panel::wrap_vstack", || {
-            (
-                id_of(Panel::wrap_vstack().auto_id()),
-                id_of(Panel::wrap_vstack().auto_id()),
-            )
-        }),
-    ];
-    for (label, mk) in cases {
-        let (a, b) = mk();
-        assert_distinct(label, a, b);
-    }
-}
-
-/// `id_salt(...)` overrides `auto_id`: the same key on different lines gives the same id.
-#[test]
-fn id_salt_overrides_auto_id() {
-    assert_eq!(
-        id_of(Button::new().id(WidgetId::from_hash("k"))),
-        id_of(Button::new().id(WidgetId::from_hash("k"))),
-    );
-}
-
-/// `Configure::auto_id()` re-derives the id at its call site: helper-internal calls collapse to one location, `.auto_id()` at the caller restores per-line ids.
-#[test]
-fn auto_id_redirects_to_call_site() {
-    fn helper() -> Button<'static> {
-        Button::new().auto_id()
-    }
-    // Both `helper()` calls resolve inside the helper body: same line, same id.
-    assert_eq!(id_of(helper()), id_of(helper()));
-    // With `.auto_id()` on different source lines, the ids diverge.
-    let a = id_of(helper().auto_id());
-    let b = id_of(helper().auto_id());
-    assert_distinct("auto_id() at call site", a, b);
-}
-
-/// A themed fallback faces the same check as an authored value, in every build: padding edges are lengths, margin edges offsets. A non-finite edge never gets that far: `Spacing` refuses it where it is built.
-#[test]
-fn spacings_validate_their_kinds_authored_or_themed() {
-    type Case = (&'static str, fn() -> Panel);
-    let lane = <Spacing as LaneCodec>::LANE_RULE;
-    let cases: &[Case] = &[
-        (domain::LENGTH_RULE, || {
-            Panel::vstack().default_padding(Spacing::all(-1.0))
-        }),
-        (domain::LENGTH_RULE, || {
-            Panel::vstack().padding(Spacing::new(0.0, 0.0, 0.0, -2.0))
-        }),
-    ];
-    for &(rule, build) in cases {
-        panic_probe::assert_panics_with(rule, build);
-    }
-    let unbuilt: &[fn() -> Panel] = &[
-        || Panel::vstack().default_padding(Spacing::all(f32::NAN)),
-        || Panel::vstack().padding(Spacing::new(0.0, 0.0, 0.0, f32::INFINITY)),
-        || Panel::vstack().margin(Spacing::new(f32::NEG_INFINITY, 0.0, 0.0, 0.0)),
-    ];
-    for &build in unbuilt {
-        panic_probe::assert_panics_with(lane, build);
-    }
-    // A negative margin is an offset, so it is taken.
-    let _ = Panel::vstack().margin(Spacing::all(-4.0));
-}
-
-/// A border wider than an f16 lane is a valid length, and the frame draws it: the padding it grows
-/// saturates, as do the inner corners and the cover the renderer derives from it.
-#[test]
-fn a_border_past_an_f16_lane_draws() {
-    let mut h = Harness::mono(UVec2::new(64, 48));
-    h.frame(|ui| {
-        Panel::vstack()
-            .chrome(
-                Chrome::rounded(RgbaF32::WHITE, Corners::all(4.0))
-                    .with_border(Border::new(RgbaF32::BLACK, 70000.0)),
-            )
-            .show(ui, |_| {});
-    });
 }
 
 /// A canvas position is an offset per axis and a grid span a count: zero names no cell and panics.
 #[test]
-fn position_and_grid_span_validate_their_kinds() {
+fn position_validates_its_kind_and_a_grid_span_keeps_its_cell() {
     panic_probe::assert_panics_with(domain::OFFSET_RULE, || {
         Widget::leaf().at(Vec2::new(f32::NAN, 0.0))
     });
@@ -453,15 +280,15 @@ fn position_and_grid_span_validate_their_kinds() {
     });
     let at = Widget::leaf().at(Vec2::new(-5.0, 7.0));
     assert_eq!(at.node.pos, Vec2::new(-5.0, 7.0));
-
-    for (rows, cols) in [(0, 1), (1, 0)] {
-        panic_probe::assert_panics_with(domain::COUNT_RULE, || {
-            GridCell::at(0, 0).with_span(rows, cols)
-        });
-    }
-    let cell = GridCell::at(1, 2).with_span(3, 4);
+    let cell =
+        GridCell::at(1, 2).with_span(NonZeroU16::new(3).unwrap(), NonZeroU16::new(4).unwrap());
     assert_eq!(
         (cell.row(), cell.col(), cell.row_span(), cell.col_span()),
-        (1, 2, 3, 4),
+        (
+            1,
+            2,
+            NonZeroU16::new(3).unwrap(),
+            NonZeroU16::new(4).unwrap()
+        ),
     );
 }

@@ -2,6 +2,7 @@
 //! blinks.
 
 use crate::animation::motion_role::MotionRole;
+use crate::animation::paint_curve::PaintCurve;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::input::sense::Sense;
@@ -9,10 +10,10 @@ use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::scroll_axes::ScrollAxes;
 use crate::shape::paint_animation::PaintAnimation;
 use crate::shape::paint_animation::PaintRepeat;
-use crate::shape::paint_animation::curves;
 use crate::widgets::scroll::scroll_state::{PanBand, ScrollBounds, ScrollState, WheelPan};
 use crate::widgets::text_edit::text_geometry::TextGeometry;
 use glam::Vec2;
+use std::num::NonZeroU32;
 use std::time::Duration;
 
 const BLINK_HALF: Duration = Duration::from_millis(500);
@@ -31,9 +32,6 @@ pub(super) struct ViewState {
     /// [`Scroll`](crate::Scroll) viewport keeps, since a field is a scrolling
     /// viewport over its own text.
     pub(super) scroll: ScrollState,
-    /// The wheel axes [`Self::scroll`] could pan as of the last update, so a wheel
-    /// the field cannot spend reaches the container behind it.
-    pub(super) wheel_axes: Sense,
     pub(super) block_offset: Vec2,
     pub(super) last_caret_change: Duration,
     /// Caret byte the view last scrolled to. Compared against the current one, not
@@ -70,10 +68,12 @@ impl ViewState {
     /// solver no content on it. The caret pulls the view only when it moved, the
     /// buffer changed, or focus just arrived: following it every frame would undo a
     /// wheel scroll instantly.
-    fn update_scroll(&mut self, input: ViewUpdateInput) {
+    ///
+    /// Returns the wheel axes the scroll can pan, so a wheel the field cannot spend reaches the
+    /// container behind it.
+    fn update_scroll(&mut self, input: ViewUpdateInput) -> Sense {
         let layout = input.geometry.layout;
-        let ctx = layout.ctx;
-        let axes = if ctx.multiline {
+        let axes = if layout.multiline {
             ScrollAxes::VERTICAL
         } else {
             ScrollAxes::HORIZONTAL
@@ -81,12 +81,11 @@ impl ViewState {
         let Some(viewport) = layout.inner.map(|rect| rect.size) else {
             self.scroll = ScrollState::default();
             // No box yet, so no overflow to read: claim the axis the field pans.
-            self.wheel_axes = if ctx.multiline {
+            return if layout.multiline {
                 Sense::SCROLL_Y
             } else {
                 Sense::SCROLL_X
             };
-            return;
         };
         let caret = input.geometry.caret_pos;
         let follow_caret =
@@ -95,7 +94,7 @@ impl ViewState {
         let bounds = ScrollBounds {
             // A single line reserves room for the caret past its last glyph on both
             // ends; a wrapped block has a next line to fall to.
-            content: if ctx.multiline {
+            content: if layout.multiline {
                 Size::new(0.0, input.geometry.content_size.h)
             } else {
                 Size::new(input.geometry.content_size.w + layout.caret_reserve(), 0.0)
@@ -112,7 +111,7 @@ impl ViewState {
             band: PanBand::Natural,
         });
         if follow_caret {
-            if ctx.multiline {
+            if layout.multiline {
                 // The whole viewport: a caret's vertical extent is its line height. The
                 // X branch reserves caret room because the caret stands past the last
                 // glyph there; that thickness is slack on the wrong axis here.
@@ -125,13 +124,12 @@ impl ViewState {
             }
         }
         self.scroll.clamp_to_natural(bounds);
-        self.wheel_axes = self.scroll.wheel_sense(bounds, axes);
+        self.scroll.wheel_sense(bounds, axes)
     }
 
-    /// Returns the caret's blink animation, if the field has focus. The new scroll
-    /// offset is read off [`Self::scroll`].
-    pub(super) fn update(&mut self, input: ViewUpdateInput) -> Option<PaintAnimation> {
-        self.update_scroll(input);
+    /// Fold this frame into the view; the new scroll offset is read off [`Self::scroll`].
+    pub(super) fn update(&mut self, input: ViewUpdateInput) -> ViewUpdate {
+        let wheel_axes = self.update_scroll(input);
         if input.focused && (input.caret_moved || input.changed || input.focus_gained) {
             self.last_caret_change = input.now;
         }
@@ -139,16 +137,29 @@ impl ViewState {
         // The idle cutoff is the anim's to apply: a blinking caret wakes the host
         // on its own and those wakes paint without recording, so this line would
         // stop running long before it.
-        input.focused.then_some(
+        let caret_animation = input.focused.then_some(
             PaintAnimation::alpha(0.0, 1.0)
                 .with_started_at(self.last_caret_change)
                 .with_period(BLINK_HALF * 2)
-                .with_steps(2)
+                .with_steps(NonZeroU32::new(2).unwrap())
                 .with_repeat(PaintRepeat::Settle(BLINK_STOP_AFTER_IDLE))
-                .with_curve(curves::square)
+                .with_curve(PaintCurve::SQUARE)
                 .with_motion(MotionRole::Essential),
-        )
+        );
+        ViewUpdate {
+            caret_animation,
+            wheel_axes,
+        }
     }
+}
+
+/// What a frame's view update leaves for the field to record.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct ViewUpdate {
+    /// The caret's blink, while the field has focus.
+    pub(super) caret_animation: Option<PaintAnimation>,
+    /// The wheel axes the field can pan; a wheel on the others reaches the container behind.
+    pub(super) wheel_axes: Sense,
 }
 
 #[derive(Clone, Copy, Debug)]

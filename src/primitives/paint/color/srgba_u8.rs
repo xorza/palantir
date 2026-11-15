@@ -57,3 +57,24 @@ impl SrgbaU8 {
         u32::from_be_bytes([self.r, self.g, self.b, self.a])
     }
 }
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use crate::primitives::paint::color::srgba_u8::SrgbaU8;
+
+    impl SrgbaU8 {
+        /// The largest difference from `other` on any one channel, alpha included, as a test
+        /// bounds the rounding of a read back.
+        pub fn max_channel_diff(self, other: Self) -> u8 {
+            [
+                self.r.abs_diff(other.r),
+                self.g.abs_diff(other.g),
+                self.b.abs_diff(other.b),
+                self.a.abs_diff(other.a),
+            ]
+            .into_iter()
+            .max()
+            .unwrap()
+        }
+    }
+}

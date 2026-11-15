@@ -107,7 +107,7 @@ fn no_damage_means_skip() {
     // No damage rect → `Skip` (the backbuffer already holds the right pixels), distinct from `Full`.
     assert_eq!(
         Damage::new(DamageRegion::collapse_from(
-            &d.raw_rects,
+            d.raw_rects(),
             MergePolicy::DEFAULT,
             TEST_SURFACE
         )),

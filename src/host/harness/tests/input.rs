@@ -3,6 +3,7 @@
 use crate::host::harness::tests::support::{self, INSIDE, OUTSIDE, SURFACE};
 use crate::host::harness::*;
 use crate::internals::panic_probe;
+use crate::primitives::input::keyboard::key::Key;
 use crate::primitives::layout::sizing::Sizing;
 use crate::scene::layer::Layer;
 use crate::widget_core::configure::Configure;
@@ -123,23 +124,27 @@ fn modifiers_are_sticky_until_set_back() {
 #[test]
 fn typed_text_arrives_as_one_press_per_char() {
     // `type_text` emits the `KeyDown { Key::Char }` a real window produces, which is the only path
-    // a field inserts from.
+    // a field inserts from; a newline is Enter, and a control character no key types refuses
+    // the text (`driver::play::typed_key` holds the whole map).
     let mut harness = Harness::mono(SURFACE);
     // Rule 11: keyboard events are dropped at ingress when nothing holds focus and no subscriber
     // matches, so focus comes first.
     harness.ui_mut().set_focus(support::target());
 
-    harness.type_text("hi");
+    harness.type_text("hi\n");
 
     let keys: Vec<_> = harness
         .ui()
         .input()
         .keyboard_events_at(Layer::Main.into())
         .iter()
-        .map(|press| format!("{:?}", press.key))
+        .map(|press| press.key)
         .collect();
 
-    assert_eq!(keys, vec!["Char('h')".to_string(), "Char('i')".to_string()]);
+    assert_eq!(keys, [Key::Char('h'), Key::Char('i'), Key::Enter]);
+    panic_probe::assert_panics_with("is a control character no key types", || {
+        Harness::mono(SURFACE).type_text("\u{1b}");
+    });
 }
 
 #[test]
@@ -159,27 +164,30 @@ fn scroll_routes_to_whatever_the_pointer_moved_over() {
 
     harness.scroll_lines(INSIDE, Vec2::new(0.0, 3.0));
     let hit = harness.response_in(scroller, build);
-    assert_eq!(hit.scroll.lines.y, 3.0, "the hovered widget got the delta");
+    assert_eq!(
+        hit.scroll.wheel.lines.y, 3.0,
+        "the hovered widget got the delta"
+    );
 
     harness.scroll_lines(OUTSIDE, Vec2::new(0.0, 3.0));
     let missed = harness.response_in(scroller, build);
     assert_eq!(
-        missed.scroll.lines.y, 0.0,
+        missed.scroll.wheel.lines.y, 0.0,
         "a scroll over bare surface reaches nobody",
     );
 
     // The raw event aims at wherever the pointer was left, still OUTSIDE; only a hover re-aims it.
-    harness.on_input(InputEvent::scroll_lines(Vec2::new(0.0, 3.0)));
+    harness.on_input(InputEvent::Scroll(WheelDelta::notches(Vec2::new(0.0, 3.0))));
     assert_eq!(
-        harness.response_in(scroller, build).scroll.lines.y,
+        harness.response_in(scroller, build).scroll.wheel.lines.y,
         0.0,
         "a bare scroll inherits the last position, it does not re-aim",
     );
 
     harness.hover(INSIDE);
-    harness.on_input(InputEvent::scroll_lines(Vec2::new(0.0, 3.0)));
+    harness.on_input(InputEvent::Scroll(WheelDelta::notches(Vec2::new(0.0, 3.0))));
     assert_eq!(
-        harness.response_in(scroller, build).scroll.lines.y,
+        harness.response_in(scroller, build).scroll.wheel.lines.y,
         3.0,
         "…and lands once the pointer is moved onto the target",
     );

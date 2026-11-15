@@ -252,7 +252,7 @@ fn rendered_buffer_uses_per_line_align_even_when_content_fits() {
     let node = block_of(h.ui(), node);
     let main = h.ui().plane_layout(Layer::Main);
     let span = main.text_spans[node.idx()];
-    assert_eq!(span.len, 1, "one Shape::Text expected on the block");
+    assert_eq!(span.len, 1, "one TextShape expected on the block");
     let key = main.text_shapes[span.start as usize].buffer_key();
     assert_eq!(
         key.line_align(),
@@ -305,7 +305,7 @@ fn stable_multiline_holds_constant_per_frame_cost() {
 
 /// End-to-end: an empty, unfocused multi-line editor with a long placeholder and
 /// `text_align(RIGHT)` shapes the placeholder through layout. Pins (a)
-/// `Shape::Text` carries `TOP_RIGHT`, (b) the cached buffer key carries
+/// `TextShape` carries `TOP_RIGHT`, (b) the cached buffer key carries
 /// `LineAlign::Right`, (c) it has a finite wrap target; else the placeholder would
 /// render left-aligned.
 #[test]
@@ -342,7 +342,7 @@ fn placeholder_per_line_aligns_under_wrap() {
         }
         _ => None,
     });
-    let (shape_align, shape_text) = shape_align.expect("placeholder paints as Shape::Text");
+    let (shape_align, shape_text) = shape_align.expect("placeholder paints as a TextShape");
     assert_eq!(shape_align, Align::TOP_RIGHT);
     assert!(
         shape_text.contains("type a paragraph"),
@@ -350,7 +350,7 @@ fn placeholder_per_line_aligns_under_wrap() {
     );
     let main = h.ui().plane_layout(Layer::Main);
     let span = main.text_spans[node.idx()];
-    assert_eq!(span.len, 1, "one Shape::Text expected on the block");
+    assert_eq!(span.len, 1, "one TextShape expected on the block");
     let key = main.text_shapes[span.start as usize].buffer_key();
     assert_eq!(
         key.line_align(),

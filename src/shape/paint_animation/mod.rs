@@ -24,11 +24,10 @@
 //! tessellating quads and text into meshes, which loses the SDF's AA and the instanced batching;
 //! drawing a turned shape offscreen and compositing it, a pass and a texture per shape.
 
-pub mod curves;
 pub(crate) mod paint_mod;
 
-use crate::animation::easing::Easing;
 use crate::animation::motion_role::MotionRole;
+use crate::animation::paint_curve::PaintCurve;
 use crate::primitives::math::domain;
 use crate::primitives::math::float_hash::FloatHash;
 use crate::primitives::math::lerp::Lerp;
@@ -40,17 +39,10 @@ use std::time::Duration;
 
 const NANOS_PER_SEC: u128 = 1_000_000_000;
 
-/// A phase in `[0, 1)` mapped to where the channel sits: `0` at its range's `from`, `1` at its
-/// `to`. A value may leave `[0, 1]`, as [`Easing::OutBack`]'s overshoot does: a turn then swings
-/// past its range, and an alpha clamps.
-///
-/// A plain `fn`, so it cannot capture: the encoder samples with no accumulator, so a dropped frame or irregular `dt` must not make it drift.
-pub type PaintCurve = fn(f32) -> f32;
-
 /// What an animation's unit value drives. Both channels ride one curve, and a shape carries one
 /// animation. With neither, the animation only gives an effect its time ([`PaintAnimation::clock`]).
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct PaintChannel {
+pub struct PaintChannels {
     /// Alpha multiplier over its range. `None` leaves opacity alone. The sample is a *fraction*: clamped to `0..=1`, `0` if not finite.
     pub alpha: Option<PaintRange>,
     /// Full turns about the owner box's center over its range. `None` leaves orientation alone; non-finite reads as no turn.
@@ -117,29 +109,29 @@ pub struct PaintTiming {
 ///
 /// Sampled by the encoder, so the recorded subtree is byte-identical every frame and its layout cache entry survives, unlike [`Ui::animate`](crate::Ui::animate) with [`Ui::request_repaint`](crate::Ui::request_repaint).
 ///
-/// Hand one to [`AddedShape::animate`](crate::widget::AddedShape::animate).
+/// Hand one to [`AddedShape::animate`](crate::AddedShape::animate).
 /// ```
 /// # use palantir::Easing;
-/// # use palantir::widget::{PaintAnimation, PaintRepeat, curves};
+/// # use palantir::{PaintAnimation, PaintCurve, PaintRepeat};
 /// # use std::time::Duration;
 /// // Fade in over 240 ms, easing out, and stay.
 /// let fade = PaintAnimation::alpha(0.0, 1.0)
 ///     .with_period(Duration::from_millis(240))
-///     .with_curve(Easing::OutCubic.curve());
+///     .with_curve(Easing::OutCubic);
 ///
 /// // Breathe, forever.
 /// let pulse = PaintAnimation::alpha(0.4, 1.0)
 ///     .with_period(Duration::from_secs(2))
 ///     .with_repeat(PaintRepeat::Forever)
-///     .with_curve(curves::sine);
+///     .with_curve(PaintCurve::SINE);
 /// ```
 ///
-/// No `PartialEq`: curves compare by address. Compare [`Self::channel`] and [`Self::timing`].
+/// No `PartialEq`: curves compare by address. Compare [`Self::channels`] and [`Self::timing`].
 #[derive(Clone, Copy, Debug)]
 #[must_use]
 pub struct PaintAnimation {
     /// What the animation drives.
-    pub channel: PaintChannel,
+    pub channels: PaintChannels,
     /// When it runs, and how finely.
     pub timing: PaintTiming,
     /// Phase in, value out.
@@ -151,7 +143,7 @@ pub struct PaintAnimation {
 impl PaintAnimation {
     /// Feed everything the sampled modifier depends on into `h`. The curve goes in by address: folded addresses mean identical code, and a split costs only a spare repaint.
     pub(crate) fn hash_static(&self, h: &mut impl hash::Hasher) {
-        let PaintChannel { alpha, turn } = self.channel;
+        let PaintChannels { alpha, turn } = self.channels;
         for range in [alpha, turn] {
             match range {
                 Some(PaintRange { from, to }) => {
@@ -186,40 +178,40 @@ impl PaintAnimation {
         hash::Hash::hash(&self.curve, h);
     }
 
-    fn new(channel: PaintChannel) -> Self {
+    const fn new(channels: PaintChannels) -> Self {
         Self {
-            channel,
+            channels,
             timing: PaintTiming {
                 started_at: Duration::ZERO,
                 period: Duration::from_secs(1),
                 repeat: PaintRepeat::Once,
                 steps: PaintSteps::Continuous,
             },
-            curve: Easing::Linear.curve(),
+            curve: PaintCurve::LINEAR,
             motion: MotionRole::Decorative,
         }
     }
 
     /// Animate opacity from `from` to `to`. [`Self::with_alpha`] adds the channel to an existing animation; `turn` and [`Self::with_turn`] pair the same way.
-    pub fn alpha(from: f32, to: f32) -> Self {
-        Self::new(PaintChannel {
+    pub const fn alpha(from: f32, to: f32) -> Self {
+        Self::new(PaintChannels {
             alpha: Some(PaintRange { from, to }),
             turn: None,
         })
     }
 
     /// Animate rotation from `from` to `to`, in full turns about the owner box's center.
-    pub fn turn(from: f32, to: f32) -> Self {
-        Self::new(PaintChannel {
+    pub const fn turn(from: f32, to: f32) -> Self {
+        Self::new(PaintChannels {
             alpha: None,
             turn: Some(PaintRange { from, to }),
         })
     }
 
-    /// Drive no channel: only give an effect ([`EffectPaint`](crate::widget::EffectPaint)) its
+    /// Drive no channel: only give an effect ([`EffectPaint`](crate::EffectPaint)) its
     /// time, the seconds into the current pass. Without an animation an effect's time is 0.
-    pub fn clock() -> Self {
-        Self::new(PaintChannel {
+    pub const fn clock() -> Self {
+        Self::new(PaintChannels {
             alpha: None,
             turn: None,
         })
@@ -227,13 +219,13 @@ impl PaintAnimation {
 
     /// Add an opacity range to an animation that already turns.
     pub const fn with_alpha(mut self, from: f32, to: f32) -> Self {
-        self.channel.alpha = Some(PaintRange { from, to });
+        self.channels.alpha = Some(PaintRange { from, to });
         self
     }
 
     /// Add a rotation range to an animation that already fades.
     pub const fn with_turn(mut self, from: f32, to: f32) -> Self {
-        self.channel.turn = Some(PaintRange { from, to });
+        self.channels.turn = Some(PaintRange { from, to });
         self
     }
 
@@ -256,20 +248,14 @@ impl PaintAnimation {
     }
 
     /// Read the curve at `n` evenly spaced phases and wake only on those boundaries.
-    ///
-    /// # Panics
-    ///
-    /// Panics on zero steps.
-    #[track_caller]
-    pub const fn with_steps(mut self, n: u32) -> Self {
-        let n = NonZeroU32::new(domain::count(n)).expect("a count is non-zero");
+    pub const fn with_steps(mut self, n: NonZeroU32) -> Self {
         self.timing.steps = PaintSteps::Steps(n);
         self
     }
 
-    /// Set the curve, a [`PaintCurve`]; linear by default.
-    pub const fn with_curve(mut self, curve: PaintCurve) -> Self {
-        self.curve = curve;
+    /// Set the curve, a [`PaintCurve`] or an [`Easing`](crate::Easing) it converts from; linear by default.
+    pub fn with_curve(mut self, curve: impl Into<PaintCurve>) -> Self {
+        self.curve = curve.into();
         self
     }
 
@@ -300,7 +286,7 @@ impl PaintAnimation {
 
     /// Whether this drives a channel; one that drives none only gives an effect its time.
     pub(crate) const fn drives_channel(self) -> bool {
-        self.channel.alpha.is_some() || self.channel.turn.is_some()
+        self.channels.alpha.is_some() || self.channels.turn.is_some()
     }
 
     #[inline]
@@ -308,17 +294,17 @@ impl PaintAnimation {
         let Some(phase) = self.timing.phase(now) else {
             return PaintMod::IDENTITY;
         };
-        let t = (self.curve)(phase as f32);
+        let t = self.curve.apply(phase as f32);
         let rotation = |range: PaintRange| {
             let radians = range.at(t) * TAU;
             if radians.is_finite() { radians } else { 0.0 }
         };
         PaintMod {
             alpha: self
-                .channel
+                .channels
                 .alpha
                 .map_or(1.0, |range| domain::fraction(range.at(t))),
-            rotation: self.channel.turn.map_or(0.0, rotation),
+            rotation: self.channels.turn.map_or(0.0, rotation),
             time: (phase * self.timing.period.as_secs_f64()) as f32,
         }
     }
@@ -326,7 +312,7 @@ impl PaintAnimation {
     /// Whether this turns the shape, so damage is the swept square rather than the recorded bbox. A constant turn counts.
     #[inline]
     pub(crate) const fn rotates(self) -> bool {
-        self.channel.turn.is_some()
+        self.channels.turn.is_some()
     }
 
     /// Earliest absolute time the sample changes, or `None` if never again.

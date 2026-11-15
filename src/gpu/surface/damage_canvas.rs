@@ -24,15 +24,13 @@ pub(crate) struct DamageCanvas {
 impl DamageCanvas {
     /// A canvas of `size` in `format`.
     pub(crate) fn new(gpu: &Gpu, format: wgpu::TextureFormat, size: UVec2) -> Self {
-        let texture = texel::texture_2d(
-            gpu,
-            TargetSpec {
-                label: "palantir.renderer.damage_canvas",
-                size,
-                format,
-                usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
-            },
-        );
+        let texture = TargetSpec {
+            label: "palantir.renderer.damage_canvas",
+            size,
+            format,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+        }
+        .texture(gpu);
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
         Self { texture, view }
     }

@@ -1,5 +1,5 @@
 //! The authoring surface every widget builder forwards to: [`Configure`] and
-//! [`ThemeDefaults`] over a borrowed view of the [`Widget`]. Each setter has a
+//! [`ConfigureDefaults`] over a borrowed view of the [`Widget`]. Each setter has a
 //! consuming form here that forwards to its borrowing form on [`Configurator`].
 
 use crate::primitives::geometry::size::Size;
@@ -58,13 +58,13 @@ pub trait Configure: Sized {
     /// a `#[track_caller]` helper, where that site is the helper's caller:
     ///
     /// ```
-    /// # use palantir::{Configure, Panel, Sizing, Text, Ui};
+    /// # use palantir::{Configure, Panel, SizeSpec, Text, Ui};
     /// /// One section per caller, each with its own id.
     /// #[track_caller]
     /// fn section(ui: &mut Ui, title: &str, body: impl FnOnce(&mut Ui)) {
     ///     Panel::vstack()
     ///         .auto_id()                 // ← the caller's location, not this one
-    ///         .size((Sizing::FILL, Sizing::HUG))
+    ///         .size(SizeSpec::FILL_W)
     ///         .show(ui, |ui| {
     ///             Text::new(title).show(ui);
     ///             body(ui);
@@ -79,12 +79,12 @@ pub trait Configure: Sized {
         self
     }
 
-    /// Both axes at once: a [`Sizing`](crate::Sizing), a bare number (fixed), a `(w, h)` pair or a
-    /// [`Size`].
+    /// Both axes at once: a [`Sizing`](crate::Sizing), a bare number (fixed), a `(w, h)` pair, a
+    /// [`Size`], or a named [`SizeSpec`]: `FILL`, `HUG`, `FILL_W`, `FILL_H`.
     ///
     /// # Panics
     ///
-    /// Panics unless each bare number is a [length](crate::widget::domain::length).
+    /// Panics unless each bare number is a [length](crate::widget::domain::is_length).
     #[inline]
     #[must_use]
     #[track_caller]
@@ -98,7 +98,7 @@ pub trait Configure: Sized {
     ///
     /// # Panics
     ///
-    /// Panics unless both axes are [lengths](crate::widget::domain::length).
+    /// Panics unless both axes are [lengths](crate::widget::domain::is_length).
     #[inline]
     #[must_use]
     #[track_caller]
@@ -112,7 +112,7 @@ pub trait Configure: Sized {
     ///
     /// # Panics
     ///
-    /// Panics unless both axes are [extents](crate::widget::domain::extent).
+    /// Panics unless both axes are [extents](crate::widget::domain::is_extent).
     #[inline]
     #[must_use]
     #[track_caller]
@@ -125,7 +125,7 @@ pub trait Configure: Sized {
     ///
     /// # Panics
     ///
-    /// Panics unless every edge is a [length](crate::widget::domain::length).
+    /// Panics unless every edge is a [length](crate::widget::domain::is_length).
     #[inline]
     #[must_use]
     #[track_caller]
@@ -139,7 +139,7 @@ pub trait Configure: Sized {
     ///
     /// # Panics
     ///
-    /// Panics unless every edge is an [offset](crate::widget::domain::offset).
+    /// Panics unless every edge is an [offset](crate::widget::domain::is_offset).
     #[inline]
     #[must_use]
     #[track_caller]
@@ -168,7 +168,7 @@ pub trait Configure: Sized {
     ///
     /// # Panics
     ///
-    /// Panics unless both axes are [offsets](crate::widget::domain::offset).
+    /// Panics unless both axes are [offsets](crate::widget::domain::is_offset).
     #[inline]
     #[must_use]
     #[track_caller]
@@ -208,7 +208,7 @@ pub trait Configure: Sized {
     ///
     /// # Panics
     ///
-    /// Panics unless `g` is a [gap](crate::widget::domain::gap).
+    /// Panics unless `g` is a [length lane](crate::widget::domain::is_length_lane).
     #[inline]
     #[must_use]
     #[track_caller]
@@ -221,7 +221,7 @@ pub trait Configure: Sized {
     ///
     /// # Panics
     ///
-    /// Panics unless `g` is a [gap](crate::widget::domain::gap).
+    /// Panics unless `g` is a [length lane](crate::widget::domain::is_length_lane).
     #[inline]
     #[must_use]
     #[track_caller]
@@ -239,19 +239,21 @@ pub trait Configure: Sized {
         self
     }
 
-    /// Alignment inside the parent's inner rect. For one axis use [`Align::h`] / [`Align::v`].
+    /// Alignment inside the parent's inner rect: an [`Align`] for both axes, or an
+    /// [`HAlign`](crate::HAlign) or [`VAlign`](crate::VAlign) for one, the other `Auto`.
     #[inline]
     #[must_use]
-    fn align(mut self, a: Align) -> Self {
+    fn align(mut self, a: impl Into<Align>) -> Self {
         self.configure().align(a);
         self
     }
 
-    /// Default alignment for children whose own axis is `Auto` (CSS `align-items`). For one axis
-    /// use [`Align::h`] / [`Align::v`].
+    /// Default alignment for children whose own axis is `Auto` (CSS `align-items`): an
+    /// [`Align`] for both axes, or an [`HAlign`](crate::HAlign) or [`VAlign`](crate::VAlign) for
+    /// one, the other `Auto`.
     #[inline]
     #[must_use]
-    fn child_align(mut self, a: Align) -> Self {
+    fn child_align(mut self, a: impl Into<Align>) -> Self {
         self.configure().child_align(a);
         self
     }
@@ -392,7 +394,7 @@ pub trait Configure: Sized {
 /// [`widget`](crate::widget), beside [`Widget`], for widget authors: an app sets a field with
 /// [`Configure`], as on a builder an app's `default_*` fills the field before the widget's own
 /// does, and so reads as the plain setter. Blanket-implemented for every `Configure`.
-pub trait ThemeDefaults: Configure {
+pub trait ConfigureDefaults: Configure {
     /// Identity to fall back on when the caller set none; an auto id doesn't count.
     #[inline]
     #[must_use]
@@ -405,7 +407,7 @@ pub trait ThemeDefaults: Configure {
     ///
     /// # Panics
     ///
-    /// Panics unless each bare number is a [length](crate::widget::domain::length), even where
+    /// Panics unless each bare number is a [length](crate::widget::domain::is_length), even where
     /// the caller set a size.
     #[inline]
     #[must_use]
@@ -419,7 +421,7 @@ pub trait ThemeDefaults: Configure {
     ///
     /// # Panics
     ///
-    /// Panics unless every edge is a [length](crate::widget::domain::length), even where the
+    /// Panics unless every edge is a [length](crate::widget::domain::is_length), even where the
     /// caller set a padding.
     #[inline]
     #[must_use]
@@ -433,7 +435,7 @@ pub trait ThemeDefaults: Configure {
     ///
     /// # Panics
     ///
-    /// Panics unless every edge is an [offset](crate::widget::domain::offset), even where the
+    /// Panics unless every edge is an [offset](crate::widget::domain::is_offset), even where the
     /// caller set a margin.
     #[inline]
     #[must_use]
@@ -446,7 +448,7 @@ pub trait ThemeDefaults: Configure {
     /// Alignment to fall back on, per axis.
     #[inline]
     #[must_use]
-    fn default_align(mut self, a: Align) -> Self {
+    fn default_align(mut self, a: impl Into<Align>) -> Self {
         self.configure().default_align(a);
         self
     }
@@ -454,7 +456,7 @@ pub trait ThemeDefaults: Configure {
     /// Child alignment to fall back on, per axis.
     #[inline]
     #[must_use]
-    fn default_child_align(mut self, a: Align) -> Self {
+    fn default_child_align(mut self, a: impl Into<Align>) -> Self {
         self.configure().default_child_align(a);
         self
     }
@@ -471,7 +473,7 @@ pub trait ThemeDefaults: Configure {
     ///
     /// # Panics
     ///
-    /// Panics unless `g` is a [gap](crate::widget::domain::gap), even where the caller set one.
+    /// Panics unless `g` is a [length lane](crate::widget::domain::is_length_lane), even where the caller set one.
     #[inline]
     #[must_use]
     #[track_caller]
@@ -484,7 +486,7 @@ pub trait ThemeDefaults: Configure {
     ///
     /// # Panics
     ///
-    /// Panics unless `g` is a [gap](crate::widget::domain::gap), even where the caller set one.
+    /// Panics unless `g` is a [length lane](crate::widget::domain::is_length_lane), even where the caller set one.
     #[inline]
     #[must_use]
     #[track_caller]
@@ -497,7 +499,7 @@ pub trait ThemeDefaults: Configure {
     ///
     /// # Panics
     ///
-    /// Panics unless both axes are [lengths](crate::widget::domain::length), even where the
+    /// Panics unless both axes are [lengths](crate::widget::domain::is_length), even where the
     /// caller set a bound.
     #[inline]
     #[must_use]
@@ -511,7 +513,7 @@ pub trait ThemeDefaults: Configure {
     ///
     /// # Panics
     ///
-    /// Panics unless both axes are [extents](crate::widget::domain::extent), even where the
+    /// Panics unless both axes are [extents](crate::widget::domain::is_extent), even where the
     /// caller set a bound.
     #[inline]
     #[must_use]
@@ -530,4 +532,4 @@ pub trait ThemeDefaults: Configure {
     }
 }
 
-impl<T: Configure> ThemeDefaults for T {}
+impl<T: Configure> ConfigureDefaults for T {}

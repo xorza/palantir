@@ -7,11 +7,11 @@ use crate::theme::popup::PopupTheme;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::configure::ThemeDefaults;
+use crate::widget_core::configure::ConfigureDefaults;
 use crate::widget_core::overlay_response::OverlayResponse;
 use crate::widgets::menu::menu_landing::MenuLanding;
 use crate::widgets::popup::Popup;
-use crate::widgets::popup::trigger_state::{Opening, TriggerFrame, TriggerState};
+use crate::widgets::popup::trigger_state::{Opening, TriggerFrame, TriggerRow};
 
 /// A [`Popup`] dropped below a trigger: a click opens it; a second click, an
 /// outside press, Escape or a [`Ui::close_overlay`] in the body closes it. The whole protocol of a
@@ -71,18 +71,6 @@ impl<'a> PopupTrigger<'a> {
         self
     }
 
-    /// Paint `chrome` behind the popup unless the caller set one. See
-    /// [`Popup::default_chrome`].
-    ///
-    /// # Panics
-    ///
-    /// Panics unless `chrome` holds the kinds [`Chrome`] lists.
-    #[track_caller]
-    pub const fn default_chrome(mut self, chrome: Chrome) -> Self {
-        self.popup = self.popup.default_chrome(chrome);
-        self
-    }
-
     /// Toggle the open flag on a trigger click, close it on a disabled trigger, and
     /// record the popup below the trigger while open.
     ///
@@ -115,28 +103,28 @@ impl<'a> PopupTrigger<'a> {
 }
 
 /// Driving a trigger's popup from outside, by the trigger's id, and the id of the popup.
-impl PopupTrigger<'static> {
+impl PopupTrigger<'_> {
     /// The popup of the trigger `trigger`, unless its `Configure` names another.
     pub fn popup_id(trigger: WidgetId) -> WidgetId {
         trigger.with("popup")
     }
 
-    /// Open the popup of the trigger `for_id`, e.g. from a keyboard shortcut; it
+    /// Open the popup of the trigger `trigger`, e.g. from a keyboard shortcut; it
     /// records on that trigger's next `show`.
-    pub fn open(ui: &mut Ui, for_id: WidgetId) {
-        TriggerState::<Self>::open(ui, for_id, Opening::Below);
+    pub fn open(ui: &mut Ui, trigger: WidgetId) {
+        TriggerRow::<PopupTrigger<'static>>::open(ui, trigger, Opening::Below);
     }
 
-    /// Close the popup of the trigger `for_id`, giving back the input it held at once. No-op if
+    /// Close the popup of the trigger `trigger`, giving back the input it held at once. No-op if
     /// already closed.
-    pub fn close(ui: &mut Ui, for_id: WidgetId) {
-        TriggerState::<Self>::close(ui, for_id);
+    pub fn close(ui: &mut Ui, trigger: WidgetId) {
+        TriggerRow::<PopupTrigger<'static>>::close(ui, trigger);
     }
 
-    /// `true` while the popup of the trigger `for_id` is open. No row is allocated
+    /// `true` while the popup of the trigger `trigger` is open. No row is allocated
     /// for a never-opened trigger.
-    pub fn is_open(ui: &Ui, for_id: WidgetId) -> bool {
-        TriggerState::<Self>::is_open(ui, for_id)
+    pub fn is_open(ui: &Ui, trigger: WidgetId) -> bool {
+        TriggerRow::<PopupTrigger<'static>>::is_open(ui, trigger)
     }
 }
 

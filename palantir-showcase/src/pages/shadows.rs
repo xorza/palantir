@@ -2,13 +2,17 @@
 //! (`Chrome { paint: Paint { shadow } }`), side by side. Tiles sit on a bright surface;
 //! black-on-dark shadows don't read.
 
+use crate::scaffold;
+use crate::scaffold::CELL_PADDING;
 use crate::scaffold::api;
-use crate::support;
-use crate::support::{CELL_PADDING, DemoCell, Kit, Knob, Section, Surface};
+use crate::scaffold::demo_cell::{DemoCell, Surface};
+use crate::scaffold::kit::Kit;
+use crate::scaffold::knob::Knob;
+use crate::scaffold::section::Section;
 use palantir::glam::Vec2;
-use palantir::widget::Shape;
 use palantir::{
-    Block, Chrome, Configure, Corners, Panel, Rect, RgbaF32, Shadow, Sizing, Ui, WidgetId,
+    Block, Chrome, Configure, Corners, Panel, Rect, RgbaF32, Shadow, Shape, SizeSpec, Sizing, Ui,
+    WidgetId,
 };
 
 const CARD: Rect = Rect::new(22.0, 28.0, 124.0, 86.0);
@@ -23,13 +27,13 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
     Section::new("Elevation")
         .apis(&[api!(Shadow::drop)])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "A drop shadow pushed as a shape under a rounded card, from a button at rest up \
              to a floating panel, and the zero-blur case.",
             );
-            support::tiles(ui, |ui| {
+            scaffold::tiles(ui, |ui| {
                 DemoCell::new("tight — a button at rest")
                     .surface(Surface::LightWell)
                     .show(ui, k, tight);
@@ -48,13 +52,13 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
     Section::new("Color and stacking")
         .apis(&[api!(Shadow::with_spread)])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "A colored glow with no offset, and three shadows stacked in record order, \
                  as a CSS box-shadow list stacks them.",
             );
-            support::tiles(ui, |ui| {
+            scaffold::tiles(ui, |ui| {
                 DemoCell::new("glow — colored, spread 2")
                     .surface(Surface::LightWell)
                     .show(ui, k, glow);
@@ -67,14 +71,14 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
     Section::new("Shape or chrome")
         .apis(&[api!(Chrome::with_shadow), api!(Shadow::inset)])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "Each pair paints one shadow two ways: pushed as a shape with the card, and \
                  set on a widget's Chrome, which paints a drop shadow under its fill and \
                  an inset one over it, as CSS does. The two should match.",
             );
-            support::tiles(ui, |ui| {
+            scaffold::tiles(ui, |ui| {
                 DemoCell::new("soft — shape")
                     .surface(Surface::LightWell)
                     .show(ui, k, soft);
@@ -200,15 +204,13 @@ fn stacked(ui: &mut Ui) {
 
 /// The card via `Chrome`: drop shadow emitted before the chrome rect, inset after. Placed on [`CARD`] exactly, so it lines up with its shape twin.
 fn chrome_card(ui: &mut Ui, chrome: Chrome) {
-    Panel::canvas()
-        .size((Sizing::FILL, Sizing::FILL))
-        .show(ui, |ui| {
-            Block::new()
-                .at((CARD.min.x - CELL_PADDING, CARD.min.y - CELL_PADDING))
-                .size((Sizing::fixed(CARD.size.w), Sizing::fixed(CARD.size.h)))
-                .chrome(chrome)
-                .show(ui);
-        });
+    Panel::canvas().size(SizeSpec::FILL).show(ui, |ui| {
+        Block::new()
+            .at((CARD.min.x - CELL_PADDING, CARD.min.y - CELL_PADDING))
+            .size((Sizing::fixed(CARD.size.w), Sizing::fixed(CARD.size.h)))
+            .chrome(chrome)
+            .show(ui);
+    });
 }
 
 fn chrome(shadow: Shadow) -> Chrome {
@@ -249,7 +251,7 @@ fn live(ui: &mut Ui, k: Kit) {
     Section::new("Live shadow")
         .apis(&[api!(Shadow::drop), api!(Shadow::with_spread)])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "Move the light: offset, blur, spread and darkness of one card's shadow.",

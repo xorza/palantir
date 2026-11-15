@@ -1,11 +1,11 @@
 //! One window's swapchain: the surface, its configuration, and the frames it hands out.
 
 use glam::UVec2;
+use std::num::NonZeroU32;
 
 use crate::common::tracy;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::surface::render_target::RenderTarget;
-use crate::gpu::surface::surface_manager::{swapchain_mode, vsync_of};
 use crate::gpu::texel::TargetFormat;
 use crate::window::vsync::Vsync;
 
@@ -22,6 +22,9 @@ pub(crate) struct WindowSurface {
     config: wgpu::SurfaceConfiguration,
     /// What the swapchain was built with; `None` before the first build and once it went stale.
     applied: Option<wgpu::SurfaceConfiguration>,
+    /// The largest 2D texture side of the device it presents through, which its extent stays
+    /// inside, as a window may be larger than the device backs.
+    max_extent: NonZeroU32,
 }
 
 /// Whether [`WindowSurface::prepare`] rebuilt the swapchain, whose new images hold nothing.
@@ -33,14 +36,20 @@ pub(crate) enum Prepared {
 }
 
 impl WindowSurface {
+    /// `surface` under `config`, its extent held inside `max_extent`.
     pub(super) const fn new(
         surface: wgpu::Surface<'static>,
-        config: wgpu::SurfaceConfiguration,
+        mut config: wgpu::SurfaceConfiguration,
+        max_extent: NonZeroU32,
     ) -> Self {
+        let size = clamp_extent(max_extent, UVec2::new(config.width, config.height));
+        config.width = size.x;
+        config.height = size.y;
         Self {
             surface: Some(surface),
             config,
             applied: None,
+            max_extent,
         }
     }
 
@@ -48,9 +57,10 @@ impl WindowSurface {
         UVec2::new(self.config.width, self.config.height)
     }
 
-    /// Point the swapchain at `size` and answer whether that changed it; the next
-    /// [`Self::prepare`] rebuilds it.
+    /// Point the swapchain at `size`, held inside what the device backs, and answer whether that
+    /// changed it; the next [`Self::prepare`] rebuilds it.
     pub(crate) fn resize(&mut self, size: UVec2) -> bool {
+        let size = clamp_extent(self.max_extent, size);
         if self.size() == size {
             return false;
         }
@@ -60,7 +70,7 @@ impl WindowSurface {
     }
 
     pub(crate) fn format(&self) -> TargetFormat {
-        TargetFormat::new(self.config.format)
+        TargetFormat::held(self.config.format)
     }
 
     /// Whether pixels can be copied out of the swapchain's images, as a backdrop's capture is.
@@ -155,6 +165,47 @@ impl WindowSurface {
     }
 }
 
+/// A surface extent the device can back: at least one texel, at most `max_extent` a side, as a
+/// swapchain past the device's 2D texture limit fails wgpu's validation.
+const fn clamp_extent(max_extent: NonZeroU32, size: UVec2) -> UVec2 {
+    let max = max_extent.get();
+    UVec2::new(clamp_side(size.x, max), clamp_side(size.y, max))
+}
+
+const fn clamp_side(side: u32, max: u32) -> u32 {
+    if side < 1 {
+        1
+    } else if side > max {
+        max
+    } else {
+        side
+    }
+}
+
+/// The swapchain policy `vsync` asks for. Both are automatic policies every
+/// surface accepts, so either applies to a live swapchain directly.
+pub(super) const fn swapchain_mode(vsync: Vsync) -> wgpu::PresentMode {
+    match vsync {
+        Vsync::On => wgpu::PresentMode::AutoVsync,
+        Vsync::Off => wgpu::PresentMode::AutoNoVsync,
+    }
+}
+
+/// Which [`Vsync`] state `mode` paces like. A configuration holds only the
+/// two modes [`swapchain_mode`] writes; the match names every mode, so none
+/// reads as either through a catch-all arm. Free to keep graphics-API types out
+/// of `crate::window`.
+const fn vsync_of(mode: wgpu::PresentMode) -> Vsync {
+    match mode {
+        wgpu::PresentMode::AutoVsync | wgpu::PresentMode::Fifo | wgpu::PresentMode::FifoRelaxed => {
+            Vsync::On
+        }
+        wgpu::PresentMode::AutoNoVsync
+        | wgpu::PresentMode::Immediate
+        | wgpu::PresentMode::Mailbox => Vsync::Off,
+    }
+}
+
 #[derive(Debug)]
 pub(crate) enum Acquired {
     Ready(SurfaceFrame),
@@ -185,5 +236,53 @@ impl SurfaceFrame {
 
     pub(crate) fn present(self, gpu: &Gpu) {
         gpu.queue.present(self.0);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::gpu::surface::window_surface::{clamp_extent, swapchain_mode, vsync_of};
+    use crate::window::vsync::Vsync;
+    use glam::UVec2;
+    use std::num::NonZeroU32;
+
+    /// Each side lands in 1 ..= the device's limit, apart.
+    #[test]
+    fn an_extent_holds_inside_the_device() {
+        let max = NonZeroU32::new(4096).unwrap();
+        for (size, want) in [
+            (UVec2::new(0, u32::MAX), UVec2::new(1, 4096)),
+            (UVec2::new(4097, 0), UVec2::new(4096, 1)),
+            (UVec2::new(1, 4096), UVec2::new(1, 4096)),
+            (UVec2::new(800, 600), UVec2::new(800, 600)),
+        ] {
+            assert_eq!(clamp_extent(max, size), want, "{size}");
+        }
+    }
+
+    /// Every resolvable mode classifies and [`swapchain_mode`] inverts it, so a per-frame
+    /// `Ui::vsync` write-back reconfigures nothing.
+    #[test]
+    fn every_present_mode_classifies_and_the_classification_round_trips() {
+        for (mode, expected) in [
+            (wgpu::PresentMode::AutoVsync, Vsync::On),
+            (wgpu::PresentMode::Fifo, Vsync::On),
+            (wgpu::PresentMode::FifoRelaxed, Vsync::On),
+            (wgpu::PresentMode::AutoNoVsync, Vsync::Off),
+            (wgpu::PresentMode::Immediate, Vsync::Off),
+            (wgpu::PresentMode::Mailbox, Vsync::Off),
+        ] {
+            assert_eq!(vsync_of(mode), expected, "{mode:?}");
+        }
+        for vsync in [Vsync::On, Vsync::Off] {
+            assert_eq!(vsync_of(swapchain_mode(vsync)), vsync, "{vsync:?}");
+        }
+    }
+
+    #[test]
+    fn both_vsync_states_map_to_automatic_policies() {
+        assert_eq!(swapchain_mode(Vsync::On), wgpu::PresentMode::AutoVsync);
+        assert_eq!(swapchain_mode(Vsync::Off), wgpu::PresentMode::AutoNoVsync);
+        assert_eq!(Vsync::default(), Vsync::On, "vsync is on unless asked off");
     }
 }

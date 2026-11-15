@@ -1,24 +1,14 @@
 //! A turn paint animation on each shape kind that turns, held at 30°.
 
-use palantir::Fit;
 use palantir::glam::{UVec2, Vec2};
-
-use palantir::widget::{GlyphFont, Mesh, PaintAnimation, Shape};
 use palantir::{
-    Border, Configure, Corners, Image, ImageFit, LinearGradient, Panel, RadialGradient, Rect,
-    RgbaF32, Shadow, Sizing, Ui, WidgetId,
+    Border, Configure, Corners, Fit, GlyphFont, Gradient, IconPaint, Image, ImagePaint, LineCap,
+    Mesh, Paint, PaintAnimation, Panel, Rect, RgbaF32, Shadow, Shape, Sizing, Stroke, Ui, WidgetId,
 };
-
-use std::rc::Rc;
 
 use crate::fixtures::icon;
 use crate::golden_name::GoldenName;
 use crate::visual_rig::VisualRig;
-use palantir::LineCap;
-use palantir::Paint;
-use palantir::Stroke;
-use palantir::widget::IconPaint;
-use palantir::widget::ImagePaint;
 
 /// A twelfth of a turn, 30°, from the first frame on.
 fn thirty_degrees() -> PaintAnimation {
@@ -38,10 +28,10 @@ fn owner(ui: &mut Ui, id: &str, body: impl FnOnce(&mut Ui)) {
 #[test]
 fn a_turned_triangle_and_mesh_match_golden() {
     let mut mesh = Mesh::new();
-    let a = mesh.vertex(Vec2::new(15.0, 80.0), RgbaF32::srgb(1.0, 0.3, 0.3));
-    let b = mesh.vertex(Vec2::new(85.0, 80.0), RgbaF32::srgb(0.3, 1.0, 0.4));
-    let c = mesh.vertex(Vec2::new(50.0, 15.0), RgbaF32::srgb(0.3, 0.5, 1.0));
-    mesh.triangle(a, b, c);
+    let a = mesh.add_vertex(Vec2::new(15.0, 80.0), RgbaF32::srgb(1.0, 0.3, 0.3));
+    let b = mesh.add_vertex(Vec2::new(85.0, 80.0), RgbaF32::srgb(0.3, 1.0, 0.4));
+    let c = mesh.add_vertex(Vec2::new(50.0, 15.0), RgbaF32::srgb(0.3, 0.5, 1.0));
+    mesh.add_triangle(a, b, c);
     GoldenName::TurnedTriangleAndMesh.assert_scene(UVec2::new(220, 120), |ui| {
         Panel::hstack().auto_id().padding(10.0).show(ui, |ui| {
             owner(ui, "triangle", |ui| {
@@ -79,8 +69,8 @@ fn triangle_gradients_match_golden() {
             Vec2::new(50.0, 15.0),
         )
     };
-    let linear = LinearGradient::horizontal([RgbaF32::hex(0xff5e44), RgbaF32::hex(0xfacc15)]);
-    let radial = RadialGradient::centered([RgbaF32::hex(0xfacc15), RgbaF32::hex(0x2563eb)]);
+    let linear = Gradient::horizontal([RgbaF32::hex(0xff5e44), RgbaF32::hex(0xfacc15)]);
+    let radial = Gradient::centered_radial([RgbaF32::hex(0xfacc15), RgbaF32::hex(0x2563eb)]);
     GoldenName::TriangleGradients.assert_scene(UVec2::new(320, 120), |ui| {
         Panel::hstack().auto_id().padding(10.0).show(ui, |ui| {
             owner(ui, "linear", |ui| {
@@ -122,7 +112,7 @@ fn turned_quads_match_golden() {
             owner(ui, "gradient", |ui| {
                 if let Some(shape) = ui.add_shape(
                     Shape::rect().at(source),
-                    LinearGradient::horizontal([RgbaF32::hex(0xff5e44), RgbaF32::hex(0xfacc15)]),
+                    Gradient::horizontal([RgbaF32::hex(0xff5e44), RgbaF32::hex(0xfacc15)]),
                 ) {
                     shape.animate(thirty_degrees());
                 }
@@ -179,15 +169,15 @@ fn turned_images_match_golden() {
         [80, 200, 110, 255],
     ];
     let image = Image::from_srgba8(UVec2::new(2, 2), texels.concat()).unwrap();
-    let mut h = VisualRig::new();
+    let mut h = VisualRig::new(UVec2::new(230, 120));
     let handle = h.host.ui().load_image(&image).unwrap();
     let source = Rect::new(20.0, 30.0, 60.0, 40.0);
-    let capture = h.size(UVec2::new(230, 120)).settled_frame(0, |ui| {
+    let capture = h.settled_frame(0, |ui| {
         Panel::hstack().auto_id().padding(10.0).show(ui, |ui| {
             owner(ui, "fill", |ui| {
                 if let Some(shape) = ui.add_shape(
                     Shape::rect().at(source),
-                    ImagePaint::new(handle.clone()).fit(ImageFit::Fill),
+                    ImagePaint::new(handle.clone()).fit(Fit::Fill),
                 ) {
                     shape.animate(thirty_degrees());
                 }
@@ -195,10 +185,7 @@ fn turned_images_match_golden() {
             owner(ui, "tile", |ui| {
                 if let Some(shape) = ui.add_shape(
                     Shape::rect().at(source),
-                    ImagePaint::new(handle.clone()).fit(ImageFit::Tile {
-                        offset: Vec2::ZERO,
-                        scale: Vec2::splat(3.0),
-                    }),
+                    ImagePaint::new(handle.clone()).tile(Vec2::ZERO, Vec2::splat(3.0)),
                 ) {
                     shape.animate(thirty_degrees());
                 }
@@ -220,24 +207,21 @@ fn rounded_images_match_golden() {
         [80, 200, 110, 255],
     ];
     let image = Image::from_srgba8(UVec2::new(2, 2), texels.concat()).unwrap();
-    let mut h = VisualRig::new();
+    let mut h = VisualRig::new(UVec2::new(340, 120));
     let handle = h.host.ui().load_image(&image).unwrap();
     let source = Rect::new(20.0, 30.0, 60.0, 40.0);
     let rounded = Shape::rect().at(source).corners(Corners::all(12.0));
-    let capture = h.size(UVec2::new(340, 120)).settled_frame(0, |ui| {
+    let capture = h.settled_frame(0, |ui| {
         Panel::hstack().auto_id().padding(10.0).show(ui, |ui| {
             owner(ui, "fill", |ui| {
-                ui.add_shape(rounded, ImagePaint::new(handle.clone()).fit(ImageFit::Fill));
+                ui.add_shape(rounded, ImagePaint::new(handle.clone()).fit(Fit::Fill));
             });
             owner(ui, "contain", |ui| {
-                ui.add_shape(
-                    rounded,
-                    ImagePaint::new(handle.clone()).fit(ImageFit::Contain),
-                );
+                ui.add_shape(rounded, ImagePaint::new(handle.clone()).fit(Fit::Contain));
             });
             owner(ui, "turned", |ui| {
                 if let Some(shape) =
-                    ui.add_shape(rounded, ImagePaint::new(handle.clone()).fit(ImageFit::Fill))
+                    ui.add_shape(rounded, ImagePaint::new(handle.clone()).fit(Fit::Fill))
                 {
                     shape.animate(thirty_degrees());
                 }
@@ -259,7 +243,7 @@ fn triangle_images_match_golden() {
         [80, 200, 110, 255],
     ];
     let image = Image::from_srgba8(UVec2::new(2, 2), texels.concat()).unwrap();
-    let mut h = VisualRig::new();
+    let mut h = VisualRig::new(UVec2::new(340, 120));
     let handle = h.host.ui().load_image(&image).unwrap();
     let rounded = Shape::triangle(
         Vec2::new(15.0, 80.0),
@@ -275,22 +259,15 @@ fn triangle_images_match_golden() {
     let capture = h.size(UVec2::new(340, 120)).settled_frame(0, |ui| {
         Panel::hstack().auto_id().padding(10.0).show(ui, |ui| {
             owner(ui, "fill", |ui| {
-                ui.add_shape(
-                    rounded.clone(),
-                    ImagePaint::new(handle.clone()).fit(ImageFit::Fill),
-                );
+                ui.add_shape(rounded, ImagePaint::new(handle.clone()).fit(Fit::Fill));
             });
             owner(ui, "contain", |ui| {
-                ui.add_shape(
-                    wide.clone(),
-                    ImagePaint::new(handle.clone()).fit(ImageFit::Contain),
-                );
+                ui.add_shape(wide, ImagePaint::new(handle.clone()).fit(Fit::Contain));
             });
             owner(ui, "turned", |ui| {
-                if let Some(shape) = ui.add_shape(
-                    rounded.clone(),
-                    ImagePaint::new(handle.clone()).fit(ImageFit::Fill),
-                ) {
+                if let Some(shape) =
+                    ui.add_shape(rounded, ImagePaint::new(handle.clone()).fit(Fit::Fill))
+                {
                     shape.animate(thirty_degrees());
                 }
             });
@@ -304,14 +281,12 @@ fn triangle_images_match_golden() {
 /// its own colors.
 #[test]
 fn a_turned_label_and_icon_match_golden() {
-    let atlas = icon::atlas();
     GoldenName::TurnedTextAndIcon.assert_scene(UVec2::new(220, 120), |ui| {
-        let icons = ui.load_icons(Rc::clone(&atlas));
+        let icons = ui.load_icons(icon::atlas());
         Panel::hstack().auto_id().padding(10.0).show(ui, |ui| {
             owner(ui, "label", |ui| {
-                let label = ui.intern("Turned");
                 if let Some(shape) = ui.add_shape(
-                    Shape::text(label, GlyphFont::new(20.0)).at_origin(Vec2::new(18.0, 38.0)),
+                    Shape::text("Turned", GlyphFont::new(20.0)).at_origin(Vec2::new(18.0, 38.0)),
                     RgbaF32::WHITE,
                 ) {
                     shape.animate(thirty_degrees());

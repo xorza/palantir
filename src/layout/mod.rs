@@ -8,7 +8,7 @@
 //! - **A subtree's rects follow from its node.** Every rect in a node's subtree is a function of
 //!   the subtree's authoring (its `subtree_hash`), the node's own arranged rect, and what its
 //!   driver read from outside the subtree
-//!   ([`PlaneLayout::outside_input`](plane_layout::PlaneLayout::outside_input)).
+//!   ([`drivers::outside_input`]).
 //!   [`CascadeInputHash`](crate::cascade::cascade_input_hash::CascadeInputHash) folds in the
 //!   last two, so the incremental cascade and the damage walk both skip a subtree whose hash and
 //!   cascade input held, and read no rect inside it. The oracle (`ui::tests::oracle`) checks the

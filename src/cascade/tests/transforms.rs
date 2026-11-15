@@ -203,7 +203,7 @@ fn cascade_screen_rect_matches_composed_quad_under_transform() {
             damage: Damage::Full,
         },
     );
-    let buffer = &frontend.buffer;
+    let buffer = frontend.buffer();
     assert_eq!(
         buffer.quads.len(),
         1,

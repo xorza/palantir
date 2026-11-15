@@ -20,10 +20,10 @@ use crate::theme::look::press_effect::PressEffect;
 #[serde(deny_unknown_fields)]
 pub struct SlotDefaults {
     /// Padding the widget takes when its builder set none; explicit zero overrides it.
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::padding")]
+    #[serde(deserialize_with = "crate::primitives::file::padding")]
     pub padding: Spacing,
     /// Margin when the builder set none.
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::margin")]
+    #[serde(deserialize_with = "crate::primitives::file::margin")]
     pub margin: Spacing,
     /// Spec the state transitions run under; a theme file that leaves it out reads
     /// [`AnimationSpec::SNAP`]. The stock buttons, menu-bar titles, menu rows and tab chips take

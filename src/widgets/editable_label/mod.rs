@@ -19,7 +19,7 @@ use crate::theme::text_edit::TextEditTheme;
 use crate::theme::text_style_overrides::TextStyleOverrides;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
-use crate::widget_core::configure::{Configure, ThemeDefaults};
+use crate::widget_core::configure::{Configure, ConfigureDefaults};
 use crate::widget_core::widget::Widget;
 use crate::widgets::text::Text;
 use crate::widgets::text_edit::TextEdit;
@@ -40,7 +40,8 @@ struct EditableLabelState {
 /// [`TextEdit`] the first Escape drops a selection and the next one the edit.
 /// The label wears the editor theme's resting look and reserves the editor's caret room, so the
 /// glyphs hold their place across the swap. Both halves record under one id, which must be
-/// stable across frames, as the editor's draft is kept under it.
+/// stable across frames, as the editor's draft is kept under it; the idle label's text is
+/// `id.with("label")`.
 ///
 /// The label senses a click and a drag, so a drag that starts on it reports, for a caller that
 /// moves what the label names.
@@ -82,7 +83,7 @@ impl<'a> EditableLabel<'a> {
     ///
     /// # Panics
     ///
-    /// Panics unless `color` is a [color](crate::widget::domain::color).
+    /// Panics unless `color` is a [color](crate::widget::domain::is_color).
     #[track_caller]
     pub const fn color(mut self, color: RgbaF32) -> Self {
         self.overrides.color = Some(domain::color(color));
@@ -94,7 +95,7 @@ impl<'a> EditableLabel<'a> {
     ///
     /// # Panics
     ///
-    /// Panics unless `px` is a [length](crate::widget::domain::length).
+    /// Panics unless `px` is a [length](crate::widget::domain::is_length).
     #[track_caller]
     pub const fn font_size(mut self, px: f32) -> Self {
         self.overrides.font_size = Some(domain::length(px));
@@ -106,7 +107,7 @@ impl<'a> EditableLabel<'a> {
     ///
     /// # Panics
     ///
-    /// Panics unless `factor` is [positive](crate::widget::domain::positive).
+    /// Panics unless `factor` is [positive](crate::widget::domain::is_positive).
     #[track_caller]
     pub const fn line_height_factor(mut self, factor: f32) -> Self {
         self.overrides.line_height_factor = Some(domain::positive(factor));
@@ -160,9 +161,10 @@ impl<'a> EditableLabel<'a> {
     /// [editable](Self::editable) or is disabled, itself or by an ancestor, closes an open editor
     /// and gives its focus back.
     pub fn show(mut self, ui: &mut Ui) -> EditableLabelResponse {
-        let Response { id, state } = self.widget.response(ui);
+        let response = self.widget.response(ui);
+        let id = response.id;
         let editing = Self::is_editing(ui, id);
-        let editable = self.editable && !state.disabled;
+        let editable = self.editable && !response.disabled;
         if editing && editable {
             return self.show_editor(ui, id);
         }
@@ -172,7 +174,7 @@ impl<'a> EditableLabel<'a> {
                 ui.clear_focus();
             }
         }
-        self.show_label(ui, id)
+        self.show_label(ui, response, editable)
     }
 
     /// The label: the text in the editor's resting look, with the editor's padding and caret
@@ -180,8 +182,14 @@ impl<'a> EditableLabel<'a> {
     /// target and the label takes the editor's rect whatever it holds. A double click, or Enter
     /// or F2 while the label holds focus, opens the editor and gives it the focus. F2 is read as
     /// the enclosing node reads it, as the label takes no accelerators from the app.
-    fn show_label(mut self, ui: &mut Ui, id: WidgetId) -> EditableLabelResponse {
-        let keyed = self.editable
+    fn show_label(
+        mut self,
+        ui: &mut Ui,
+        response: Response,
+        editable: bool,
+    ) -> EditableLabelResponse {
+        let id = response.id;
+        let keyed = editable
             && ui.focus() == Some(id)
             && (self.widget.shortcut_pressed(ui, Key::Enter) | ui.shortcut_pressed(Key::F2));
         let theme = Rc::clone(ui.theme());
@@ -199,20 +207,18 @@ impl<'a> EditableLabel<'a> {
         );
         let size = self.extent();
         let label = self.text;
-        let response = self
-            .widget
+        self.widget
             .size(size)
             .padding(padding)
             .default_child_align(Align::LEFT)
-            .show(ui, Some(&slot.looks.normal.chrome), |ui| {
+            .record(ui, Some(&slot.looks.normal.chrome), |ui| {
                 Text::new(label)
-                    .id(Self::label_id(id))
+                    .id(id.with("label"))
                     .style(&text)
                     .min_size((0.0, text.block_height(1)))
                     .show(ui);
-            })
-            .response;
-        if keyed || (self.editable && response.left.double_clicked()) {
+            });
+        if keyed || (editable && response.left.double_clicked()) {
             Self::start_editing(ui, id);
         }
         EditableLabelResponse {
@@ -238,7 +244,7 @@ impl<'a> EditableLabel<'a> {
         if let Some(n) = self.max_chars {
             edit = edit.max_chars(n);
         }
-        edit = with_overrides(edit, self.overrides);
+        edit = edit.overrides(self.overrides);
         if let Some(min) = self.widget.authored().min_size() {
             edit = edit.min_size(min);
         }
@@ -275,12 +281,6 @@ impl<'a> EditableLabel<'a> {
         (size.w(), size.h())
     }
 
-    /// The id of the idle label's text inside `editable_label`, derived from it so the text keeps
-    /// its identity wherever the label records.
-    pub fn label_id(editable_label: WidgetId) -> WidgetId {
-        editable_label.with("label")
-    }
-
     /// Open the editor of the label `id` and give it the focus, as a double click does, for a
     /// rename a menu or a key asks for; the label's next frame records it, its text selected. A
     /// label that is not [editable](Self::editable) or is disabled stays a label.
@@ -309,37 +309,6 @@ impl<'a> EditableLabel<'a> {
         ui.state::<EditableLabelState>(id)
             .is_some_and(|state| state.editing)
     }
-}
-
-/// `edit` with each axis `overrides` sets, through the editor's own setters.
-const fn with_overrides(mut edit: TextEdit<'_>, overrides: TextStyleOverrides) -> TextEdit<'_> {
-    let TextStyleOverrides {
-        color,
-        font_size,
-        line_height_factor,
-        family,
-        weight,
-        slant,
-    } = overrides;
-    if let Some(color) = color {
-        edit = edit.color(color);
-    }
-    if let Some(px) = font_size {
-        edit = edit.font_size(px);
-    }
-    if let Some(factor) = line_height_factor {
-        edit = edit.line_height_factor(factor);
-    }
-    if let Some(family) = family {
-        edit = edit.family(family);
-    }
-    if let Some(weight) = weight {
-        edit = edit.weight(weight);
-    }
-    if let Some(slant) = slant {
-        edit = edit.slant(slant);
-    }
-    edit
 }
 
 impl Configure for EditableLabel<'_> {

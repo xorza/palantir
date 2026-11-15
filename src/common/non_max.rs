@@ -37,7 +37,7 @@ macro_rules! non_max {
             /// table that filled.
             #[inline]
             #[track_caller]
-            pub(crate) fn index(idx: usize) -> Self {
+            pub(crate) fn from_idx(idx: usize) -> Self {
                 match <$int>::try_from(idx).ok().and_then(Self::new) {
                     Some(index) => index,
                     None => index_overflow(idx, u64::from(Self::LAST)),
@@ -127,11 +127,11 @@ mod tests {
         assert_eq!(NonMaxU32::new(u32::MAX), None);
         assert_eq!(NonMaxU32::saturating(u32::MAX), last);
         assert_eq!(NonMaxU32::saturating(7).get(), 7);
-        assert_eq!(NonMaxU32::index(41).idx(), 41);
+        assert_eq!(NonMaxU32::from_idx(41).idx(), 41);
         assert_eq!(size_of::<Option<NonMaxU32>>(), 4);
 
-        let first = NonMaxU16::index(0);
-        let last = NonMaxU16::index(65_534);
+        let first = NonMaxU16::from_idx(0);
+        let last = NonMaxU16::from_idx(65_534);
         assert_eq!((first.idx(), NonMaxU16::to_raw(Some(first))), (0, u16::MAX));
         assert_eq!((last.idx(), NonMaxU16::to_raw(Some(last))), (65_534, 1));
         assert_eq!(NonMaxU16::from_raw(0), None);
@@ -142,13 +142,13 @@ mod tests {
     #[test]
     #[should_panic(expected = "index 4294967295 is past the index ceiling 4294967294")]
     fn non_max_rejects_the_reserved_maximum() {
-        let _ = NonMaxU32::index(u32::MAX as usize);
+        let _ = NonMaxU32::from_idx(u32::MAX as usize);
     }
 
     /// A 16-bit table fills at 65 535 rows, a ceiling a plane can reach.
     #[test]
     #[should_panic(expected = "index 65535 is past the index ceiling 65534")]
     fn a_two_byte_index_fills_at_its_ceiling() {
-        let _ = NonMaxU16::index(65_535);
+        let _ = NonMaxU16::from_idx(65_535);
     }
 }

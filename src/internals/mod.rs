@@ -53,5 +53,5 @@ pub const TEXT_SCALE_STEP: f32 = text::TEXT_SCALE_STEP;
 /// The calls the main pass of `ui`'s window recorded on its last painted frame, after the
 /// recorder's elision: what a change to batching moves.
 pub fn main_pass_counts(ui: &Ui) -> PassCounts {
-    ui.gpu_pass_stats().last_pass_counts()
+    ui.gpu_pass_stats().pass_counts
 }

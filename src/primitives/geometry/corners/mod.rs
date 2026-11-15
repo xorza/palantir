@@ -28,18 +28,32 @@ f16x4_lanes!(
     floor = Some(0.0),
     two_node = TwoNode::Refused,
     rule = "a corner radius must be finite, not negative, and round to at most 65504 in f16",
-    valid = is_radius_lane,
+    valid = domain::is_length_lane,
 );
 
-/// A radius a lane holds: a [length](crate::widget::domain::length) and a
-/// [lane](crate::widget::domain::lane).
-const fn is_radius_lane(lane: f32) -> bool {
-    domain::is_length(lane) && domain::is_lane(lane)
-}
-
 impl Corners {
-    /// Panics unless every radius is a [length](crate::widget::domain::length) and a
-    /// [lane](crate::widget::domain::lane). Checked on the packed lanes, where a radius that is no
+    /// The top-left radius.
+    pub fn top_left(self) -> f32 {
+        self.to_array()[0]
+    }
+
+    /// The top-right radius.
+    pub fn top_right(self) -> f32 {
+        self.to_array()[1]
+    }
+
+    /// The bottom-right radius.
+    pub fn bottom_right(self) -> f32 {
+        self.to_array()[2]
+    }
+
+    /// The bottom-left radius.
+    pub fn bottom_left(self) -> f32 {
+        self.to_array()[3]
+    }
+
+    /// Panics unless every radius is a [length](crate::widget::domain::is_length) and a
+    /// [lane](crate::widget::domain::is_lane). Checked on the packed lanes, where a radius that is no
     /// lane is infinite: the same check as one of the f32 radii.
     #[inline]
     #[track_caller]
@@ -82,8 +96,8 @@ impl Corners {
     ///
     /// # Panics
     ///
-    /// Panics unless every radius is a [length](crate::widget::domain::length), finite and not
-    /// negative, and a [lane](crate::widget::domain::lane), below 65520, which rounds to 65504. A
+    /// Panics unless every radius is a [length](crate::widget::domain::is_length), finite and not
+    /// negative, and a [lane](crate::widget::domain::is_lane), below 65520, which rounds to 65504. A
     /// larger radius would pack to infinity.
     #[inline]
     #[track_caller]
@@ -140,16 +154,12 @@ impl Corners {
     ///
     /// # Panics
     ///
-    /// Panics unless `factor` is a [length](crate::widget::domain::length): a negative or NaN
+    /// Panics unless `factor` is a [factor](crate::widget::domain::is_factor): a negative or NaN
     /// factor makes no radius, and an infinite one makes NaN of a zero radius.
     #[inline]
     #[track_caller]
     pub fn scaled_by(self, factor: f32) -> Self {
-        assert!(
-            domain::is_length(factor),
-            "a corner scale must be finite and not negative, not {factor}"
-        );
-        Self(self.0.scaled_saturating(factor))
+        Self(self.0.scaled_saturating(domain::factor(factor)))
     }
 
     /// The radii of the box inset from one of `size` by `padding`, as a border insets the

@@ -65,9 +65,16 @@ impl CascadeKey {
         }
     }
 
+    /// Whether a cascade built under `self` keeps its structural tables under `live`: the same
+    /// planes, each with the same static fingerprint and its roots in the same layers, whatever
+    /// the scale, the fonts and the rows.
+    pub(crate) fn same_structure(&self, live: &Self) -> bool {
+        self.structure == live.structure
+    }
+
     /// What of a cascade built under `self` stays valid under `live`.
     pub(crate) fn reuse(&self, live: &Self) -> CascadeReuse {
-        if self.structure != live.structure {
+        if !self.same_structure(live) {
             CascadeReuse::Nothing
         } else if self.scale == live.scale && self.font_epoch == live.font_epoch {
             CascadeReuse::Rows
@@ -90,4 +97,76 @@ pub(crate) enum CascadeReuse {
     /// row counts held is patched in place, skipping each node whose inputs held, and the rest
     /// are laid out afresh.
     Rows,
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::cascade::cascade_key::{CascadeKey, CascadeReuse};
+    use crate::common::content_hash::ContentHash;
+    use crate::common::hash::Hasher;
+    use std::hash::Hasher as _;
+
+    /// A hash of the one byte `byte`, so two keys differ in the field it fills alone.
+    fn hash(byte: u8) -> ContentHash {
+        let mut h = Hasher::new();
+        h.write_u8(byte);
+        ContentHash::finish(&h)
+    }
+
+    /// The structure alone decides whether the tables hold: a moved scale or font epoch keeps
+    /// them, with the rows walked again, and a moved structure keeps nothing.
+    #[test]
+    fn the_structure_alone_decides_whether_the_tables_hold() {
+        let built = CascadeKey {
+            scale: 1.0f32.to_bits(),
+            font_epoch: 0,
+            structure: hash(1),
+            rects: hash(2),
+            paint: hash(3),
+        };
+        let cases = [
+            ("held", built, true, CascadeReuse::Rows),
+            (
+                "scale moved",
+                CascadeKey {
+                    scale: 2.0f32.to_bits(),
+                    ..built
+                },
+                true,
+                CascadeReuse::Structure,
+            ),
+            (
+                "fonts moved",
+                CascadeKey {
+                    font_epoch: 1,
+                    ..built
+                },
+                true,
+                CascadeReuse::Structure,
+            ),
+            (
+                "rects and paint moved",
+                CascadeKey {
+                    rects: hash(4),
+                    paint: hash(5),
+                    ..built
+                },
+                true,
+                CascadeReuse::Rows,
+            ),
+            (
+                "structure moved",
+                CascadeKey {
+                    structure: hash(6),
+                    ..built
+                },
+                false,
+                CascadeReuse::Nothing,
+            ),
+        ];
+        for (label, live, same, reuse) in cases {
+            assert_eq!(built.same_structure(&live), same, "{label}");
+            assert_eq!(built.reuse(&live), reuse, "{label}");
+        }
+    }
 }

@@ -1,7 +1,7 @@
 use crate::shape::geometry::box_geometry::BoxGeometry;
 use crate::shape::geometry::closed_geometry::ClosedGeometry;
-use crate::shape::lower::LoweredPaint;
 use crate::shape::paint::closed_paint::ClosedPaint;
+use crate::shape::paint::lowered_paint::LoweredPaint;
 use crate::theme::Theme;
 use crate::theme::color_scheme::ColorScheme;
 use crate::theme::text_style::{LINE_HEIGHT_FACTOR, TextStyle};

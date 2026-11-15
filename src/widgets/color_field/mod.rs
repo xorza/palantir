@@ -116,6 +116,7 @@ impl Field<'_> {
 
 impl AreaValue for Field<'_> {
     type Surface = (ColorModel, f32);
+    type Value = ColorCoords;
 
     fn themed(theme: &ColorPickerTheme) -> Size {
         Size::new(
@@ -136,6 +137,10 @@ impl AreaValue for Field<'_> {
             .read(widget, ui)
             .on_unit_axis(self.0.value(), UNIT_STEP, UNIT_PAGE);
         self.write(sat, val)
+    }
+
+    fn value(&self) -> ColorCoords {
+        *self.0
     }
 
     fn surface(&self) -> Self::Surface {

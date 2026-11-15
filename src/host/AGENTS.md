@@ -12,6 +12,9 @@ same steps on a live window. The rules of a frame are in `host/harness/mod.rs`'s
   for what it reads. Refused: a GPU for every test; a CPU rasterizer, a second renderer to keep
   equal to the GPU one.
 - **One set of agent verbs on both hosts**, `AgentWindow`, so a driver writes a step once.
+- **A harness read mirrors a `Ui` read under its name**, as test sugar: `Harness::rect` and
+  `Harness::layout_rect` read a `Response`'s `rect` and `layout_rect`. Refused: a name of the
+  harness's own for a read the `Ui` already names, which a reader maps back.
 - **A step acts as a person does**: a locator hits what the input reaches, and a step settles,
   spaces presses, refuses to pass with no sign and returns an error an agent reads
   ([Playwright actionability](https://playwright.dev/docs/actionability)). It changes the

@@ -130,7 +130,7 @@ fn layout_rect_is_pre_transform_and_rect_is_what_the_pointer_hits() {
     let mut harness = Harness::mono(SURFACE);
     harness.prime(2, scaled);
 
-    let arranged = harness.arranged(inner).unwrap();
+    let arranged = harness.layout_rect(inner).unwrap();
     let visible = harness.rect(inner).expect("the button is on screen");
     assert_eq!(
         arranged.size,
@@ -155,7 +155,7 @@ fn layout_rect_is_pre_transform_and_rect_is_what_the_pointer_hits() {
     let mut plain = Harness::mono(SURFACE);
     plain.prime(2, support::button);
     assert_eq!(
-        plain.arranged(support::target()),
+        plain.layout_rect(support::target()),
         plain.rect(support::target())
     );
 }

@@ -8,7 +8,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::align::Align;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::primitives::paint::border::Border;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::paint::Paint;
@@ -60,7 +60,7 @@ fn multi_shape_text_per_leaf_emits_one_drawtext_per_run_at_local_rect() {
         .calls
         .iter()
         .filter_map(|command| match command {
-            PaintCall::Text(payload) => Some(payload.rect.min),
+            PaintCall::Text(payload, _) => Some(payload.rect.min),
             _ => None,
         })
         .collect();
@@ -166,7 +166,7 @@ fn chat_message(ui: &mut Ui, avatar_w: f32) -> NodeId {
         .show(ui, |ui| {
             Panel::hstack()
                 .auto_id()
-                .size((Sizing::FILL, Sizing::HUG))
+                .size(SizeSpec::FILL_W)
                 .show(ui, |ui| {
                     Block::new()
                         .id(WidgetId::from_hash("avatar"))
@@ -175,7 +175,7 @@ fn chat_message(ui: &mut Ui, avatar_w: f32) -> NodeId {
                     Text::new(PARAGRAPH)
                         .auto_id()
                         .font_size(14.0)
-                        .size((Sizing::FILL, Sizing::HUG))
+                        .size(SizeSpec::FILL_W)
                         .text_wrap(TextWrap::WrapWithOverflow)
                         .show(ui)
                         .node(ui)
@@ -191,10 +191,9 @@ fn build_multi_text_leaf(ui: &mut Ui) -> NodeId {
     Panel::vstack().auto_id().show(ui, |ui| {
         let widget = Widget::leaf().id(leaf_id);
         widget.record(ui, None, |ui| {
-            let first = ui.intern("first");
             ui.add_shape(
                 Shape::text(
-                    first,
+                    "first",
                     GlyphFont {
                         line_height: 16.0,
                         ..GlyphFont::new(14.0)
@@ -211,10 +210,9 @@ fn build_multi_text_leaf(ui: &mut Ui) -> NodeId {
                     .corners(Corners::ZERO),
                 Paint::from(RgbaF32::WHITE).with_border(Border::NONE),
             );
-            let second = ui.intern("second-with-different-text");
             ui.add_shape(
                 Shape::text(
-                    second,
+                    "second-with-different-text",
                     GlyphFont {
                         line_height: 16.0,
                         ..GlyphFont::new(14.0)

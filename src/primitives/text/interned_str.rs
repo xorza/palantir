@@ -21,7 +21,7 @@ impl InternedStr {
 
     /// Whether the interned run has no bytes.
     #[inline]
-    pub const fn is_empty(&self) -> bool {
+    pub const fn is_empty(self) -> bool {
         self.span.len == 0
     }
 }

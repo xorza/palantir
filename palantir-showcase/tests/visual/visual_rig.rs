@@ -1,25 +1,19 @@
-//! Headless wgpu device, one-frame render and texture readback into an `image::RgbaImage`.
+//! Headless wgpu device, one-frame render and texture readback into an `Image`.
 
-#![expect(
-    clippy::disallowed_types,
-    reason = "an outside consumer of the published surface, where naming a wgpu type is the point"
-)]
-
-use image::RgbaImage;
 use palantir::glam::UVec2;
 use palantir::internals::{OwnedTarget, TargetSpec, TestGpu, headless_test_gpu};
 use palantir::wgpu;
 use palantir::{
-    ColorScheme, DebugOverlayConfig, FramePaint, OffscreenHost, OffscreenTime, Palette, Preference,
-    RgbaF32, SystemScale, TextShaper, Ui, UiPreferences,
+    ColorScheme, DebugOverlayConfig, FramePaint, Image, OffscreenHost, OffscreenTime, Palette,
+    Preference, RgbaF32, SystemScale, TextShaper, Ui, UiPreferences,
 };
 
 use crate::fixtures::DARK_BG;
 use crate::theme;
 
-/// The palette the dark fixture theme was drawn from, hue-coded so a wrong rung shows as a hue in
-/// the diff: the colors a scene and a showcase page's kit take beside the theme. The theme holds
-/// its own copy, so an edit here does not reach it.
+/// The dark fixture theme's palette, hue-coded so a wrong rung shows as a hue in the diff: the
+/// theme's every color is a role of it, and a scene and a showcase page's kit take it beside the
+/// theme.
 pub(crate) const FIXTURE_PALETTE: Palette = Palette {
     text: RgbaF32::hex(0xf2f2f2),
     text_muted: RgbaF32::hex(0x9ad2a0),
@@ -35,11 +29,27 @@ pub(crate) const FIXTURE_PALETTE: Palette = Palette {
     shadow: RgbaF32::BLACK.with_alpha(128.0 / 255.0),
 };
 
+/// The light fixture theme's palette: neutral grounds and inks under an amber accent.
+pub(crate) const LIGHT_FIXTURE_PALETTE: Palette = Palette {
+    text: RgbaF32::hex(0x3d4248),
+    text_muted: RgbaF32::hex(0x5f6873),
+    text_disabled: RgbaF32::hex(0x9aa1aa),
+    window_bg: RgbaF32::hex(0xfcfcfc),
+    surround: RgbaF32::hex(0xeff1f3),
+    element: RgbaF32::hex(0xffffff),
+    element_mid: RgbaF32::hex(0xe4e6e8),
+    element_strong: RgbaF32::hex(0xd9dbdd),
+    border_focused: RgbaF32::hex(0xa66509),
+    accent: RgbaF32::hex(0xa66509),
+    on_accent: RgbaF32::hex(0xffffff),
+    shadow: RgbaF32::BLACK.with_alpha(36.0 / 255.0),
+};
+
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 
 #[derive(Debug)]
 pub(crate) struct Capture {
-    pub(crate) image: RgbaImage,
+    pub(crate) image: Image,
     /// How the frame repainted the target; check it before trusting pixels from a repeat render, which skips and copies the backbuffer.
     pub(crate) paint: FramePaint,
 }
@@ -50,24 +60,25 @@ pub(crate) struct VisualRig {
     pub(crate) host: OffscreenHost,
     gpu: TestGpu,
     target_usages: wgpu::TextureUsages,
-    /// Unset until [`Self::size`]: no surface is right for every fixture.
-    physical: Option<UVec2>,
+    /// The surface, in physical px, which each fixture names: none is right for every one.
+    physical: UVec2,
     scale: SystemScale,
     clear: RgbaF32,
     format: wgpu::TextureFormat,
 }
 
 impl VisualRig {
-    pub(crate) fn new() -> Self {
-        Self::raise(true)
+    /// A rig rendering at `physical` px.
+    pub(crate) fn new(physical: UVec2) -> Self {
+        Self::raise(physical, true)
     }
 
-    /// Shapes land off the pixel grid where they were authored.
-    pub(crate) fn unsnapped() -> Self {
-        Self::raise(false)
+    /// [`Self::new`], its shapes landing off the pixel grid where they were authored.
+    pub(crate) fn unsnapped(physical: UVec2) -> Self {
+        Self::raise(physical, false)
     }
 
-    fn raise(pixel_snap: bool) -> Self {
+    fn raise(physical: UVec2, pixel_snap: bool) -> Self {
         let gpu = headless_test_gpu();
         // A fixed clock makes goldens reproducible (the spinner at angle 0).
         let mut host = OffscreenHost::builder(gpu.handles())
@@ -82,7 +93,7 @@ impl VisualRig {
         });
         for scheme in [ColorScheme::Dark, ColorScheme::Light] {
             host.ui_mut()
-                .set_theme(scheme, theme::fixture(scheme))
+                .set_scheme_theme(scheme, theme::fixture(scheme))
                 .unwrap();
         }
 
@@ -90,7 +101,7 @@ impl VisualRig {
             host,
             gpu,
             target_usages: OwnedTarget::USAGES,
-            physical: None,
+            physical,
             scale: SystemScale::ONE,
             clear: DARK_BG,
             format: FORMAT,
@@ -104,7 +115,7 @@ impl VisualRig {
     }
 
     pub(crate) const fn size(&mut self, physical: UVec2) -> &mut Self {
-        self.physical = Some(physical);
+        self.physical = physical;
         self
     }
 
@@ -142,9 +153,7 @@ impl VisualRig {
 
     /// Render one frame of `scene` into a fresh target and read it back.
     pub(crate) fn frame(&mut self, mut scene: impl FnMut(&mut Ui)) -> Capture {
-        let physical = self
-            .physical
-            .expect("set the surface with VisualRig::size before a frame");
+        let physical = self.physical;
         let target = OwnedTarget::new(
             &self.gpu,
             TargetSpec {
@@ -164,7 +173,7 @@ impl VisualRig {
         let image = target.read_back();
         Capture {
             image,
-            paint: report.paint(),
+            paint: report.paint,
         }
     }
 

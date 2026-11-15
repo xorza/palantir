@@ -2,14 +2,15 @@
 //! one animates: the scan every shape pays to learn it is still, at a count
 //! far past a real frame's so a per-shape regression shows.
 
+use crate::animation::paint_curve::PaintCurve;
 use crate::bench::backends::Backend;
 use crate::bench::kind::{Kind, Scale};
 use crate::scene::tree::node_id::NodeId;
 use crate::scene::tree::paint_animations::{PaintAnimationEntry, PaintAnimations};
-use crate::shape::paint_animation::curves;
 use crate::shape::paint_animation::{PaintAnimation, PaintRepeat};
 use criterion::{Criterion, Throughput};
 use std::hint::black_box;
+use std::num::NonZeroU32;
 use std::time::Duration;
 
 const SHAPE_COUNT: u32 = 65_536;
@@ -20,9 +21,9 @@ fn last_shape_registry() -> PaintAnimations {
     animations.push_entry(PaintAnimationEntry {
         animation: PaintAnimation::alpha(0.0, 1.0)
             .with_period(Duration::from_secs(1))
-            .with_steps(2)
+            .with_steps(NonZeroU32::new(2).unwrap())
             .with_repeat(PaintRepeat::Settle(Duration::MAX))
-            .with_curve(curves::square),
+            .with_curve(PaintCurve::SQUARE),
         shape_idx: SHAPE_COUNT - 1,
         row: 0,
         node: NodeId(0),

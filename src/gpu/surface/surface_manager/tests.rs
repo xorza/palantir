@@ -7,31 +7,6 @@ use wgpu::{
 
 use super::*;
 
-/// Every resolvable mode classifies and [`swapchain_mode`] inverts it, so a per-frame `Ui::vsync` write-back reconfigures nothing.
-#[test]
-fn every_present_mode_classifies_and_the_classification_round_trips() {
-    for (mode, expected) in [
-        (wgpu::PresentMode::AutoVsync, Vsync::On),
-        (wgpu::PresentMode::Fifo, Vsync::On),
-        (wgpu::PresentMode::FifoRelaxed, Vsync::On),
-        (wgpu::PresentMode::AutoNoVsync, Vsync::Off),
-        (wgpu::PresentMode::Immediate, Vsync::Off),
-        (wgpu::PresentMode::Mailbox, Vsync::Off),
-    ] {
-        assert_eq!(vsync_of(mode), expected, "{mode:?}");
-    }
-    for vsync in [Vsync::On, Vsync::Off] {
-        assert_eq!(vsync_of(swapchain_mode(vsync)), vsync, "{vsync:?}");
-    }
-}
-
-#[test]
-fn both_vsync_states_map_to_automatic_policies() {
-    assert_eq!(swapchain_mode(Vsync::On), wgpu::PresentMode::AutoVsync);
-    assert_eq!(swapchain_mode(Vsync::Off), wgpu::PresentMode::AutoNoVsync);
-    assert_eq!(Vsync::default(), Vsync::On, "vsync is on unless asked off");
-}
-
 fn compatible_caps() -> SurfaceCapabilities {
     let format = TextureFormat::Bgra8UnormSrgb;
     SurfaceCapabilities {
@@ -47,10 +22,8 @@ fn compatible_caps() -> SurfaceCapabilities {
 }
 
 #[test]
-fn surface_config_enforces_renderer_contract_and_clamps_dimensions() {
-    let max_texture_dim = NonZeroU32::new(4096).unwrap();
-    let size = SurfaceManager::clamp_extent(max_texture_dim, UVec2::new(0, u32::MAX));
-    assert_eq!(size, UVec2::new(1, 4096));
+fn surface_config_enforces_renderer_contract() {
+    let size = UVec2::new(1, 4096);
 
     let config = build_surface_config(&compatible_caps(), size, Vsync::Off).unwrap();
 

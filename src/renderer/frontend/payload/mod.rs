@@ -9,7 +9,6 @@ pub(crate) mod draw_mesh_payload;
 pub(crate) mod draw_shadow_payload;
 pub(crate) mod draw_stroke_payload;
 pub(crate) mod draw_text_payload;
-pub(crate) mod gpu_fill;
 pub(crate) mod push_clip_payload;
 pub(crate) mod resolved_gradient;
 pub(crate) mod spin;

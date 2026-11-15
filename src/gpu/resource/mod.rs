@@ -6,6 +6,7 @@
 
 #[cfg(feature = "internals")]
 pub(crate) mod bench;
+pub(crate) mod decaying_texture;
 pub(crate) mod dynamic_buffer;
 pub(crate) mod effect_image_groups;
 pub(crate) mod frame_group;
@@ -13,6 +14,7 @@ pub(crate) mod gpu_ctx;
 pub(crate) mod gpu_view_targets;
 pub(crate) mod map_state;
 pub(crate) mod pipeline_recipe;
+pub(crate) mod read_buffer;
 pub(crate) mod readback_staging;
 pub(crate) mod shader_body;
 pub(crate) mod shelf_packer;

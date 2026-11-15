@@ -8,8 +8,8 @@ fn caret_painted(ui: &Ui, leaf: NodeId) -> bool {
     use crate::scene::tree::iter::TreeItem;
     use crate::shape::geometry::box_geometry::BoxGeometry;
     use crate::shape::geometry::closed_geometry::ClosedGeometry;
-    use crate::shape::lower::LoweredPaint;
     use crate::shape::paint::closed_paint::ClosedPaint;
+    use crate::shape::paint::lowered_paint::LoweredPaint;
 
     let tree = ui.tree(Layer::Main);
     let now = ui.now();
@@ -274,7 +274,7 @@ fn caret_anim_does_not_damage_between_quantum_boundaries() {
         .at(Duration::from_secs_f32(0.2))
         .frame(|ui| record(ui, &mut buf));
     assert_eq!(
-        report.paint(),
+        report.paint,
         FramePaint::Skip,
         "mid-phase frame should not damage the caret rect",
     );
@@ -285,7 +285,7 @@ fn caret_anim_does_not_damage_between_quantum_boundaries() {
         .at(Duration::from_secs_f32(0.6))
         .frame(|ui| record(ui, &mut buf));
     assert_eq!(
-        report.paint(),
+        report.paint,
         FramePaint::Partial,
         "crossing a phase boundary damages the caret rect, and only it",
     );

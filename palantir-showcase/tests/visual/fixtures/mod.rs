@@ -28,7 +28,12 @@ mod widgets;
 
 use std::fmt;
 
-use palantir::{Configure, Panel, RgbaF32, Sizing, Ui};
+use palantir::{
+    Configure, Image, PaintedBy, Panel, Rect, RectShape, RgbaF32, Shape, SizeSpec, Sizing, SrgbaU8,
+    Ui,
+};
+
+use crate::visual_rig::VisualRig;
 
 use crate::visual_rig::FIXTURE_PALETTE;
 
@@ -40,13 +45,8 @@ pub(crate) const SRGB_ROUND_TRIP: u8 = 1;
 
 /// Every channel of `got` is within [`SRGB_ROUND_TRIP`] of `want`, or panic naming `what`.
 #[track_caller]
-pub(crate) fn assert_px(got: [u8; 4], want: [u8; 4], what: impl fmt::Display) {
-    let worst = got
-        .iter()
-        .zip(want)
-        .map(|(g, w)| g.abs_diff(w))
-        .max()
-        .unwrap();
+pub(crate) fn assert_px(got: SrgbaU8, want: SrgbaU8, what: impl fmt::Display) {
+    let worst = got.max_channel_diff(want);
     assert!(
         worst <= SRGB_ROUND_TRIP,
         "{what}: got {got:?}, want {want:?} — a channel is {worst} steps off, \
@@ -54,10 +54,29 @@ pub(crate) fn assert_px(got: [u8; 4], want: [u8; 4], what: impl fmt::Display) {
     );
 }
 
+/// `paint` over a rect filling a cell at `at`, told apart from its siblings by where it sits.
+pub(crate) fn cell<P>(ui: &mut Ui, at: Rect, paint: P)
+where
+    RectShape: PaintedBy<P>,
+{
+    Panel::zstack()
+        .id_salt(("cell", at.min.x.to_bits(), at.min.y.to_bits()))
+        .at(at.min)
+        .size((Sizing::fixed(at.size.w), Sizing::fixed(at.size.h)))
+        .show(ui, |ui| {
+            ui.add_shape(Shape::rect(), paint);
+        });
+}
+
+/// `rig`'s frame of `scene` on a full-surface [`canvas`], read back.
+pub(crate) fn render(rig: &mut VisualRig, mut scene: impl FnMut(&mut Ui)) -> Image {
+    rig.frame(|ui| canvas(ui, &mut scene)).image
+}
+
 /// A canvas filling the surface, for content placed in absolute coordinates.
 pub(crate) fn canvas(ui: &mut Ui, body: impl FnOnce(&mut Ui)) {
     Panel::canvas()
         .id_salt("canvas")
-        .size((Sizing::FILL, Sizing::FILL))
+        .size(SizeSpec::FILL)
         .show(ui, body);
 }

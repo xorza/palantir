@@ -6,7 +6,7 @@ use crate::damage::tests::support::{BLUE, DISPLAY, RED, frame};
 use crate::host::harness::Harness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::primitives::layout::visibility::Visibility;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
@@ -29,7 +29,7 @@ fn removing_canvas_child_does_not_redamage_sibling_shapes() {
     let canvas = |ui: &mut Ui, child_count: usize| {
         Panel::canvas()
             .id(WidgetId::from_hash("canvas"))
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 ui.add_shape(
                     Shape::line(Vec2::new(120.0, 120.0), Vec2::new(180.0, 180.0)),
@@ -77,7 +77,7 @@ fn reordering_nodes_does_not_damage_unchanged_leaves() {
     let canvas = |ui: &mut Ui, order: [(&str, (f32, f32)); 2]| {
         Panel::canvas()
             .id(WidgetId::from_hash("canvas"))
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 for (key, pos) in order {
                     node(ui, key, pos);
@@ -119,7 +119,7 @@ fn raising_an_overlapping_node_redamages_only_the_overlap() {
     let canvas = |ui: &mut Ui, order: Order<'_>| {
         Panel::canvas()
             .id(WidgetId::from_hash("canvas"))
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 for (key, r) in order {
                     block(key, r.size.w).at((r.min.x, r.min.y)).show(ui);
@@ -129,10 +129,10 @@ fn raising_an_overlapping_node_redamages_only_the_overlap() {
     let roots = |ui: &mut Ui, order: Order<'_>| {
         Panel::canvas()
             .id(WidgetId::from_hash("canvas"))
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |_| {});
         for (key, r) in order {
-            ui.layer(Layer::Popup).fixed_at(r.min).show(|ui| {
+            ui.layer(Layer::Popup).at(r.min).show(|ui| {
                 block(key, r.size.w).show(ui);
             });
         }
@@ -186,7 +186,7 @@ fn offscreen_text_nodes_reorder_cast_no_edge_shadow() {
         Panel::canvas()
             .id(WidgetId::from_hash("canvas"))
             .clip_rect()
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 for (key, y) in order {
                     node(ui, key, y);
@@ -266,7 +266,7 @@ fn shape_crossing_child_boundary_is_redamaged() {
     let over = |ui: &mut Ui| {
         Panel::canvas()
             .id(WidgetId::from_hash("canvas"))
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 child(ui);
                 line(ui);
@@ -275,7 +275,7 @@ fn shape_crossing_child_boundary_is_redamaged() {
     let under = |ui: &mut Ui| {
         Panel::canvas()
             .id(WidgetId::from_hash("canvas"))
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 line(ui);
                 child(ui);
@@ -312,7 +312,7 @@ fn overlapping_direct_shape_swap_is_redamaged() {
     let canvas = |ui: &mut Ui, first: RgbaF32, second: RgbaF32| {
         Panel::canvas()
             .id(WidgetId::from_hash("canvas"))
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 line(ui, first);
                 line(ui, second);
@@ -348,7 +348,7 @@ fn inserting_a_child_does_not_redamage_unmoved_later_shapes() {
     let canvas = |ui: &mut Ui, with_b: bool| {
         Panel::canvas()
             .id(WidgetId::from_hash("canvas"))
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 node(ui, "a", CHILD_A);
                 if with_b {
@@ -385,7 +385,7 @@ fn rekeying_a_child_damages_only_the_child() {
     let canvas = |ui: &mut Ui, key: &str| {
         Panel::canvas()
             .id(WidgetId::from_hash("canvas"))
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 Block::new()
                     .id(WidgetId::from_hash(key))
@@ -418,7 +418,7 @@ fn rekeying_a_child_damages_only_the_child() {
 /// Removing a middle shape shifts trailing ordinals; damage covers the removed pixels plus shifted shapes' old and new positions.
 #[test]
 fn shape_removed_from_middle_evicts_trailing_ordinals() {
-    use crate::widget::Shape;
+    use crate::shape::Shape;
 
     let mut h = Harness::mono(DISPLAY.physical);
     let build = |include_middle: bool, ui: &mut Ui| {
@@ -456,7 +456,7 @@ fn shape_removed_from_middle_evicts_trailing_ordinals() {
 
     frame(&mut h, |ui| build(false, ui));
 
-    let post = h.frames().damage().prev[&WidgetId::from_hash("canvas")];
+    let post = h.frames().damage().prev()[&WidgetId::from_hash("canvas")];
     assert_eq!(
         post.paint_span.len, 2,
         "snapshot tail must be trimmed to the new paint count",
@@ -481,7 +481,7 @@ fn shape_removed_from_middle_evicts_trailing_ordinals() {
 /// Inserting a shape between two shifts trailing ordinals, but content-keyed matching pairs the existing shapes, so only the new one damages.
 #[test]
 fn shape_added_in_middle_damages_only_new() {
-    use crate::widget::Shape;
+    use crate::shape::Shape;
 
     let mut h = Harness::mono(DISPLAY.physical);
     let red_rect = Rect::new(0.0, 0.0, 20.0, 20.0);
@@ -514,7 +514,7 @@ fn shape_added_in_middle_damages_only_new() {
 
     frame(&mut h, |ui| build(true, ui)); // insert green between
 
-    let post = h.frames().damage().prev[&WidgetId::from_hash("canvas")];
+    let post = h.frames().damage().prev()[&WidgetId::from_hash("canvas")];
     assert_eq!(post.paint_span.len, 3);
 
     let cur_shapes: Vec<_> = h
@@ -559,7 +559,7 @@ fn reparent_fixture(ui: &mut Ui, under_b: bool, hidden: bool) {
     let parent = |ui: &mut Ui, id: &'static str, holds_leaf: bool| {
         let mut panel = Panel::zstack()
             .id(WidgetId::from_hash(id))
-            .size((Sizing::FILL, Sizing::FILL));
+            .size(SizeSpec::FILL);
         if hidden {
             panel = panel.hidden();
         }
@@ -599,7 +599,7 @@ fn reparent_at_same_rect_damages_moved_subtree() {
 fn a_root_moved_to_another_plane_damages_its_extent() {
     const PROBE: Rect = Rect::new(45.0, 45.0, 2.0, 2.0);
     let build = |ui: &mut Ui, layer: Layer| {
-        ui.layer(layer).fixed_at(Vec2::new(40.0, 40.0)).show(|ui| {
+        ui.layer(layer).at(Vec2::new(40.0, 40.0)).show(|ui| {
             Block::new()
                 .id(WidgetId::from_hash("moved"))
                 .size(30.0)
@@ -663,7 +663,7 @@ fn front_insert_damages_only_the_new_shape() {
     let build = |ui: &mut Ui, with_front: bool| {
         Panel::canvas()
             .id(WidgetId::from_hash("canvas"))
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 if with_front {
                     ui.add_shape(
@@ -716,15 +716,15 @@ fn a_hidden_container_takes_no_snapshot() {
             });
     });
     assert!(
-        h.frames().damage().prev.contains_key(&shown),
+        h.frames().damage().prev().contains_key(&shown),
         "a painting sibling is in the map, so the frame filled it",
     );
     assert!(
-        !h.frames().damage().prev.contains_key(&hidden),
+        !h.frames().damage().prev().contains_key(&hidden),
         "a rowless container must not take a snapshot",
     );
     assert!(
-        !h.frames().damage().prev.contains_key(&hidden_child),
+        !h.frames().damage().prev().contains_key(&hidden_child),
         "a `Visible` child under it is rowless for the same reason",
     );
 }
@@ -739,7 +739,7 @@ fn hiding_a_chromeless_container_evicts_its_painted_descendants() {
     let build = |ui: &mut Ui, vis: Visibility| {
         Panel::zstack()
             .id(WidgetId::from_hash("root"))
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 Panel::zstack()
                     .id(WidgetId::from_hash("container"))
@@ -771,7 +771,7 @@ fn hiding_a_chromeless_container_evicts_its_painted_descendants() {
         }
         for (widget_id, what) in [(child, "child"), (grandchild, "grandchild")] {
             assert!(
-                !h.frames().damage().prev.contains_key(&widget_id),
+                !h.frames().damage().prev().contains_key(&widget_id),
                 "{vis:?}: the {what} paints nothing now, so its snapshot must go",
             );
         }
@@ -792,7 +792,7 @@ fn reversing_a_deck_pushes_one_rect_per_card() {
     let deck = |ui: &mut Ui, reversed: bool| {
         Panel::canvas()
             .id(WidgetId::from_hash("deck"))
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 for i in 0..200u32 {
                     let card = if reversed { 199 - i } else { i };
@@ -808,7 +808,7 @@ fn reversing_a_deck_pushes_one_rect_per_card() {
     let mut h = Harness::mono(DISPLAY.physical);
     frame(&mut h, |ui| deck(ui, false));
     frame(&mut h, |ui| deck(ui, true));
-    let raw = &h.frames().damage().raw_rects;
+    let raw = h.frames().damage().raw_rects();
     assert_eq!(raw.len(), 199, "{raw:?}");
     assert!(raw.iter().all(|&r| r == CARD));
 }

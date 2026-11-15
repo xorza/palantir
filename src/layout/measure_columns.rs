@@ -1,10 +1,20 @@
 //! [`MeasureColumns`]: what a measure leaves on each node, as the scratch, the snapshot arena and
 //! a cache hit hold it.
 
-use crate::layout::cache::UNMEASURED;
 use crate::layout::intrinsic::len_req::SLOT_COUNT;
+use crate::layout::measured::Measured;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::offer;
+
+/// The `available` of a node no measure reached this frame; no subtree is captured under it.
+pub(crate) const UNMEASURED: Size = Size::new(f32::NAN, f32::NAN);
+
+/// Whether two offers are the same one, bit for bit; `UNMEASURED` matches itself. A kept run
+/// needs the exact offer, where [`MeasureCache::try_lookup`](crate::layout::cache::MeasureCache::try_lookup) also serves any finite offer past
+/// `stable_from`.
+pub(crate) const fn same_offer(a: Size, b: Size) -> bool {
+    a.w.to_bits() == b.w.to_bits() && a.h.to_bits() == b.h.to_bits()
+}
 
 /// One row per node of what a measure found: each column declared once, here, and held whole by
 /// the engine's scratch for one tree and by the snapshot arena for every captured tree in a row.
@@ -15,10 +25,10 @@ use crate::primitives::layout::offer;
 pub(super) struct MeasureColumns {
     pub(super) desired: Vec<Size>,
     /// Each node's measured floor, margin-inclusive; see
-    /// [`Measured`](crate::layout::measured::Measured). Arrange places a node at it when its slot
+    /// [`Measured`]. Arrange places a node at it when its slot
     /// is smaller than `desired`.
     pub(super) floor: Vec<Size>,
-    /// Each node's [`Measured::stable_from`](crate::layout::measured::Measured::stable_from).
+    /// Each node's [`Measured::stable_from`].
     /// Read by no pass after measure; kept for the next capture.
     pub(super) stable_from: Vec<Size>,
     pub(super) intrinsics: Vec<[f32; SLOT_COUNT]>,
@@ -27,6 +37,29 @@ pub(super) struct MeasureColumns {
 }
 
 impl MeasureColumns {
+    /// Row `idx`'s measure, as [`Self::set_measured`] wrote it.
+    #[inline]
+    pub(super) fn measured(&self, idx: usize) -> Measured {
+        Measured {
+            size: self.desired[idx],
+            floor: self.floor[idx],
+            stable_from: self.stable_from[idx],
+        }
+    }
+
+    /// `measured` as row `idx`'s size, floor and stable offer.
+    #[inline]
+    pub(super) fn set_measured(&mut self, idx: usize, measured: Measured) {
+        let Measured {
+            size,
+            floor,
+            stable_from,
+        } = measured;
+        self.desired[idx] = size;
+        self.floor[idx] = floor;
+        self.stable_from[idx] = stable_from;
+    }
+
     /// `n` rows of a tree no measure reached yet. Destructured so a new column cannot be left
     /// un-reset.
     pub(super) fn resize_for(&mut self, n: usize) {

@@ -3,6 +3,7 @@
 
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
+use crate::primitives::layout::axis::Axis;
 
 /// Horizontal alignment of a child inside its parent's inner rect. `Auto` defers to
 /// the parent's `child_align`, then to the child's cross-axis `Sizing` (Fill
@@ -65,6 +66,27 @@ const _: () = {
     );
 };
 
+/// The horizontal axis alone, the vertical `Auto`.
+impl From<HAlign> for Align {
+    fn from(h: HAlign) -> Self {
+        Self::new(h, VAlign::Auto)
+    }
+}
+
+/// The vertical axis alone, the horizontal `Auto`.
+impl From<VAlign> for Align {
+    fn from(v: VAlign) -> Self {
+        Self::new(HAlign::Auto, v)
+    }
+}
+
+/// Both axes, horizontal first, as [`Align::new`] takes them.
+impl From<(HAlign, VAlign)> for Align {
+    fn from((h, v): (HAlign, VAlign)) -> Self {
+        Self::new(h, v)
+    }
+}
+
 /// Two-axis alignment packed into a byte: `HAlign` in the lower 3 bits, `VAlign` in
 /// the next 3.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
@@ -75,8 +97,8 @@ impl Align {
     const HMASK: u8 = 0b111;
     const VMASK: u8 = 0b111 << Self::VSHIFT;
 
-    /// Pack both axes. [`Self::h`] / [`Self::v`] set one axis and leave the other
-    /// `Auto`.
+    /// Pack both axes. A setter that takes `impl Into<Align>` takes the pair as a tuple,
+    /// `(HAlign, VAlign)`, or one axis alone, the other `Auto`.
     pub const fn new(h: HAlign, v: VAlign) -> Self {
         Self((h as u8) | ((v as u8) << Self::VSHIFT))
     }
@@ -87,14 +109,6 @@ impl Align {
     #[inline]
     pub(crate) const fn from_raw(b: u8) -> Self {
         Self(b)
-    }
-    /// Single horizontal axis; vertical defaults to `Auto`.
-    pub const fn h(h: HAlign) -> Self {
-        Self::new(h, VAlign::Auto)
-    }
-    /// Single vertical axis; horizontal defaults to `Auto`.
-    pub const fn v(v: VAlign) -> Self {
-        Self::new(HAlign::Auto, v)
     }
     /// Unpack the horizontal axis.
     pub const fn halign(self) -> HAlign {
@@ -138,14 +152,35 @@ impl Align {
     pub const BOTTOM_RIGHT: Self = Self::new(HAlign::Right, VAlign::Bottom);
     /// Fill the inner rect on both axes.
     pub const STRETCH: Self = Self::new(HAlign::Stretch, VAlign::Stretch);
+    /// Each axis left `Auto` taken from `fallback`, the other kept.
+    pub(crate) const fn or(self, fallback: Self) -> Self {
+        let h = match self.halign() {
+            HAlign::Auto => fallback.halign(),
+            h => h,
+        };
+        let v = match self.valign() {
+            VAlign::Auto => fallback.valign(),
+            v => v,
+        };
+        Self::new(h, v)
+    }
+
+    /// The alignment along `axis`.
+    pub(crate) const fn axis(self, axis: Axis) -> AxisAlign {
+        match axis {
+            Axis::X => self.halign().to_axis(),
+            Axis::Y => self.valign().to_axis(),
+        }
+    }
+
     /// Position a `content` box of fixed size inside `outer` per `self`: `min`
     /// shifted by the alignment offset, `size` unchanged. `Auto`/`Stretch` collapse
     /// to start and overflow clamps the offset to zero, pinning oversized content
     /// to the leading edge. Coordinate-system agnostic: callers read `.min` back as
     /// the bare offset, so glyphs, caret and selection wash shift together.
     pub(crate) fn place_in(self, outer: Rect, content: Size) -> Rect {
-        let dx = self.halign().to_axis().offset_in(outer.size.w, content.w);
-        let dy = self.valign().to_axis().offset_in(outer.size.h, content.h);
+        let dx = self.axis(Axis::X).offset_in(outer.size.w, content.w);
+        let dy = self.axis(Axis::Y).offset_in(outer.size.h, content.h);
         Rect::new(
             outer.min.x + dx.max(0.0),
             outer.min.y + dy.max(0.0),
@@ -192,7 +227,7 @@ impl AxisAlign {
 }
 
 impl HAlign {
-    pub(crate) const fn to_axis(self) -> AxisAlign {
+    const fn to_axis(self) -> AxisAlign {
         match self {
             Self::Auto => AxisAlign::Auto,
             Self::Left => AxisAlign::Start,
@@ -201,30 +236,16 @@ impl HAlign {
             Self::Stretch => AxisAlign::Stretch,
         }
     }
-    pub(crate) const fn or(self, default: Self) -> Self {
-        if matches!(self, Self::Auto) {
-            default
-        } else {
-            self
-        }
-    }
 }
 
 impl VAlign {
-    pub(crate) const fn to_axis(self) -> AxisAlign {
+    const fn to_axis(self) -> AxisAlign {
         match self {
             Self::Auto => AxisAlign::Auto,
             Self::Top => AxisAlign::Start,
             Self::Center => AxisAlign::Center,
             Self::Bottom => AxisAlign::End,
             Self::Stretch => AxisAlign::Stretch,
-        }
-    }
-    pub(crate) const fn or(self, default: Self) -> Self {
-        if matches!(self, Self::Auto) {
-            default
-        } else {
-            self
         }
     }
 }
@@ -258,5 +279,64 @@ mod tests {
             Rect::new(0.0, 0.0, 80.0, 16.0),
             "oversize content clamps to the top-left"
         );
+    }
+
+    /// `or` fills each `Auto` axis from the fallback alone, and `axis` reads one axis: left-`Auto`
+    /// over a centered fallback takes its center and keeps its own bottom; a set pair keeps both;
+    /// an `Auto` pair takes the fallback whole.
+    #[test]
+    fn or_fills_each_auto_axis_and_axis_reads_one() {
+        let fallback = Align::CENTER;
+        for (set, filled) in [
+            (
+                Align::new(HAlign::Auto, VAlign::Bottom),
+                Align::new(HAlign::Center, VAlign::Bottom),
+            ),
+            (
+                Align::new(HAlign::Right, VAlign::Auto),
+                Align::new(HAlign::Right, VAlign::Center),
+            ),
+            (Align::STRETCH, Align::STRETCH),
+            (Align::default(), Align::CENTER),
+        ] {
+            assert_eq!(set.or(fallback), filled, "{set:?}");
+        }
+        let align = Align::new(HAlign::Right, VAlign::Top);
+        assert_eq!(align.axis(Axis::X), AxisAlign::End);
+        assert_eq!(align.axis(Axis::Y), AxisAlign::Start);
+    }
+
+    /// One axis converts with the other `Auto`, and a pair converts as `new` packs it: each
+    /// conversion reads back its own axes, and every value of the other axis is `Auto`.
+    #[test]
+    fn an_axis_or_a_pair_converts_to_its_align() {
+        const HS: [HAlign; 5] = [
+            HAlign::Auto,
+            HAlign::Left,
+            HAlign::Center,
+            HAlign::Right,
+            HAlign::Stretch,
+        ];
+        const VS: [VAlign; 5] = [
+            VAlign::Auto,
+            VAlign::Top,
+            VAlign::Center,
+            VAlign::Bottom,
+            VAlign::Stretch,
+        ];
+        for h in HS {
+            let one = Align::from(h);
+            assert_eq!((one.halign(), one.valign()), (h, VAlign::Auto));
+            for v in VS {
+                let pair = Align::from((h, v));
+                assert_eq!(pair, Align::new(h, v));
+                assert_eq!((pair.halign(), pair.valign()), (h, v));
+            }
+        }
+        for v in VS {
+            let one = Align::from(v);
+            assert_eq!((one.halign(), one.valign()), (HAlign::Auto, v));
+        }
+        assert_eq!(Align::from((HAlign::Left, VAlign::Center)), Align::LEFT);
     }
 }

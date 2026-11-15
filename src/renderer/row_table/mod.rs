@@ -21,7 +21,7 @@
 //!   stops converted to Oklab once; the texel loop lerps and runs only
 //!   `Oklab::to_color`. Perceptually uniform; the CSS Color 4 default.
 
-use crate::common::eviction_clock::{
+use crate::common::clock_sweep::{
     AGE_EVICTIONS_MAX, AGE_SCAN_MAX, ClockSweep, GRACE_FRAMES, Verdict,
 };
 use crate::common::expiry_window::EXPIRY_FRAMES;

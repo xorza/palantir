@@ -4,7 +4,6 @@ use crate::gpu::device::gpu::Gpu;
 use crate::gpu::render_owner_id::RenderOwnerId;
 use crate::gpu::resource::gpu_view_targets::TARGET_FORMAT;
 use crate::gpu::resource::texture_binding::TextureBinding;
-use crate::gpu::texel;
 use crate::gpu::texel::TargetSpec;
 use crate::renderer::render_buffer::render_target_draw::ViewStamp;
 use glam::UVec2;
@@ -12,9 +11,8 @@ use std::time::Duration;
 
 #[derive(Debug)]
 pub(super) struct ViewTarget {
-    pub(super) view: wgpu::TextureView,
-    pub(super) bind_group: wgpu::BindGroup,
-    pub(super) size: UVec2,
+    /// The texture's halves, which a resize makes again.
+    pub(super) texture: AllocatedTarget,
     pub(super) owner: RenderOwnerId,
     /// [`GpuPaint::init`](crate::GpuPaint::init) has run for this view; per entry, not per texture, so a resize keeps it.
     pub(super) initialized: bool,
@@ -22,70 +20,30 @@ pub(super) struct ViewTarget {
     pub(super) painted: Option<ViewStamp>,
 }
 
-/// A fresh target texture as the two halves a [`ViewTarget`] keeps (view and bind group); a resize swaps both.
+/// A target texture as the halves a [`ViewTarget`] keeps, its view and bind group, at its size; a
+/// resize makes a new one.
 #[derive(Debug)]
 pub(super) struct AllocatedTarget {
     pub(super) view: wgpu::TextureView,
     pub(super) bind_group: wgpu::BindGroup,
+    pub(super) size: UVec2,
 }
 
 impl AllocatedTarget {
     pub(super) fn new(gpu: &Gpu, binding: &TextureBinding, size: UVec2) -> Self {
-        let texture = texel::texture_2d(
-            gpu,
-            TargetSpec {
-                label: "palantir.gpu_view.target",
-                size,
-                format: TARGET_FORMAT,
-                usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-                    | wgpu::TextureUsages::TEXTURE_BINDING,
-            },
-        );
+        let texture = TargetSpec {
+            label: "palantir.gpu_view.target",
+            size,
+            format: TARGET_FORMAT,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+        }
+        .texture(gpu);
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
         let bind_group = binding.texture_group(gpu, &view, "palantir.gpu_view.tex.bg");
-        Self { view, bind_group }
-    }
-}
-
-/// Per-submit eviction: keep an entry unless the submitting owner has stopped recording it (`live` means still
-/// recorded, not painted this frame). Another owner's entries always survive, so a *closed* owner must be
-/// retired explicitly through
-/// [`GpuViewTargets::retire_owner`](crate::gpu::resource::gpu_view_targets::GpuViewTargets::retire_owner),
-/// as it never has a submit to be absent from.
-pub(super) fn keep_target(entry_owner: RenderOwnerId, owner: RenderOwnerId, live: bool) -> bool {
-    entry_owner != owner || live
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::gpu::render_owner_id::{RenderOwnerId, RenderOwners};
-    use crate::gpu::resource::gpu_view_targets::view_target::keep_target;
-
-    fn evicted(entries: &[(u64, RenderOwnerId)], owner: RenderOwnerId, live: &[u64]) -> Vec<u64> {
-        entries
-            .iter()
-            .filter(|(id, entry_owner)| !keep_target(*entry_owner, owner, live.contains(id)))
-            .map(|(id, _)| *id)
-            .collect()
-    }
-
-    /// Eviction asks "does the submitter still record this view?", never "did it paint one this frame".
-    /// Owner `b`'s `2` survives all of `a`'s submits, so only `retire_owner` frees a closed stream's targets.
-    #[test]
-    fn eviction_follows_the_live_roster_and_is_owner_scoped() {
-        let mut owners = RenderOwners::default();
-        let a = owners.reserve();
-        let b = owners.reserve();
-        let entries = [(1, a), (3, a), (2, b)];
-        let cases = [
-            (a, &[1u64, 3][..], vec![]),
-            (a, &[1][..], vec![3]),
-            (a, &[][..], vec![1, 3]),
-            (b, &[2][..], vec![]),
-            (b, &[][..], vec![2]),
-        ];
-        for (owner, live, expected) in cases {
-            assert_eq!(evicted(&entries, owner, live), expected, "live={live:?}");
+        Self {
+            view,
+            bind_group,
+            size,
         }
     }
 }

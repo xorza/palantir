@@ -1,6 +1,6 @@
 //! What Palantir needs from the device it draws on.
 
-use crate::gpu::error::UnmetRequirements;
+use crate::gpu::error::DeviceRequirementsError;
 
 /// Size of the immediate (push-constant) region every shader declares in `prelude.wgsl`: the
 /// viewport `pipeline::viewport_push` pushes after every pipeline bind, which a compile-time
@@ -31,7 +31,7 @@ impl DeviceRequirements {
     /// (`src·One + dst·Src1`), so one pipeline gives over, add, multiply and screen. Lavapipe,
     /// NVIDIA's and V3D's Vulkan drivers, Metal from MSL 1.2 and GL with
     /// `ARB_blend_func_extended` all offer it (`.notes/research/2026-11-08-custom-shaders.md`).
-    pub const FEATURES: wgpu::Features =
+    pub const REQUIRED_FEATURES: wgpu::Features =
         wgpu::Features::IMMEDIATES.union(wgpu::Features::DUAL_SOURCE_BLENDING);
 
     /// Backend capabilities no configuration runs without: compute shaders, which Palantir's
@@ -39,7 +39,7 @@ impl DeviceRequirements {
     /// and a plain OpenGL 3.3 lack. An adapter whose backend lacks one opens no device that runs
     /// Palantir. A driver can claim one its device then refuses, so a host's device request still
     /// tries the next adapter when a device fails.
-    pub const DOWNLEVEL: wgpu::DownlevelFlags = wgpu::DownlevelFlags::COMPUTE_SHADERS;
+    pub const REQUIRED_DOWNLEVEL: wgpu::DownlevelFlags = wgpu::DownlevelFlags::COMPUTE_SHADERS;
 
     /// The four features `collect_gpu_stats` asks for, as the one set that
     /// instruments the GPU timeline.
@@ -48,33 +48,33 @@ impl DeviceRequirements {
     /// adapter, and `WgpuBackend::new` tests each bit the device granted
     /// (`Device::features`) to decide how much attribution to offer, so a bit
     /// no caller asked for reads as absent.
-    pub const GPU_TIMING_FEATURES: wgpu::Features = wgpu::Features::TIMESTAMP_QUERY
+    pub const GPU_STATS_FEATURES: wgpu::Features = wgpu::Features::TIMESTAMP_QUERY
         .union(wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES)
         .union(wgpu::Features::TIMESTAMP_QUERY_INSIDE_ENCODERS)
         .union(wgpu::Features::PIPELINE_STATISTICS_QUERY);
 
     /// What to request from `adapter`, given `optional` features the caller would
     /// take if available. Optional features are intersected with the adapter's, so
-    /// each degrades alone; those in [`FEATURES`](Self::FEATURES) are mandatory and
+    /// each degrades alone; those in [`REQUIRED_FEATURES`](Self::REQUIRED_FEATURES) are mandatory and
     /// their absence is an error.
     pub fn negotiate(
         adapter: &wgpu::Adapter,
         optional: wgpu::Features,
-    ) -> Result<Self, UnmetRequirements> {
+    ) -> Result<Self, DeviceRequirementsError> {
         Self::downlevel_against(adapter.get_downlevel_capabilities().flags)?;
         Self::against(adapter.features(), &adapter.limits(), optional)
     }
 
-    /// Whether a backend with `available` capabilities runs Palantir ([`Self::DOWNLEVEL`]).
+    /// Whether a backend with `available` capabilities runs Palantir ([`Self::REQUIRED_DOWNLEVEL`]).
     /// Apart from [`Self::against`], as a device made elsewhere reports no capabilities.
     pub(crate) const fn downlevel_against(
         available: wgpu::DownlevelFlags,
-    ) -> Result<(), UnmetRequirements> {
-        let missing = Self::DOWNLEVEL.difference(available);
+    ) -> Result<(), DeviceRequirementsError> {
+        let missing = Self::REQUIRED_DOWNLEVEL.difference(available);
         if missing.is_empty() {
             Ok(())
         } else {
-            Err(UnmetRequirements::Downlevel { missing })
+            Err(DeviceRequirementsError::Downlevel { missing })
         }
     }
 
@@ -86,10 +86,10 @@ impl DeviceRequirements {
         available: wgpu::Features,
         ceiling: &wgpu::Limits,
         optional: wgpu::Features,
-    ) -> Result<Self, UnmetRequirements> {
-        let missing = Self::FEATURES.difference(available);
+    ) -> Result<Self, DeviceRequirementsError> {
+        let missing = Self::REQUIRED_FEATURES.difference(available);
         if !missing.is_empty() {
-            return Err(UnmetRequirements::Features { missing });
+            return Err(DeviceRequirementsError::Features { missing });
         }
 
         // The GLES-3 baseline rather than `Limits::default()`, which demands 16
@@ -107,7 +107,7 @@ impl DeviceRequirements {
 
         let mut unmet = None;
         limits.check_limits_with_fail_fn(ceiling, true, |name, required, available| {
-            unmet = Some(UnmetRequirements::Limit {
+            unmet = Some(DeviceRequirementsError::Limit {
                 name,
                 required,
                 available,
@@ -118,7 +118,7 @@ impl DeviceRequirements {
         }
 
         Ok(Self {
-            features: Self::FEATURES | (available & optional),
+            features: Self::REQUIRED_FEATURES | (available & optional),
             limits,
         })
     }
@@ -127,7 +127,7 @@ impl DeviceRequirements {
     /// caller-supplied device: the negotiation against what the device was made with, so a
     /// device requested with lower limits than Palantir's pipelines consume fails here, not in
     /// wgpu's validation of the first pipeline.
-    pub(crate) fn met_by(device: &wgpu::Device) -> Result<(), UnmetRequirements> {
+    pub(crate) fn met_by(device: &wgpu::Device) -> Result<(), DeviceRequirementsError> {
         Self::against(device.features(), &device.limits(), wgpu::Features::empty()).map(drop)
     }
 }
@@ -138,7 +138,7 @@ mod tests {
 
     use crate::gpu::device::device_requirements::DeviceRequirements;
     use crate::gpu::device::device_requirements::IMMEDIATES_BYTES;
-    use crate::gpu::error::UnmetRequirements;
+    use crate::gpu::error::DeviceRequirementsError;
 
     #[test]
     fn negotiation_holds_the_hard_line_and_lets_the_rest_degrade() {
@@ -146,14 +146,14 @@ mod tests {
             max_immediate_size: IMMEDIATES_BYTES,
             ..Limits::default()
         };
-        let available = DeviceRequirements::FEATURES | Features::TIMESTAMP_QUERY;
+        let available = DeviceRequirements::REQUIRED_FEATURES | Features::TIMESTAMP_QUERY;
         let optional = Features::TIMESTAMP_QUERY | Features::PIPELINE_STATISTICS_QUERY;
 
         // Only the optional features the adapter has come along.
         let requirements = DeviceRequirements::against(available, &ceiling, optional).unwrap();
         assert_eq!(
             requirements.features,
-            DeviceRequirements::FEATURES | Features::TIMESTAMP_QUERY
+            DeviceRequirements::REQUIRED_FEATURES | Features::TIMESTAMP_QUERY
         );
         assert_eq!(requirements.limits.max_immediate_size, IMMEDIATES_BYTES);
 
@@ -165,7 +165,7 @@ mod tests {
         .unwrap_err();
         assert_eq!(
             missing,
-            UnmetRequirements::Features {
+            DeviceRequirementsError::Features {
                 missing: Features::IMMEDIATES
             },
             "the feature that is absent, not the one the adapter has"
@@ -178,7 +178,7 @@ mod tests {
             DeviceRequirements::against(Features::IMMEDIATES, &ceiling, optional).unwrap_err();
         assert_eq!(
             no_dual_source,
-            UnmetRequirements::Features {
+            DeviceRequirementsError::Features {
                 missing: Features::DUAL_SOURCE_BLENDING
             }
         );
@@ -189,12 +189,15 @@ mod tests {
 
         let mut short = ceiling;
         short.max_immediate_size = IMMEDIATES_BYTES - 1;
-        let unmet =
-            DeviceRequirements::against(DeviceRequirements::FEATURES, &short, Features::empty())
-                .unwrap_err();
+        let unmet = DeviceRequirements::against(
+            DeviceRequirements::REQUIRED_FEATURES,
+            &short,
+            Features::empty(),
+        )
+        .unwrap_err();
         assert_eq!(
             unmet,
-            UnmetRequirements::Limit {
+            DeviceRequirementsError::Limit {
                 name: "max_immediate_size",
                 required: 16,
                 available: 15,
@@ -216,12 +219,15 @@ mod tests {
             max_immediate_size: IMMEDIATES_BYTES,
             ..Limits::downlevel_webgl2_defaults()
         };
-        let unmet =
-            DeviceRequirements::against(DeviceRequirements::FEATURES, &ceiling, Features::empty())
-                .unwrap_err();
+        let unmet = DeviceRequirements::against(
+            DeviceRequirements::REQUIRED_FEATURES,
+            &ceiling,
+            Features::empty(),
+        )
+        .unwrap_err();
         assert_eq!(
             unmet,
-            UnmetRequirements::Limit {
+            DeviceRequirementsError::Limit {
                 name: "max_dynamic_storage_buffers_per_pipeline_layout",
                 required: 4,
                 available: 0,
@@ -246,9 +252,12 @@ mod tests {
             "fixture no longer stands for an adapter the wgpu defaults fail on"
         );
 
-        let requirements =
-            DeviceRequirements::against(DeviceRequirements::FEATURES, &ceiling, Features::empty())
-                .unwrap();
+        let requirements = DeviceRequirements::against(
+            DeviceRequirements::REQUIRED_FEATURES,
+            &ceiling,
+            Features::empty(),
+        )
+        .unwrap();
 
         assert!(requirements.limits.check_limits(&ceiling));
         assert_eq!(requirements.limits.max_inter_stage_shader_variables, 15);
@@ -264,7 +273,7 @@ mod tests {
         use wgpu::DownlevelFlags;
         assert_eq!(
             DeviceRequirements::downlevel_against(DownlevelFlags::empty()),
-            Err(UnmetRequirements::Downlevel {
+            Err(DeviceRequirementsError::Downlevel {
                 missing: DownlevelFlags::COMPUTE_SHADERS
             })
         );
@@ -275,7 +284,7 @@ mod tests {
             Ok(())
         );
         assert_eq!(
-            UnmetRequirements::Downlevel {
+            DeviceRequirementsError::Downlevel {
                 missing: DownlevelFlags::COMPUTE_SHADERS
             }
             .to_string(),

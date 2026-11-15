@@ -6,8 +6,9 @@ use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::paint::border::Border;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::material::Material;
-use crate::theme::metrics::Metrics;
+use crate::theme::metrics::{FloatMaterial, MaterialRefusal, Metrics};
 use crate::theme::palette::Palette;
+use crate::theme::text_style::TextStyle;
 use crate::theme::text_style_overrides::TextStyleOverrides;
 use std::time::Duration;
 
@@ -34,7 +35,7 @@ pub struct TooltipTheme {
     #[serde(default, skip_serializing_if = "TextStyleOverrides::is_empty")]
     pub text: TextStyleOverrides,
     /// Padding between chrome and the text.
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::padding")]
+    #[serde(deserialize_with = "crate::primitives::file::padding")]
     pub padding: Spacing,
     /// Cap on the bubble's outer size. Width gates wrap; height is usually `INF`. Override via `.max_size(...)`. Infinite axes round-trip because `Size`'s serde maps non-finite to `None`.
     pub max_size: Size,
@@ -47,7 +48,7 @@ pub struct TooltipTheme {
     #[animate(snap)]
     pub warmup: Duration,
     /// Gap in logical px between trigger rect and bubble.
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
+    #[serde(deserialize_with = "crate::primitives::file::length")]
     pub gap: f32,
 }
 
@@ -55,14 +56,11 @@ impl TooltipTheme {
     /// A small control-rounded bubble that floats as a menu does, in [`Metrics::float_material`]
     /// held for its text's ink.
     pub fn from_parts(p: &Palette, m: &Metrics) -> Self {
-        let mut panel = Chrome::rounded(p.element, Corners::all(m.radius.control))
-            .with_border(Border::new(p.border_mid(), m.stroke.hairline))
-            .with_shadow(p.float_shadow(m));
-        let mut material = None;
-        m.dress_float(&mut panel, &mut material, p.text);
-        Self {
-            panel,
-            material,
+        let mut theme = Self {
+            panel: Chrome::rounded(p.element, Corners::all(m.radius.control))
+                .with_border(Border::new(p.border_mid(), m.stroke.hairline))
+                .with_shadow(p.float_shadow(m)),
+            material: None,
             // The caption tier, a step under the body, as Fluent's tooltip sets its text.
             text: TextStyleOverrides::NONE.with_font_size(m.text.caption),
             // Fluent's tooltip insets its text 12 px on each side.
@@ -71,6 +69,20 @@ impl TooltipTheme {
             delay: Duration::from_millis(500),
             warmup: Duration::from_secs(1),
             gap: m.space.sm,
+        };
+        if let Some(float) = &m.float_material {
+            theme.try_dress(float, &TextStyle::from_parts(p, m)).ok();
         }
+        theme
+    }
+
+    /// Dress the panel in `float`, held for the text's ink over `ambient`.
+    pub(super) fn try_dress(
+        &mut self,
+        float: &FloatMaterial,
+        ambient: &TextStyle,
+    ) -> Result<(), MaterialRefusal> {
+        let ink = self.text.apply(ambient).color;
+        float.try_dress(&mut self.panel, &mut self.material, ink)
     }
 }

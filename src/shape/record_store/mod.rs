@@ -5,8 +5,9 @@
 //! payloads and `MeshDraw` entries all carry spans into it directly.
 //!
 //! A shape's draw becomes its record here ([`RecordStore::record`]): each kind's `record_*`
-//! method decides what to stage and stages it. A node's chrome lowers through
-//! [`crate::shape::lower`], which also holds what both share.
+//! method decides what to stage and stages it. A node's chrome lowers here too
+//! ([`RecordStore::lower_chrome`]), through the paint and brush lowering every box shares, so
+//! chrome and shapes intern into one gradient pool.
 //!
 //! [`Forest`]: crate::scene::forest::Forest
 
@@ -19,13 +20,21 @@ use crate::common::hash::Hasher;
 use crate::common::span::Span;
 use crate::effect::effect_registry::EffectRegistry;
 use crate::image_registry::image_handle::ImageHandle;
+use crate::primitives::effect::effect_kind::{BackdropRead, ColorRead, ErasedRead};
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::mesh::{Mesh, MeshVertex};
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::math::domain::is_invisible;
 use crate::primitives::math::float_hash::FloatHash;
+use crate::primitives::math::nan::NanCheck;
+use crate::primitives::packed::fill_axis::FillAxis;
+use crate::primitives::paint::border::Border;
+use crate::primitives::paint::brush::Brush;
+use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
+use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
+use crate::primitives::paint::fill_kind::FillKind;
 use crate::primitives::paint::line_style::LineCap;
 use crate::primitives::paint::material::Material;
 use crate::primitives::paint::paint::Paint;
@@ -43,21 +52,28 @@ use crate::shape::geometry::stroke_geometry::{
 };
 use crate::shape::icon_paint::IconPaint;
 use crate::shape::image_paint::ImagePaint;
-use crate::shape::lower;
 use crate::shape::mesh::MeshShape;
-use crate::shape::paint::closed_paint::ClosedPaint;
+use crate::shape::paint::capture_params::{CaptureParams, CaptureReach};
+use crate::shape::paint::chrome_row::ChromeRow;
+use crate::shape::paint::closed_paint::{ClosedPaint, RecordedRead};
 use crate::shape::paint::curve_ramp::CurveRamp;
 use crate::shape::paint::image_source::ImageSource;
-use crate::shape::paint::lowered_material::{MaterialRead, WornMaterial};
+use crate::shape::paint::lowered_border::LoweredBorder;
+use crate::shape::paint::lowered_brush::LoweredBrush;
+use crate::shape::paint::lowered_material::{LoweredMaterial, MaterialRead, WornMaterial};
+use crate::shape::paint::lowered_paint::LoweredPaint;
+use crate::shape::paint::lowered_shadow::LoweredShadow;
 use crate::shape::paint::lowered_stroke::LoweredStroke;
 use crate::shape::polyline::{PolylineColors, PolylineShape};
 use crate::shape::record::ShapeRecord;
+use crate::shape::record_store::recorded_gradient::RecordedGradient;
 use crate::shape::record_store::recorded_gradients::RecordedGradients;
 use crate::shape::record_store::text_store::TextStore;
 use crate::shape::text::TextShape;
 use crate::text::family_keys::FamilyKeys;
 use crate::text::shaping_font::ShapingFont;
 use glam::Vec2;
+use std::hash;
 use std::hash::{Hash as _, Hasher as _};
 
 /// The payload columns and the only API that appends to them. Every writer
@@ -77,7 +93,7 @@ pub(crate) struct RecordStore {
     /// packing happens once at lowering.
     pub(crate) polyline_colors: Vec<RgbaF16>,
     /// Interned record-scoped gradient payloads, indexed by `LoweredBrush::Gradient`
-    /// (set by `shape::lower::brush`). Cross-tree, so chrome and shape lowering
+    /// (set by [`RecordStore::lower_brush`]). Cross-tree, so chrome and shape lowering
     /// share one pool and the encoder needs only this store.
     pub(crate) gradients: RecordedGradients,
     pub(crate) text: TextStore,
@@ -205,7 +221,7 @@ impl RecordStore {
         {
             return None;
         }
-        Some(ClosedPaint::Fill(lower::lower_paint(self, paint, worn)))
+        Some(ClosedPaint::Fill(self.lower_paint(paint, worn)))
     }
 
     /// The record of `shape` drawn with `stroke`, its ramp interned here; `None` where it paints
@@ -296,20 +312,20 @@ impl RecordStore {
     fn lower_stroke(&mut self, stroke: &Stroke) -> LoweredStroke {
         let ramp = stroke
             .ramp
-            .map_or(CurveRamp::None, |ramp| lower::ramp(self, &ramp));
+            .map_or(CurveRamp::None, |ramp| self.lower_ramp(&ramp));
         LoweredStroke::lower(*stroke, ramp)
     }
 
-    /// The record of `shape` inked in `color`, its text recorded here; `None` where it shapes
-    /// nothing.
+    /// The record of `shape` inked in `color`, its text interned and recorded here; `None` where
+    /// it shapes nothing.
     ///
     /// Empty text or an unusable face shapes nothing, as the two public text queries answer too.
     /// A transparent color does not drop the run: text is the one shape layout reads, so the run
     /// still sizes its node, and the emit gate drops its ink.
-    fn record_text(&self, shape: &TextShape, color: RgbaF32) -> Option<ShapeRecord> {
+    fn record_text(&mut self, shape: &TextShape<'_>, color: RgbaF32) -> Option<ShapeRecord> {
         let TextShape {
             local_origin,
-            text,
+            ref text,
             font,
             wrap,
             align,
@@ -317,6 +333,7 @@ impl RecordStore {
         if text.is_empty() || !font.metrics_valid() {
             return None;
         }
+        let text = self.text.intern_input(text);
         Some(ShapeRecord::Text {
             local_origin,
             text: self.text.record(text),
@@ -350,14 +367,14 @@ impl RecordStore {
     fn record_image(&self, geometry: ClosedGeometry, paint: &ImagePaint) -> Option<ClosedPaint> {
         let ImagePaint {
             handle,
-            fit,
+            placement,
             min_filter,
             mag_filter,
             downsample,
             tint,
         } = paint;
-        let (fit, min_filter, mag_filter, downsample, tint) =
-            (*fit, *min_filter, *mag_filter, *downsample, *tint);
+        let (placement, min_filter, mag_filter, downsample, tint) =
+            (*placement, *min_filter, *mag_filter, *downsample, *tint);
         if geometry.is_paint_empty() || tint.is_noop() {
             return None;
         }
@@ -368,7 +385,7 @@ impl RecordStore {
                 size: handle.size(),
                 generation: handle.generation(),
             },
-            fit,
+            placement,
             min_filter,
             mag_filter,
             downsample,
@@ -422,10 +439,8 @@ impl RecordStore {
         let ErasedEffectPaint {
             name,
             params,
-            capture,
-            fallback,
+            read,
             images,
-            outside,
         } = paint;
         // Resolved and checked in every mode and before the empty test, so a logic error panics
         // whatever is reduced and wherever it lies.
@@ -439,24 +454,33 @@ impl RecordStore {
                 resolved.image_slots,
             );
         }
-        if let Some(fallback) = fallback
+        if let ErasedRead::Backdrop(BackdropRead { fallback, .. }) = read
             && resolve.reductions.transparency.is_reduced()
         {
             if geometry.is_paint_empty() || fallback.is_noop(resolve.material_fallback) {
                 return None;
             }
-            return Some(ClosedPaint::Fill(lower::lower_paint(
-                self,
+            return Some(ClosedPaint::Fill(self.lower_paint(
                 &Paint::from(fallback.brush(resolve.material_fallback)),
                 None,
             )));
         }
         let resolved = resolved?;
-        let backdrop = fallback.map(|_| capture);
         if geometry.is_paint_empty() {
             return None;
         }
         let effect = resolved.id;
+        // How far a backdrop effect reads is its source's, from these parameters, as a
+        // material's is.
+        let read = match read {
+            ErasedRead::Color(ColorRead { outside }) => RecordedRead::Color { outside },
+            ErasedRead::Backdrop(BackdropRead { blur, .. }) => RecordedRead::Backdrop {
+                capture: CaptureParams {
+                    sigma: *blur,
+                    reach: CaptureReach::of(resolve.effects.reach_of(effect, params)),
+                },
+            },
+        };
         let mut h = Hasher::new();
         h.write_u32(effect.0);
         h.pod_slice(params);
@@ -465,20 +489,132 @@ impl RecordStore {
             h.write_u64(image.id().0);
             h.write_u32(image.generation());
         }
-        if let Some(backdrop) = backdrop {
-            backdrop.hash(&mut h);
-        }
-        if let Some(reach) = outside {
-            h.write_u32(reach.to_bits());
+        match read {
+            RecordedRead::Color { outside: None } => {}
+            RecordedRead::Color {
+                outside: Some(reach),
+            } => h.write_u32(reach.to_bits()),
+            RecordedRead::Backdrop { capture } => capture.hash(&mut h),
         }
         Some(ClosedPaint::Effect {
-            backdrop,
-            outside,
+            read,
             effect,
             params: self.stage_effect_params(params),
             images: self.stage_effect_images(images.iter().flatten()),
             content_hash: ContentHash::finish(&h),
         })
+    }
+
+    /// Lower a `Brush`: `Solid` stays inline; a gradient interns here and lowers to a
+    /// `LoweredBrush::Gradient` of its id and content hash.
+    fn lower_brush(&mut self, b: &Brush) -> LoweredBrush {
+        // A gradient's geometry vanishes behind a `GradientId`, so the no-op decision is made before interning, by both callers.
+        debug_assert!(
+            !b.has_nan(),
+            "NaN gradient geometry reached lowering: {b:?}"
+        );
+        match b {
+            Brush::Solid(color) => LoweredBrush::Solid(color.to_f16()),
+            Brush::Gradient(gradient) => {
+                let kind = gradient.fill_kind();
+                let hash = gradient_hash(kind, gradient);
+                let id = self.gradients.intern(
+                    hash,
+                    RecordedGradient {
+                        axis: gradient.axis(),
+                        kind,
+                        ramp: gradient.ramp,
+                    },
+                );
+                LoweredBrush::Gradient { id, hash }
+            }
+        }
+    }
+
+    /// Intern a curve's color ramp into the gradient pool [`Self::lower_brush`] fills, as a row
+    /// with no axis.
+    fn lower_ramp(&mut self, ramp: &ColorRamp) -> CurveRamp {
+        let hash = gradient_hash(FillKind::RAMP, ramp);
+        let id = self.gradients.intern(
+            hash,
+            RecordedGradient {
+                axis: FillAxis::ZERO,
+                kind: FillKind::RAMP,
+                ramp: *ramp,
+            },
+        );
+        CurveRamp::Interned { id, hash }
+    }
+
+    /// Lower `paint` over `worn`, the material a shape wears and what it reads this record
+    /// (`None` where it wears none or its alternative paints none): the one lowering every box
+    /// shares, sharing gradient lowering with every shape, so all share one pool. A material
+    /// reading its fallback leaves a plain box: the fallback in place of the fill, and no
+    /// material.
+    fn lower_paint(&mut self, paint: &Paint, worn: Option<WornMaterial<'_>>) -> LoweredPaint {
+        debug_assert!(
+            !paint.has_nan(),
+            "a Paint reaches lowering validated, by `Widget::record` or `Ui::add_shape`: {paint:?}",
+        );
+        let (fill, material) = match worn {
+            Some(WornMaterial {
+                material,
+                read: MaterialRead::Capture(resolved),
+            }) => {
+                let params = self.stage_effect_params(material.effect.bytes());
+                (
+                    self.lower_brush(&paint.fill),
+                    Some(LoweredMaterial::lower(material, resolved, params)),
+                )
+            }
+            Some(WornMaterial {
+                material,
+                read: MaterialRead::Fallback { theme },
+            }) => (self.lower_brush(&material.fallback.brush(theme)), None),
+            None if paint.is_noop() => (self.lower_brush(&Brush::TRANSPARENT), None),
+            None => (self.lower_brush(&paint.fill), None),
+        };
+        LoweredPaint {
+            fill,
+            border: LoweredBorder {
+                width: paint.border_inset(),
+                ..LoweredBorder::lower(paint.border)
+            },
+            shadow: LoweredShadow::lower(paint.shadow),
+            material,
+        }
+    }
+
+    /// Lower a node's `Chrome` to its `ChromeRow`, with the focus `ring` over it.
+    pub(crate) fn lower_chrome(&mut self, chrome: &Chrome, ring: Border) -> ChromeRow {
+        let LoweredPaint {
+            fill,
+            border,
+            shadow,
+            material,
+        } = self.lower_paint(&chrome.paint, None);
+        debug_assert!(material.is_none(), "a chrome wears no material");
+        let corners = chrome.corners;
+        let ring = LoweredBorder::lower(ring);
+        let has_ring = !ring.is_noop();
+        // Fed as whole words from registers: a struct packed for one `write` is stored field by field and read back wider, a load the CPU can't forward.
+        let brush = fill.hash_parts();
+        let mut h = Hasher::new();
+        h.write_u64(brush.payload);
+        h.write_u64(corners.as_u64());
+        border.hash_into(&mut h);
+        ring.hash_into(&mut h);
+        shadow.hash(&mut h);
+        h.write_u8(brush.tag);
+        let hash = ContentHash::finish(&h);
+        ChromeRow {
+            fill,
+            border,
+            corners,
+            shadow,
+            hash,
+            ring: has_ring,
+        }
     }
 
     /// Stage one effect instance's parameter bytes as words. A loaded effect's parameters span a
@@ -569,6 +705,12 @@ impl RecordStore {
             colors: staged_colors,
         }
     }
+}
+
+/// Stable content hash for a gradient kind or curve ramp: the fill kind's word, which tells the kinds apart, then the value's `Hash`, captured at lowering so downstream cache keys stay context-free.
+#[inline]
+fn gradient_hash<G: hash::Hash>(kind: FillKind, g: &G) -> ContentHash {
+    ContentHash::of((kind.0, g))
 }
 
 #[cfg(test)]

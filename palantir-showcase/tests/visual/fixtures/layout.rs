@@ -3,12 +3,13 @@
 use palantir::glam::UVec2;
 use palantir::{
     Align, Block, Border, Button, Chrome, ColorScheme, Configure, Corners, Grid, GridCell, Panel,
-    RgbaF32, Sizing, Text, TextStyle, TextWrap, Track,
+    RgbaF32, SizeSpec, Sizing, Text, TextStyle, TextWrap, Track,
 };
 
 use crate::golden_name::GoldenName;
 
 use crate::visual_rig::FIXTURE_PALETTE;
+use std::num::NonZeroU16;
 
 /// `Fill(1)`/`Fill(2)`/`Fill(1)` rows split the height 25/50/25.
 #[test]
@@ -18,7 +19,7 @@ fn vstack_fill_weights_matches_golden() {
             .auto_id()
             .padding(8.0)
             .gap(4.0)
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 Block::new()
                     .id_salt("a")
@@ -50,11 +51,13 @@ fn grid_mixed_tracks_matches_golden() {
             .line_gap(6.0)
             .gap(6.0)
             .padding(10.0)
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 Block::new()
                     .id_salt("header")
-                    .grid_cell(GridCell::at(0, 0).with_span(1, 3))
+                    .grid_cell(
+                        GridCell::at(0, 0).with_span(NonZeroU16::MIN, NonZeroU16::new(3).unwrap()),
+                    )
                     .chrome(Chrome::rounded(
                         RgbaF32::srgb(0.25, 0.30, 0.45),
                         Corners::all(4.0),
@@ -95,7 +98,7 @@ fn zstack_centered_button_matches_golden() {
         Panel::zstack()
             .auto_id()
             .padding(12.0)
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .chrome(
                 Chrome::rounded(RgbaF32::srgb(0.16, 0.20, 0.28), Corners::all(10.0))
                     .with_border(Border::new(RgbaF32::srgb(0.30, 0.36, 0.46), 1.0)),
@@ -117,7 +120,7 @@ fn grid_two_hug_cols_label_not_clipped_matches_golden() {
         Panel::vstack()
             .auto_id()
             .padding(12.0)
-            .size((Sizing::FILL, Sizing::HUG))
+            .size(SizeSpec::FILL_W)
             .show(ui, |ui| {
                 Grid::new()
                     .id_salt("two-hug")

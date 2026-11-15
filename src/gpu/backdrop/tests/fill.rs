@@ -1,20 +1,24 @@
 //! A material's fill and border: drawn in the material's one draw, over the whole box.
 
-use crate::gpu::backdrop::tests::{CLEAR, SIZE, assert_within_a_step, encode, window};
+use crate::gpu::backdrop::tests::{
+    CLEAR, COLOR_CHANNELS, SIZE, assert_within_a_step, encode, window,
+};
 use crate::gpu::test_gpu::headless_test_gpu;
 use crate::internals::paint_capture::PaintCall;
 use crate::primitives::geometry::rect::Rect;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::SizeSpec;
 use crate::primitives::paint::border::Border;
-use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
+use crate::primitives::paint::brush::gradient::Gradient;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
 use crate::primitives::paint::paint::Paint;
+use crate::renderer::frontend::payload::draw_closed_payload::closed_effect::EffectRead;
 use crate::shape::rect::RectShape;
 use crate::shape::{PaintedBy, Shape};
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
+use glam::UVec2;
 
 const BOX: Rect = Rect::new(8.0, 8.0, 48.0, 32.0);
 
@@ -26,7 +30,7 @@ where
     move |ui: &mut Ui| {
         Panel::canvas()
             .id_salt("backdrop-fill")
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 ui.add_shape(Shape::rect().at(BOX), paint.clone());
             });
@@ -40,7 +44,7 @@ where
 fn a_gradient_fill_draws_in_the_material_draw() {
     let gpu = headless_test_gpu();
     let gradient =
-        LinearGradient::horizontal([RgbaF32::srgb(1.0, 0.1, 0.0), RgbaF32::srgb(0.0, 0.2, 1.0)]);
+        Gradient::horizontal([RgbaF32::srgb(1.0, 0.1, 0.0), RgbaF32::srgb(0.0, 0.2, 1.0)]);
     let mut plain = window(&gpu, SIZE, CLEAR);
     plain.frame(boxed(Paint::from(gradient.clone())));
     let mut material = window(&gpu, SIZE, CLEAR);
@@ -53,11 +57,11 @@ fn a_gradient_fill_draws_in_the_material_draw() {
         "a material's gradient fill",
     );
     let calls = material.encode_paint().calls;
-    let [PaintCall::Effect(p)] = calls.as_slice() else {
+    let [PaintCall::Effect(p, _)] = calls.as_slice() else {
         panic!("one draw, the material's");
     };
     assert!(
-        p.paint.stage.is_some(),
+        matches!(p.paint.read, EffectRead::Material { .. }),
         "the draw wears the material's stage"
     );
 }
@@ -74,21 +78,21 @@ fn a_border_lies_over_the_material() {
     let mut h = window(&gpu, SIZE, CLEAR);
     h.frame(boxed(paint));
     // The band runs 4 px in from the box's left edge, at x 8.
-    let pixel = h.read_back().get_pixel(10, 24).0;
+    let pixel = h.read_back().texel(UVec2::new(10, 24));
     let half = encode(0.5);
-    for (c, want) in [half, half, 0.0].into_iter().enumerate() {
+    for ((name, channel), want) in COLOR_CHANNELS.into_iter().zip([half, half, 0.0]) {
+        let got = f64::from(channel(pixel));
         assert!(
-            (f64::from(pixel[c]) - want).abs() <= 1.0,
-            "channel {c} is {}, {want:.1} wanted",
-            pixel[c]
+            (got - want).abs() <= 1.0,
+            "{name} is {got}, {want:.1} wanted"
         );
     }
     let calls = h.encode_paint().calls;
-    let [PaintCall::Effect(p)] = calls.as_slice() else {
+    let [PaintCall::Effect(p, _)] = calls.as_slice() else {
         panic!("one draw, the material's");
     };
     assert!(
-        p.paint.stage.is_some(),
+        matches!(p.paint.read, EffectRead::Material { .. }),
         "the draw wears the material's stage"
     );
 }

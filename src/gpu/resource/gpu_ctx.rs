@@ -103,11 +103,7 @@ impl<'a> GpuCtx<'a> {
                 wgpu::TexelCopyTextureInfo {
                     texture: copy.texture,
                     mip_level: 0,
-                    origin: wgpu::Origin3d {
-                        x: copy.origin.x,
-                        y: copy.origin.y,
-                        z: 0,
-                    },
+                    origin: texel::origin(copy.origin),
                     aspect: wgpu::TextureAspect::All,
                 },
                 texel::extent(copy.size),
@@ -196,7 +192,6 @@ pub(crate) struct Staged<'a> {
 mod tests {
     use crate::gpu::resource::gpu_ctx::RowCopy;
     use crate::gpu::test_gpu::headless_test_gpu;
-    use crate::gpu::texel;
     use crate::gpu::texel::TargetSpec;
     use glam::UVec2;
 
@@ -206,15 +201,13 @@ mod tests {
     #[test]
     fn copied_rows_land_at_their_rect_through_the_pitch() {
         let gpu = headless_test_gpu();
-        let texture = texel::texture_2d(
-            &gpu,
-            TargetSpec {
-                label: "copy_rows",
-                size: UVec2::new(4, 3),
-                format: wgpu::TextureFormat::R8Unorm,
-                usage: wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::COPY_SRC,
-            },
-        );
+        let texture = TargetSpec {
+            label: "copy_rows",
+            size: UVec2::new(4, 3),
+            format: wgpu::TextureFormat::R8Unorm,
+            usage: wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::COPY_SRC,
+        }
+        .texture(&gpu);
         gpu.frame(|ctx| {
             ctx.copy_rows(
                 [

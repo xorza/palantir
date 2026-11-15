@@ -1,7 +1,6 @@
 //! Which quad pipeline an instance draws through, worked out once per frame.
 
 use crate::diagnostics::gpu_pass_stats::BatchKind;
-use crate::gpu::pipeline::quad_pipeline::cutout_plan::ShadowEntry;
 use crate::renderer::render_buffer::fill_form::FillForm;
 use crate::renderer::render_buffer::quad_draw_row::QuadKey;
 
@@ -14,6 +13,21 @@ pub(crate) enum QuadDraw {
     Shadow(ShadowEntry),
 }
 
+/// The shadow pipeline's entry a shadow draws through, in [`Self::ALL`] order, which its
+/// discriminant follows.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ShadowEntry {
+    General,
+    Tables,
+    TablesWide,
+}
+
+impl ShadowEntry {
+    /// Every entry, in discriminant order.
+    pub(crate) const ALL: [Self; 3] = [Self::General, Self::Tables, Self::TablesWide];
+    pub(crate) const COUNT: usize = Self::ALL.len();
+}
+
 impl QuadDraw {
     /// Every draw, in [`Self::idx`] order: the fills, then the shadows.
     pub(crate) const ALL: [Self; FillForm::ALL.len() + ShadowEntry::COUNT] = {
@@ -24,19 +38,19 @@ impl QuadDraw {
             all[at] = Self::Fill(FillForm::ALL[at]);
             at += 1;
         }
-        all[at + 1] = Self::Shadow(ShadowEntry::Tables);
-        all[at + 2] = Self::Shadow(ShadowEntry::TablesWide);
+        let mut entry = 0;
+        while entry < ShadowEntry::COUNT {
+            all[at + entry] = Self::Shadow(ShadowEntry::ALL[entry]);
+            entry += 1;
+        }
         all
     };
 
     /// This draw's place in [`Self::ALL`], its bit in a [`QuadDraws`].
     pub(crate) const fn idx(self) -> u32 {
-        let fills = FillForm::ALL.len() as u32;
         match self {
             Self::Fill(form) => form.idx(),
-            Self::Shadow(ShadowEntry::General) => fills,
-            Self::Shadow(ShadowEntry::Tables) => fills + 1,
-            Self::Shadow(ShadowEntry::TablesWide) => fills + 2,
+            Self::Shadow(entry) => FillForm::ALL.len() as u32 + entry as u32,
         }
     }
 

@@ -5,8 +5,8 @@ use crate::primitives::paint::chrome::Chrome;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::configure::ThemeDefaults;
-use crate::widget_core::response::InnerResponse;
+use crate::widget_core::configure::ConfigureDefaults;
+use crate::widget_core::inner_response::InnerResponse;
 use crate::widget_core::widget::Widget;
 use std::rc::Rc;
 
@@ -96,21 +96,6 @@ impl Panel {
     pub const fn chrome(mut self, chrome: Chrome) -> Self {
         chrome.validate();
         self.chrome = Some(chrome);
-        self
-    }
-
-    /// Paints `chrome` unless the caller set one, for a wrapper theming a
-    /// widget after the caller's setters; an explicit [`Self::chrome`] wins in either order.
-    ///
-    /// # Panics
-    ///
-    /// Panics unless `chrome` holds the kinds [`Chrome`] lists.
-    #[track_caller]
-    pub const fn default_chrome(mut self, chrome: Chrome) -> Self {
-        chrome.validate();
-        if self.chrome.is_none() {
-            self.chrome = Some(chrome);
-        }
         self
     }
 }

@@ -244,3 +244,126 @@ fn a_gesture_commits_once_with_its_final_value() {
             .assert_signals(false, false, &format!("{label}: after the click"));
     }
 }
+
+/// A commit is of a change, as HTML's `change` event is. Each widget starts at its largest
+/// value, where an arrow key toward that bound moves nothing and commits nothing. A click then
+/// moves the value to its spot and commits; a second click on the same spot moves nothing and
+/// commits nothing. The slider's track runs 100 px from x 9, so x 59 is 0.5; the 208 × 160
+/// field reads (104, 80) as saturation 0.5, value 0.5; the 208 px alpha bar reads x 104 as 0.5.
+/// A drag value's scrub that comes back to where it began commits nothing either.
+#[test]
+fn a_gesture_that_moves_nothing_commits_nothing() {
+    use crate::primitives::input::keyboard::key::Key;
+    type Show = fn(&mut Ui, &mut Vec2) -> ValueResponse;
+    type Spot = Option<(Vec2, Vec2)>;
+
+    let id = WidgetId::from_hash(ID);
+    let slider: Show = |ui, v| {
+        let mut value = f64::from(v.x);
+        let edges = Slider::new(&mut value, 0.0..=1.0)
+            .size((Sizing::fixed(118.0), Sizing::fixed(18.0)))
+            .id(WidgetId::from_hash(ID))
+            .show(ui);
+        v.x = value as f32;
+        edges
+    };
+    let drag_value: Show = |ui, v| {
+        let mut value = f64::from(v.x);
+        let edges = DragValue::new(&mut value)
+            .editable(false)
+            .speed(1.0)
+            .range(0.0..=10.0)
+            .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
+            .id(WidgetId::from_hash(ID))
+            .show(ui);
+        v.x = value as f32;
+        edges
+    };
+    let field: Show = |ui, v| {
+        let mut coords = ColorCoords::default()
+            .with_hue(0.3)
+            .with_saturation(v.x)
+            .with_value(v.y);
+        let edges = ColorField::new(&mut coords)
+            .id(WidgetId::from_hash(ID))
+            .show(ui);
+        *v = Vec2::new(coords.saturation(), coords.value());
+        edges
+    };
+    let strip: Show = |ui, v| {
+        let mut color = RgbaF32::hex(0x4cd3ff).with_alpha(v.x);
+        let edges = ColorStrip::alpha(&mut color)
+            .id(WidgetId::from_hash(ID))
+            .show(ui);
+        v.x = color.a;
+        edges
+    };
+    let rows: [(&str, UVec2, Show, Vec2, Spot); 4] = [
+        (
+            "slider",
+            UVec2::new(118, 18),
+            slider,
+            Vec2::new(1.0, 0.0),
+            Some((Vec2::new(59.0, 9.0), Vec2::new(0.5, 0.0))),
+        ),
+        (
+            "drag value",
+            UVec2::new(300, 100),
+            drag_value,
+            Vec2::new(10.0, 0.0),
+            None,
+        ),
+        (
+            "color field",
+            UVec2::new(208, 160),
+            field,
+            Vec2::ONE,
+            Some((Vec2::new(104.0, 80.0), Vec2::splat(0.5))),
+        ),
+        (
+            "alpha strip",
+            UVec2::new(208, 14),
+            strip,
+            Vec2::new(1.0, 0.0),
+            Some((Vec2::new(104.0, 7.0), Vec2::new(0.5, 0.0))),
+        ),
+    ];
+    for (label, surface, show, start, spot) in rows {
+        let mut h = Harness::mono(surface);
+        let mut value = start;
+        h.frame_value(|ui| show(ui, &mut value));
+        h.ui_mut().set_focus(id);
+        h.key(Key::ArrowRight);
+        let keyed = h.frame_value(|ui| show(ui, &mut value));
+        assert_eq!(value, start, "{label}: the key moves nothing at the bound");
+        keyed.assert_signals(false, false, &format!("{label}: key at the bound"));
+
+        let click = |h: &mut Harness, value: &mut Vec2, at: Vec2| {
+            h.press(at, PointerButton::Left);
+            h.frame_value(|ui| show(ui, value));
+            h.release(PointerButton::Left);
+            h.frame_value(|ui| show(ui, value)).committed
+        };
+        if let Some((at, there)) = spot {
+            assert!(click(&mut h, &mut value, at), "{label}: a click that moves");
+            assert_eq!(value, there, "{label}: the click's spot");
+            assert!(
+                !click(&mut h, &mut value, at),
+                "{label}: a click on the spot the value holds"
+            );
+            assert_eq!(value, there, "{label}: the second click leaves it");
+        } else {
+            // The scrub goes 20 px right, clamped at 10, then back to where it began.
+            h.press(Vec2::new(50.0, 20.0), PointerButton::Left);
+            h.frame_value(|ui| show(ui, &mut value));
+            h.drag_to(Vec2::new(70.0, 20.0));
+            h.frame_value(|ui| show(ui, &mut value));
+            h.hover(Vec2::new(50.0, 20.0));
+            h.frame_value(|ui| show(ui, &mut value));
+            h.release(PointerButton::Left);
+            let released = h.frame_value(|ui| show(ui, &mut value));
+            assert_eq!(value, start, "{label}: the scrub comes back");
+            assert!(!released.committed, "{label}: a scrub that moves nothing");
+        }
+    }
+}

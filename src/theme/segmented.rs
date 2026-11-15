@@ -32,7 +32,7 @@ pub struct SegmentedTheme {
     /// The track the segments sit on.
     pub track: Chrome,
     /// The track's inset around its segments.
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::padding")]
+    #[serde(deserialize_with = "crate::primitives::file::padding")]
     pub track_padding: Spacing,
     /// What a segment wears: `selected` the checked one, `unselected` the others, each in its four
     /// states, as a [`Button`](crate::Button) picks them.

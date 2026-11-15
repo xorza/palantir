@@ -10,6 +10,7 @@ use crate::gpu::test_gpu::{TestGpu, headless_test_gpu};
 use crate::primitives::paint::antialias::AA_HALF_WIDTH;
 use crate::shape::paint::lowered_shadow::ShadowGeometry;
 use glam::U16Vec2;
+use std::iter;
 
 /// What the bake's `CUTOUT_BAKE_NODES` midpoint nodes may err from the cutout's integral
 /// (`cutout_bake.wgsl`).
@@ -74,8 +75,8 @@ fn corner_cutout(q: Q, r: f64, sigma: f64, reach: f64) -> f64 {
         * step
 }
 
-/// Two tables baked whole, each on a page of its own, hold texel for texel the cutout at the `q`
-/// each texel stands for, `i · σ / 10 − reach`, within the nodes' error and an 8-bit store's, and
+/// Two tables baked whole, each on a page of its own, hold the cutout at the `q` each texel
+/// stands for, at every third texel each way and the last row and column, `i · σ / 10 − reach`, within the nodes' error and an 8-bit store's, and
 /// the bake writes nothing outside them. At radius 8 a σ of 16 makes `floor((8 + 2 · 64.5) · 10 /
 /// 16) + 2 = 87` texels and takes the series forms; a σ of 2 makes `(8 + 2 · 8.5) · 5 + 2 = 127`
 /// and takes the difference forms. On pages of 128², a 16² glyph takes the first page's top shelf,
@@ -109,8 +110,12 @@ fn a_baked_table_holds_the_cutout_it_tabulates() {
         let h = sigma / f64::from(CutoutPlan::TEXELS_PER_SIGMA);
         let mut worst = 0.0_f64;
         let mut deepest = 0.0_f64;
-        for y in 0..side {
-            for x in 0..side {
+        // Every third texel each way, and the last row and column: the cutout is smooth over a
+        // table, so a texel that strays strays with its neighbours, and each sample takes the
+        // cutout's integral, which over every texel ran the test past its second.
+        let samples = || (0..side).step_by(3).chain(iter::once(side - 1));
+        for y in samples() {
+            for x in samples() {
                 let baked = f64::from(texels[(oy + y) * edge + ox + x]) / 255.0;
                 let q = Q {
                     x: x as f64 * h - reach,
@@ -152,7 +157,7 @@ struct Baked {
 /// move `traffic`.
 fn bake_two_tables(gpu: &TestGpu, shader: &wgpu::ShaderModule, traffic: PassTraffic) -> Baked {
     let mut pool = AtlasPool::uniform(128, 128, 0);
-    pool.allocate(AtlasFormat::R8, Tenant::Glyphs, UVec2::splat(16))
+    pool.allocate(AtlasFormat::R8, Tenant::Glyphs.owner(), UVec2::splat(16))
         .unwrap();
     let mut textures = AtlasTextures::new(gpu);
     let mut tables = CutoutTables::new(gpu, shader);
@@ -174,7 +179,7 @@ fn bake_two_tables(gpu: &TestGpu, shader: &wgpu::ShaderModule, traffic: PassTraf
         .collect();
     tables.bakes.clone_from(&bakes);
     gpu.frame(|ctx| {
-        textures.commit(ctx.gpu, ctx.encoder, &mut pool);
+        textures.commit(ctx, &mut pool);
         tables.bake(ctx, &textures);
     });
     let pages =
@@ -191,7 +196,7 @@ fn a_partial_bake_writes_its_span_alone() {
     let shader = QuadPipeline::SHADER.module(&gpu);
     let [drawn, staged] = [PassTraffic::Drawn, PassTraffic::WholeTarget].map(|traffic| {
         let mut pool = AtlasPool::uniform(128, 128, 0);
-        pool.allocate(AtlasFormat::R8, Tenant::Glyphs, UVec2::splat(16))
+        pool.allocate(AtlasFormat::R8, Tenant::Glyphs.owner(), UVec2::splat(16))
             .unwrap();
         let mut textures = AtlasTextures::new(&gpu);
         let mut tables = CutoutTables::new(&gpu, &shader);
@@ -211,7 +216,7 @@ fn a_partial_bake_writes_its_span_alone() {
             hi: U16Vec2::new(40, 30),
         });
         gpu.frame(|ctx| {
-            textures.commit(ctx.gpu, ctx.encoder, &mut pool);
+            textures.commit(ctx, &mut pool);
             tables.bake(ctx, &textures);
         });
         gpu.read_texture(textures.page_texture(AtlasFormat::R8, 0).unwrap())

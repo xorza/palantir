@@ -19,17 +19,11 @@ impl Aabb {
     /// Bounds of `points`, or [`Rect::ZERO`] when empty.
     #[inline]
     pub(crate) fn of(points: &[Vec2]) -> Rect {
-        Self::of_iter(points.iter().copied())
-    }
-
-    #[inline]
-    pub(crate) fn of_iter(points: impl IntoIterator<Item = Vec2>) -> Rect {
-        let mut points = points.into_iter();
-        let Some(first) = points.next() else {
+        let Some((&first, rest)) = points.split_first() else {
             return Rect::ZERO;
         };
         let mut bounds = Self::at(first);
-        for p in points {
+        for &p in rest {
             bounds.push(p);
         }
         bounds.finish()

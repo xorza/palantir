@@ -70,7 +70,7 @@ pub trait AgentWindow<A> {
     ///
     /// # Errors
     ///
-    /// [`PlayError::NoPixels`] for a window that paints with no device, and what
+    /// [`PlayError::NoDevice`] for a window that paints with no device, and what
     /// [`Self::query`] fails with.
     fn lose_device(&mut self) -> Result<(), PlayError>;
 

@@ -1,16 +1,17 @@
 use crate::host::harness::Harness;
 use crate::input::Input;
-use crate::input::capture::{Press, PressDrag, Release, ReleaseKind};
+use crate::input::capture::DOUBLE_CLICK_INTERVAL;
 use crate::input::target_scroll_delta::TargetScrollDelta;
 use crate::input::tests::{BUTTON_SURFACE, build_button, fixed_button};
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::primitives::input::interaction::button_phase::ButtonPhase;
-use crate::primitives::input::interaction::button_state::ButtonState;
 use crate::primitives::input::interaction::drag::Drag;
-use crate::primitives::input::interaction::response_state::ResponseState;
+use crate::primitives::input::interaction::pointer_button_phase::PointerButtonPhase;
+use crate::primitives::input::interaction::pointer_button_state::PointerButtonState;
+use crate::primitives::input::interaction::response::Response;
 use crate::primitives::input::interaction::scroll_delta::ScrollDelta;
+use crate::primitives::input::interaction::wheel_delta::WheelDelta;
 use crate::primitives::input::pointer::PointerButton;
 use crate::primitives::input::scroll_targets::ScrollTargets;
 use crate::primitives::input::zoom_factor::ZoomFactor;
@@ -20,6 +21,7 @@ use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};
+use std::time::Duration;
 
 fn focusable_id() -> WidgetId {
     WidgetId::from_hash("focusable")
@@ -78,18 +80,18 @@ fn disabled_reflects_cascaded_ancestor_flag() {
 /// not report `hovered` or `clicked`, which the hit index cannot produce. Geometry stays.
 #[test]
 fn folding_disabled_in_drops_the_interaction_half_at_every_fold() {
-    let busy = ResponseState {
+    let busy = Response {
         rect: Some(Rect::new(1.0, 2.0, 3.0, 4.0)),
         layout_rect: Some(Rect::new(5.0, 6.0, 7.0, 8.0)),
         pointer_local: Some(Vec2::new(9.0, 10.0)),
         pointer_over: true,
         focused: true,
-        left: ButtonState::new(ButtonPhase::Up { click: Some(1) }, Drag::None),
+        left: PointerButtonState::new(PointerButtonPhase::Up { click: Some(1) }, Drag::None),
         scroll: ScrollDelta {
-            pixels: Vec2::new(11.0, 12.0),
+            wheel: WheelDelta::pixels(Vec2::new(11.0, 12.0)),
             ..ScrollDelta::default()
         },
-        ..ResponseState::default()
+        ..Response::idle(WidgetId::from_hash("probe"))
     };
 
     let mut kept = busy;
@@ -103,9 +105,9 @@ fn folding_disabled_in_drops_the_interaction_half_at_every_fold() {
     assert!(off.disabled, "a later `false` cannot re-enable it");
     assert!(!off.hovered(), "the hover goes with it");
     assert!(!off.left.clicked(), "and the click");
-    assert_eq!(off.left, ButtonState::default());
-    assert_eq!(off.right, ButtonState::default());
-    assert_eq!(off.middle, ButtonState::default());
+    assert_eq!(off.left, PointerButtonState::default());
+    assert_eq!(off.right, PointerButtonState::default());
+    assert_eq!(off.middle, PointerButtonState::default());
     assert_eq!(off.scroll, ScrollDelta::default(), "and the wheel");
 
     assert_eq!(off.rect, busy.rect);
@@ -141,14 +143,14 @@ fn disabled_false_when_chain_clean() {
 fn a_departed_pointer_clears_every_routed_target() {
     let id = WidgetId::from_hash("w");
     let mut s = Input::new();
-    s.pointer.hovered = Some(id);
+    s.pointer.under_pointer = Some(id);
     s.pointer.scroll_targets = ScrollTargets::both(id);
     s.pointer.pinch_target = Some(id);
 
     s.refresh_pointer_targets();
     assert_eq!(
         (
-            s.pointer.hovered,
+            s.pointer.under_pointer,
             s.pointer.scroll_targets,
             s.pointer.pinch_target
         ),
@@ -181,27 +183,26 @@ fn frame_quiescent_predicate() {
     broken("pointer.target_deltas", &|s| {
         s.pointer.target_deltas.push(TargetScrollDelta::new(id));
     });
-    broken("capture.press", &|s| {
-        s.pointer.captures[PointerButton::Left.idx()].press = Some(Press {
-            target: id,
-            origin: Vec2::ZERO,
-            travel: Vec2::ZERO,
-            count: 1,
-            fresh: true,
-            drag: PressDrag::None,
-        });
-    });
+    let press = |s: &mut Input, button: PointerButton| {
+        s.pointer.capture_mut(button).begin_press(
+            id,
+            Vec2::ZERO,
+            Duration::ZERO,
+            DOUBLE_CLICK_INTERVAL,
+        );
+    };
+    broken("capture.press", &|s| press(s, PointerButton::Left));
     broken("capture.release (click)", &|s| {
-        s.pointer.captures[PointerButton::Right.idx()].release = Some(Release {
-            target: id,
-            kind: ReleaseKind::Click { count: 1 },
-        });
+        press(s, PointerButton::Right);
+        s.pointer
+            .capture_mut(PointerButton::Right)
+            .release_on(|| Some(id));
     });
     broken("capture.release (miss)", &|s| {
-        s.pointer.captures[PointerButton::Middle.idx()].release = Some(Release {
-            target: id,
-            kind: ReleaseKind::Miss,
-        });
+        press(s, PointerButton::Middle);
+        s.pointer
+            .capture_mut(PointerButton::Middle)
+            .release_on(|| None);
     });
 
     assert!(
@@ -227,14 +228,14 @@ fn quiescent_frame_keeps_geometry_defaults_interaction() {
     assert_eq!(r.layout_rect, Some(placed));
 
     assert!(!r.hovered());
-    assert!(!r.pressed());
+    assert!(!r.is_pressed());
     assert!(!r.left.clicked());
     assert!(!r.right.clicked());
     assert!(!r.focused);
     assert!(!r.left.drag.is_live());
     assert_eq!(r.left.click_count(), 0);
-    assert_eq!(r.scroll.pixels, Vec2::ZERO);
-    assert_eq!(r.scroll.lines, Vec2::ZERO);
+    assert_eq!(r.scroll.wheel.pixels, Vec2::ZERO);
+    assert_eq!(r.scroll.wheel.lines, Vec2::ZERO);
     assert_eq!(r.scroll.zoom, ZoomFactor::ONE);
     assert_eq!(r.pointer_local, None);
 }
@@ -412,11 +413,11 @@ fn quiescent_and_full_paths_agree_on_geometry() {
     let s = h.ui_mut().input_mut();
     s.set_focus(focusable_id());
 
-    let at = s.arranged.cascade.locate(focusable_id());
+    // A position no pass resolved it at, so the endpoint comes from the index.
     s.frame_quiescent = true;
-    let quiet = s.response_state(focusable_id(), at);
+    let quiet = s.response(focusable_id(), usize::MAX);
     s.frame_quiescent = false;
-    let full = s.response_state(focusable_id(), at);
+    let full = s.response(focusable_id(), usize::MAX);
 
     assert_eq!(quiet.rect, full.rect);
     assert_eq!(quiet.layout_rect, full.layout_rect);
@@ -430,4 +431,27 @@ fn quiescent_and_full_paths_agree_on_geometry() {
          is vacuous",
     );
     assert!(quiet.focused, "focus must survive the quiescent path");
+}
+
+/// A widget probed before it ever records is `Response::idle` of its id: no rect, identity
+/// transform, nothing over it, every button idle and no scroll; and two ids' idle responses
+/// differ by the id alone.
+#[test]
+fn an_unrecorded_widget_probes_as_its_idle_response() {
+    let h = Harness::mono(BUTTON_SURFACE);
+    let id = WidgetId::from_hash("never-recorded");
+    let probed = h.ui().response_for(id);
+    assert_eq!(probed, Response::idle(id));
+    assert_eq!(
+        Response {
+            id,
+            ..Response::idle(WidgetId::from_hash("other"))
+        },
+        probed
+    );
+    assert_eq!(probed.rect, None);
+    assert_eq!(probed.transform, TranslateScale::IDENTITY);
+    assert_eq!(probed.left, PointerButtonState::IDLE);
+    assert_eq!(probed.scroll, ScrollDelta::NONE);
+    assert!(!probed.hovered() && !probed.focused && !probed.disabled);
 }

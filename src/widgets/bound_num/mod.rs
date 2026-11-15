@@ -3,14 +3,19 @@
 use crate::primitives::math::libm_ext::Libm;
 use crate::primitives::text::interned_str::InternedStr;
 use crate::ui::Ui;
+use crate::widgets::axis_keys::{AxisEnd, Travel};
 use std::ops::RangeInclusive;
 
 /// The numeric target a value widget writes through: an `f32`, `f64`, `i32` or `i64`, borrowed
 /// mutably, so a caller binds its own field with no cast. Built through `From`, e.g.
 /// `DragValue::new(&mut my_i64)`. A closed set of the crate's scalars, as egui's `Numeric`
-/// trait covers its own.
+/// trait covers its own. Opaque, so `From` is the one way in.
 #[derive(Debug)]
-pub enum BoundNum<'a> {
+pub struct BoundNum<'a>(Repr<'a>);
+
+/// The four targets a [`BoundNum`] binds.
+#[derive(Debug)]
+enum Repr<'a> {
     /// A 32-bit integer target.
     I32(&'a mut i32),
     /// A 64-bit integer target.
@@ -21,6 +26,16 @@ pub enum BoundNum<'a> {
     /// A 64-bit float target. A NaN or infinite value shows as it is, and a scrub or a key moves
     /// it from `0.0`, so the first write lands on a number inside the bounds.
     F64(&'a mut f64),
+}
+
+/// How keys move a bound number: a step's size, a page's, and the ends Home and End go to, where
+/// an infinite end takes no key.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct TravelRule {
+    pub(crate) step: f64,
+    pub(crate) page: f64,
+    pub(crate) min: f64,
+    pub(crate) max: f64,
 }
 
 /// A value read out of a [`BoundNum`] at its stored precision: the owned anchor a
@@ -143,11 +158,11 @@ impl BoundNum<'_> {
 
     /// The stored value bit for bit, which [`Self::restore`] writes back.
     pub(crate) fn stored(&self) -> Num {
-        match self {
-            BoundNum::I32(v) => Num::I64(i64::from(**v)),
-            BoundNum::I64(v) => Num::I64(**v),
-            BoundNum::F32(v) => Num::F64(f64::from(**v)),
-            BoundNum::F64(v) => Num::F64(**v),
+        match &self.0 {
+            Repr::I32(v) => Num::I64(i64::from(**v)),
+            Repr::I64(v) => Num::I64(**v),
+            Repr::F32(v) => Num::F64(f64::from(**v)),
+            Repr::F64(v) => Num::F64(**v),
         }
     }
 
@@ -169,11 +184,33 @@ impl BoundNum<'_> {
             Some(_) => anchor.widen(),
             None => round_to_decimals(anchor.widen() + offset, rule.decimals),
         };
-        match self {
-            BoundNum::I32(v) => store_int(*v, whole(), rule, I32_RANGE),
-            BoundNum::I64(v) => store_int(*v, whole(), rule, I64_RANGE),
-            BoundNum::F32(v) => store_f32(v, snapped(), rule),
-            BoundNum::F64(v) => store_f64(v, snapped(), rule),
+        match &mut self.0 {
+            Repr::I32(v) => store_int(*v, whole(), rule, I32_RANGE),
+            Repr::I64(v) => store_int(*v, whole(), rule, I64_RANGE),
+            Repr::F32(v) => store_f32(v, snapped(), rule),
+            Repr::F64(v) => store_f64(v, snapped(), rule),
+        }
+    }
+
+    /// Store where `travel` sends the value under `keys`, onto `rule`, and answer whether it
+    /// moved. The steps and pages add to the stored number through [`Self::commit_drag`], so an
+    /// integer past 2^53 moves by whole steps where a round trip through `f64` could store a
+    /// lower value; an end key on an unbounded side, and keys that ask for nothing, move nothing.
+    pub(crate) fn commit_travel(
+        &mut self,
+        travel: Travel,
+        keys: TravelRule,
+        rule: StoreRule,
+    ) -> bool {
+        let end = |bound: f64| bound.is_finite().then_some(bound);
+        match travel.end {
+            Some(AxisEnd::Start) => end(keys.min).is_some_and(|min| self.commit_value(min, rule)),
+            Some(AxisEnd::End) => end(keys.max).is_some_and(|max| self.commit_value(max, rule)),
+            None if travel.is_still() => false,
+            None => {
+                let by = f64::from(travel.steps) * keys.step + f64::from(travel.pages) * keys.page;
+                self.commit_drag(self.read(), by, rule)
+            }
         }
     }
 
@@ -186,9 +223,9 @@ impl BoundNum<'_> {
     /// One unit of the last shown digit: `1` for the integer target, `10^-decimals`
     /// for the float one.
     pub(crate) fn unit(&self, decimals: usize) -> f64 {
-        match self {
-            BoundNum::I32(_) | BoundNum::I64(_) => 1.0,
-            BoundNum::F32(_) | BoundNum::F64(_) => 1.0 / decimal_shift(decimals),
+        match &self.0 {
+            Repr::I32(_) | Repr::I64(_) => 1.0,
+            Repr::F32(_) | Repr::F64(_) => 1.0 / decimal_shift(decimals),
         }
     }
 
@@ -196,14 +233,14 @@ impl BoundNum<'_> {
     /// changed.
     pub(crate) fn restore(&mut self, value: Num) -> bool {
         let changed = !self.stored().same_bits(value);
-        match (self, value) {
-            (BoundNum::I32(v), Num::I64(n)) => {
+        match (&mut self.0, value) {
+            (Repr::I32(v), Num::I64(n)) => {
                 **v = i32::try_from(n).expect("the restored value came from this i32");
             }
-            (BoundNum::I64(v), Num::I64(n)) => **v = n,
+            (Repr::I64(v), Num::I64(n)) => **v = n,
             // Exact: the value widened from this `f32`.
-            (BoundNum::F32(v), Num::F64(n)) => **v = n as f32,
-            (BoundNum::F64(v), Num::F64(n)) => **v = n,
+            (Repr::F32(v), Num::F64(n)) => **v = n as f32,
+            (Repr::F64(v), Num::F64(n)) => **v = n,
             (_, value) => unreachable!("{value:?} restored into a binding of the other type"),
         }
         changed
@@ -211,20 +248,20 @@ impl BoundNum<'_> {
 
     /// The value at `decimals` places, then `suffix`, interned for this frame.
     pub(crate) fn label(&self, ui: &mut Ui, decimals: usize, suffix: &str) -> InternedStr {
-        match self {
-            BoundNum::I32(v) => ui.fmt(format_args!("{}{suffix}", **v)),
-            BoundNum::I64(v) => ui.fmt(format_args!("{}{suffix}", **v)),
-            BoundNum::F32(v) => ui.fmt(format_args!("{:.*}{suffix}", decimals, **v)),
-            BoundNum::F64(v) => ui.fmt(format_args!("{:.*}{suffix}", decimals, **v)),
+        match &self.0 {
+            Repr::I32(v) => ui.fmt(format_args!("{}{suffix}", **v)),
+            Repr::I64(v) => ui.fmt(format_args!("{}{suffix}", **v)),
+            Repr::F32(v) => ui.fmt(format_args!("{:.*}{suffix}", decimals, **v)),
+            Repr::F64(v) => ui.fmt(format_args!("{:.*}{suffix}", decimals, **v)),
         }
     }
 
     pub(crate) fn edit_string(&self) -> String {
-        match self {
-            BoundNum::I32(v) => v.to_string(),
-            BoundNum::I64(v) => v.to_string(),
-            BoundNum::F32(v) => format!("{:?}", **v),
-            BoundNum::F64(v) => format!("{:?}", **v),
+        match &self.0 {
+            Repr::I32(v) => v.to_string(),
+            Repr::I64(v) => v.to_string(),
+            Repr::F32(v) => format!("{:?}", **v),
+            Repr::F64(v) => format!("{:?}", **v),
         }
     }
 
@@ -234,27 +271,25 @@ impl BoundNum<'_> {
     /// scrub.
     pub(crate) fn parse_from(&mut self, text: &str, rule: StoreRule) -> bool {
         if rule.step.is_some() {
-            let parsed = match self {
-                BoundNum::I32(_) | BoundNum::I64(_) => text.parse::<i64>().ok().map(|n| n as f64),
-                BoundNum::F32(_) | BoundNum::F64(_) => {
-                    text.parse::<f64>().ok().filter(|n| n.is_finite())
-                }
+            let parsed = match &mut self.0 {
+                Repr::I32(_) | Repr::I64(_) => text.parse::<i64>().ok().map(|n| n as f64),
+                Repr::F32(_) | Repr::F64(_) => text.parse::<f64>().ok().filter(|n| n.is_finite()),
             };
             return parsed.is_some_and(|n| self.commit_value(n, rule));
         }
-        match self {
+        match &mut self.0 {
             // Parsed as `i64`: widening through `f64` would lose low bits past 2^53.
-            BoundNum::I32(v) => text
+            Repr::I32(v) => text
                 .parse::<i64>()
                 .is_ok_and(|n| store_int(*v, n, rule, I32_RANGE)),
-            BoundNum::I64(v) => text
+            Repr::I64(v) => text
                 .parse::<i64>()
                 .is_ok_and(|n| store_int(*v, n, rule, I64_RANGE)),
-            BoundNum::F32(v) => match text.parse::<f64>() {
+            Repr::F32(v) => match text.parse::<f64>() {
                 Ok(n) if n.is_finite() => store_f32(v, n, rule),
                 _ => false,
             },
-            BoundNum::F64(v) => match text.parse::<f64>() {
+            Repr::F64(v) => match text.parse::<f64>() {
                 Ok(n) if n.is_finite() => store_f64(v, n, rule),
                 _ => false,
             },
@@ -307,25 +342,25 @@ fn store_f32(slot: &mut f32, next: f64, rule: StoreRule) -> bool {
 
 impl<'a> From<&'a mut i32> for BoundNum<'a> {
     fn from(v: &'a mut i32) -> Self {
-        BoundNum::I32(v)
+        Self(Repr::I32(v))
     }
 }
 
 impl<'a> From<&'a mut f32> for BoundNum<'a> {
     fn from(v: &'a mut f32) -> Self {
-        BoundNum::F32(v)
+        Self(Repr::F32(v))
     }
 }
 
 impl<'a> From<&'a mut i64> for BoundNum<'a> {
     fn from(v: &'a mut i64) -> Self {
-        BoundNum::I64(v)
+        Self(Repr::I64(v))
     }
 }
 
 impl<'a> From<&'a mut f64> for BoundNum<'a> {
     fn from(v: &'a mut f64) -> Self {
-        BoundNum::F64(v)
+        Self(Repr::F64(v))
     }
 }
 

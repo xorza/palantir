@@ -50,7 +50,7 @@ pub(crate) enum Draw<'a> {
         stroke: &'a Stroke,
     },
     Text {
-        shape: &'a TextShape,
+        shape: &'a TextShape<'a>,
         color: RgbaF32,
     },
     Mesh {

@@ -3,12 +3,13 @@
 use crate::internals::layout_rig::{GridTracks, LayoutRig};
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
-use crate::primitives::layout::align::{Align, HAlign, VAlign};
+use crate::primitives::layout::align::{HAlign, VAlign};
 use crate::primitives::layout::grid_cell::GridCell;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::SizeSpec;
 use crate::primitives::layout::track::Track;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::widget::Widget;
+use std::num::NonZeroU16;
 
 const SURFACE: Size = Size::new(200.0, 200.0);
 
@@ -26,7 +27,7 @@ fn grid_cell_alignment_override_pins_child_to_corner() {
                 Widget::leaf()
                     .grid_cell((0, 0))
                     .size((20.0, 20.0))
-                    .align(Align::new(HAlign::Right, VAlign::Bottom)),
+                    .align((HAlign::Right, VAlign::Bottom)),
             );
         });
     });
@@ -44,9 +45,14 @@ fn a_cell_past_the_tracks_is_held_inside_them() {
             cols: &[Track::fixed(50.0), Track::fixed(50.0)],
         };
         rec.grid("grid", Widget::grid(), tracks, |rec| {
-            let fill = || Widget::leaf().size((Sizing::FILL, Sizing::FILL));
+            let fill = || Widget::leaf().size(SizeSpec::FILL);
             rec.leaf("far", fill().grid_cell((5, 7)));
-            rec.leaf("tall", fill().grid_cell(GridCell::at(0, 0).with_span(3, 1)));
+            rec.leaf(
+                "tall",
+                fill().grid_cell(
+                    GridCell::at(0, 0).with_span(NonZeroU16::new(3).unwrap(), NonZeroU16::MIN),
+                ),
+            );
         });
     });
     assert_eq!(rig.rect("far"), Rect::new(50.0, 50.0, 50.0, 50.0));

@@ -6,7 +6,7 @@ use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::input_event::InputEvent;
 use crate::primitives::input::zoom_factor::ZoomFactor;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::scene::layer::Layer;
 use crate::ui::Ui;
 use crate::ui::frame_report::FrameProcessing;
@@ -38,7 +38,7 @@ fn hidden_scroll_skips_bar_ids_and_cold_relayout_but_keeps_pan_and_zoom() {
 
     let mut h = Harness::mono(surface);
     assert_eq!(
-        h.frame(build).processing,
+        h.frame_recorded(build).processing,
         FrameProcessing::SingleLayout,
         "hidden cold mount must not settle bar visibility"
     );
@@ -104,7 +104,7 @@ fn content_that_stops_overflowing_retires_its_bar() {
                 .show(ui, |ui| {
                     Scroll::vertical()
                         .id(WidgetId::from_hash("scroll"))
-                        .size((Sizing::FILL, Sizing::FILL))
+                        .size(SizeSpec::FILL)
                         .overlay_bars()
                         .show(ui, |ui| {
                             Block::new()

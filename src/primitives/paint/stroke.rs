@@ -12,7 +12,7 @@ use crate::primitives::paint::line_style::{LineCap, LineJoin};
 /// ([`Ui::add_shape`](crate::Ui::add_shape)); a box's edge is a [`Border`](crate::Border).
 ///
 /// Plain data, checked where it enters a shape: the width a
-/// [length](crate::widget::domain::length) and the color a [color](crate::widget::domain::color).
+/// [length](crate::widget::domain::is_length) and the color a [color](crate::widget::domain::is_color).
 /// A polyline's colors per point or per segment are its vertices', set on the geometry, and it
 /// draws no ramp.
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -22,7 +22,7 @@ pub struct Stroke {
     /// The color.
     pub color: RgbaF32,
     /// The width in logical px, centered on the path.
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
+    #[serde(deserialize_with = "crate::primitives::file::length")]
     pub width: f32,
     /// A ramp along the path, `t` from its start to its end, which multiplies the color; `None`
     /// for none. A polyline draws none.

@@ -3,13 +3,10 @@
 
 use crate::common::expiry_window::ExpiryWindow;
 use crate::gpu::device::gpu::Gpu;
+use crate::gpu::resource::decaying_texture::DecayingTexture;
 use crate::gpu::texel::{self, TargetSpec};
 use crate::primitives::geometry::urect::URect;
 use glam::UVec2;
-
-/// The texels an edge of the target grows by, so a few more texels a frame make a new texture only
-/// every so often.
-const GROWTH_GRANULE: u32 = 256;
 
 /// A render target a frame's small writes to large textures land in first, each copied onto its
 /// texture after, where a device's passes load and store their whole target
@@ -25,9 +22,7 @@ const GROWTH_GRANULE: u32 = 256;
 pub(crate) struct StagingTarget {
     label: &'static str,
     format: wgpu::TextureFormat,
-    target: Option<Target>,
-    /// The most a frame of the current window drew into.
-    peak: UVec2,
+    target: DecayingTexture<Target>,
     window: ExpiryWindow,
 }
 
@@ -44,8 +39,7 @@ impl StagingTarget {
         Self {
             label,
             format,
-            target: None,
-            peak: UVec2::ZERO,
+            target: DecayingTexture::new(),
             window: ExpiryWindow::NEW,
         }
     }
@@ -53,19 +47,15 @@ impl StagingTarget {
     /// Hold at least `size` texels, made again larger, each edge rounded up to a granule and held
     /// to the device's edge, where it holds less.
     pub(crate) fn reserve(&mut self, gpu: &Gpu, size: UVec2) {
-        let have = self.size();
-        if have.cmpge(size).all() {
-            return;
-        }
-        let want = have.max(rounded(gpu, size));
-        self.make(gpu, want);
+        let (label, format) = (self.label, self.format);
+        let ceiling = gpu.max_texture_dimension().get();
+        self.target
+            .reserve(size, ceiling, |size| Target::new(gpu, label, format, size));
     }
 
     /// The texels it holds, none before its first [`Self::reserve`].
     pub(crate) fn size(&self) -> UVec2 {
-        self.target
-            .as_ref()
-            .map_or(UVec2::ZERO, |target| texel::size(&target.texture))
+        self.target.extent()
     }
 
     /// Begin a pass over it on `encoder`, which clears it.
@@ -75,7 +65,7 @@ impl StagingTarget {
     ) -> wgpu::RenderPass<'e> {
         let target = self
             .target
-            .as_ref()
+            .get()
             .expect("a staging is reserved before a pass");
         encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some(self.label),
@@ -105,7 +95,7 @@ impl StagingTarget {
     ) {
         let target = self
             .target
-            .as_ref()
+            .get()
             .expect("a staging is reserved before a copy");
         encoder.copy_texture_to_texture(
             wgpu::TexelCopyTextureInfo {
@@ -124,47 +114,33 @@ impl StagingTarget {
         );
     }
 
-    /// Fold `need`, the texels display frame `frame` drew into, into the window's peak, and at the
-    /// window's end make the texture again at the peak where it holds more, or drop it where no
+    /// At the end of the expiry window display frame `frame` closes, make the texture again at the
+    /// window's peak, which each [`Self::reserve`] notes, where it holds more, or drop it where no
     /// frame drew into it.
-    pub(crate) fn decay(&mut self, gpu: &Gpu, frame: u64, need: UVec2) {
-        self.peak = self.peak.max(need);
+    pub(crate) fn decay(&mut self, gpu: &Gpu, frame: u64) {
         if !self.window.ends(frame) {
             return;
         }
-        let peak = std::mem::take(&mut self.peak);
-        if peak == UVec2::ZERO {
-            self.target = None;
-        } else if self.size() != rounded(gpu, peak) {
-            self.make(gpu, rounded(gpu, peak));
-        }
-    }
-
-    /// Make the texture at `size`, in place of the one it held.
-    fn make(&mut self, gpu: &Gpu, size: UVec2) {
-        let texture = texel::texture_2d(
-            gpu,
-            TargetSpec {
-                label: self.label,
-                size,
-                format: self.format,
-                usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
-            },
-        );
-        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-        self.target = Some(Target { texture, view });
+        let (label, format) = (self.label, self.format);
+        let ceiling = gpu.max_texture_dimension().get();
+        self.target
+            .step_down(ceiling, |size| Target::new(gpu, label, format, size));
     }
 }
 
-/// The texels a target that must hold `size` takes: each edge rounded up to [`GROWTH_GRANULE`],
-/// held to the device's edge.
-fn rounded(gpu: &Gpu, size: UVec2) -> UVec2 {
-    let ceiling = gpu.max_texture_dim().get();
-    debug_assert!(
-        size.max_element() <= ceiling,
-        "a staging of {size} passes the device's {ceiling} edge"
-    );
-    size.map(|edge| edge.next_multiple_of(GROWTH_GRANULE).min(ceiling))
+impl Target {
+    /// A texture of `size` in `format` a pass draws into and a copy reads, named `label`.
+    fn new(gpu: &Gpu, label: &'static str, format: wgpu::TextureFormat, size: UVec2) -> Self {
+        let texture = TargetSpec {
+            label,
+            size,
+            format,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+        }
+        .texture(gpu);
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        Self { texture, view }
+    }
 }
 
 #[cfg(feature = "internals")]
@@ -174,7 +150,7 @@ pub(crate) mod internals {
     impl StagingTarget {
         /// Its texture, `None` before its first reserve or after a window that drew into it not.
         pub(crate) fn texture(&self) -> Option<&wgpu::Texture> {
-            self.target.as_ref().map(|target| &target.texture)
+            self.target.get().map(|target| &target.texture)
         }
     }
 }
@@ -202,7 +178,7 @@ mod tests {
         let mut window = |staging: &mut StagingTarget, need: UVec2| {
             for _ in 0..EXPIRY_FRAMES {
                 staging.reserve(&gpu, need);
-                staging.decay(&gpu, frame, need);
+                staging.decay(&gpu, frame);
                 frame += 1;
             }
         };

@@ -47,12 +47,17 @@ impl TextStore {
     /// whatever text now sits at those offsets.
     #[must_use]
     pub(crate) fn intern<'a>(&mut self, text: impl Into<TextInput<'a>>) -> InternedStr {
-        match text.into() {
+        self.intern_input(&text.into())
+    }
+
+    /// [`Self::intern`] of an input a caller keeps, as a text shape holds its text.
+    pub(crate) fn intern_input(&mut self, text: &TextInput<'_>) -> InternedStr {
+        match text {
             TextInput::Borrowed(text) => self.intern_str(text),
-            TextInput::Owned(text) => self.intern_str(&text),
+            TextInput::Owned(text) => self.intern_str(text),
             TextInput::Interned(text) => {
-                self.assert_cur(text);
-                text
+                self.assert_cur(*text);
+                *text
             }
         }
     }

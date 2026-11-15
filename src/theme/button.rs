@@ -2,7 +2,7 @@
 
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::spacing::Spacing;
-use crate::primitives::input::interaction::response_state::ResponseState;
+use crate::primitives::input::interaction::response::Response;
 use crate::primitives::paint::border::Border;
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::chrome::Chrome;
@@ -45,7 +45,7 @@ pub struct ButtonTheme {
 }
 
 impl ButtonTheme {
-    /// The standard button recipe over `p` and `m`, resting at `element_mid`; disabled keeps `element` with `text_disabled`. `text: None` on active states inherits `Theme::text`. Selected, it wears the pressed look in every live state, as a held button reads. A state change runs under the metrics' `transition`.
+    /// The standard button recipe over `p` and `m`, resting at `element_mid`; disabled keeps `element` with `text_disabled`. A look whose text overrides name nothing shows `Theme::text`. Selected, it wears the pressed look in every live state, as a held button reads. A state change runs under the metrics' `transition`.
     pub fn from_parts(p: &Palette, m: &Metrics) -> Self {
         let corners = Corners::all(m.radius.control);
         let chrome = |fill: RgbaF32| {
@@ -55,24 +55,15 @@ impl ButtonTheme {
         // Pressed = hovered fill + focused stroke (the palette has no further fill tier).
         let pressed_chrome = Chrome::rounded(p.element_strong, corners)
             .with_border(Border::new(p.border_focused, m.stroke.hairline));
-        let pressed = WidgetLook {
-            chrome: pressed_chrome,
-            text: TextStyleOverrides::NONE,
-        };
+        let pressed = WidgetLook::new(pressed_chrome);
         let disabled = WidgetLook {
             chrome: chrome(p.element),
             text: TextStyleOverrides::NONE.with_color(p.text_disabled),
         };
         Self {
             unselected: StatefulLook {
-                normal: WidgetLook {
-                    chrome: chrome(p.element_mid),
-                    text: TextStyleOverrides::NONE,
-                },
-                hovered: WidgetLook {
-                    chrome: chrome(p.element_strong),
-                    text: TextStyleOverrides::NONE,
-                },
+                normal: WidgetLook::new(chrome(p.element_mid)),
+                hovered: WidgetLook::new(chrome(p.element_strong)),
                 active: pressed.clone(),
                 disabled: disabled.clone(),
             },
@@ -130,10 +121,8 @@ impl ButtonTheme {
     ///
     /// [`Button::style`]: crate::Button::style
     pub fn subtle(p: &Palette, m: &Metrics) -> Self {
-        let flat = |fill: Brush| WidgetLook {
-            chrome: Chrome::rounded(fill, Corners::all(m.radius.control)),
-            text: TextStyleOverrides::NONE,
-        };
+        let flat =
+            |fill: Brush| WidgetLook::new(Chrome::rounded(fill, Corners::all(m.radius.control)));
         let disabled = WidgetLook {
             text: TextStyleOverrides::NONE.with_color(p.text_disabled),
             ..flat(Brush::TRANSPARENT)
@@ -166,12 +155,10 @@ impl ThemeSlot for ButtonTheme {
 
     /// The resting or the selected pack, then its state: `active` = pressed. Disabled wins over hover and press, pressed over hover; `response.disabled` already carries the node's own flag.
     #[inline(always)]
-    fn look(&self, response: &ResponseState, selection: Selection) -> &WidgetLook {
-        let pack = match selection {
-            Selection::Unselected => &self.unselected,
-            Selection::Selected => &self.selected,
-        };
-        pack.pick(response, Engagement::Pressed)
+    fn look(&self, response: &Response, selection: Selection) -> &WidgetLook {
+        selection
+            .pack(&self.unselected, &self.selected)
+            .pick(response, Engagement::Pressed)
     }
 
     fn defaults(&self) -> SlotDefaults {

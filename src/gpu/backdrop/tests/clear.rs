@@ -4,17 +4,17 @@ use crate::gpu::backdrop::tests::{CLEAR, Reference, SIZE, assert_within_a_step, 
 use crate::gpu::test_gpu::headless_test_gpu;
 use crate::primitives::effect::effect_name::EffectName;
 use crate::primitives::geometry::rect::Rect;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::SizeSpec;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
-use crate::primitives::paint::material::frosted_input::FrostedInput;
+use crate::primitives::paint::material::frosted_params::FrostedParams;
 use crate::primitives::paint::paint::Paint;
 use crate::shape::Shape;
 use crate::ui::Ui;
 use crate::ui::frame_report::FramePaint;
 use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
-use glam::Vec2;
+use glam::{UVec2, Vec2};
 
 /// σ 2 reaches 8 px, so the backdrop's footprint spans x 8..56: a speck at the window's corner lies
 /// outside it, and a veil over x 4..60 covers it without covering the window.
@@ -42,7 +42,7 @@ fn scene(
     move |ui: &mut Ui| {
         Panel::canvas()
             .id_salt("backdrop-clear")
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 if let Some(background) = background {
                     ui.add_shape(
@@ -64,7 +64,7 @@ fn scene(
                 }
                 let filter = Material::new(
                     EffectName::FROSTED,
-                    FrostedInput {
+                    FrostedParams {
                         saturation: 1.6,
                         noise: 0.0,
                     },
@@ -94,24 +94,23 @@ fn a_backdrop_with_nothing_under_it_shows_the_clear() {
         let mut reference = Reference::new(&gpu, SIZE, clear);
         let captured = reference.paint(scene(background, Before::Veil, None));
         assert_eq!(reference.blurs(), 1, "{what}: the veil");
-        let clear_bytes = CLEAR.to_srgba8();
+        let clear_texel = CLEAR.to_srgba8();
         for before in [Before::Nothing, Before::Speck] {
             let flat = reference.paint(scene(background, before, None));
             assert_eq!(reference.blurs(), 0, "{what}: {before:?}");
-            for (x, y, pixel) in flat.enumerate_pixels() {
+            for (UVec2 { x, y }, pixel) in flat.enumerate_texels() {
                 let at = Vec2::new(x as f32 + 0.5, y as f32 + 0.5);
                 if SPECK.contains(at) {
                     continue;
                 }
                 assert_eq!(
                     pixel,
-                    captured.get_pixel(x, y),
+                    captured.texel(UVec2::new(x, y)),
                     "{what}: {before:?} ({x}, {y})"
                 );
                 if !BACKDROP.contains(at) {
                     assert_eq!(
-                        pixel.0,
-                        [clear_bytes.r, clear_bytes.g, clear_bytes.b, 255],
+                        pixel, clear_texel,
                         "{what}: {before:?} ({x}, {y}) outside the backdrop"
                     );
                 }
@@ -137,9 +136,7 @@ fn a_backdrop_shows_the_clear_or_a_capture_as_what_lies_under_it_changes() {
         (None, "the square gone", (FramePaint::Partial, 0)),
         (Some(red), "back", (FramePaint::Partial, 1)),
     ] {
-        let painted = window
-            .frame(&mut scene(None, Before::Nothing, under))
-            .paint();
+        let painted = window.frame(&mut scene(None, Before::Nothing, under)).paint;
         assert_eq!((painted, window.backdrop_blurs()), want, "{what}");
         let whole = reference.paint(scene(None, Before::Nothing, under));
         assert_within_a_step(&window.read_back(), &whole, what);

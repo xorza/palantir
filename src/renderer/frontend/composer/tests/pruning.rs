@@ -6,16 +6,16 @@ use crate::internals::paint_capture::PaintCapture;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::translate_scale::TranslateScale;
-use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::border::Border;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::fill_kind::FillKind;
 use crate::primitives::paint::lut_row::LutRow;
 use crate::renderer::frontend::composer::tests::quad_builder::QuadBuilder;
 use crate::renderer::frontend::composer::tests::support::{
     clip, clip_rounded, draw, draw_marked, lanes, params, params_unsnapped, quad_runs, run,
     survivor_calls, survivors, text,
 };
-use crate::renderer::frontend::paint_sink::PaintSink;
+use crate::renderer::frontend::paint_sink::{DrawAnimation, PaintSink};
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_shadow_payload::DrawShadowPayload;
 use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
@@ -228,14 +228,14 @@ fn prune_keeps_shadow_under_opaque_cover() {
     let buf = run(
         |b, _| {
             b.draw(
-                DrawShadowPayload::new(
-                    PlacedBox {
+                DrawShadowPayload {
+                    source: PlacedBox {
                         rect: Rect::new(20.0, 20.0, 60.0, 60.0),
                         corners: Corners::default(),
                     },
-                    LoweredShadow::lower(shadow),
-                ),
-                1.0,
+                    shadow: LoweredShadow::lower(shadow),
+                },
+                DrawAnimation::STILL,
             );
             draw(b, Rect::new(0.0, 0.0, 100.0, 100.0)); // opaque cover on top
         },

@@ -1,15 +1,15 @@
-//! [`HarnessBuilder`]: the settings a [`Harness`] seals at build, and the [`Depth`] its frames
+//! [`HarnessBuilder`]: the settings a [`Harness`] seals at build, and the [`HarnessDepth`] its frames
 //! run to.
 
 use crate::display::system_scale::SystemScale;
 use crate::gpu::device::gpu::Gpu;
+use crate::gpu::frame::gpu_timings::FrameTiming;
 use crate::gpu::surface::owned_target::OwnedTarget;
 use crate::gpu::texel::TargetFormat;
 use crate::host::harness::{Harness, HarnessPaint};
 use crate::host::headless_window::{HeadlessSettings, HeadlessWindow};
 use crate::host::host_core::HostCore;
 use crate::host::host_cpu::HostCpu;
-use crate::primitives::reduction::Reduction;
 use crate::renderer::row_table::RowTable;
 use crate::text::font_scope::FontScope;
 use crate::text::shaper::TextShaper;
@@ -17,14 +17,15 @@ use crate::theme::color_scheme::ColorScheme;
 use crate::ui::window_frames::WindowFrames;
 use crate::ui::window_frames::present::PresentStrategy;
 use glam::UVec2;
+use std::num::NonZeroU32;
 use std::time::Duration;
 
-/// The label of the texture a [`Depth::Gpu`] harness paints into.
+/// The label of the texture a [`HarnessDepth::Gpu`] harness paints into.
 pub(super) const TARGET_LABEL: &str = "palantir.harness";
 
 /// How far a [`Harness`]'s frames run.
 #[derive(Debug)]
-pub enum Depth {
+pub enum HarnessDepth {
     /// Record through damage, and build no draw list: input, layout and hit tests, as a unit
     /// test reads them, at the least cost.
     Record,
@@ -34,13 +35,13 @@ pub enum Depth {
     Gpu {
         /// The device the window paints on.
         gpu: Gpu,
-        /// The texture format of the window: [`Depth::gpu`] takes 8-bit sRGB RGBA, and a float
+        /// The texture format of the window: [`HarnessDepth::gpu`] takes 8-bit sRGB RGBA, and a float
         /// format keeps linear values past 8 bits, for a [`Harness::capture`] that blends frames.
         format: TargetFormat,
     },
 }
 
-impl Depth {
+impl HarnessDepth {
     /// [`Self::Gpu`] on `gpu` in 8-bit sRGB RGBA, the format a shot reads.
     pub const fn gpu(gpu: Gpu) -> Self {
         Self::Gpu {
@@ -66,7 +67,7 @@ pub(super) struct SettlePace {
     /// The clock's step before each frame.
     pub(super) frame_dt: Duration,
     /// The frames that ask for another before the window reads as unsettled.
-    pub(super) settle_frames: u32,
+    pub(super) settle_frames: NonZeroU32,
     /// The real time a settle waits for a wake while the app is busy.
     pub(super) background_wait: Duration,
 }
@@ -78,7 +79,7 @@ pub(super) struct SettlePace {
 pub struct HarnessBuilder {
     size: UVec2,
     settings: HeadlessSettings,
-    depth: Depth,
+    depth: HarnessDepth,
     strategy: PresentStrategy,
     pace: SettlePace,
 }
@@ -88,11 +89,11 @@ impl HarnessBuilder {
         Self {
             size,
             settings: HeadlessSettings::new(FontScope::Bundled),
-            depth: Depth::Record,
+            depth: HarnessDepth::Record,
             strategy: PresentStrategy::Retained,
             pace: SettlePace {
                 frame_dt: Duration::from_nanos(16_666_667),
-                settle_frames: 600,
+                settle_frames: NonZeroU32::new(600).unwrap(),
                 background_wait: Duration::from_secs(30),
             },
         }
@@ -110,7 +111,7 @@ impl HarnessBuilder {
 
     /// The monitor's refresh rate, which repaint wakes coalesce to; none by default. The
     /// harness's [`set_refresh_millihertz`](Harness::set_refresh_millihertz) changes it later.
-    pub const fn refresh_millihertz(mut self, millihertz: u32) -> Self {
+    pub const fn refresh_millihertz(mut self, millihertz: NonZeroU32) -> Self {
         self.settings.refresh_millihertz = Some(millihertz);
         self
     }
@@ -128,7 +129,7 @@ impl HarnessBuilder {
     /// by default. The harness's
     /// [`set_system_motion_reduced`](Harness::set_system_motion_reduced) changes it later.
     pub const fn system_motion_reduced(mut self, reduced: bool) -> Self {
-        self.settings.preferences.reductions.motion = Reduction::of(reduced);
+        self.settings.preferences.set_motion_reduced(reduced);
         self
     }
 
@@ -137,7 +138,7 @@ impl HarnessBuilder {
     /// [`set_system_transparency_reduced`](Harness::set_system_transparency_reduced) changes it
     /// later.
     pub const fn system_transparency_reduced(mut self, reduced: bool) -> Self {
-        self.settings.preferences.reductions.transparency = Reduction::of(reduced);
+        self.settings.preferences.set_transparency_reduced(reduced);
         self
     }
 
@@ -145,7 +146,14 @@ impl HarnessBuilder {
     /// `false` by default. The harness's
     /// [`set_system_power_reduced`](Harness::set_system_power_reduced) changes it later.
     pub const fn system_power_reduced(mut self, reduced: bool) -> Self {
-        self.settings.preferences.reductions.power = Reduction::of(reduced);
+        self.settings.preferences.set_power_reduced(reduced);
+        self
+    }
+
+    /// Opts into GPU timestamp and pipeline-statistics collection, as the other hosts' builders
+    /// do; the device needs the wgpu features. Off by default.
+    pub const fn collect_gpu_stats(mut self, collect_gpu_stats: bool) -> Self {
+        self.settings.options.timing = FrameTiming::new(collect_gpu_stats);
         self
     }
 
@@ -168,8 +176,8 @@ impl HarnessBuilder {
         self
     }
 
-    /// How far each frame runs; [`Depth::Record`] by default.
-    pub fn depth(mut self, depth: Depth) -> Self {
+    /// How far each frame runs; [`HarnessDepth::Record`] by default.
+    pub fn depth(mut self, depth: HarnessDepth) -> Self {
         self.depth = depth;
         self
     }
@@ -189,11 +197,7 @@ impl HarnessBuilder {
     /// The frames that ask for another a session's [settle](crate::AgentWindow::settle) runs before the window reads as
     /// unsettled; 600 by default, ten seconds at 60 frames a second. Frames a busy app's wakes
     /// bring do not count.
-    ///
-    /// # Panics
-    ///
-    /// At [`Self::build`], when `frames` is 0.
-    pub const fn settle_frames(mut self, frames: u32) -> Self {
+    pub const fn settle_frames(mut self, frames: NonZeroU32) -> Self {
         self.pace.settle_frames = frames;
         self
     }
@@ -209,7 +213,7 @@ impl HarnessBuilder {
     ///
     /// # Panics
     ///
-    /// As each setter says; at [`Depth::Gpu`], when either side of the size is zero or past the
+    /// As each setter says; at [`HarnessDepth::Gpu`], when either side of the size is zero or past the
     /// device's largest 2D texture, or the device cannot run Palantir's pipelines
     /// ([`DeviceRequirements`](crate::DeviceRequirements)).
     pub fn build(self) -> Harness {
@@ -217,13 +221,13 @@ impl HarnessBuilder {
         let shaper = options.shaper_or_else(|| TextShaper::with_fonts(options.fonts));
         let token = Harness::WINDOW;
         match &self.depth {
-            Depth::Record => {
+            HarnessDepth::Record => {
                 let mut cpu = HostCpu::new(options, shaper);
                 let frames = cpu.open(token, self.strategy);
                 let paint = HarnessPaint::Record { size: self.size };
                 self.open(cpu, frames, paint)
             }
-            Depth::Compose => {
+            HarnessDepth::Compose => {
                 let mut cpu = HostCpu::new(options, shaper);
                 let frames = cpu.open(token, self.strategy);
                 let paint = HarnessPaint::Compose {
@@ -232,7 +236,7 @@ impl HarnessBuilder {
                 };
                 self.open(cpu, frames, paint)
             }
-            Depth::Gpu { gpu, format } => {
+            HarnessDepth::Gpu { gpu, format } => {
                 let target = OwnedTarget::window(gpu, TARGET_LABEL, self.size, *format);
                 let mut core = HostCore::new(gpu.clone(), options, shaper);
                 let frames = core.open(token, self.strategy);
@@ -248,10 +252,6 @@ impl HarnessBuilder {
             self.pace.frame_dt > Duration::ZERO,
             "a frame takes some time"
         );
-        assert!(
-            self.pace.settle_frames > 0,
-            "a settle runs at least one frame"
-        );
         Harness::open(
             HeadlessWindow::open(cpu, frames, &self.settings),
             paint,
@@ -262,10 +262,9 @@ impl HarnessBuilder {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
-    use crate::gpu::frame::gpu_timings::FrameTiming;
-    #[cfg(test)]
-    use crate::host::harness::harness_builder::Depth;
     use crate::host::harness::harness_builder::HarnessBuilder;
+    #[cfg(test)]
+    use crate::host::harness::harness_builder::HarnessDepth;
     #[cfg(test)]
     use crate::host::harness::{Harness, HarnessPaint};
     #[cfg(test)]
@@ -292,13 +291,6 @@ pub(crate) mod internals {
             self.strategy = PresentStrategy::DirectAdaptive;
             self
         }
-
-        /// Opts into GPU timestamp and pipeline-statistics collection; the device needs the wgpu
-        /// features.
-        pub(crate) const fn collect_gpu_stats(mut self, collect_gpu_stats: bool) -> Self {
-            self.settings.options.timing = FrameTiming::new(collect_gpu_stats);
-            self
-        }
     }
 
     #[cfg(test)]
@@ -308,12 +300,14 @@ pub(crate) mod internals {
             let mut cpu = HostCpu::over(resources, &self.settings.options);
             let frames = cpu.open(token, self.strategy);
             let paint = match self.depth {
-                Depth::Record => HarnessPaint::Record { size: self.size },
-                Depth::Compose => HarnessPaint::Compose {
+                HarnessDepth::Record => HarnessPaint::Record { size: self.size },
+                HarnessDepth::Compose => HarnessPaint::Compose {
                     size: self.size,
                     rows: RowTable::default(),
                 },
-                Depth::Gpu { .. } => unreachable!("a window over shared resources has no device"),
+                HarnessDepth::Gpu { .. } => {
+                    unreachable!("a window over shared resources has no device")
+                }
             };
             self.open(cpu, frames, paint)
         }

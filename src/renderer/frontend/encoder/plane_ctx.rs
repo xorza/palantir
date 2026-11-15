@@ -1,7 +1,6 @@
 //! [`PlaneCtx`]: one plane's encode walk, built per tree by [`Encoder::encode`](crate::renderer::frontend::encoder::Encoder::encode).
 
-use crate::cascade::cascade_input_hash::CascadeInputHash;
-use crate::cascade::plane_backdrop::PlaneBackdrop;
+use crate::cascade::plane_cascade::PlaneCascade;
 use crate::layout::plane_layout::PlaneLayout;
 use crate::layout::text::text_runs::TextRuns;
 use crate::primitives::geometry::rect::Rect;
@@ -12,7 +11,8 @@ use crate::primitives::math::domain::is_invisible;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
-use crate::primitives::paint::image::{FitRect, ImageDownsample, ImageFilter, ImageFit};
+use crate::primitives::paint::image::image_filter::{ImageDownsample, ImageFilter};
+use crate::primitives::paint::image::image_placement::{FitRect, ImagePlacement};
 use crate::primitives::paint::lut_row::LutRow;
 use crate::renderer::backdrop_captures::BackdropTicket;
 use crate::renderer::frontend::encoder::cull_region::CullRegion;
@@ -21,7 +21,7 @@ use crate::renderer::frontend::paint_sink::{DrawAnimation, PaintSink};
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_closed_payload::DrawClosedPayload;
 use crate::renderer::frontend::payload::draw_closed_payload::closed_effect::{
-    ClosedEffect, EffectCaptureDraw,
+    ClosedEffect, EffectCaptureDraw, EffectRead,
 };
 use crate::renderer::frontend::payload::draw_closed_payload::closed_fill::ClosedFill;
 use crate::renderer::frontend::payload::draw_closed_payload::closed_image::{
@@ -34,9 +34,9 @@ use crate::renderer::frontend::payload::draw_stroke_payload::{
     DrawStrokePayload, PolylinePath, StrokePath,
 };
 use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
-use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::spin::Spin;
+use crate::renderer::render_buffer::gpu_fill::GpuFill;
 use crate::renderer::render_buffer::image_flags::ImageFlags;
 use crate::scene::tree::Tree;
 use crate::scene::tree::iter::TreeItem;
@@ -46,13 +46,13 @@ use crate::shape::geometry::box_geometry::PlacedBox;
 use crate::shape::geometry::closed_geometry::PlacedClosed;
 use crate::shape::geometry::placed_stroke::PlacedStroke;
 use crate::shape::geometry::stroke_geometry::{PolylineGeometry, StrokeGeometry};
-use crate::shape::lower::LoweredPaint;
-use crate::shape::paint::closed_paint::ClosedPaint;
+use crate::shape::paint::closed_paint::{ClosedPaint, RecordedRead};
 use crate::shape::paint::curve_ramp::CurveRamp;
 use crate::shape::paint::image_source::ImageSource;
 use crate::shape::paint::lowered_border::LoweredBorder;
 use crate::shape::paint::lowered_brush::LoweredBrush;
 use crate::shape::paint::lowered_material::LoweredMaterial;
+use crate::shape::paint::lowered_paint::LoweredPaint;
 use crate::shape::paint::lowered_shadow::LoweredShadow;
 use crate::shape::paint::lowered_stroke::LoweredStroke;
 use crate::shape::record::{ShapeRecord, TextAnchor};
@@ -70,22 +70,30 @@ struct ShapeItem<'s> {
     record: &'s ShapeRecord,
 }
 
-/// The fixed inputs one plane's encode walk reads.
+/// What one plane's encode walk reads and where it stands: the plane's tree, layout and cascade,
+/// the frame's inputs, and the walk's own cursors.
 #[derive(Debug)]
 pub(super) struct PlaneCtx<'a, 'g> {
     pub(super) tree: &'a Tree,
     pub(super) layout: &'a PlaneLayout,
-    pub(super) cascade_inputs: &'a [CascadeInputHash],
-    pub(super) subtree_paint_rects: &'a [Rect],
+    /// The plane's cascade: its nodes' input hashes and subtree paint rects, and its backdrops in
+    /// paint order.
+    pub(super) cascade: &'a PlaneCascade,
+    pub(super) frame: EncodeFrame<'a>,
     pub(super) gradients: &'a mut GradientPass<'g>,
     pub(super) paint_animation_cursor: PaintAnimationCursor<'a>,
-    pub(super) damage_filter: Option<CullRegion<'a>>,
-    /// The plane's backdrops in paint order, and the ticket of each.
-    pub(super) backdrops: &'a [PlaneBackdrop],
+    /// The ticket of each of the plane's backdrops.
     pub(super) tickets: &'a [Option<BackdropTicket>],
-    /// The first of `backdrops` not yet painted: backdrops paint in their order.
+    /// The first of the backdrops not yet painted: backdrops paint in their order.
     pub(super) next_backdrop: usize,
-    /// Logical-px inflation of each `subtree_paint_rect` before the damage cull, covering the AA pad the backend PreClears.
+}
+
+/// What every plane of a frame encodes under.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct EncodeFrame<'a> {
+    pub(super) damage_filter: Option<CullRegion<'a>>,
+    /// Logical-px inflation of each subtree paint rect before the damage cull, covering the AA pad
+    /// the backend PreClears.
     pub(super) damage_cull_margin: f32,
     pub(super) viewport: Rect,
     pub(super) now: Duration,
@@ -175,10 +183,13 @@ impl PlaneCtx<'_, '_> {
                         .corners
                         .inner(placed.rect.size, Spacing::saturating([width; 4])),
                 };
-                Some(DrawShadowPayload::new(source, shadow))
+                Some(DrawShadowPayload { source, shadow })
             }
             // The box's rect, as `compute_paint_rect` and `LoweredPaint::bbox_local` mirror.
-            PlacedClosed::Box(placed) => Some(DrawShadowPayload::new(placed, shadow)),
+            PlacedClosed::Box(placed) => Some(DrawShadowPayload {
+                source: placed,
+                shadow,
+            }),
             PlacedClosed::Triangle(_) => {
                 debug_assert!(shadow.is_noop(), "a triangle casts no shadow");
                 None
@@ -189,14 +200,17 @@ impl PlaneCtx<'_, '_> {
         }
         match backdrop {
             Some(look) => out.draw(
-                DrawClosedPayload::new(
+                DrawClosedPayload {
                     geometry,
-                    ClosedEffect::material(look.material, look.read, fill, border),
-                ),
+                    paint: ClosedEffect::material(look.material, look.read, fill, border),
+                },
                 animation,
             ),
             None => out.draw(
-                DrawClosedPayload::new(geometry, ClosedFill::new(fill, border)),
+                DrawClosedPayload {
+                    geometry,
+                    paint: ClosedFill::new(fill, border),
+                },
                 animation,
             ),
         }
@@ -223,7 +237,6 @@ impl PlaneCtx<'_, '_> {
         let payload = |path| DrawStrokePayload {
             path,
             origin: owner_rect.min,
-            spin: None,
             fill: GpuFill::curve(stroke.color, ramp_row),
             width: stroke.width,
             cap: stroke.cap,
@@ -271,10 +284,10 @@ impl PlaneCtx<'_, '_> {
                     corners,
                 });
                 out.draw(
-                    DrawClosedPayload::new(
-                        dot,
-                        ClosedFill::new(BrushSource::Solid(color), LoweredBorder::NONE),
-                    ),
+                    DrawClosedPayload {
+                        geometry: dot,
+                        paint: ClosedFill::new(BrushSource::Solid(color), LoweredBorder::NONE),
+                    },
                     animation,
                 );
             }
@@ -294,12 +307,12 @@ impl PlaneCtx<'_, '_> {
             owner: self.tree.records.widget_id()[owner.idx()],
             shape: entries[at].row,
         };
-        let Some(ahead) = self.backdrops[self.next_backdrop..]
+        let Some(ahead) = self.cascade.backdrops[self.next_backdrop..]
             .iter()
             .position(|backdrop| backdrop.key == key)
         else {
             debug_assert!(
-                !self.backdrops[..self.next_backdrop]
+                !self.cascade.backdrops[..self.next_backdrop]
                     .iter()
                     .any(|backdrop| backdrop.key == key),
                 "backdrops paint in the cascade's order"
@@ -344,7 +357,9 @@ impl PlaneCtx<'_, '_> {
         );
         let shaped = runs.shaped(shape, self.layout);
         // Early-out so a shape animated to nothing doesn't pay for its geometry.
-        let paint_mod = self.paint_animation_cursor.sample(shape_idx, self.now);
+        let paint_mod = self
+            .paint_animation_cursor
+            .sample(shape_idx, self.frame.now);
         if is_invisible(paint_mod.alpha) {
             return;
         }
@@ -387,7 +402,7 @@ impl PlaneCtx<'_, '_> {
                     ClosedPaint::Image {
                         tint,
                         source,
-                        fit,
+                        placement,
                         min_filter,
                         mag_filter,
                         downsample,
@@ -413,9 +428,9 @@ impl PlaneCtx<'_, '_> {
                             rect,
                             uv_min,
                             uv_size,
-                        } = fit.resolve(placed.bounds(), source.intrinsic());
+                        } = placement.resolve(placed.bounds(), source.intrinsic());
                         let mut flags = ImageFlags::NONE;
-                        if matches!(*fit, ImageFit::Tile { .. }) {
+                        if matches!(*placement, ImagePlacement::Tile { .. }) {
                             flags = flags.union(ImageFlags::TILED);
                         }
                         if *min_filter == ImageFilter::Nearest {
@@ -430,9 +445,9 @@ impl PlaneCtx<'_, '_> {
                             ImageDownsample::Peak => ImageFlags::TAPS_PEAK,
                         });
                         out.draw(
-                            DrawClosedPayload::new(
-                                placed,
-                                ClosedImage {
+                            DrawClosedPayload {
+                                geometry: placed,
+                                paint: ClosedImage {
                                     rect,
                                     uv_min,
                                     uv_size,
@@ -441,7 +456,7 @@ impl PlaneCtx<'_, '_> {
                                     flags,
                                     view,
                                 },
-                            ),
+                            },
                             animation,
                         );
                     }
@@ -456,46 +471,44 @@ impl PlaneCtx<'_, '_> {
                             icon: handle.icon,
                             tint: *tint,
                             desaturate: *desaturate,
-                            spin: None,
                         },
                         animation,
                     ),
                     // An effect fades, turns and reads its time with its paint animation. A
                     // backdrop effect the cascade lists not lies outside every clip.
                     ClosedPaint::Effect {
-                        backdrop,
-                        outside,
+                        read,
                         effect,
                         params,
                         images,
                         content_hash: _,
                     } => {
-                        let backdrop = match backdrop {
-                            Some(capture) => {
+                        let read = match *read {
+                            RecordedRead::Color { outside } => EffectRead::Color { outside },
+                            RecordedRead::Backdrop { capture } => {
                                 let Some(ticket) = self.backdrop_ticket(site) else {
                                     return;
                                 };
-                                Some(EffectCaptureDraw {
-                                    ticket,
-                                    reach: capture.reach,
-                                })
+                                EffectRead::Backdrop {
+                                    capture: EffectCaptureDraw {
+                                        ticket,
+                                        reach: capture.reach,
+                                    },
+                                }
                             }
-                            None => None,
                         };
                         out.draw(
-                            DrawClosedPayload::new(
-                                placed,
-                                ClosedEffect {
+                            DrawClosedPayload {
+                                geometry: placed,
+                                paint: ClosedEffect {
                                     effect: *effect,
                                     params: *params,
                                     images: *images,
-                                    backdrop,
-                                    stage: None,
-                                    outside: *outside,
+                                    read,
                                     opacity: 1.0,
                                     time: paint_mod.time,
                                 },
-                            ),
+                            },
                             animation,
                         );
                     }
@@ -532,7 +545,6 @@ impl PlaneCtx<'_, '_> {
                         ink: shaped.extent.ink,
                         color: *color,
                         text: ShapedTextRef::new(key, text),
-                        spin: None,
                     },
                     animation,
                 );
@@ -563,7 +575,6 @@ impl PlaneCtx<'_, '_> {
                         tint: *tint,
                         vertices: *vertices,
                         idxs: *idxs,
-                        spin: None,
                     },
                     animation,
                 );
@@ -573,19 +584,19 @@ impl PlaneCtx<'_, '_> {
 
     /// Paints `id` and its subtree in paint order: the whole recursive walk, called once per root.
     pub(super) fn encode_node(&mut self, id: NodeId, out: &mut impl PaintSink) {
-        if self.cascade_inputs[id.idx()].invisible() {
+        if self.cascade.cascade_inputs[id.idx()].invisible() {
             return;
         }
 
-        let subtree_paint_rect = self.subtree_paint_rects[id.idx()];
-        if !subtree_paint_rect.intersects(self.viewport) {
+        let subtree_paint_rect = self.cascade.subtree_paint_rects[id.idx()];
+        if !subtree_paint_rect.intersects(self.frame.viewport) {
             return;
         }
 
         // Inflated by `damage_cull_margin` to cover the AA pad the backend PreClears, else a node
         // in the pad ring is cleared but skipped.
-        if let Some(region) = self.damage_filter
-            && !region.any_intersects(subtree_paint_rect.inflated(self.damage_cull_margin))
+        if let Some(region) = self.frame.damage_filter
+            && !region.any_intersects(subtree_paint_rect.inflated(self.frame.damage_cull_margin))
         {
             return;
         }
@@ -619,7 +630,13 @@ impl PlaneCtx<'_, '_> {
                     self.brush_source(LoweredBrush::Solid(RgbaF16::TRANSPARENT)),
                     self.tree.focus_ring,
                 );
-                out.draw(DrawClosedPayload::new(geometry, ring), 1.0);
+                out.draw(
+                    DrawClosedPayload {
+                        geometry,
+                        paint: ring,
+                    },
+                    DrawAnimation::STILL,
+                );
             }
         }
 

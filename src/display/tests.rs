@@ -87,7 +87,7 @@ fn raster_eq_compares_every_raster_axis_and_only_those() {
         (
             "refresh",
             Display {
-                refresh_millihertz: Some(60_000),
+                refresh_millihertz: NonZeroU32::new(60_000),
                 ..base
             },
             true,
@@ -95,21 +95,6 @@ fn raster_eq_compares_every_raster_axis_and_only_those() {
     ] {
         assert_eq!(base.raster_eq(&other), equal, "{label}");
         assert_eq!(other.raster_eq(&base), equal, "{label}: swapped");
-    }
-}
-
-#[test]
-fn scale_factor_is_valid_from_eps_up() {
-    for (factor, valid) in [
-        (1.0, true),
-        (EPS, true),
-        (EPS * 0.5, false),
-        (0.0, false),
-        (-1.0, false),
-        (f32::NAN, false),
-        (f32::INFINITY, false),
-    ] {
-        assert_eq!(scale_factor_is_valid(factor), valid, "{factor}");
     }
 }
 

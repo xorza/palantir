@@ -4,14 +4,14 @@
 use crate::driver::error::PlayError;
 use crate::gpu::device::gpu::Gpu;
 use crate::host::winit::frame_summary::FrameSummary;
-use crate::host::winit::remote::{LoseTask, QueryTask, ShotAsk};
+use crate::host::winit::user_event::{Asked, LoseTask, QueryTask, ShotAsk};
 use crate::ui::Ui;
 use crate::ui::frame_report::FrameReport;
 use crate::window::screenshot::{Screenshot, ScreenshotId};
-use std::sync::mpsc::SyncSender;
 
 /// What one window answers its remotes with: the screenshots they asked that have not landed,
-/// and how many sent events it applied, which each frame's summary counts. Each screenshot
+/// one at most for each remote that still waits, as one a remote gave up on goes at the next
+/// frame, and how many sent events it applied, which each frame's summary counts. Each screenshot
 /// answers in the frame its image lands in, which reads it before a later frame replaces it; a
 /// window that closes drops the asks, which its remotes read as [`PlayError::Disconnected`].
 /// Refused: the shots in one type and the count and summary in each player of the window, where
@@ -26,21 +26,20 @@ pub(crate) struct RemoteEnd {
 #[derive(Debug)]
 struct PendingShot {
     id: ScreenshotId,
-    reply: SyncSender<Result<Screenshot, PlayError>>,
+    asked: Asked<Result<Screenshot, PlayError>>,
 }
 
 impl RemoteEnd {
-    /// Ask `ui` for the screenshot `ask` names; a region with no pixel of the window answers at
-    /// once.
+    /// Ask `ui` for the screenshot `ask` names; a refused ask answers at once, and one its remote
+    /// gave up on asks nothing.
     pub(crate) fn ask_shot(&mut self, ui: &mut Ui, ask: ShotAsk) {
-        match ui.request_screenshot(ask.region) {
-            Some(id) => self.pending.push(PendingShot {
-                id,
-                reply: ask.reply,
-            }),
-            None => {
-                ask.reply.send(Err(PlayError::EmptyRegion)).ok();
-            }
+        let ShotAsk { region, asked } = ask;
+        if asked.is_given_up() {
+            return;
+        }
+        match ui.request_screenshot(region) {
+            Ok(id) => self.pending.push(PendingShot { id, asked }),
+            Err(refusal) => asked.answer(|| Err(PlayError::from(refusal))),
         }
     }
 
@@ -72,19 +71,66 @@ impl RemoteEnd {
         report: &FrameReport,
         busy: bool,
     ) -> FrameSummary {
-        self.pending
-            .retain(|pending| match ui.screenshot_taken(pending.id) {
-                Some(shot) => {
-                    pending.reply.send(Ok(shot.clone())).ok();
-                    false
-                }
-                None => true,
-            });
+        self.pending.retain(|pending| {
+            if pending.asked.is_given_up() {
+                return false;
+            }
+            let Some(shot) = ui.screenshot_taken(pending.id) else {
+                return true;
+            };
+            pending.asked.reply.send(Ok(shot.clone())).ok();
+            false
+        });
         FrameSummary {
-            record_frame_id: ui.record_frame_id(),
+            record_frame_idx: ui.record_frame_idx(),
             sent_events: self.sent_events,
             repaint_requested: report.repaint_requested,
             busy,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::host::harness::Harness;
+    use crate::host::winit::remote::remote_end::RemoteEnd;
+    use crate::host::winit::user_event::{Asked, ShotAsk};
+    use glam::UVec2;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::mpsc;
+
+    /// A shot its remote gave up on asks nothing, and one given up on after it was asked leaves
+    /// the window's list at the next frame, so a remote that retries leaves one ask at most.
+    #[test]
+    fn a_shot_given_up_on_leaves_the_pending_list() {
+        let mut h = Harness::mono(UVec2::new(40, 30));
+        let mut end = RemoteEnd::default();
+        let (reply, answer) = mpsc::sync_channel(1);
+        let ask = |given_up: &Arc<AtomicBool>| ShotAsk {
+            region: None,
+            asked: Asked {
+                reply: reply.clone(),
+                given_up: Arc::clone(given_up),
+            },
+        };
+
+        let abandoned = Arc::new(AtomicBool::new(true));
+        end.ask_shot(h.ui_mut(), ask(&abandoned));
+        assert_eq!(end.pending.len(), 0, "an ask given up on asks nothing");
+
+        let waiting = Arc::new(AtomicBool::new(false));
+        end.ask_shot(h.ui_mut(), ask(&waiting));
+        let report = h.frame(|_| {});
+        let _ = end.after_frame(h.ui(), &report, false);
+        assert_eq!(end.pending.len(), 1, "a record-only frame lands no image");
+
+        waiting.store(true, Ordering::Release);
+        let _ = end.after_frame(h.ui(), &report, false);
+        assert_eq!(end.pending.len(), 0, "given up on after its ask");
+        assert!(
+            answer.try_recv().is_err(),
+            "no answer went to a remote that left"
+        );
     }
 }

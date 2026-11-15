@@ -24,6 +24,8 @@ fn grid_content_hash_uses_tracks_not_arena_offsets_and_collapses_visual_noise() 
         let def = GridDef {
             rows: Span::new(start, 1),
             cols: Span::new(start + 1, 1),
+            spans_rows: false,
+            spans_cols: false,
         };
         grid_content_hash(def, &tracks)
     };
@@ -41,6 +43,8 @@ fn grid_content_hash_covers_empty_small_and_large_definitions() {
         let def = GridDef {
             rows: Span::new(0, rows.len() as u32),
             cols: Span::new(rows.len() as u32, cols.len() as u32),
+            spans_rows: false,
+            spans_cols: false,
         };
         grid_content_hash(def, &tracks)
     }

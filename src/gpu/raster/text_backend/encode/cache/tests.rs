@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::common::counters::CounterSet;
+use crate::common::gen_slab::SlabKey;
 use crate::gpu::atlas::atlas_format::AtlasFormat;
 use crate::text::key::TextShapeKey;
 
@@ -10,7 +11,6 @@ fn key(scale_q: u32) -> EncodedKey {
     EncodedKey {
         text: TextShapeKey::fixture(),
         scale_q,
-        area_color: 0,
         bins: 0,
     }
 }
@@ -21,8 +21,10 @@ fn glyph(tag: u32) -> EncodedGlyph {
         offset: IVec2::new(tag as i32, -(tag as i32)),
         handle: AtlasHandle {
             format: AtlasFormat::R8,
-            idx: tag,
-            generation: tag + 1,
+            key: SlabKey {
+                idx: tag,
+                generation: tag + 1,
+            },
         },
     }
 }

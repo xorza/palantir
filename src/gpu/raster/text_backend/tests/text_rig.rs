@@ -41,7 +41,7 @@ impl TextRig {
         let shaper = TextShaper::new();
         let backend = TextBackend::new(&test_gpu, shaper.clone());
         let pool = AtlasPool::new(PoolConfig::of_device(
-            test_gpu.max_texture_dim().get(),
+            test_gpu.max_texture_dimension().get(),
             test_gpu.pass_traffic(),
         ));
         let atlas = AtlasTextures::new(&test_gpu);
@@ -109,7 +109,7 @@ impl TextRig {
                     },
                 );
             }
-            atlas.commit(ctx.gpu, ctx.encoder, pool);
+            atlas.commit(ctx, pool);
             backend.pass.flush(ctx, atlas);
         });
     }

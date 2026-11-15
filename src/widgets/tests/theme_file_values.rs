@@ -10,7 +10,6 @@ use crate::internals::dock_fixture::DockFixture;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::interaction::response::Response;
-use crate::primitives::input::interaction::response_state::ResponseState;
 use crate::primitives::input::shortcut::Shortcut;
 use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::layout::sizing::Sizing;
@@ -116,7 +115,7 @@ struct Forms {
     checked: bool,
     on: bool,
     pick: u8,
-    quality: &'static &'static str,
+    quality: &'static str,
     value: f64,
     split: f32,
 }
@@ -128,7 +127,7 @@ impl Default for Forms {
             checked: true,
             on: true,
             pick: 1,
-            quality: &QUALITIES[1],
+            quality: QUALITIES[1],
             value: 0.5,
             split: 0.5,
         }
@@ -160,7 +159,7 @@ fn forms(ui: &mut Ui, f: &mut Forms) {
                         options.option(pick).label("radio").show(ui);
                     }
                 });
-            ComboBox::new(&mut f.quality, &QUALITIES)
+            ComboBox::new(&mut f.quality, QUALITIES)
                 .id_salt("probe-combo")
                 .show(ui);
             Slider::new(&mut f.value, 0.0..=1.0)
@@ -220,12 +219,9 @@ fn probe(ui: &mut Ui, scene: &mut Scene) {
         MenuItem::new("Paste").show(ui);
     });
     let hovered = Response {
-        id: WidgetId::from_hash("probe-tip-trigger"),
-        state: ResponseState {
-            rect: Some(Rect::new(40.0, 40.0, 40.0, 24.0)),
-            pointer_over: true,
-            ..ResponseState::default()
-        },
+        rect: Some(Rect::new(40.0, 40.0, 40.0, 24.0)),
+        pointer_over: true,
+        ..Response::idle(WidgetId::from_hash("probe-tip-trigger"))
     };
     Tooltip::on(&hovered, "tip").delay(Duration::ZERO).show(ui);
     Popup::new()
@@ -267,9 +263,11 @@ fn render(theme: Theme, shaper: &TextShaper) -> Harness {
     let mut h = Harness::builder(UVec2::new(640, 480))
         .shaper(shaper.clone())
         .build();
-    h.ui_mut().set_theme(ColorScheme::Dark, theme).unwrap();
+    h.ui_mut()
+        .set_scheme_theme(ColorScheme::Dark, theme)
+        .unwrap();
     h.frame(probe_modal);
-    Menu::open(h.ui_mut(), menu_id(), Vec2::new(20.0, 20.0));
+    Menu::open_at(h.ui_mut(), menu_id(), Vec2::new(20.0, 20.0));
     let mut scene = Scene {
         color: RgbaF32::srgb(0.2, 0.4, 0.6),
         ..Scene::default()

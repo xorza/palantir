@@ -17,9 +17,11 @@ mod node_arenas;
 use crate::common::content_hash::ContentHash;
 use crate::common::counters::BenchOnly;
 use crate::common::span::Span;
-use crate::layout::cache::measure_snapshot::{ArenaSnapshot, MeasureSnapshot, SubtreeKey};
+use crate::layout::cache::measure_snapshot::{MeasureSnapshot, SubtreeDesc, SubtreeKey};
 use crate::layout::drivers::grid::grid_track_store::GridTrackStore;
-use crate::layout::measure_columns::MeasureColumns;
+use crate::layout::measure_columns::{
+    MeasureColumns, {UNMEASURED, same_offer},
+};
 use crate::layout::measured::Measured;
 use crate::layout::plane_layout::PlaneLayout;
 use crate::primitives::geometry::rect::Rect;
@@ -31,16 +33,6 @@ use crate::text::shaped_text::ShapedText;
 use glam::Vec2;
 use std::mem;
 use std::ops::Range;
-
-/// The `available` of a node no measure reached this frame; no subtree is captured under it.
-pub(super) const UNMEASURED: Size = Size::new(f32::NAN, f32::NAN);
-
-/// Whether two offers are the same one, bit for bit; `UNMEASURED` matches itself. A kept run
-/// needs the exact offer, where [`MeasureCache::try_lookup`] also serves any finite offer past
-/// `stable_from`.
-pub(super) const fn same_offer(a: Size, b: Size) -> bool {
-    a.w.to_bits() == b.w.to_bits() && a.h.to_bits() == b.h.to_bits()
-}
 
 /// Last frame's measure of one subtree, as a hit restores it: the arena rows it takes, each
 /// column of which holds the subtree's nodes in pre-order.
@@ -66,7 +58,7 @@ pub(super) struct CachedContainerText<'a> {
 /// A subtree's arrange as last frame captured it: each node's rect and its
 /// slot origin in its parent's inner box.
 #[derive(Debug)]
-pub(super) struct Arranged<'a> {
+pub(super) struct ArrangedRows<'a> {
     pub(super) rects: &'a [Rect],
     pub(super) locals: &'a [Vec2],
 }
@@ -119,9 +111,9 @@ impl MeasureCache {
 
     /// Last frame's arrange of a subtree of `len` nodes whose capture starts
     /// at `base`.
-    pub(super) fn arranged(&self, base: usize, len: usize) -> Arranged<'_> {
+    pub(super) fn arranged(&self, base: usize, len: usize) -> ArrangedRows<'_> {
         let nodes = base..base + len;
-        Arranged {
+        ArrangedRows {
             rects: &self.prev.nodes.rect[nodes.clone()],
             locals: &self.prev.nodes.local[nodes],
         }
@@ -139,7 +131,8 @@ impl MeasureCache {
         let available = key.available;
         let rows = snap.nodes.range();
         let measure = &self.prev.nodes.measure;
-        let stable_from = measure.stable_from[rows.start];
+        let root = measure.measured(rows.start);
+        let stable_from = root.stable_from;
         let holds = |measured_at: f32, offer: f32, from: f32| {
             measured_at.to_bits() == offer.to_bits() || (offer.is_finite() && offer >= from)
         };
@@ -149,11 +142,7 @@ impl MeasureCache {
             return None;
         }
         Some(CachedSubtree {
-            root: Measured {
-                size: measure.desired[rows.start],
-                floor: measure.floor[rows.start],
-                stable_from,
-            },
+            root,
             measure,
             scroll_content: &self.prev.nodes.scroll_content[rows.clone()],
             text_spans: &self.prev.nodes.text_spans[rows.clone()],
@@ -295,7 +284,7 @@ impl MeasureCache {
                 Span::default()
             };
             let widget_id = tree.records.widget_id()[idx];
-            self.cur.descs.push(ArenaSnapshot {
+            self.cur.descs.push(SubtreeDesc {
                 subtree_hash: tree.rollups.layout_subtree[idx],
                 available: available[idx],
                 nodes: Span::new(node_base + idx as u32, (end - idx) as u32),
@@ -337,7 +326,7 @@ impl MeasureCache {
     }
 
     pub(super) fn end_frame(&mut self) {
-        if self.cur.refresh_snapshots() {
+        if self.cur.refresh_desc_by_id() {
             self.snapshot_rebuilds.bump();
         }
         mem::swap(&mut self.prev, &mut self.cur);

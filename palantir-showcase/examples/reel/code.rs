@@ -2,7 +2,9 @@
 //! colors it. Refused for now: a rich-text widget with colored spans, a library feature for one
 //! slide.
 
-use palantir::{Chrome, Configure, Corners, FontFamily, Panel, RgbaF32, Sizing, Text, Ui};
+use palantir::{
+    Chrome, Configure, Corners, FontFamily, Panel, RgbaF32, SizeSpec, Sizing, Text, Ui,
+};
 
 use crate::deck::{id, id_at};
 
@@ -90,7 +92,7 @@ pub(crate) fn listing(ui: &mut Ui, flash: f32) {
                 let lit = if n == CLICK_LINE { flash } else { 0.0 };
                 Panel::hstack()
                     .id(id_at(1, "line", n))
-                    .size((Sizing::FILL, Sizing::HUG))
+                    .size(SizeSpec::FILL_W)
                     .chrome(Chrome::rounded(
                         RgbaF32::hex(0x6d8cff).with_alpha(0.35 * lit),
                         Corners::all(6.0),

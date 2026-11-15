@@ -1,9 +1,13 @@
+use crate::internals::panic_probe;
+use crate::primitives::geometry::fit::Fit;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::primitives::paint::image::error::ImageDataError;
-use crate::primitives::paint::image::{Image, ImageFit, fitted_size};
+use crate::primitives::paint::image::image_placement::ImagePlacement;
+use crate::primitives::paint::image::{Image, fitted_size};
 use glam::{UVec2, Vec2};
+use std::num::NonZeroU32;
 
 /// A 100×50 image in a 200×200 rect, per fit:
 /// - `Fill`: the full rect (stretched).
@@ -15,35 +19,47 @@ use glam::{UVec2, Vec2};
 fn image_fit_modes_resolve_to_expected_rects_and_uv() {
     let base = Rect::new(0.0, 0.0, 200.0, 200.0);
     let img = Size::new(100.0, 50.0);
-    let tile = ImageFit::Tile {
+    let tile = ImagePlacement::Tile {
         offset: Vec2::new(0.5, 0.25),
         scale: Vec2::new(3.0, 2.0),
     };
     let rows = [
-        (ImageFit::Fill, img, base, Vec2::ZERO, Vec2::ONE),
         (
-            ImageFit::Contain,
+            ImagePlacement::Fit(Fit::Fill),
+            img,
+            base,
+            Vec2::ZERO,
+            Vec2::ONE,
+        ),
+        (
+            ImagePlacement::Fit(Fit::Contain),
             img,
             Rect::new(0.0, 50.0, 200.0, 100.0),
             Vec2::ZERO,
             Vec2::ONE,
         ),
         (
-            ImageFit::Cover,
+            ImagePlacement::Fit(Fit::Cover),
             img,
             base,
             Vec2::new(0.25, 0.0),
             Vec2::new(0.5, 1.0),
         ),
         (
-            ImageFit::Natural,
+            ImagePlacement::Fit(Fit::Natural),
             img,
             Rect::new(50.0, 75.0, 100.0, 50.0),
             Vec2::ZERO,
             Vec2::ONE,
         ),
         (tile, img, base, Vec2::new(0.5, 0.25), Vec2::new(3.0, 2.0)),
-        (ImageFit::Contain, Size::ZERO, base, Vec2::ZERO, Vec2::ONE),
+        (
+            ImagePlacement::Fit(Fit::Contain),
+            Size::ZERO,
+            base,
+            Vec2::ZERO,
+            Vec2::ONE,
+        ),
     ];
     for (fit, intrinsic, rect, uv_min, uv_size) in rows {
         let got = fit.resolve(base, intrinsic);
@@ -195,7 +211,7 @@ fn a_fitted_image_averages_in_linear_light() {
             a: 255,
         }
     });
-    let fitted = image.fitted(2);
+    let fitted = image.fitted(NonZeroU32::new(2).unwrap());
     assert_eq!(fitted.size(), UVec2::new(2, 1));
     let grey = |v: u8| SrgbaU8 {
         r: v,
@@ -204,7 +220,7 @@ fn a_fitted_image_averages_in_linear_light() {
         a: 255,
     };
     assert_eq!(fitted.texels(), [grey(175), grey(199)]);
-    assert_eq!(image.fitted(4), image);
+    assert_eq!(image.fitted(NonZeroU32::new(4).unwrap()), image);
 }
 
 /// Color averages premultiplied: a transparent texel's color weighs nothing, so a 2 × 1 image of
@@ -227,7 +243,7 @@ fn a_fitted_image_weighs_color_by_alpha() {
         },
     ]);
     assert_eq!(
-        image.fitted(1).texels(),
+        image.fitted(NonZeroU32::MIN).texels(),
         [SrgbaU8 {
             r: 255,
             g: 0,
@@ -267,7 +283,7 @@ fn a_fit_row_by_row_matches_the_whole_image_two_pass() {
 
     /// The fit as two passes over whole-image buffers: every row filtered across, then down.
     fn two_pass(image: &Image, max_side: u32) -> Vec<SrgbaU8> {
-        let size = image.fitted(max_side).size();
+        let size = image.fitted(NonZeroU32::new(max_side).unwrap()).size();
         let (from_w, from_h) = (image.size().x as usize, image.size().y as usize);
         let (to_w, to_h) = (size.x as usize, size.y as usize);
         let linear: Vec<[f32; 4]> = image
@@ -311,9 +327,97 @@ fn a_fit_row_by_row_matches_the_whole_image_two_pass() {
             SrgbaU8 { r, g, b, a }
         });
         assert_eq!(
-            image.fitted(max_side).texels(),
+            image.fitted(NonZeroU32::new(max_side).unwrap()).texels(),
             two_pass(&image, max_side),
             "{size}"
         );
     }
+}
+
+/// `texel` reads row-major, column then row; `magnified` repeats each texel into a block of the
+/// factor's side, 2 × 1 at 3 becoming 6 × 3; a texel past the size panics.
+#[test]
+fn a_texel_reads_by_position_and_magnifies_into_a_block() {
+    let (red, blue) = (SrgbaU8::rgb(255, 0, 0), SrgbaU8::rgb(0, 0, 255));
+    let mut image = Image::blank(UVec2::new(2, 1));
+    image.texels_mut().copy_from_slice(&[red, blue]);
+    assert_eq!(image.texel(UVec2::new(0, 0)), red);
+    assert_eq!(image.texel(UVec2::new(1, 0)), blue);
+
+    let big = image.magnified(NonZeroU32::new(3).unwrap());
+    assert_eq!(big.size(), UVec2::new(6, 3));
+    for y in 0..3 {
+        for x in 0..6 {
+            let want = if x < 3 { red } else { blue };
+            assert_eq!(big.texel(UVec2::new(x, y)), want, "({x}, {y})");
+        }
+    }
+    assert_eq!(image.magnified(NonZeroU32::MIN), image);
+    panic_probe::assert_panics_with("lies outside", || image.texel(UVec2::new(2, 0)));
+}
+
+/// A PNG round-trips the bytes it was written from, and bytes that are no PNG are refused.
+#[cfg(feature = "png")]
+#[test]
+fn an_image_round_trips_through_png() {
+    let mut image = Image::blank(UVec2::new(3, 2));
+    image.fill_with(|at| SrgbaU8::new(at.x as u8 * 80, at.y as u8 * 120, 7, 200));
+    let mut bytes = Vec::new();
+    image.write_png(&mut bytes).unwrap();
+    assert_eq!(Image::from_png(&bytes).unwrap(), image);
+    assert!(Image::from_png(b"not a png").is_err());
+}
+
+/// A writer whose flush fails, as a buffered file does when its last block finds the disk full.
+#[cfg(feature = "png")]
+#[derive(Debug)]
+struct FailingFlush;
+
+#[cfg(feature = "png")]
+impl std::io::Write for FailingFlush {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Err(std::io::Error::other("flush failed"))
+    }
+}
+
+/// Writing a PNG flushes its writer, so a buffered file's last block fails the write rather than
+/// a drop that drops the error.
+#[cfg(feature = "png")]
+#[test]
+fn writing_a_png_reports_the_flush_that_fails() {
+    let error = Image::blank(UVec2::ONE)
+        .write_png(FailingFlush)
+        .unwrap_err();
+    assert_eq!(error.to_string(), "flush failed");
+}
+
+/// A crop holds the region's texels, each enumerated with where it lies in the crop, row by row:
+/// the 3 × 2 at (1, 1) of a 4 × 3 whose texel at (x, y) is `(x, y, 9, 255)` holds the texels of
+/// (1, 1), (2, 1), (3, 1), (1, 2), (2, 2) and (3, 2), at (0, 0) through (2, 1). A width unlike its
+/// height shows a row break at the width, and the offset shows on both axes.
+#[test]
+fn a_crop_enumerates_its_regions_texels_where_they_lie() {
+    let mut image = Image::blank(UVec2::new(4, 3));
+    image.fill_with(|at| SrgbaU8::new(at.x as u8, at.y as u8, 9, 255));
+    let crop = image.cropped(UVec2::new(1, 1), UVec2::new(3, 2));
+    assert_eq!(crop.size(), UVec2::new(3, 2));
+    let texels: Vec<(UVec2, SrgbaU8)> = crop.enumerate_texels().collect();
+    assert_eq!(
+        texels,
+        [
+            (UVec2::new(0, 0), SrgbaU8::rgb(1, 1, 9)),
+            (UVec2::new(1, 0), SrgbaU8::rgb(2, 1, 9)),
+            (UVec2::new(2, 0), SrgbaU8::rgb(3, 1, 9)),
+            (UVec2::new(0, 1), SrgbaU8::rgb(1, 2, 9)),
+            (UVec2::new(1, 1), SrgbaU8::rgb(2, 2, 9)),
+            (UVec2::new(2, 1), SrgbaU8::rgb(3, 2, 9)),
+        ]
+    );
+    panic_probe::assert_panics_with("lies outside", || {
+        image.cropped(UVec2::new(2, 1), UVec2::new(3, 2))
+    });
 }

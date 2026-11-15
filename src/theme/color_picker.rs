@@ -11,10 +11,11 @@ use crate::theme::drag_value::DragValueTheme;
 use crate::theme::look::WidgetLook;
 use crate::theme::look::slot_defaults::SlotDefaults;
 use crate::theme::look::stateful_look::StatefulLook;
-use crate::theme::metrics::Metrics;
+use crate::theme::metrics::{FloatMaterial, MaterialRefusal, Metrics};
 use crate::theme::palette::Palette;
 use crate::theme::popup::PopupTheme;
 use crate::theme::text_edit::TextEditTheme;
+use crate::theme::text_style::TextStyle;
 use crate::theme::text_style_overrides::TextStyleOverrides;
 
 /// Visuals and geometry for [`crate::ColorPicker`] and its parts
@@ -35,25 +36,25 @@ use crate::theme::text_style_overrides::TextStyleOverrides;
 #[serde(deny_unknown_fields)]
 pub struct ColorPickerTheme {
     /// Saturation/value field width in logical px; also the bars' and rows' width.
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
+    #[serde(deserialize_with = "crate::primitives::file::length")]
     pub field_width: f32,
     /// Saturation/value field height in logical px.
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
+    #[serde(deserialize_with = "crate::primitives::file::length")]
     pub field_height: f32,
     /// Hue and alpha bar height in logical px.
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
+    #[serde(deserialize_with = "crate::primitives::file::length")]
     pub bar_thickness: f32,
     /// Side of the preview chip beside the bars, in logical px.
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
+    #[serde(deserialize_with = "crate::primitives::file::length")]
     pub chip_size: f32,
     /// Side of one swatch in the preset row, in logical px.
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
+    #[serde(deserialize_with = "crate::primitives::file::length")]
     pub swatch_size: f32,
     /// Radius of the ring marking the field's position, in logical px.
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
+    #[serde(deserialize_with = "crate::primitives::file::length")]
     pub handle_radius: f32,
     /// Stroke width of each of the handle's two rings, in logical px.
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
+    #[serde(deserialize_with = "crate::primitives::file::length")]
     pub handle_width: f32,
     /// Outer ring of every handle. Dark and not a palette color: a handle sits
     /// over every color the field shows.
@@ -65,7 +66,7 @@ pub struct ColorPickerTheme {
     /// Dark square of the same checker.
     pub checker_dark: RgbaF32,
     /// Side of one checker square in logical px.
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::positive")]
+    #[serde(deserialize_with = "crate::primitives::file::positive")]
     pub checker_cell: f32,
     /// What a [`crate::ColorButton`], a [`crate::ColorSwatch`] and the preview chip wear in each
     /// state, as a button does: the look's chrome frames the color, which fills the chip inside
@@ -77,7 +78,7 @@ pub struct ColorPickerTheme {
     /// (<https://gitlab.gnome.org/GNOME/libadwaita/-/merge_requests/307>).
     pub disabled_veil: RgbaF32,
     /// Gap between the panel's rows and between swatches, in logical px.
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
+    #[serde(deserialize_with = "crate::primitives::file::length")]
     pub gap: f32,
     /// The popup a [`crate::ColorButton`] drops its panel in: [`Palette::popup_panel`], as for
     /// menus and combo lists, padded wider than [`Self::gap`] so the panel reads as set in a
@@ -119,9 +120,8 @@ fn value_padding(m: &Metrics) -> Spacing {
 /// the focus color pressed, and back to `element` disabled. It shows no selected state, so both
 /// packs are one.
 fn chip(p: &Palette, m: &Metrics) -> ButtonTheme {
-    let ring = |color: RgbaF32| WidgetLook {
-        chrome: Chrome::NONE.with_border(Border::new(color, m.stroke.hairline)),
-        text: TextStyleOverrides::NONE,
+    let ring = |color: RgbaF32| {
+        WidgetLook::new(Chrome::NONE.with_border(Border::new(color, m.stroke.hairline)))
     };
     let looks = StatefulLook {
         normal: ring(p.element_strong),
@@ -151,7 +151,7 @@ fn mono_edit(p: &Palette, m: &Metrics) -> TextEditTheme {
 impl ColorPickerTheme {
     /// The control's own sizes and the handle's ink are fixed; its lines and popup geometry come from `m`, its checker, border, popup fill and text from `p`.
     pub fn from_parts(p: &Palette, m: &Metrics) -> Self {
-        Self {
+        let mut theme = Self {
             field_width: 208.0,
             field_height: 160.0,
             bar_thickness: 14.0,
@@ -167,8 +167,7 @@ impl ColorPickerTheme {
             chip: chip(p, m),
             disabled_veil: p.element.with_alpha8(128),
             gap: m.space.sm,
-            // Held for the muted ink the channel names below read in.
-            popup: PopupTheme::from_parts(p, m),
+            popup: PopupTheme::undressed(p, m),
             // One set of looks for the chip and its editor, so an editable value keeps its box
             // and text in place.
             value: {
@@ -184,6 +183,21 @@ impl ColorPickerTheme {
                     .with_color(p.text_muted)
                     .with_font_size(m.text.caption)
             },
+        };
+        if let Some(float) = &m.float_material {
+            theme.try_dress(float, &TextStyle::from_parts(p, m)).ok();
         }
+        theme
+    }
+
+    /// Dress the popup in `float`, held for the channel names' ink over `ambient`, the dimmest the
+    /// picker paints.
+    pub(super) fn try_dress(
+        &mut self,
+        float: &FloatMaterial,
+        ambient: &TextStyle,
+    ) -> Result<(), MaterialRefusal> {
+        let ink = self.label.apply(ambient).color;
+        self.popup.try_dress(float, ink)
     }
 }

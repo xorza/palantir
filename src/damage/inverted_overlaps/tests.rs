@@ -2,14 +2,15 @@ use crate::common::non_max::NonMaxU32;
 use crate::damage::inverted_overlaps::InvertedOverlaps;
 use crate::primitives::geometry::rect::Rect;
 
-/// `matched` as last frame's positions, `None` for an added item.
-fn damage(matched: &[Option<u32>], extents: &[Rect]) -> Vec<Rect> {
+/// `matched` as last frame's positions, `None` for an added item, through `overlaps`.
+fn damage(overlaps: &mut InvertedOverlaps, matched: &[Option<u32>], extents: &[Rect]) -> Vec<Rect> {
     let matched: Vec<_> = matched
         .iter()
         .map(|pos| pos.map(|pos| NonMaxU32::new(pos).unwrap()))
         .collect();
+    overlaps.cleared_extents().extend_from_slice(extents);
     let mut out = Vec::new();
-    InvertedOverlaps::default().push(&mut out, &matched, extents);
+    overlaps.push(&mut out, &matched);
     out
 }
 
@@ -30,6 +31,9 @@ struct Flip<'a> {
 /// - Two swapped: `b` damages its overlap with `a`, `[5, 10]²`.
 /// - Reversed deck of three equal cards: each later card whole, once.
 /// - `c` moves last to first: `a` damages its overlap with `c`, `[8, 10] × [0, 4]`; `b` (y = 5, below `c`) nothing.
+///
+/// One scratch serves every diff of a frame, so each case also runs on the scratch the cases
+/// before it filled, and answers as on a fresh one.
 #[test]
 fn one_rect_per_item_over_the_flipped_items() {
     let a = Rect::new(0.0, 0.0, 10.0, 10.0);
@@ -63,13 +67,20 @@ fn one_rect_per_item_over_the_flipped_items() {
             expected: &[Rect::new(8.0, 0.0, 2.0, 4.0)],
         },
     ];
+    let mut reused = InvertedOverlaps::default();
     for Flip {
         matched,
         extents,
         expected,
     } in cases
     {
-        assert_eq!(damage(matched, extents), expected, "{matched:?}");
+        let fresh = &mut InvertedOverlaps::default();
+        assert_eq!(damage(fresh, matched, extents), expected, "{matched:?}");
+        assert_eq!(
+            damage(&mut reused, matched, extents),
+            expected,
+            "{matched:?}, reused"
+        );
     }
 }
 
@@ -79,7 +90,11 @@ fn the_union_damages_a_superset() {
     let tall = Rect::new(0.0, 0.0, 10.0, 100.0);
     let far = Rect::new(90.0, 50.0, 10.0, 50.0);
     let wide = Rect::new(0.0, 0.0, 100.0, 10.0);
-    let out = damage(&[Some(1), Some(2), Some(0)], &[tall, far, wide]);
+    let out = damage(
+        &mut InvertedOverlaps::default(),
+        &[Some(1), Some(2), Some(0)],
+        &[tall, far, wide],
+    );
     assert_eq!(out, [wide]);
     assert!(out[0].contains_rect(tall.clamp_to(wide)));
     assert!(far.clamp_to(wide).is_paint_empty(), "premise: far misses");

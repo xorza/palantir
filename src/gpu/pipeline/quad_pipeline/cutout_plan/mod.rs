@@ -12,6 +12,7 @@ use crate::gpu::atlas::atlas_format::AtlasFormat;
 use crate::gpu::atlas::atlas_handle::Placement;
 use crate::gpu::atlas::page_list::{MAX_PAGES, PageListConfig};
 use crate::gpu::pipeline::quad_pipeline::cutout_placements::CutoutPlacing;
+use crate::gpu::pipeline::quad_pipeline::quad_draw::ShadowEntry;
 use crate::primitives::geometry::corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
@@ -50,18 +51,6 @@ pub(crate) struct CornerTables(pub(crate) [u32; 4]);
 
 impl CornerTables {
     const NONE: Self = Self([CutoutPlan::NONE; 4]);
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ShadowEntry {
-    Tables,
-    TablesWide,
-    General,
-}
-
-impl ShadowEntry {
-    /// How many entries there are.
-    pub(crate) const COUNT: usize = 3;
 }
 
 /// One shadow corner: cutout radius, the region where the cutout is nonzero, and the arc center with reflection signs.

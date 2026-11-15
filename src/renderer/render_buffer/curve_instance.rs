@@ -1,7 +1,7 @@
 //! Curve-pipeline wire constants and per-instance GPU data.
 
-use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
+use crate::primitives::paint::fill_kind::FillKind;
 use crate::primitives::paint::lut_row::LutRow;
 use crate::renderer::render_buffer::clip_chain::ClipChain;
 use crate::renderer::render_buffer::curve_caps::CurveCaps;

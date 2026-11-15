@@ -3,8 +3,8 @@
 
 use glam::Vec2;
 
-/// One button's drag lifecycle, carried on [`ButtonState::drag`](crate::ButtonState::drag) — the
-/// owning button is the slot's position in [`ResponseState`](crate::ResponseState). The four
+/// One button's drag lifecycle, carried on [`PointerButtonState::drag`](crate::PointerButtonState::drag) — the
+/// owning button is the slot's position in [`Response`](crate::Response). The four
 /// phases are exclusive per button, hence an enum rather than an `Option` plus edge flags:
 ///
 /// `None` → `Started` (the threshold-crossing frame) → `Active` (every

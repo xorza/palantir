@@ -3,11 +3,10 @@
 //! radial and conic shader paths on chrome.
 
 use palantir::glam::UVec2;
-use palantir::widget::Shape;
-use palantir::{ColorScheme, Configure, LinearGradient, Panel, Rect, RgbaF32, Sizing, Stop};
-use palantir_showcase::pages::gradients;
-use palantir_showcase::support;
-use palantir_showcase::support::Kits;
+use palantir::{
+    ColorScheme, Configure, Gradient, Panel, Rect, RgbaF32, Shape, SizeSpec, SrgbaU8, Stop,
+};
+use palantir_showcase::internals::PageScene;
 
 use crate::fixtures;
 use crate::fixtures::SRGB_ROUND_TRIP;
@@ -47,8 +46,7 @@ fn swatch_color(i: u32) -> RgbaF32 {
 /// covered.
 #[test]
 fn overflowing_gradient_atlas_paints_every_swatch() {
-    let img = VisualRig::new()
-        .size(VIEWPORT)
+    let img = VisualRig::new(VIEWPORT)
         .clear(RgbaF32::BLACK)
         .frame(|ui| {
             fixtures::canvas(ui, |ui| {
@@ -60,24 +58,17 @@ fn overflowing_gradient_atlas_paints_every_swatch() {
                         SWATCH as f32,
                         SWATCH as f32,
                     );
-                    ui.add_shape(
-                        Shape::rect().at(rect),
-                        LinearGradient::horizontal([color, color]),
-                    );
+                    ui.add_shape(Shape::rect().at(rect), Gradient::horizontal([color, color]));
                 }
             });
         })
         .image;
-    for (x, y, pixel) in img.enumerate_pixels() {
+    for (UVec2 { x, y }, pixel) in img.enumerate_texels() {
         let i = y / SWATCH * COLS + x / SWATCH;
         let want = swatch_color(i).to_srgba8();
         // The LUT is `f16`, finer than an sRGB step, so only encode rounding
         // remains; swatches are at least 5 sRGB units apart.
-        fixtures::assert_px(
-            pixel.0,
-            [want.r, want.g, want.b, 255],
-            format_args!("swatch {i} at ({x}, {y})"),
-        );
+        fixtures::assert_px(pixel, want, format_args!("swatch {i} at ({x}, {y})"));
     }
 }
 
@@ -91,20 +82,19 @@ fn overflowing_gradient_atlas_paints_every_swatch() {
 fn a_gradient_samples_its_lut_at_texel_centers() {
     let red = RgbaF32::new(1.0, 0.0, 0.0, 1.0);
     let blue = RgbaF32::new(0.0, 0.0, 1.0, 1.0);
-    let mut h = VisualRig::new();
+    let mut h = VisualRig::new(UVec2::new(1024, 16));
     let img = h
-        .size(UVec2::new(1024, 16))
         .clear(RgbaF32::BLACK)
         .frame(|ui| {
             fixtures::canvas(ui, |ui| {
                 ui.add_shape(
                     Shape::rect().at(Rect::new(0.0, 0.0, 1024.0, 16.0)),
-                    LinearGradient::horizontal([Stop::new(0.25, red), Stop::new(0.25, blue)]),
+                    Gradient::horizontal([Stop::new(0.25, red), Stop::new(0.25, blue)]),
                 );
             });
         })
         .image;
-    let [r, g, b, _] = img.get_pixel(258, 8).0;
+    let SrgbaU8 { r, g, b, .. } = img.texel(UVec2::new(258, 8));
     assert!(
         r.abs_diff(207) <= SRGB_ROUND_TRIP && g == 0 && b.abs_diff(163) <= SRGB_ROUND_TRIP,
         "pixel 258 is {r}, {g}, {b}; texel centers put it at 207, 0, 163",
@@ -114,13 +104,8 @@ fn a_gradient_samples_its_lut_at_texel_centers() {
 /// The showcase's gradients page as one golden.
 #[test]
 fn showcase_gradients_page_matches_golden() {
-    let k = Kits::default().kit(ColorScheme::Dark, &FIXTURE_PALETTE);
-    GoldenName::ShowcaseGradientsPage.assert_scene(UVec2::new(560, 1180), |ui| {
-        Panel::vstack()
-            .auto_id()
-            .gap(support::PAGE_GAP)
-            .show(ui, |ui| gradients::build(ui, k));
-    });
+    let mut page = PageScene::new("Gradients", ColorScheme::Dark, FIXTURE_PALETTE);
+    GoldenName::ShowcaseGradientsPage.assert_scene(UVec2::new(560, 1180), |ui| page.record(ui));
 }
 
 /// A rounded rect with a linear-gradient fill paints correctly.
@@ -130,13 +115,13 @@ fn add_shape_rounded_rect_linear_gradient_matches_golden() {
         Panel::vstack()
             .auto_id()
             .padding(20.0)
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 ui.add_shape(
                     Shape::rect()
                         .at(Rect::new(0.0, 0.0, 180.0, 100.0))
                         .corners(12.0),
-                    LinearGradient::horizontal([RgbaF32::hex(0xff5e44), RgbaF32::hex(0xfacc15)]),
+                    Gradient::horizontal([RgbaF32::hex(0xff5e44), RgbaF32::hex(0xfacc15)]),
                 );
             });
     });

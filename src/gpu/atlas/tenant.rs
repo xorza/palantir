@@ -24,6 +24,31 @@ impl Tenant {
     pub(crate) const COUNT: usize = Self::ALL.len();
 }
 
+/// Who holds an item of the pool: its tenant, and the tag the tenant names its own entry for the
+/// item by, which comes back with the item's eviction
+/// ([`Evicted`](crate::gpu::atlas::atlas_handle::Evicted)).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct ItemOwner {
+    pub(crate) tenant: Tenant,
+    pub(crate) tag: u32,
+}
+
+#[cfg(test)]
+pub(crate) mod internals {
+    use crate::gpu::atlas::tenant::{ItemOwner, Tenant};
+
+    impl Tenant {
+        /// The owner of an item this tenant files under tag 0, as a test that names no entry of
+        /// its own does.
+        pub(crate) const fn owner(self) -> ItemOwner {
+            ItemOwner {
+                tenant: self,
+                tag: 0,
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::gpu::atlas::tenant::Tenant;

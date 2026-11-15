@@ -5,10 +5,10 @@ use crate::effect::stock;
 use crate::gpu::resource::shader_body::ShaderBody;
 use crate::gpu::test_gpu::headless_test_gpu;
 use crate::host::harness::Harness;
-use crate::host::harness::harness_builder::Depth;
+use crate::host::harness::harness_builder::HarnessDepth;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::SizeSpec;
 use crate::primitives::math::libm_ext::Libm;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
@@ -44,13 +44,13 @@ fn lens(refractive_index: f32, dispersion: f32) -> Lens {
 fn frame(under: &[(Rect, RgbaF32)], lens: Lens, blur: f32) -> Vec<[f32; 4]> {
     let gpu = headless_test_gpu();
     let mut window = Harness::builder(SIZE)
-        .depth(Depth::gpu_float(gpu.handles()))
+        .depth(HarnessDepth::gpu_float(gpu.handles()))
         .build();
     window.ui_mut().theme_mut().window_bg = RgbaF32::BLACK;
     let mut app = |ui: &mut Ui| {
         Panel::canvas()
             .id_salt("dispersion-scene")
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 for &(rect, color) in under {
                     ui.add_shape(Shape::rect().at(rect), color);

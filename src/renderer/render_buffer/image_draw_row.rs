@@ -25,7 +25,7 @@ pub(crate) struct ImageDrawRow {
 }
 
 /// Per-image GPU state. The shader samples at `uv_min + corner * uv_size` and multiplies by
-/// `tint`; the UV pair carries the `ImageFit::Cover` crop.
+/// `tint`; the UV pair carries the `Fit::Cover` crop.
 #[padding_struct::padding_struct]
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]

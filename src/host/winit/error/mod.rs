@@ -14,15 +14,15 @@ use winit::error;
 ///
 /// Zero-sized; the closure isn't handed back since no `&mut T` remains to run it against.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct HostDisconnected;
+pub struct HostHandleError;
 
-impl Display for HostDisconnected {
+impl Display for HostHandleError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.write_str("host event loop has exited; the scheduled work was not delivered")
     }
 }
 
-impl Error for HostDisconnected {}
+impl Error for HostHandleError {}
 
 /// Failure while constructing or running a [`WinitHost`](crate::WinitHost). A variant that holds
 /// a cause names it in [`Error::source`], never in its `Display`, so a reporter that walks the

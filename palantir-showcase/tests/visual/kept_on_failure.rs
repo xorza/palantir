@@ -4,10 +4,11 @@
 )]
 
 use std::fs;
+use std::io;
 use std::path::Path;
 use std::thread;
 
-use image::RgbaImage;
+use palantir::Image;
 
 use crate::goldens;
 
@@ -15,11 +16,11 @@ use crate::goldens;
 #[derive(Debug)]
 pub(crate) struct KeptOnFailure<'a> {
     name: &'a str,
-    image: &'a RgbaImage,
+    image: &'a Image,
 }
 
 impl<'a> KeptOnFailure<'a> {
-    pub(crate) const fn new(name: &'a str, image: &'a RgbaImage) -> Self {
+    pub(crate) const fn new(name: &'a str, image: &'a Image) -> Self {
         Self { name, image }
     }
 }
@@ -31,7 +32,10 @@ impl Drop for KeptOnFailure<'_> {
         }
         let output = Path::new(goldens::ROOT).join("output").join(self.name);
         // A failed write must not turn the panic into an abort.
-        if fs::create_dir_all(&output).is_ok() && self.image.save(output.join("actual.png")).is_ok()
+        if fs::create_dir_all(&output).is_ok()
+            && fs::File::create(output.join("actual.png"))
+                .and_then(|file| self.image.write_png(io::BufWriter::new(file)))
+                .is_ok()
         {
             eprintln!("`{}`: frame written to {}", self.name, output.display());
         }

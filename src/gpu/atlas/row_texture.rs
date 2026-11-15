@@ -7,7 +7,6 @@
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::resource::frame_group::RowView;
 use crate::gpu::resource::gpu_ctx::{GpuCtx, Staged};
-use crate::gpu::texel;
 use crate::gpu::texel::TargetSpec;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::row_table::FlushedRows;
@@ -38,17 +37,15 @@ pub(crate) struct RowTexture {
 /// Allocates the row texture at `rows` rows; shaders read the height via `textureDimensions`.
 /// It gives copies, so the texture that replaces it takes the rows it holds by a copy.
 fn create_texture(gpu: &Gpu, rows: u32) -> wgpu::Texture {
-    texel::texture_2d(
-        gpu,
-        TargetSpec {
-            label: "palantir.atlas.rows",
-            size: UVec2::new(LUT_ROW_TEXELS as u32, rows),
-            format: wgpu::TextureFormat::Rgba16Float,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING
-                | wgpu::TextureUsages::COPY_DST
-                | wgpu::TextureUsages::COPY_SRC,
-        },
-    )
+    TargetSpec {
+        label: "palantir.atlas.rows",
+        size: UVec2::new(LUT_ROW_TEXELS as u32, rows),
+        format: wgpu::TextureFormat::Rgba16Float,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING
+            | wgpu::TextureUsages::COPY_DST
+            | wgpu::TextureUsages::COPY_SRC,
+    }
+    .texture(gpu)
 }
 
 impl RowTexture {

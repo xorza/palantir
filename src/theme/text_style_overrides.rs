@@ -241,7 +241,7 @@ struct UncheckedTextStyleOverrides {
     color: Option<RgbaF32>,
     #[serde(
         default,
-        deserialize_with = "crate::primitives::math::domain::file::optional_font_size"
+        deserialize_with = "crate::primitives::file::optional_font_size"
     )]
     font_size: Option<f32>,
     line_height_factor: Option<f32>,

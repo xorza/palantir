@@ -44,20 +44,6 @@ impl Block {
         self.chrome = Some(chrome);
         self
     }
-
-    /// Paint `chrome` unless the caller set one; for wrappers that theme a held widget after the caller's setters. An explicit [`Self::chrome`] wins in either order.
-    ///
-    /// # Panics
-    ///
-    /// Panics unless `chrome` holds the kinds [`Chrome`] lists.
-    #[track_caller]
-    pub const fn default_chrome(mut self, chrome: Chrome) -> Self {
-        chrome.validate();
-        if self.chrome.is_none() {
-            self.chrome = Some(chrome);
-        }
-        self
-    }
 }
 
 impl Configure for Block {

@@ -1,9 +1,11 @@
 //! The per-grid track state, and the track-sizing solve that fills it. Every phase both the
-//! measure and arrange drivers run on a grid axis is a method here, so both depend down on this
-//! file rather than on each other.
+//! measure and arrange drivers run on a grid axis is a method here, and every predicate over an
+//! axis's tracks one of [`GridAxis`]'s, so both drivers depend down on these rather than on each
+//! other.
 
 use crate::common::span::Span;
 use crate::layout::axis_share;
+use crate::layout::drivers::grid::grid_axis::GridAxis;
 use crate::layout::fill_item::{FillDemand, FillItem};
 use crate::layout::hug_item::HugItem;
 use crate::primitives::layout::axis::Axis;
@@ -18,15 +20,6 @@ use std::ops::Range;
 pub(super) struct GridAxisId {
     pub(super) def: GridDefId,
     pub(super) axis: Axis,
-}
-
-/// One grid axis as the solve reads it: which grid and axis, its tracks, and the gap between
-/// them.
-#[derive(Clone, Copy, Debug)]
-pub(super) struct GridAxis<'a> {
-    pub(super) id: GridAxisId,
-    pub(super) tracks: &'a [Track],
-    pub(super) gap: f32,
 }
 
 /// The per-track content range one axis solves against: `min[i]` is track `i`'s min-content
@@ -75,10 +68,10 @@ pub(crate) struct GridTrackStore {
     offsets_pool: Vec<f32>,
     /// Per track, what measure found it must hold: a Fill track its single-track cells' measured
     /// extent, grown by the spans crossing it; any other track its resolved size.
-    /// [`grid::fill_fraction`](super::fill_fraction) reads it.
+    /// [`GridAxis::fill_fraction`] reads it.
     extents_pool: Vec<f32>,
     /// Per grid, its columns then its rows.
-    slots: Vec<[AxisSlot; 2]>,
+    slots: Vec<[TrackSlot; 2]>,
     /// The solve's transient lists, kept to retain capacity across frames; one for every grid,
     /// as a solve recurses into none.
     hugs: Vec<HugItem<usize>>,
@@ -87,7 +80,7 @@ pub(crate) struct GridTrackStore {
 
 /// One axis of one grid: its tracks in the pools, and what the last solve of it read and found.
 #[derive(Clone, Copy, Debug)]
-struct AxisSlot {
+struct TrackSlot {
     tracks: Span,
     /// The `total` the axis was last resolved against, or `None` if no solve ran this pass.
     /// `Option` rather than a `0.0` sentinel: a zero-extent slot resolves against a legitimate
@@ -137,7 +130,7 @@ impl GridTrackStore {
         }
     }
 
-    fn alloc(&mut self, count: u32) -> AxisSlot {
+    fn alloc(&mut self, count: u32) -> TrackSlot {
         let start = self.max_pool.len();
         let end = start + count as usize;
         self.max_pool.resize(end, 0.0);
@@ -146,18 +139,18 @@ impl GridTrackStore {
         self.resolved_pool.resize(end, false);
         self.offsets_pool.resize(end, 0.0);
         self.extents_pool.resize(end, 0.0);
-        AxisSlot {
+        TrackSlot {
             tracks: Span::new(start as u32, count),
             total: None,
             stable_from: 0.0,
         }
     }
 
-    fn slot(&self, id: GridAxisId) -> &AxisSlot {
+    fn slot(&self, id: GridAxisId) -> &TrackSlot {
         &self.slots[usize::from(id.def)][axis_idx(id.axis)]
     }
 
-    fn slot_mut(&mut self, id: GridAxisId) -> &mut AxisSlot {
+    fn slot_mut(&mut self, id: GridAxisId) -> &mut TrackSlot {
         &mut self.slots[usize::from(id.def)][axis_idx(id.axis)]
     }
 
@@ -215,7 +208,7 @@ impl GridTrackStore {
         self.offsets_pool[self.range(id)][track]
     }
 
-    /// What the last solve of `id` holds from ([`AxisSlot::stable_from`]).
+    /// What the last solve of `id` holds from ([`TrackSlot::stable_from`]).
     pub(super) fn stable_from(&self, id: GridAxisId) -> f32 {
         self.slot(id).stable_from
     }

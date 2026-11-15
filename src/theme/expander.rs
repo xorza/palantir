@@ -4,7 +4,7 @@ use crate::animation::animation_spec::AnimationSpec;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
-use crate::primitives::input::interaction::response_state::ResponseState;
+use crate::primitives::input::interaction::response::Response;
 use crate::primitives::math::lerp::Lerp;
 use crate::primitives::paint::chrome::Chrome;
 use crate::theme::look::WidgetLook;
@@ -32,28 +32,28 @@ pub struct ExpanderTheme {
     /// The header's four per-state looks (`[expander.looks.normal]`).
     pub looks: StatefulLook,
     /// Triangle bounding box, corners included; keep it square unless the angles leave it unturned.
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::size")]
+    #[serde(deserialize_with = "crate::primitives::file::size")]
     pub arrow_size: Size,
     /// Triangle corner radius; `0.0` is sharp. Rounding keeps the edges, and a radius past the
     /// triangle's inradius paints its incircle.
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
+    #[serde(deserialize_with = "crate::primitives::file::length")]
     pub arrow_radius: f32,
     /// Arrow angle in radians while closed (default: points at the label).
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::angle")]
+    #[serde(deserialize_with = "crate::primitives::file::angle")]
     pub arrow_closed_angle: f32,
     /// Arrow angle while open (default: upright). `0.0` and `-PI` give down-closed, up-open.
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::angle")]
+    #[serde(deserialize_with = "crate::primitives::file::angle")]
     pub arrow_open_angle: f32,
     /// Gap between arrow and label.
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
+    #[serde(deserialize_with = "crate::primitives::file::length")]
     pub gap: f32,
     /// Indent of the body.
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
+    #[serde(deserialize_with = "crate::primitives::file::length")]
     pub indent: f32,
     /// Padding of the body.
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::padding")]
+    #[serde(deserialize_with = "crate::primitives::file::padding")]
     pub body_padding: Spacing,
-    /// `animation` is `None` by default, so a reveal snaps.
+    /// The stock `transition` is [`AnimationSpec::SNAP`], so a header's state change snaps.
     pub defaults: SlotDefaults,
 }
 
@@ -75,18 +75,9 @@ impl ExpanderTheme {
         let gap = m.space.sm;
         Self {
             looks: StatefulLook {
-                normal: WidgetLook {
-                    chrome: Chrome::NONE,
-                    text: TextStyleOverrides::NONE,
-                },
-                hovered: WidgetLook {
-                    chrome: Chrome::rounded(p.element_mid, radius),
-                    text: TextStyleOverrides::NONE,
-                },
-                active: WidgetLook {
-                    chrome: Chrome::rounded(p.element_strong, radius),
-                    text: TextStyleOverrides::NONE,
-                },
+                normal: WidgetLook::new(Chrome::NONE),
+                hovered: WidgetLook::new(Chrome::rounded(p.element_mid, radius)),
+                active: WidgetLook::new(Chrome::rounded(p.element_strong, radius)),
                 disabled: WidgetLook {
                     chrome: Chrome::NONE,
                     text: TextStyleOverrides::NONE.with_color(p.text_disabled),
@@ -112,7 +103,7 @@ impl ExpanderTheme {
 impl ThemeSlot for ExpanderTheme {
     type Pick = ();
 
-    fn look(&self, response: &ResponseState, (): ()) -> &WidgetLook {
+    fn look(&self, response: &Response, (): ()) -> &WidgetLook {
         self.looks.pick(response, Engagement::Pressed)
     }
 

@@ -14,14 +14,14 @@ use crate::shape::geometry::closed_geometry::PlacedClosed;
 /// A plain rectangle draw: a fill over a box.
 pub(super) fn as_rect(call: &PaintCall) -> Option<&DrawClosedPayload<ClosedFill>> {
     match call {
-        PaintCall::Fill(p) if matches!(p.geometry, PlacedClosed::Box(_)) => Some(p),
+        PaintCall::Fill(p, _) if matches!(p.geometry, PlacedClosed::Box(_)) => Some(p),
         _ => None,
     }
 }
 
 pub(super) fn as_shadow(call: &PaintCall) -> Option<&DrawShadowPayload> {
     match call {
-        PaintCall::Shadow(p) => Some(p),
+        PaintCall::Shadow(p, _) => Some(p),
         _ => None,
     }
 }
@@ -80,14 +80,14 @@ pub(super) fn screen_rects_by_fill(cmds: &PaintCapture) -> Vec<(RgbaF16, Rect)> 
                 };
                 out.push((p.paint.fill.color, visible));
             }
-            PaintCall::Fill(_)
-            | PaintCall::Shadow(_)
-            | PaintCall::Text(_)
-            | PaintCall::Mesh(_)
-            | PaintCall::Stroke(_)
+            PaintCall::Fill(_, _)
+            | PaintCall::Shadow(_, _)
+            | PaintCall::Text(_, _)
+            | PaintCall::Mesh(_, _)
+            | PaintCall::Stroke(_, _)
             | PaintCall::Image { .. }
-            | PaintCall::Icon(_)
-            | PaintCall::Effect(_) => {}
+            | PaintCall::Icon(_, _)
+            | PaintCall::Effect(_, _) => {}
         }
     }
     assert!(t_stack.is_empty(), "transform stack unbalanced");

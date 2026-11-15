@@ -3,7 +3,7 @@
 use crate::internals::layout_rig::{GridTracks, LayoutRig};
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::primitives::layout::track::Track;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::widget::Widget;
@@ -19,7 +19,7 @@ fn grid_empty_dim_measures_to_zero_and_zeros_children() {
     for (label, cols, rows) in [("no rows", one, empty), ("no cols", empty, one)] {
         let mut rig = LayoutRig::new();
         rig.run(SURFACE, |rec| {
-            let row = Widget::hstack().size((Sizing::FILL, Sizing::FILL));
+            let row = Widget::hstack().size(SizeSpec::FILL);
             rec.node("row", row, |rec| {
                 rec.grid(
                     "empty-grid",

@@ -6,7 +6,7 @@ use crate::primitives::input::keyboard::key::Key;
 use crate::primitives::input::pointer::PointerButton;
 use crate::primitives::input::sense::Sense;
 use crate::primitives::layout::anchor::Anchor;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::scene::layer::Layer;
 use crate::ui::Ui;
 use crate::widget_core::click_outside::ClickOutside;
@@ -86,7 +86,7 @@ fn run_frame_settles_popup_dismissal_in_one_call() {
     let scene = |ui: &mut Ui, open: &mut bool| {
         Panel::vstack()
             .id(WidgetId::from_hash("main-bg"))
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 if *open {
                     let r = Popup::new()
@@ -126,7 +126,7 @@ fn a_dismissed_popup_stops_owning_input_the_next_frame() {
     let build = |ui: &mut Ui, open: bool| {
         Panel::vstack()
             .id(WidgetId::from_hash("main-bg"))
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .sense(Sense::CLICK)
             .show(ui, |ui| {
                 open && Popup::new()

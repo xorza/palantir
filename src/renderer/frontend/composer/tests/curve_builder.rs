@@ -5,10 +5,10 @@ use crate::primitives::geometry::circular_arc::CircularArc;
 use crate::primitives::geometry::cubic_bezier::CubicBezier;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::paint::color::RgbaF32;
-use crate::renderer::frontend::paint_sink::PaintSink;
+use crate::renderer::frontend::paint_sink::{DrawAnimation, PaintSink};
 use crate::renderer::frontend::payload::draw_stroke_payload::{DrawStrokePayload, StrokePath};
-use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::spin::Spin;
+use crate::renderer::render_buffer::gpu_fill::GpuFill;
 use crate::shape::geometry::curve_basis::CurveBasis;
 use glam::Vec2;
 
@@ -77,13 +77,12 @@ impl CurveBuilder {
         b.draw(
             DrawStrokePayload {
                 origin: self.origin,
-                spin,
                 path: StrokePath::Curve(self.basis),
                 fill: self.fill,
                 width: self.width,
-                ..DrawStrokePayload::default()
+                ..DrawStrokePayload::fixture()
             },
-            1.0,
+            DrawAnimation { alpha: 1.0, spin },
         );
     }
 }

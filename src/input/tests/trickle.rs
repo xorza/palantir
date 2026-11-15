@@ -5,9 +5,9 @@ use crate::input::capture::DRAG_THRESHOLD;
 use crate::input::input_queue::MAX_HELD;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::input_event::InputEvent;
-use crate::primitives::input::interaction::button_phase::ButtonPhase;
-use crate::primitives::input::interaction::button_state::ButtonState;
 use crate::primitives::input::interaction::drag::Drag;
+use crate::primitives::input::interaction::pointer_button_phase::PointerButtonPhase;
+use crate::primitives::input::interaction::pointer_button_state::PointerButtonState;
 use crate::primitives::input::interaction::pointer_edge::PointerEdge;
 use crate::primitives::input::keyboard::key::Key;
 use crate::primitives::input::keyboard::modifiers::Modifiers;
@@ -64,16 +64,16 @@ fn sample_until_idle<T>(
 }
 
 /// The target's left-button state per frame, until input is idle.
-fn step_until_idle(h: &mut Harness) -> Vec<ButtonState> {
+fn step_until_idle(h: &mut Harness) -> Vec<PointerButtonState> {
     sample_until_idle(h, scene, |ui| ui.response_for(target()).left)
 }
 
-fn down(count: u8) -> ButtonState {
-    ButtonState::new(ButtonPhase::Down { count }, Drag::None)
+fn down(count: u8) -> PointerButtonState {
+    PointerButtonState::new(PointerButtonPhase::Down { count }, Drag::None)
 }
 
-fn up_click(count: u8) -> ButtonState {
-    ButtonState::new(ButtonPhase::Up { click: Some(count) }, Drag::None)
+fn up_click(count: u8) -> PointerButtonState {
+    PointerButtonState::new(PointerButtonPhase::Up { click: Some(count) }, Drag::None)
 }
 
 /// Each batch fed between two frames against the frames it lands in: a press frame shows `Down`, a release frame `Up{click}` (carrying its run number), never both.
@@ -101,7 +101,7 @@ fn each_batch_lands_one_button_change_per_frame() {
     );
 }
 
-/// A drag stop and a fresh press fed together would break `ButtonState::new`'s invariant in one frame; spread, each state is a legal pair.
+/// A drag stop and a fresh press fed together would break `PointerButtonState::new`'s invariant in one frame; spread, each state is a legal pair.
 #[test]
 fn a_drag_stop_and_a_new_press_never_share_a_frame() {
     let mut h = Harness::mono(UVec2::new(200, 200));
@@ -309,7 +309,7 @@ fn watched_scene(ui: &mut Ui) {
 /// What one frame's pass A saw of the left button: the target's state, and the `Up`s watchers got.
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct LeftFrame {
-    state: ButtonState,
+    state: PointerButtonState,
     ups: usize,
 }
 
@@ -334,7 +334,7 @@ fn a_fast_double_press_reports_each_edge_once() {
     h.release(PointerButton::Left);
     h.press(TARGET, PointerButton::Left);
     let frames = step_watched_until_idle(&mut h);
-    let states: Vec<ButtonState> = frames.iter().map(|f| f.state).collect();
+    let states: Vec<PointerButtonState> = frames.iter().map(|f| f.state).collect();
     assert_eq!(states, [down(1), up_click(1), down(2)]);
     assert_eq!(frames.iter().map(|f| f.ups).sum::<usize>(), 1, "{frames:?}");
 }
@@ -352,11 +352,11 @@ fn a_press_of_a_held_button_ends_the_lost_capture_without_a_click() {
         Duration::ZERO,
     );
     let frames = step_watched_until_idle(&mut h);
-    let states: Vec<ButtonState> = frames.iter().map(|f| f.state).collect();
+    let states: Vec<PointerButtonState> = frames.iter().map(|f| f.state).collect();
     assert_eq!(
         states,
         [
-            ButtonState::new(ButtonPhase::Up { click: None }, Drag::None),
+            PointerButtonState::new(PointerButtonPhase::Up { click: None }, Drag::None),
             down(2),
         ],
     );
@@ -379,7 +379,7 @@ fn focus_loss_after_a_press_ends_it_the_frame_after() {
         step_until_idle(&mut h),
         [
             down(1),
-            ButtonState::new(ButtonPhase::Up { click: None }, Drag::None),
+            PointerButtonState::new(PointerButtonPhase::Up { click: None }, Drag::None),
         ],
     );
 }

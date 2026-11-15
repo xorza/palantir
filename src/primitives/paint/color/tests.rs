@@ -32,6 +32,25 @@ fn rgb_is_const_constructible() {
     }
 }
 
+/// The channel distance is the largest one channel's: from `(10, 20, 30, 40)`, a step of 1, 2, 3
+/// and 4 on red, green, blue and alpha alone reads that step, the lower side as the higher, and
+/// all four at once read 4.
+#[test]
+fn the_channel_distance_is_the_widest_channels() {
+    let base = SrgbaU8::new(10, 20, 30, 40);
+    assert_eq!(base.max_channel_diff(base), 0);
+    for (other, want) in [
+        (SrgbaU8::new(11, 20, 30, 40), 1),
+        (SrgbaU8::new(10, 18, 30, 40), 2),
+        (SrgbaU8::new(10, 20, 33, 40), 3),
+        (SrgbaU8::new(10, 20, 30, 36), 4),
+        (SrgbaU8::new(11, 18, 33, 36), 4),
+    ] {
+        assert_eq!(base.max_channel_diff(other), want, "{other:?}");
+        assert_eq!(other.max_channel_diff(base), want, "{other:?}, swapped");
+    }
+}
+
 #[derive(Debug)]
 struct RonRoundTrip {
     text: String,

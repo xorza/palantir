@@ -5,7 +5,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::scroll_targets::ScrollTargets;
 use crate::primitives::input::sense::Sense;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::scene::layer::Layer;
 use crate::scene::plane::Plane;
 use crate::widget_core::configure::Configure;
@@ -94,20 +94,20 @@ fn hits_track_only_sensing_or_focusable_rows_in_paint_order() {
             .auto_id()
             .size(Sizing::fixed(100.0))
             .show(ui, |ui| {
-                Block::new().id(inert).size(Sizing::FILL).show(ui);
+                Block::new().id(inert).size(SizeSpec::FILL).show(ui);
                 Block::new()
                     .id(hover)
-                    .size(Sizing::FILL)
+                    .size(SizeSpec::FILL)
                     .sense(Sense::HOVER)
                     .show(ui);
                 Block::new()
                     .id(focus)
-                    .size(Sizing::FILL)
+                    .size(SizeSpec::FILL)
                     .focusable(true)
                     .show(ui);
                 Block::new()
                     .id(disabled)
-                    .size(Sizing::FILL)
+                    .size(SizeSpec::FILL)
                     .sense(Sense::CLICK)
                     .focusable(true)
                     .disabled(true)
@@ -116,7 +116,7 @@ fn hits_track_only_sensing_or_focusable_rows_in_paint_order() {
         ui.layer(Layer::Popup).show(|ui| {
             Block::new()
                 .id(popup_scroll)
-                .size(Sizing::FILL)
+                .size(SizeSpec::FILL)
                 .sense(Sense::SCROLL)
                 .show(ui);
         });
@@ -165,7 +165,7 @@ fn hits_track_only_sensing_or_focusable_rows_in_paint_order() {
     assert_eq!(targets.pinch, None);
 
     h.frame(|ui| {
-        Block::new().id(inert).size(Sizing::FILL).show(ui);
+        Block::new().id(inert).size(SizeSpec::FILL).show(ui);
     });
     assert_eq!(h.ui().cascade().hits.len(), 0);
     assert_eq!(
@@ -196,12 +196,13 @@ fn hit_rows_carry_the_entry_rect() {
     let cascade = h.ui().cascade();
     assert!(!cascade.hits.is_empty(), "expected interactive rows");
     for row in &cascade.hits {
-        let entry_idx = cascade
-            .locate(row.widget_id)
-            .expect("hit row's widget must be locatable")
-            .entry_idx as usize;
+        let entry = cascade.entry(
+            cascade
+                .endpoint(row.widget_id)
+                .expect("hit row's widget must be locatable"),
+        );
         assert_eq!(
-            row.rect, cascade.entries[entry_idx].rect,
+            row.rect, entry.rect,
             "HitRow::rect must equal the node's EntryRow::rect for {:?}",
             row.widget_id,
         );

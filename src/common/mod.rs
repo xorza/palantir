@@ -5,13 +5,15 @@
 //! `primitives::math::domain`, so no rule reaches up into `text`.
 
 pub(crate) mod block_arena;
+pub(crate) mod clock_sweep;
 pub(crate) mod content_hash;
 pub(crate) mod counters;
-pub(crate) mod eviction_clock;
+pub(crate) mod error_chain;
 pub(crate) mod expiry_wheel;
 pub(crate) mod expiry_window;
 #[macro_use]
 pub(crate) mod flag_set;
+pub(crate) mod gen_slab;
 pub(crate) mod hash;
 pub(crate) mod id_counter;
 pub(crate) mod non_max;
@@ -20,3 +22,4 @@ pub(crate) mod span;
 pub(crate) mod sync;
 pub(crate) mod time;
 pub(crate) mod tracy;
+pub(crate) mod typed_stores;

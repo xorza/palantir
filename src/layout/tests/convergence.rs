@@ -4,7 +4,7 @@
 //! its toolbar.
 use crate::internals::layout_rig::{LayoutRig, TextRun};
 use crate::primitives::geometry::size::Size;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::text::wrap::TextWrap;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::widget::Widget;
@@ -92,7 +92,7 @@ fn second_pass_grow_then_overshoot_does_not_panic() {
                 let toolbar = Widget::wrap_hstack()
                     .gap(6.0)
                     .line_gap(6.0)
-                    .size((Sizing::FILL, Sizing::HUG));
+                    .size(SizeSpec::FILL_W);
                 rec.node("toolbar", toolbar, |rec| {
                     for label in LABELS {
                         rec.text_leaf(

@@ -31,7 +31,7 @@ pub(crate) struct Press {
 
 impl Press {
     /// When `effect` ends this press: `exit` after the release or the end of `enter`, whichever
-    /// is later, as [`PressInput`](crate::PressInput) times it; `None` while it is held.
+    /// is later, as [`PressParams`](crate::PressParams) times it; `None` while it is held.
     pub(crate) fn ends_at(&self, effect: &PressEffect) -> Option<Duration> {
         self.released_at
             .map(|released| released.max(self.pressed_at + effect.enter) + effect.exit)

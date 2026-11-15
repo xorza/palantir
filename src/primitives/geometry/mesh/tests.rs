@@ -39,7 +39,7 @@ fn triangle_validates_each_index_before_mutating() {
     fn mesh_with_vertices(count: usize) -> Mesh {
         let mut mesh = Mesh::with_capacity(count, 0);
         for idx in 0..count {
-            mesh.vertex(Vec2::new(idx as f32, 0.0), RgbaF32::WHITE);
+            mesh.add_vertex(Vec2::new(idx as f32, 0.0), RgbaF32::WHITE);
         }
         mesh
     }
@@ -66,7 +66,7 @@ fn triangle_validates_each_index_before_mutating() {
     ] {
         let mut mesh = mesh_with_vertices(3);
         let [a, b, c] = case.idxs;
-        panic_probe::assert_panics_with("exceed vertex count 3", || mesh.triangle(a, b, c));
+        panic_probe::assert_panics_with("exceed vertex count 3", || mesh.add_triangle(a, b, c));
         assert!(
             mesh.idxs.is_empty(),
             "{} failure must not partially append indices",
@@ -75,7 +75,7 @@ fn triangle_validates_each_index_before_mutating() {
     }
 
     let mut mesh = mesh_with_vertices(3);
-    mesh.triangle(2, 1, 0);
+    mesh.add_triangle(2, 1, 0);
     assert_eq!(mesh.idxs, [2, 1, 0]);
 }
 
@@ -90,10 +90,10 @@ fn triangle_indices_offset_in_append() {
 
     let mut expected = Mesh::with_capacity(6, 6);
     for _ in 0..2 {
-        let i0 = expected.vertex(Vec2::ZERO, RgbaF32::default());
-        let i1 = expected.vertex(Vec2::X, RgbaF32::default());
-        let i2 = expected.vertex(Vec2::Y, RgbaF32::default());
-        expected.triangle(i0, i1, i2);
+        let i0 = expected.add_vertex(Vec2::ZERO, RgbaF32::default());
+        let i1 = expected.add_vertex(Vec2::X, RgbaF32::default());
+        let i2 = expected.add_vertex(Vec2::Y, RgbaF32::default());
+        expected.add_triangle(i0, i1, i2);
     }
     assert_eq!(a.vertices, expected.vertices);
     assert_eq!(a.content_hash(), expected.content_hash());
@@ -145,9 +145,9 @@ fn content_hash_changes_on_reordered_indices() {
     let wound = |[a, b, c]: [u32; 3]| {
         let mut m = Mesh::new();
         for pos in [Vec2::ZERO, Vec2::X, Vec2::Y] {
-            m.vertex(pos, RgbaF32::default());
+            m.add_vertex(pos, RgbaF32::default());
         }
-        m.triangle(a, b, c);
+        m.add_triangle(a, b, c);
         m
     };
     assert_ne!(
@@ -194,10 +194,10 @@ fn bbox_empty_mesh_is_zero() {
 fn built(points: &[(Vec2, SrgbaU8)], triangles: &[[u32; 3]]) -> Mesh {
     let mut m = Mesh::new();
     for &(pos, color) in points {
-        m.vertex(pos, color);
+        m.add_vertex(pos, color);
     }
     for &[a, b, c] in triangles {
-        m.triangle(a, b, c);
+        m.add_triangle(a, b, c);
     }
     m
 }
@@ -224,7 +224,7 @@ fn mutations_match_the_content_built_at_once() {
         (
             "vertex",
             |m, _| {
-                m.vertex(Vec2::new(2.0, 3.0), RgbaF32::default());
+                m.add_vertex(Vec2::new(2.0, 3.0), RgbaF32::default());
             },
             built(
                 &[reds[0], reds[1], reds[2], (Vec2::new(2.0, 3.0), black)],
@@ -234,7 +234,7 @@ fn mutations_match_the_content_built_at_once() {
         ),
         (
             "triangle",
-            |m, _| m.triangle(0, 1, 2),
+            |m, _| m.add_triangle(0, 1, 2),
             built(&reds, &[[0, 1, 2], [0, 1, 2]]),
             Rect::new(0.0, 0.0, 1.0, 1.0),
         ),
@@ -264,7 +264,7 @@ fn mutations_match_the_content_built_at_once() {
     ];
     let mut cleared = red_tri();
     cleared.clear();
-    cleared.vertex(Vec2::new(5.0, 6.0), RgbaF32::default());
+    cleared.add_vertex(Vec2::new(5.0, 6.0), RgbaF32::default());
     assert_eq!(
         cleared.bbox(),
         Rect::new(5.0, 6.0, 0.0, 0.0),
@@ -302,7 +302,7 @@ fn vertex_refuses_a_non_finite_position() {
     for bad in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
         for pos in [Vec2::new(bad, 0.0), Vec2::new(0.0, bad)] {
             panic_probe::assert_panics_with(domain::OFFSET_RULE, || {
-                Mesh::new().vertex(pos, RgbaF32::WHITE)
+                Mesh::new().add_vertex(pos, RgbaF32::WHITE)
             });
         }
     }

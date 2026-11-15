@@ -10,7 +10,7 @@ use crate::gpu::atlas::tenant::Tenant;
 use crate::gpu::device::gpu::FilledBuffer;
 use crate::gpu::pipeline::atlas_binding::{ATLAS_GROUP, AtlasGroup, AtlasSlots};
 use crate::gpu::pipeline::clip_variant::Clipping;
-use crate::gpu::pipeline::instanced_pipeline::VariantTarget;
+use crate::gpu::pipeline::frame_variant::FrameVariant;
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
 use crate::gpu::pipeline::raster_pipeline::raster_quad::RasterQuad;
 use crate::gpu::pipeline::raster_pipeline::{RasterDraws, RasterPipeline, RasterVariants};
@@ -51,7 +51,11 @@ fn a_quad_reads_its_page_under_every_set_of_slots() {
         (0..MAX_PAGES)
             .map(|_| {
                 let handle = pool
-                    .allocate(format, Tenant::Glyphs, UVec2::splat(u32::from(SIDE)))
+                    .allocate(
+                        format,
+                        Tenant::Glyphs.owner(),
+                        UVec2::splat(u32::from(SIDE)),
+                    )
                     .unwrap()
                     .handle;
                 pool.placement(handle).unwrap().page
@@ -63,7 +67,7 @@ fn a_quad_reads_its_page_under_every_set_of_slots() {
         assert_eq!(*list, [0, 1, 2, 3], "one item a page");
     }
     let mut atlas = AtlasTextures::new(&gpu);
-    gpu.frame(|ctx| atlas.commit(ctx.gpu, ctx.encoder, &mut pool));
+    gpu.frame(|ctx| atlas.commit(ctx, &mut pool));
     for (format, texel_bytes) in [(AtlasFormat::R8, 1), (AtlasFormat::Rgba8, 4)] {
         for page in 0..MAX_PAGES as u8 {
             let mut bytes = vec![0; usize::from(SIDE).pow(2) * texel_bytes];
@@ -97,11 +101,11 @@ fn a_quad_reads_its_page_under_every_set_of_slots() {
             mask: open,
             color: open,
         };
-        let variant = VariantTarget {
-            format: target.texture().format(),
+        let variant = FrameVariant {
             clipping: Clipping::Off,
             slots,
-        };
+        }
+        .target(target.texture().format());
         program.ensure(&mut variants, &gpu, variant, RasterDraws::Flat);
         assert!(
             variants

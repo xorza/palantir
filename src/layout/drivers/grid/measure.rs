@@ -2,16 +2,14 @@
 
 use crate::primitives::layout::offer;
 
-use crate::layout::drivers::grid::grid_track_store::{GridAxis, GridTrackStore};
-use crate::layout::drivers::grid::{self, Grid};
+use crate::layout::drivers::grid::{Grid, SpanRound};
 use crate::layout::intrinsic::len_req::LenReq;
 use crate::layout::measured::ContentMeasure;
 use crate::layout::pass::LayoutPass;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::axis::Axis;
-use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::layout::track::Track;
 use crate::primitives::math::num::F32Px;
+use std::num::NonZeroU16;
 
 /// [`LayoutDriver::measure`](crate::layout::drivers::LayoutDriver::measure) for `grid`.
 pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner_avail: Size) -> ContentMeasure {
@@ -21,9 +19,7 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner_avail: Size) -> C
     let rows = grid.axis(tree, Axis::Y);
     let row_count = rows.tracks.len();
     let col_count = cols.tracks.len();
-    pass.grid_mut()
-        .track_state
-        .debug_assert_unmeasured(grid.def);
+    pass.grid_tracks_mut().debug_assert_unmeasured(grid.def);
 
     if row_count == 0 || col_count == 0 {
         // Recurse with `Size::ZERO` so leaves still push `ShapedText` entries: the
@@ -45,35 +41,29 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner_avail: Size) -> C
     if any_content_floor_col {
         for c in tree.active_children(node) {
             let cell = grid.cell(tree, c);
-            if cell.col_span() != 1 {
+            if cell.col_span() != NonZeroU16::MIN {
                 continue;
             }
             let i = cell.col() as usize;
             let t = &cols.tracks[i];
             if t.sizing().is_hug() {
                 let range = pass.intrinsic_range(c, Axis::X);
-                let col_ranges = pass.grid_mut().track_state.ranges_mut(cols.id);
+                let col_ranges = pass.grid_tracks_mut().ranges_mut(cols.id);
                 col_ranges.min[i] = col_ranges.min[i].max(range.min);
                 col_ranges.max[i] = col_ranges.max[i].max(range.max);
             } else if t.sizing().fill_weight().is_some() {
                 let min = pass.intrinsic(c, Axis::X, LenReq::MinContent);
-                let col_ranges = pass.grid_mut().track_state.ranges_mut(cols.id);
+                let col_ranges = pass.grid_tracks_mut().ranges_mut(cols.id);
                 col_ranges.min[i] = col_ranges.min[i].max(min);
             }
         }
         // After every span-1 cell, so a spanning cell grows only what they leave short; spans that
         // cross a Fill column after those that cross none.
-        for flexible in [false, true] {
-            for c in tree.active_children(node) {
-                let span = grid.cell(tree, c).track_span(Axis::X);
-                if span.len < 2 || grid::crosses_fill(cols.tracks, span) != flexible {
-                    continue;
-                }
-                let range = pass.intrinsic_range(c, Axis::X);
-                let col_ranges = pass.grid_mut().track_state.ranges_mut(cols.id);
-                cols.distribute_span(span, range.min, col_ranges.min);
-                cols.distribute_span(span, range.max, col_ranges.max);
-            }
+        for (c, span) in grid.spans(tree, cols) {
+            let range = pass.intrinsic_range(c, Axis::X);
+            let col_ranges = pass.grid_tracks_mut().ranges_mut(cols.id);
+            cols.distribute_span(span, range.min, col_ranges.min);
+            cols.distribute_span(span, range.max, col_ranges.max);
         }
     }
 
@@ -85,7 +75,7 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner_avail: Size) -> C
     // they will arrange at.
     let grid_sizing_w = tree.records.layout()[node.idx()].size.w();
     {
-        let tracks = &mut pass.grid_mut().track_state;
+        let tracks = pass.grid_tracks_mut();
         tracks.resolve_axis(cols, inner_avail.w);
         if !grid_sizing_w.is_hug() && inner_avail.w.is_finite() {
             tracks.commit_fill(cols.id, cols.tracks);
@@ -100,7 +90,7 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner_avail: Size) -> C
         let cell = grid.cell(tree, c);
 
         let avail = {
-            let tracks = &pass.grid_mut().track_state;
+            let tracks = &pass.grid_tracks_mut();
             // `known_span_size` returns INFINITY if any spanned col is unresolved.
             // Fill cols stay unresolved so their cells get INF: Fill is finalized
             // at arrange, and a different measure width would commit row heights
@@ -113,7 +103,7 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner_avail: Size) -> C
         let d = pass.measure(c, avail);
 
         {
-            let tracks = &mut pass.grid_mut().track_state;
+            let tracks = pass.grid_tracks_mut();
             for (axis, grid_axis) in [(Axis::X, cols), (Axis::Y, rows)] {
                 let span = cell.track_span(axis);
                 let i = span.start as usize;
@@ -130,11 +120,12 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner_avail: Size) -> C
         // `d.size.h`: a scrollable child's desired height is not its minimum, and
         // unwritten (0.0) a cramped Hug row would collapse to `Track.min`.
         // Multi-row spans wait for the loop below.
-        if cell.row_span() == 1 {
-            let row = cell.row() as usize;
+        let row_span = cell.track_span(Axis::Y);
+        if row_span.len == 1 {
+            let row = row_span.start as usize;
             let sizing = rows.tracks[row].sizing();
             if sizing.is_hug() || sizing.fill_weight().is_some() {
-                let row_ranges = pass.grid_mut().track_state.ranges_mut(rows.id);
+                let row_ranges = pass.grid_tracks_mut().ranges_mut(rows.id);
                 row_ranges.min[row] = row_ranges.min[row].max(d.floor.h);
                 if sizing.is_hug() {
                     row_ranges.max[row] = row_ranges.max[row].max(d.size.h);
@@ -145,25 +136,17 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner_avail: Size) -> C
 
     // A multi-row cell grows the rows it crosses by what the span-1 rows leave short; spans that
     // cross a Fill row after those that cross none.
-    for flexible in [false, true] {
-        for c in tree.active_children(node) {
-            let span = grid.cell(tree, c).track_span(Axis::Y);
-            if span.len < 2 || grid::crosses_fill(rows.tracks, span) != flexible {
-                continue;
-            }
-            let (size, floor) = (pass.desired(c).h, pass.floor(c).h);
-            let row_ranges = pass.grid_mut().track_state.ranges_mut(rows.id);
-            rows.distribute_span(span, floor, row_ranges.min);
-            rows.distribute_span(span, size, row_ranges.max);
-        }
+    for (c, span) in grid.spans(tree, rows) {
+        let (size, floor) = (pass.desired(c).h, pass.floor(c).h);
+        let row_ranges = pass.grid_tracks_mut().ranges_mut(rows.id);
+        rows.distribute_span(span, floor, row_ranges.min);
+        rows.distribute_span(span, size, row_ranges.max);
     }
 
     // Resolve row heights. Fill rows are left uncommitted: the row `resolved`
     // marking is inert here (its reader already ran and arrange re-resolves);
     // only the recorded `sizes` matter.
-    pass.grid_mut()
-        .track_state
-        .resolve_axis(rows, inner_avail.h);
+    pass.grid_tracks_mut().resolve_axis(rows, inner_avail.h);
 
     // What a Fill track holds: its single-track cells' extent, with the other tracks at their
     // resolved sizes, grown by the spans that cross a Fill track.
@@ -172,51 +155,40 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner_avail: Size) -> C
             Axis::X => cols,
             Axis::Y => rows,
         };
-        if !grid::has_fill(grid_axis.tracks) {
+        if !grid_axis.has_fill() {
             continue;
         }
-        pass.grid_mut()
-            .track_state
+        pass.grid_tracks_mut()
             .hold_resolved_extents(grid_axis.id, grid_axis.tracks);
-        for c in tree.active_children(node) {
-            let span = grid.cell(tree, c).track_span(axis);
-            if span.len < 2 || !grid::crosses_fill(grid_axis.tracks, span) {
-                continue;
-            }
+        for (c, span) in grid.spans_in(tree, grid_axis, SpanRound::Flexible) {
             let need = axis.main(pass.desired(c));
-            let extents = pass.grid_mut().track_state.extents_mut(grid_axis.id);
+            let extents = pass.grid_tracks_mut().extents_mut(grid_axis.id);
             grid_axis.distribute_span(span, need, extents);
         }
     }
 
     // Returned content size: non-Fill track sizes, what the Fill tracks hold
-    // ([`grid::fill_extent`]), and gaps. On every path: a Fill grid offered a finite width
+    // ([`GridAxis::fill_extent`]), and gaps. On every path: a Fill grid offered a finite width
     // shapes its cells at the Fill widths it commits, and a parent that hugs it must hold them,
     // as a stack reports what its Fill children measured to. Fill still claims the leftover at
     // arrange. `AxisSlot::resolve` floors this at the Grid intrinsic. The floor sums each track
     // at its least: a Fixed track's size, a Hug track's content floor.
-    let tracks = &pass.grid_mut().track_state;
+    let tracks = &pass.grid_tracks_mut();
     let col_gaps = cols.gap.gaps_between(col_count);
     let row_gaps = rows.gap.gaps_between(row_count);
     let grid_sizing_h = tree.records.layout()[node.idx()].size.h();
     let fill_w = cols.fill_share(grid_sizing_w, inner_avail.w, tracks);
     let fill_h = rows.fill_share(grid_sizing_h, inner_avail.h, tracks);
-    let total_w = grid::sum_non_fill(cols.tracks, tracks.sizes(cols.id)) + fill_w.extent + col_gaps;
-    let total_h = grid::sum_non_fill(rows.tracks, tracks.sizes(rows.id)) + fill_h.extent + row_gaps;
-    let floor_w = floor_non_fill(
-        cols.tracks,
-        tracks.content_min(cols.id),
-        tracks.sizes(cols.id),
-    ) + col_gaps;
-    let floor_h = floor_non_fill(
-        rows.tracks,
-        tracks.content_min(rows.id),
-        tracks.sizes(rows.id),
-    ) + row_gaps;
+    let total_w = cols.sum_non_fill(tracks.sizes(cols.id)) + fill_w.extent + col_gaps;
+    let total_h = rows.sum_non_fill(tracks.sizes(rows.id)) + fill_h.extent + row_gaps;
+    let floor_w =
+        cols.floor_non_fill(tracks.content_min(cols.id), tracks.sizes(cols.id)) + col_gaps;
+    let floor_h =
+        rows.floor_non_fill(tracks.content_min(rows.id), tracks.sizes(rows.id)) + row_gaps;
     // Cells are offered their column widths and, down, Fixed rows or nothing, so the grid holds
     // while its tracks do ([`FillShare::stable_from`]); Fill sizes reach no cell, except Fill
     // columns a non-Hug grid commits.
-    let commits_fill_cols = !grid_sizing_w.is_hug() && grid::has_fill(cols.tracks);
+    let commits_fill_cols = !grid_sizing_w.is_hug() && cols.has_fill();
     let stable_from = Size::new(
         if commits_fill_cols {
             offer::AT_OFFER_ONLY
@@ -230,65 +202,4 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner_avail: Size) -> C
         floor: Size::new(floor_w, floor_h),
         stable_from,
     }
-}
-
-/// What an axis's Fill tracks add to the grid's measured size, and the least offer it holds from.
-#[derive(Clone, Copy, Debug)]
-struct FillShare {
-    /// What holds each track's measured extent at a shared fraction ([`grid::fill_extent`]), as
-    /// CSS Grid §12.7.1 sizes a flexible track in indefinite space and WPF's Grid sums a star
-    /// track's `MinSize` into its desired size. Where the grid fills a finite offer, at most what
-    /// the tracks resolved to at it, as arrange gives them no more there: a min-clamped track
-    /// would raise the shared fraction past the offer.
-    extent: f32,
-    /// The axis's [`ContentMeasure::stable_from`], the tracks' own and the cap's.
-    stable_from: f32,
-}
-
-impl GridAxis<'_> {
-    /// The share of this axis's tracks, resolved in `store`, on a grid sized `sizing` offered
-    /// `avail`.
-    fn fill_share(self, sizing: Sizing, avail: f32, store: &GridTrackStore) -> FillShare {
-        let Self { tracks, id, .. } = self;
-        let held = grid::fill_extent(tracks, store.extents(id));
-        let stable_from = store.stable_from(id);
-        if sizing.is_hug() || !avail.is_finite() || !grid::has_fill(tracks) {
-            return FillShare {
-                extent: held,
-                stable_from,
-            };
-        }
-        let resolved = grid::sum_fill(tracks, store.sizes(id));
-        if held <= resolved {
-            // A larger offer gives the Fill tracks no less, so the hold stands from this offer
-            // up; a smaller one may cap it.
-            FillShare {
-                extent: held,
-                stable_from: stable_from.max(avail),
-            }
-        } else {
-            FillShare {
-                extent: resolved,
-                stable_from: offer::AT_OFFER_ONLY,
-            }
-        }
-    }
-}
-
-/// What [`grid::sum_non_fill`] sums at each track's least; never more than the sum.
-fn floor_non_fill(tracks: &[Track], content_min: &[f32], sizes: &[f32]) -> f32 {
-    tracks
-        .iter()
-        .zip(content_min)
-        .zip(sizes)
-        .map(|((t, &min), &size)| {
-            if t.sizing().fill_weight().is_some() {
-                0.0
-            } else if t.sizing().is_hug() {
-                t.content_floor(min)
-            } else {
-                size
-            }
-        })
-        .sum()
 }

@@ -48,7 +48,30 @@ pub struct WidgetLook {
     pub text: TextStyleOverrides,
 }
 
+/// [`WidgetLook::new`]: a look of `chrome` that inherits every text axis.
+impl From<Chrome> for WidgetLook {
+    fn from(chrome: Chrome) -> Self {
+        Self::new(chrome)
+    }
+}
+
 impl WidgetLook {
+    /// A look of `chrome` that inherits every text axis from
+    /// [`Theme::text`](crate::Theme).
+    pub const fn new(chrome: Chrome) -> Self {
+        Self {
+            chrome,
+            text: TextStyleOverrides::NONE,
+        }
+    }
+
+    /// This look with `text` over [`Theme::text`](crate::Theme) in place of its own overrides.
+    #[must_use]
+    pub const fn with_text(mut self, text: TextStyleOverrides) -> Self {
+        self.text = text;
+        self
+    }
+
     /// Resolves the look into the target `Ui::animate` interpolates toward,
     /// folding overrides onto `ambient_text` first so a color-only look
     /// cross-fades against the ambient color. Separate from `Ui::animate`
@@ -59,5 +82,31 @@ impl WidgetLook {
             chrome: self.chrome.clone(),
             text: self.text.apply(&ambient_text),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::primitives::paint::chrome::Chrome;
+    use crate::primitives::paint::color::RgbaF32;
+    use crate::theme::look::WidgetLook;
+    use crate::theme::text_style_overrides::TextStyleOverrides;
+
+    /// `new` and `From<Chrome>` give the chrome with every text axis inherited; `with_text` sets
+    /// the overrides alone, the chrome kept.
+    #[test]
+    fn a_look_builds_from_its_chrome_and_takes_text_alone() {
+        let chrome = Chrome::rounded(RgbaF32::hex(0x336699), 4.0);
+        let plain = WidgetLook::new(chrome.clone());
+        assert_eq!(
+            plain,
+            WidgetLook {
+                chrome: chrome.clone(),
+                text: TextStyleOverrides::NONE,
+            }
+        );
+        assert_eq!(WidgetLook::from(chrome.clone()), plain);
+        let ink = TextStyleOverrides::NONE.with_color(RgbaF32::WHITE);
+        assert_eq!(plain.with_text(ink), WidgetLook { chrome, text: ink });
     }
 }

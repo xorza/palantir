@@ -15,16 +15,15 @@
 //!   which V3D compiles in full, the B-spline five times: 619 → 1340 instructions, and the board's
 //!   `modal/scrolling` +6.9 % (`.notes/research/2026-11-12-atlas-pool-measurements.md`).
 
+use crate::common::gen_slab::{GenSlab, SlabKey};
 use crate::gpu::atlas::AtlasPool;
 use crate::gpu::atlas::atlas_format::AtlasFormat;
-use crate::gpu::atlas::atlas_handle::{AtlasHandle, Placement};
+use crate::gpu::atlas::atlas_handle::{AtlasHandle, Evicted, Placement};
 use crate::gpu::atlas::atlas_textures::AtlasTextures;
 use crate::gpu::atlas::error::AtlasError;
-use crate::gpu::atlas::scratch_cache::ScratchId;
-use crate::gpu::atlas::tenant::Tenant;
-use crate::gpu::backdrop::backdrop_blur::{
-    BackdropBlur, BlurJob, JobLayout, ResultTarget, TargetSource,
-};
+use crate::gpu::atlas::scratch_cache::{EvictedScratch, ScratchId};
+use crate::gpu::atlas::tenant::{ItemOwner, Tenant};
+use crate::gpu::backdrop::backdrop_blur::{BackdropBlur, BlurJob, ResultTarget, TargetSource};
 use crate::gpu::device::gpu::{FilledBuffer, Gpu};
 use crate::gpu::pipeline::effect_pipeline::backdrop_groups::{
     BackdropGroups, CompositeBound, CompositeGroups, ResultTexture,
@@ -184,6 +183,20 @@ impl Kept {
     }
 }
 
+/// A result kept for backdrop `at`, as [`Backdrops::results`] holds it.
+#[derive(Clone, Copy, Debug)]
+struct KeptResult {
+    at: ResultKey,
+    kept: Kept,
+}
+
+/// Whose result a cache entry holds: a render owner's backdrop, by its key.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+struct ResultKey {
+    owner: RenderOwnerId,
+    key: BackdropKey,
+}
+
 /// Where a slot's texels lie this frame.
 #[derive(Clone, Copy, Debug)]
 struct Placed {
@@ -241,9 +254,13 @@ pub(crate) struct BlurBreak {
 /// ledger to drop. A result that finds no room shows its fill over the clear and captures again.
 #[derive(Debug)]
 pub(crate) struct Backdrops {
-    cache: FxHashMap<(RenderOwnerId, BackdropKey), Kept>,
+    /// Each backdrop's kept result, by the entry of [`Self::results`] that holds it.
+    cache: FxHashMap<ResultKey, SlabKey>,
+    /// Each kept result; a result's pool item or scratch texture carries its entry's slot as its
+    /// tag, so an eviction the pool queues finds its backdrop.
+    results: GenSlab<KeptResult>,
     /// The results evicted from a window's backdrops, until its backdrop ledger drops them.
-    evicted: Vec<(RenderOwnerId, BackdropKey)>,
+    evicted: Vec<ResultKey>,
     /// This frame's blurs and the breaks they run at, in paint order.
     jobs: Vec<BlurJob>,
     breaks: Vec<BlurBreak>,
@@ -251,10 +268,6 @@ pub(crate) struct Backdrops {
     /// The texture each of [`Self::slots`] reads, whose group its composite binds; `None` for one
     /// that shows its clear.
     slot_reads: Vec<Option<ResultTexture>>,
-    /// The handles the pool evicted, as [`Self::drop_evicted`] drains them.
-    drained: Vec<AtlasHandle>,
-    /// The scratch ids a purge took, as [`Self::drop_evicted`] drains them.
-    drained_scratch: Vec<ScratchId>,
     /// What a backdrop's composite group binds through ([`TextureBinding::backdrop_group`]); the
     /// group itself waits for a backdrop.
     binding: TextureBinding,
@@ -308,13 +321,12 @@ impl Backdrops {
     pub(crate) fn new(binding: &TextureBinding) -> Self {
         Self {
             cache: FxHashMap::default(),
+            results: GenSlab::new(),
             evicted: Vec::new(),
             jobs: Vec::new(),
             breaks: Vec::new(),
             slots: Vec::new(),
             slot_reads: Vec::new(),
-            drained: Vec::new(),
-            drained_scratch: Vec::new(),
             binding: binding.clone(),
             resources: None,
         }
@@ -361,11 +373,14 @@ impl Backdrops {
         // another, nor a purge take one the frame drew. A result evicted since its last frame is
         // dropped below, at its row or the drain.
         for capture in buffer.backdrops.iter().map(|row| row.capture) {
-            match self.cache.get(&(owner, capture.key)) {
-                Some(&Kept::Item(handle)) => {
+            match self.kept(ResultKey {
+                owner,
+                key: capture.key,
+            }) {
+                Some(Kept::Item(handle)) => {
                     let _ = pool.stamp(handle);
                 }
-                Some(&Kept::Scratch(id)) => {
+                Some(Kept::Scratch(id)) => {
                     let _ = pool.stamp_scratch(id);
                 }
                 Some(Kept::Clear(_)) | None => {}
@@ -377,12 +392,15 @@ impl Backdrops {
             let BackdropRow {
                 capture, source, ..
             } = *row;
-            let at = (owner, capture.key);
+            let at = ResultKey {
+                owner,
+                key: capture.key,
+            };
             let shown = match source {
                 BackdropSource::Capture { barrier } => {
                     let size = capture.region.size + UVec2::splat(2 * capture.plan.apron());
-                    let (kept, placed) = match self.slot_for(at, size, pool) {
-                        Ok(slot) => slot,
+                    let kept = match self.slot_for(at, size, pool) {
+                        Ok(kept) => kept,
                         // Room may come back: the ledger captures again next frame.
                         Err(AtlasError::Full) => {
                             self.evicted.push(at);
@@ -399,11 +417,14 @@ impl Backdrops {
                                 "a backdrop's result passes the device's texture edge; it shows \
                                  its clear",
                             );
-                            self.cache.insert(at, Kept::Clear(held_clear));
+                            self.file(at, Kept::Clear(held_clear));
                             self.push_slot(row, Shown::Clear(held_clear));
                             continue;
                         }
                     };
+                    let placed = kept
+                        .placed(pool)
+                        .expect("a slot just found lies in the pool");
                     let job = self.jobs.len();
                     match self.breaks.last_mut() {
                         Some(last) if last.barrier == barrier => last.jobs.end = job + 1,
@@ -426,14 +447,12 @@ impl Backdrops {
                         region: capture.region,
                         dest: placed.texture,
                         dest_origin: placed.origin,
-                        layout: JobLayout::default(),
                     });
-                    self.cache.insert(at, kept);
                     Shown::Result(placed)
                 }
                 BackdropSource::Clear => {
                     self.drop_result(at, pool);
-                    self.cache.insert(at, Kept::Clear(held_clear));
+                    self.file(at, Kept::Clear(held_clear));
                     Shown::Clear(held_clear)
                 }
                 BackdropSource::Hidden => {
@@ -443,7 +462,7 @@ impl Backdrops {
                     continue;
                 }
                 BackdropSource::Held => {
-                    let shown = self.cache.get(&at).and_then(|&kept| match kept {
+                    let shown = self.kept(at).and_then(|kept| match kept {
                         Kept::Clear(kept) => Some(Shown::Clear(kept)),
                         Kept::Item(_) | Kept::Scratch(_) => kept.placed(pool).map(Shown::Result),
                     });
@@ -453,7 +472,7 @@ impl Backdrops {
                         // Evicted after this window's frame decided, by another window's frame
                         // or by the pool before this one stamped it: the frame shows the clear
                         // and its ledger, whose forget is a set's remove, captures again.
-                        self.cache.remove(&at);
+                        self.unfile(at);
                         self.evicted.push(at);
                         Shown::Clear(held_clear)
                     }
@@ -478,7 +497,7 @@ impl Backdrops {
             );
             blur.prepare(
                 ctx,
-                &mut self.jobs,
+                &self.jobs,
                 self.breaks.iter().map(|at| at.jobs.clone()),
                 target,
             );
@@ -559,41 +578,41 @@ impl Backdrops {
     /// the drain in [`Self::prepare`] alone, after the frame's ledger decided, which showed a
     /// result the decay or a purge took as its clear for a frame.
     pub(crate) fn drop_evicted(&mut self, pool: &mut AtlasPool) {
-        self.drained.clear();
-        self.drained.extend(pool.drain_evicted(Tenant::Backdrops));
-        self.drained_scratch.clear();
-        self.drained_scratch
-            .extend(pool.drain_evicted_scratch(Tenant::Backdrops));
-        if self.drained.is_empty() && self.drained_scratch.is_empty() {
-            return;
-        }
         let Self {
             cache,
+            results,
             evicted,
-            drained,
-            drained_scratch,
             ..
         } = self;
-        cache.retain(|&at, kept| {
-            let gone = match kept {
-                Kept::Item(handle) => drained.contains(handle),
-                Kept::Scratch(id) => drained_scratch.contains(id),
-                Kept::Clear(_) => false,
+        let mut drop_taken = |tag: u32, gone: Kept| {
+            let Some(slab_key) = results.key_at(tag as usize) else {
+                return;
             };
-            if gone {
-                evicted.push(at);
+            let entry = *results.get(slab_key).expect("a slot's key names it");
+            // A slot whose result went before the drain holds another's, or none.
+            if entry.kept == gone {
+                results.remove(slab_key);
+                cache.remove(&entry.at);
+                evicted.push(entry.at);
             }
-            !gone
-        });
+        };
+        for Evicted { handle, tag } in pool.drain_evicted(Tenant::Backdrops) {
+            drop_taken(tag, Kept::Item(handle));
+        }
+        for EvictedScratch { id, tag } in pool.drain_evicted_scratch(Tenant::Backdrops) {
+            drop_taken(tag, Kept::Scratch(id));
+        }
     }
 
     /// Drop the results of `owner`'s backdrops not in `live`, the backdrops its frame painted or
     /// kept.
     fn evict(&mut self, owner: RenderOwnerId, live: &BackdropKeys, pool: &mut AtlasPool) {
-        self.cache.retain(|&(at, key), kept| {
-            let keep = at != owner || live.contains(key);
+        let Self { cache, results, .. } = self;
+        cache.retain(|at, &mut slab_key| {
+            let keep = at.owner != owner || live.contains(at.key);
             if !keep {
-                kept.release(pool);
+                let entry = results.remove(slab_key).expect("a cached result is held");
+                entry.kept.release(pool);
             }
             keep
         });
@@ -605,44 +624,85 @@ impl Backdrops {
         self.forget_evicted(owner);
     }
 
-    /// Texels for a blur of `size` for backdrop `at`, and where they lie: its cached result's when
-    /// they hold it, else new ones rounded up to [`SLOT_GRANULE`], on a page or, past half a page, a
-    /// scratch texture of its own. A page refuses only for room, [`AtlasError::Full`], as an item
+    /// Texels for a blur of `size` for backdrop `at`: its cached result's when they hold it, else
+    /// new ones rounded up to [`SLOT_GRANULE`], on a page or, past half a page, a scratch texture of
+    /// its own. A page refuses only for room, [`AtlasError::Full`], as an item
     /// past half a page takes scratch; a scratch texture only past the device's edge,
     /// [`AtlasError::Oversized`].
     fn slot_for(
         &mut self,
-        at: (RenderOwnerId, BackdropKey),
+        at: ResultKey,
         size: UVec2,
         pool: &mut AtlasPool,
-    ) -> Result<(Kept, Placed), AtlasError> {
-        if let Some(&kept) = self.cache.get(&at)
+    ) -> Result<Kept, AtlasError> {
+        if let Some(kept) = self.kept(at)
             && kept.holds(pool, size)
-            && let Some(placed) = kept.placed(pool)
         {
-            return Ok((kept, placed));
+            return Ok(kept);
         }
         self.drop_result(at, pool);
         let size = size.map(|edge| edge.next_multiple_of(SLOT_GRANULE));
-        if pool.list(RESULTS).prefers_scratch(size) {
-            let id = pool.acquire_scratch(RESULTS, Tenant::Backdrops, size)?;
-            return Ok((Kept::Scratch(id), Placed::scratch(id)));
-        }
-        match pool.allocate(RESULTS, Tenant::Backdrops, size) {
-            Ok(allocation) => Ok((
-                Kept::Item(allocation.handle),
-                Placed::page(allocation.placement),
-            )),
-            Err(AtlasError::Full) => Err(AtlasError::Full),
-            Err(oversized @ AtlasError::Oversized { .. }) => {
-                unreachable!("a result within half a page fits a page: {oversized}")
-            }
+        let scratch = pool.list(RESULTS).prefers_scratch(size);
+        let slab_key = self.results.try_insert_with_key(|slab_key| {
+            let owner = ItemOwner {
+                tenant: Tenant::Backdrops,
+                tag: slab_key.idx,
+            };
+            let kept = if scratch {
+                Kept::Scratch(pool.acquire_scratch(RESULTS, owner, size)?)
+            } else {
+                match pool.allocate(RESULTS, owner, size) {
+                    Ok(allocation) => Kept::Item(allocation.handle),
+                    Err(AtlasError::Full) => return Err(AtlasError::Full),
+                    Err(oversized @ AtlasError::Oversized { .. }) => {
+                        unreachable!("a result within half a page fits a page: {oversized}")
+                    }
+                }
+            };
+            Ok(KeptResult { at, kept })
+        })?;
+        self.cache.insert(at, slab_key);
+        Ok(self.results.get(slab_key).expect("filed above").kept)
+    }
+
+    /// Backdrop `at`'s kept result, `None` where it keeps none.
+    fn kept(&self, at: ResultKey) -> Option<Kept> {
+        let &slab_key = self.cache.get(&at)?;
+        Some(
+            self.results
+                .get(slab_key)
+                .expect("a cached result is held")
+                .kept,
+        )
+    }
+
+    /// Keep `kept` for backdrop `at`, over what it kept, whose texels went back already.
+    fn file(&mut self, at: ResultKey, kept: Kept) {
+        if let Some(&slab_key) = self.cache.get(&at) {
+            self.results
+                .get_mut(slab_key)
+                .expect("a cached result is held")
+                .kept = kept;
+        } else {
+            let slab_key = self.results.insert(KeptResult { at, kept });
+            self.cache.insert(at, slab_key);
         }
     }
 
+    /// Forget backdrop `at`'s kept result, `None` where it kept none.
+    fn unfile(&mut self, at: ResultKey) -> Option<Kept> {
+        let slab_key = self.cache.remove(&at)?;
+        Some(
+            self.results
+                .remove(slab_key)
+                .expect("a cached result is held")
+                .kept,
+        )
+    }
+
     /// Drop backdrop `at`'s cached result, giving its texels back to `pool`.
-    fn drop_result(&mut self, at: (RenderOwnerId, BackdropKey), pool: &mut AtlasPool) {
-        if let Some(kept) = self.cache.remove(&at) {
+    fn drop_result(&mut self, at: ResultKey, pool: &mut AtlasPool) {
+        if let Some(kept) = self.unfile(at) {
             kept.release(pool);
         }
     }
@@ -651,13 +711,13 @@ impl Backdrops {
     pub(crate) fn evicted(&self, owner: RenderOwnerId) -> impl Iterator<Item = BackdropKey> {
         self.evicted
             .iter()
-            .filter(move |(at, _)| *at == owner)
-            .map(|&(_, key)| key)
+            .filter(move |at| at.owner == owner)
+            .map(|at| at.key)
     }
 
     /// Forget the evictions [`Self::evicted`] listed for `owner`, which its ledger took.
     pub(crate) fn forget_evicted(&mut self, owner: RenderOwnerId) {
-        self.evicted.retain(|(at, _)| *at != owner);
+        self.evicted.retain(|at| at.owner != owner);
     }
 
     /// The breaks of the main pass this frame's blurs run at, in paint order.
@@ -674,7 +734,7 @@ impl Backdrops {
         color: &wgpu::Texture,
     ) {
         let blur = self.blur();
-        for job in &self.jobs[at.jobs.clone()] {
+        for job in at.jobs.clone() {
             blur.copy_capture(encoder, job, color);
         }
     }
@@ -689,7 +749,7 @@ impl Backdrops {
         let pages = textures.views(RESULTS);
         let committed = "a result's texture was committed";
         self.blur()
-            .encode(encoder, &self.jobs[at.jobs.clone()], |dest| match dest {
+            .encode(encoder, at.jobs.clone(), |dest| match dest {
                 ResultTexture::Page(page) => ResultTarget {
                     texture: textures
                         .page_texture(RESULTS, usize::from(page))

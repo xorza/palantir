@@ -9,6 +9,7 @@ use crate::primitives::math::float_hash::FloatHash;
 use crate::primitives::math::libm_ext::LibmVec2;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::line_style::LineCap;
+use crate::shape::geometry;
 use crate::shape::geometry::curve_basis::CurveBasis;
 use crate::shape::geometry::placed_stroke::PlacedStroke;
 use glam::Vec2;
@@ -26,10 +27,7 @@ impl ArcGeometry {
     /// What the arc draws in an owner of `owner_size`, ended by `cap`, `width` across; an arc of
     /// no length, its radius or its sweep rounding to none, paints its cap.
     pub(crate) fn place(self, owner_size: Size, cap: LineCap, width: f32) -> PlacedStroke {
-        let rect = self.local_rect.unwrap_or(Rect {
-            min: Vec2::ZERO,
-            size: owner_size,
-        });
+        let rect = geometry::layout_rect(self.local_rect, owner_size);
         let arc = CircularArc::inscribed(rect, self.start_angle, self.sweep);
         let point = if is_invisible(arc.radius) {
             arc.center

@@ -1,19 +1,16 @@
 //! The exhaustive pin: every named field on every shape either moves the
 //! hash or is listed as deliberately excluded.
 
-use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::cubic_bezier::CubicBezier;
 use crate::primitives::geometry::fit::Fit;
-use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::border::Border;
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::image::{ImageDownsample, ImageFilter};
 use crate::primitives::paint::line_style::{LineCap, LineJoin};
 use crate::primitives::paint::shadow::Shadow;
+use crate::primitives::paint::shadow::ShadowKind;
 use crate::primitives::paint::stroke::Stroke;
 use crate::shape::geometry::arc_geometry::ArcGeometry;
 use crate::shape::geometry::bezier_geometry::BezierGeometry;
-use crate::shape::geometry::box_geometry::{BoxGeometry, BoxOutline};
 use crate::shape::geometry::stroke_geometry::{PolylineColorSpan, PolylineGeometry};
 use crate::shape::geometry::triangle_geometry::TriangleGeometry;
 use crate::shape::paint::curve_ramp::CurveRamp;
@@ -111,7 +108,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         offset: Vec2::new(1.0, 2.0),
         blur: 3.0,
         spread: 1.0,
-        inset: false,
+        kind: ShadowKind::Drop,
     };
     moves("Quad/Box.shadow", &base, &box_with(sh, None));
     for (label, changed) in [
@@ -131,7 +128,13 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         ),
         ("blur", Shadow { blur: 4.0, ..sh }),
         ("spread", Shadow { spread: 2.0, ..sh }),
-        ("inset", Shadow { inset: true, ..sh }),
+        (
+            "inset",
+            Shadow {
+                kind: ShadowKind::Inset,
+                ..sh
+            },
+        ),
     ] {
         moves(
             &format!("Quad/Box.shadow.{label}"),
@@ -607,8 +610,8 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         ),
     );
 
-    let image =
-        |local_rect, tint, source, fit, min_filter, mag_filter, downsample| ShapeRecord::Closed {
+    let image = |local_rect, tint, source, placement, min_filter, mag_filter, downsample| {
+        ShapeRecord::Closed {
             geometry: ClosedGeometry::Box(BoxGeometry {
                 local_rect,
                 outline: BoxOutline::Rect(Corners::ZERO),
@@ -616,12 +619,13 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
             paint: ClosedPaint::Image {
                 tint,
                 source,
-                fit,
+                placement,
                 min_filter,
                 mag_filter,
                 downsample,
             },
-        };
+        }
+    };
     let texture = ImageSource::Texture {
         id: TextureId(1),
         size: glam::UVec2::new(2, 3),
@@ -631,7 +635,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         rect(0.0),
         white,
         texture,
-        ImageFit::Fill,
+        ImagePlacement::Fit(Fit::Fill),
         ImageFilter::Linear,
         ImageFilter::Linear,
         ImageDownsample::Single,
@@ -643,7 +647,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
             rect(1.0),
             white,
             texture,
-            ImageFit::Fill,
+            ImagePlacement::Fit(Fit::Fill),
             ImageFilter::Linear,
             ImageFilter::Linear,
             ImageDownsample::Single,
@@ -654,7 +658,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
             ClosedPaint::Image {
                 tint,
                 source,
-                fit,
+                placement,
                 min_filter,
                 mag_filter,
                 downsample,
@@ -670,7 +674,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         paint: ClosedPaint::Image {
             tint,
             source,
-            fit,
+            placement,
             min_filter,
             mag_filter,
             downsample,
@@ -712,7 +716,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
             rect(0.0),
             red,
             texture,
-            ImageFit::Fill,
+            ImagePlacement::Fit(Fit::Fill),
             ImageFilter::Linear,
             ImageFilter::Linear,
             ImageDownsample::Single,
@@ -728,7 +732,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
                 id: TextureId(1),
                 epoch: 1,
             },
-            ImageFit::Fill,
+            ImagePlacement::Fit(Fit::Fill),
             ImageFilter::Linear,
             ImageFilter::Linear,
             ImageDownsample::Single,
@@ -745,7 +749,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
                 size: glam::UVec2::new(2, 3),
                 generation: 1,
             },
-            ImageFit::Fill,
+            ImagePlacement::Fit(Fit::Fill),
             ImageFilter::Linear,
             ImageFilter::Linear,
             ImageDownsample::Single,
@@ -758,7 +762,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
             rect(0.0),
             white,
             texture,
-            ImageFit::Cover,
+            ImagePlacement::Fit(Fit::Cover),
             ImageFilter::Linear,
             ImageFilter::Linear,
             ImageDownsample::Single,
@@ -771,7 +775,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
             rect(0.0),
             white,
             texture,
-            ImageFit::Fill,
+            ImagePlacement::Fit(Fit::Fill),
             ImageFilter::Nearest,
             ImageFilter::Linear,
             ImageDownsample::Single,
@@ -784,7 +788,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
             rect(0.0),
             white,
             texture,
-            ImageFit::Fill,
+            ImagePlacement::Fit(Fit::Fill),
             ImageFilter::Linear,
             ImageFilter::Nearest,
             ImageDownsample::Single,
@@ -798,7 +802,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
             rect(0.0),
             white,
             texture,
-            ImageFit::Fill,
+            ImagePlacement::Fit(Fit::Fill),
             ImageFilter::Linear,
             ImageFilter::Linear,
             ImageDownsample::Mean,
@@ -811,7 +815,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
             rect(0.0),
             white,
             texture,
-            ImageFit::Fill,
+            ImagePlacement::Fit(Fit::Fill),
             ImageFilter::Linear,
             ImageFilter::Linear,
             ImageDownsample::Peak,
@@ -823,7 +827,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
             rect(0.0),
             white,
             texture,
-            ImageFit::Fill,
+            ImagePlacement::Fit(Fit::Fill),
             ImageFilter::Linear,
             ImageFilter::Linear,
             ImageDownsample::Mean,
@@ -832,7 +836,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
             rect(0.0),
             white,
             texture,
-            ImageFit::Fill,
+            ImagePlacement::Fit(Fit::Fill),
             ImageFilter::Linear,
             ImageFilter::Linear,
             ImageDownsample::Peak,

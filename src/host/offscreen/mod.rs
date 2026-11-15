@@ -18,7 +18,6 @@ use crate::host::host_core::HostCore;
 use crate::host::host_device::HostDevice;
 use crate::primitives::input::input_event::InputEvent;
 use crate::primitives::input::interaction::input_delta::InputDelta;
-use crate::primitives::reduction::Reduction;
 use crate::text::font_scope::FontScope;
 use crate::text::shaper::TextShaper;
 use crate::theme::color_scheme::ColorScheme;
@@ -28,6 +27,7 @@ use crate::ui::frame_report::FrameReport;
 use crate::ui::window_frames::present::PresentStrategy;
 use crate::window::window_commands::WindowCommand;
 use crate::window::window_token::WindowToken;
+use std::num::NonZeroU32;
 use std::time::Duration;
 
 /// The offscreen analog of `WinitHost`, rendering into a texture.
@@ -139,7 +139,7 @@ impl OffscreenHostBuilder {
 
     /// The display's refresh rate, which repaint wakes coalesce to; none by default. The host's
     /// [`set_refresh_millihertz`](OffscreenHost::set_refresh_millihertz) changes it later.
-    pub const fn refresh_millihertz(mut self, millihertz: u32) -> Self {
+    pub const fn refresh_millihertz(mut self, millihertz: NonZeroU32) -> Self {
         self.settings.refresh_millihertz = Some(millihertz);
         self
     }
@@ -157,7 +157,7 @@ impl OffscreenHostBuilder {
     /// by default. The host's
     /// [`set_system_motion_reduced`](OffscreenHost::set_system_motion_reduced) changes it later.
     pub const fn system_motion_reduced(mut self, reduced: bool) -> Self {
-        self.settings.preferences.reductions.motion = Reduction::of(reduced);
+        self.settings.preferences.set_motion_reduced(reduced);
         self
     }
 
@@ -166,7 +166,7 @@ impl OffscreenHostBuilder {
     /// [`set_system_transparency_reduced`](OffscreenHost::set_system_transparency_reduced)
     /// changes it later.
     pub const fn system_transparency_reduced(mut self, reduced: bool) -> Self {
-        self.settings.preferences.reductions.transparency = Reduction::of(reduced);
+        self.settings.preferences.set_transparency_reduced(reduced);
         self
     }
 
@@ -174,7 +174,7 @@ impl OffscreenHostBuilder {
     /// `false` by default. The host's
     /// [`set_system_power_reduced`](OffscreenHost::set_system_power_reduced) changes it later.
     pub const fn system_power_reduced(mut self, reduced: bool) -> Self {
-        self.settings.preferences.reductions.power = Reduction::of(reduced);
+        self.settings.preferences.set_power_reduced(reduced);
         self
     }
 
@@ -272,33 +272,28 @@ impl OffscreenHost {
     /// start, reports nothing, so [`Preference::System`](crate::Preference::System)
     /// shows the fallback. The next frame shows the resolved scheme.
     pub fn set_system_color_scheme(&mut self, scheme: Option<ColorScheme>) -> &mut Self {
-        self.window
-            .set_preferences(|preferences| preferences.color_scheme = scheme);
+        self.window.set_system_color_scheme(scheme);
         self
     }
 
     /// Report the system as asking for less motion, or not, as the winit host reports the
-    /// desktop's; `false` at the start. See [`Ui::is_motion_reduced`].
+    /// desktop's; `false` at the start. See [`Ui::reductions`].
     pub fn set_system_motion_reduced(&mut self, reduced: bool) -> &mut Self {
-        self.window
-            .set_preferences(|preferences| preferences.reductions.motion = Reduction::of(reduced));
+        self.window.set_system_motion_reduced(reduced);
         self
     }
 
     /// Report the system as asking for less transparency, or not, as the winit host reports the
-    /// desktop's; `false` at the start. See [`Ui::is_transparency_reduced`].
+    /// desktop's; `false` at the start. See [`Ui::reductions`].
     pub fn set_system_transparency_reduced(&mut self, reduced: bool) -> &mut Self {
-        self.window.set_preferences(|preferences| {
-            preferences.reductions.transparency = Reduction::of(reduced);
-        });
+        self.window.set_system_transparency_reduced(reduced);
         self
     }
 
     /// Report the system's power-saver mode as on, or not, as the winit host reports the
-    /// desktop's; `false` at the start. See [`Ui::is_power_reduced`].
+    /// desktop's; `false` at the start. See [`Ui::reductions`].
     pub fn set_system_power_reduced(&mut self, reduced: bool) -> &mut Self {
-        self.window
-            .set_preferences(|preferences| preferences.reductions.power = Reduction::of(reduced));
+        self.window.set_system_power_reduced(reduced);
         self
     }
 
@@ -309,6 +304,19 @@ impl OffscreenHost {
     /// wait ended: [`GpuWait::Done`], or why the copies did not come back.
     pub fn wait_for_gpu(&self) -> GpuWait {
         self.device.wait_for_gpu(&self.window.frames)
+    }
+
+    /// Block until a [`Waker`](crate::Waker) of this window wakes it, or `timeout` passes, in
+    /// real time; whether a wake waits for the next frame. As
+    /// [`Harness::wait_for_wake`](crate::Harness::wait_for_wake).
+    pub fn wait_for_wake(&self, timeout: Duration) -> bool {
+        self.window.wait_for_wake(timeout)
+    }
+
+    /// Whether a [`Waker`](crate::Waker) of this window woke it since the last frame, which the
+    /// next frame takes. As [`Harness::has_pending_wake`](crate::Harness::has_pending_wake).
+    pub fn has_pending_wake(&self) -> bool {
+        self.window.is_wake_pending()
     }
 
     /// The windows the last frame opened or closed with [`Ui::open_window`] and
@@ -352,7 +360,7 @@ impl OffscreenHost {
 
     /// Report the display's refresh rate, which repaint wakes coalesce to, from the next frame
     /// on; `None` reports none.
-    pub const fn set_refresh_millihertz(&mut self, millihertz: Option<u32>) -> &mut Self {
+    pub const fn set_refresh_millihertz(&mut self, millihertz: Option<NonZeroU32>) -> &mut Self {
         self.window.refresh_millihertz = millihertz;
         self
     }
@@ -369,14 +377,16 @@ impl OffscreenHost {
     /// [`earliest_repaint_at`](FrameReport::earliest_repaint_at) while power is reduced.
     pub fn frame(&mut self, target: RenderTarget<'_>, app: &mut impl App) -> FrameReport {
         let now = self.time.now();
-        self.window.paint_frame(
-            app,
-            HeadlessCanvas {
-                device: &mut self.device,
-                target,
-            },
-            now,
-        )
+        self.window
+            .paint_frame(
+                app,
+                HeadlessCanvas {
+                    device: &mut self.device,
+                    target,
+                },
+                now,
+            )
+            .report()
     }
 }
 
@@ -456,7 +466,7 @@ pub(crate) mod internals {
 
         /// The store the host's effects build in.
         #[cfg(test)]
-        pub(crate) fn effect_store(&self) -> &WgpuEffectStore {
+        pub(crate) const fn effect_store(&self) -> &WgpuEffectStore {
             self.device.backend().effect_store()
         }
 
@@ -478,7 +488,7 @@ pub(crate) mod internals {
 
         /// Draw list the most recent [`OffscreenHost::frame`] composed; the benchmark replays it for exact step counts.
         pub(crate) const fn last_render_buffer(&self) -> &RenderBuffer {
-            &self.window.cpu.frontend.buffer
+            self.window.cpu.frontend.buffer()
         }
 
         /// Shades every shadow corner's cutout instead of baking tables; the visual suite's reference.

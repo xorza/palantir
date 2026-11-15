@@ -9,7 +9,7 @@ use crate::diagnostics::gpu_pass_stats::BatchKind;
 use crate::gpu::bench_gpu::{BenchGpu, Timing};
 use crate::host::harness::Harness;
 use crate::primitives::geometry::cubic_bezier::CubicBezier;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::SizeSpec;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::line_style::LineJoin;
 use crate::primitives::paint::stroke::Stroke;
@@ -54,7 +54,7 @@ const TIMING: Timing = Timing::Instrumented;
 fn record(ui: &mut Ui, workload: Workload, phase: bool) {
     Panel::zstack()
         .id_salt("curve-pipeline-bench-root")
-        .size((Sizing::FILL, Sizing::FILL))
+        .size(SizeSpec::FILL)
         .show(ui, |ui| match workload {
             Workload::CubicStrips => record_cubics(ui, phase),
             Workload::Join => record_joins(ui, phase),

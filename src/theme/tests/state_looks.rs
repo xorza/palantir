@@ -1,7 +1,8 @@
 use crate::primitives::geometry::spacing::Spacing;
-use crate::primitives::input::interaction::button_phase::ButtonPhase;
-use crate::primitives::input::interaction::button_state::ButtonState;
-use crate::primitives::input::interaction::response_state::ResponseState;
+use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::interaction::pointer_button_phase::PointerButtonPhase;
+use crate::primitives::input::interaction::pointer_button_state::PointerButtonState;
+use crate::primitives::input::interaction::response::Response;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::text::font_family::FontFamily;
@@ -18,25 +19,24 @@ use crate::theme::look::theme_slot::ThemeSlot;
 use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
 use crate::theme::selection::Selection;
-use crate::theme::tab_strip_focus::TabStripFocus;
 use crate::theme::text_style::TextStyle;
 use crate::theme::text_style_overrides::TextStyleOverrides;
 use std::ptr;
 
 /// A response hovered, pressed and disabled as the flags say.
-fn response(pointer_over: bool, pressed: bool, disabled: bool) -> ResponseState {
-    ResponseState {
+fn response(pointer_over: bool, pressed: bool, disabled: bool) -> Response {
+    Response {
         pointer_over,
-        left: ButtonState {
+        left: PointerButtonState {
             phase: if pressed {
-                ButtonPhase::Held
+                PointerButtonPhase::Held
             } else {
-                ButtonPhase::Idle
+                PointerButtonPhase::Idle
             },
             ..Default::default()
         },
         disabled,
-        ..ResponseState::default()
+        ..Response::idle(WidgetId::from_hash("probe"))
     }
 }
 
@@ -50,7 +50,7 @@ fn button_theme_pick_precedence() {
         (Selection::Unselected, &theme.unselected),
         (Selection::Selected, &theme.selected),
     ] {
-        let cases: &[(ResponseState, &WidgetLook, &str)] = &[
+        let cases: &[(Response, &WidgetLook, &str)] = &[
             (response(false, false, false), &pack.normal, "normal"),
             (response(true, false, false), &pack.hovered, "hovered"),
             (
@@ -85,13 +85,13 @@ fn button_theme_pick_precedence() {
 #[test]
 fn text_edit_theme_pick_precedence() {
     let theme = Theme::stock(ColorScheme::Dark).text_edit;
-    let state = |focused, pointer_over, disabled| ResponseState {
+    let state = |focused, pointer_over, disabled| Response {
         pointer_over,
         disabled,
         focused,
-        ..ResponseState::default()
+        ..Response::idle(WidgetId::from_hash("probe"))
     };
-    let cases: &[(ResponseState, &WidgetLook, &str)] = &[
+    let cases: &[(Response, &WidgetLook, &str)] = &[
         (state(false, false, false), &theme.looks.normal, "normal"),
         (state(false, true, false), &theme.looks.hovered, "hovered"),
         (state(true, false, false), &theme.looks.active, "focused"),
@@ -164,7 +164,7 @@ fn a_flat_text_edit_keeps_only_its_text_and_caret() {
 #[test]
 fn toggle_theme_pick_selects_pack_then_state() {
     let theme = Theme::stock(ColorScheme::Dark).checkbox;
-    let cases: &[(ResponseState, CheckState, &WidgetLook, &str)] = &[
+    let cases: &[(Response, CheckState, &WidgetLook, &str)] = &[
         (
             response(false, false, false),
             CheckState::Unchecked,
@@ -227,9 +227,9 @@ fn toggle_theme_pick_selects_pack_then_state() {
 #[test]
 fn tabs_theme_pick_selects_pack_then_state_and_cap() {
     let theme = Theme::stock(ColorScheme::Dark).tabs;
-    let idle = ResponseState::default();
+    let idle = Response::idle(WidgetId::from_hash("probe"));
     let pressed = response(true, true, false);
-    let cases: &[(&ResponseState, Selection, &WidgetLook, &str)] = &[
+    let cases: &[(&Response, Selection, &WidgetLook, &str)] = &[
         (
             &idle,
             Selection::Selected,
@@ -268,14 +268,8 @@ fn tabs_theme_pick_selects_pack_then_state_and_cap() {
     );
     assert_eq!(Selection::from(true), Selection::Selected);
     assert_eq!(Selection::from(false), Selection::Unselected);
-    assert_eq!(TabStripFocus::from(true), TabStripFocus::Focused);
-    assert_eq!(TabStripFocus::from(false), TabStripFocus::Unfocused);
-
-    assert_eq!(theme.cap(TabStripFocus::Focused), Palette::DARK.accent);
-    assert_eq!(
-        theme.cap(TabStripFocus::Unfocused),
-        Palette::DARK.element_strong
-    );
+    assert_eq!(theme.cap_focused, Palette::DARK.accent);
+    assert_eq!(theme.cap_unfocused, Palette::DARK.element_strong);
     assert_ne!(Palette::DARK.accent, Palette::DARK.element_strong);
 }
 
@@ -357,7 +351,7 @@ fn bundled_text_inherits_every_axis_but_color() {
 
     let mut theme = Theme::stock(ColorScheme::Dark);
     let mut named = Vec::new();
-    theme.for_each_text(None, &mut |text, _| {
+    theme.each_text_mut(&mut |text| {
         if let ThemeText::Overrides(o) = text {
             let past_color = TextStyleOverrides { color: None, ..*o };
             if !past_color.is_empty() {
@@ -393,7 +387,12 @@ fn bundled_text_inherits_every_axis_but_color() {
     let shade = |look: &WidgetLook| look.to_animated(theme.text).text.color;
     let bar = &theme.menu_bar;
     assert_eq!(
-        [&bar.title.normal, &bar.title.hovered, &bar.open].map(shade),
+        [
+            &bar.title.unselected.normal,
+            &bar.title.unselected.hovered,
+            &bar.title.selected.normal,
+        ]
+        .map(shade),
         [p.text_muted, p.text, p.text],
     );
     let flat = ButtonTheme::subtle(&p, &Metrics::DEFAULT);

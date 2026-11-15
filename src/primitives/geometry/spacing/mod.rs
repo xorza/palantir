@@ -27,6 +27,26 @@ f16x4_lanes!(
 );
 
 impl Spacing {
+    /// The left edge.
+    pub fn left(self) -> f32 {
+        self.to_array()[0]
+    }
+
+    /// The top edge.
+    pub fn top(self) -> f32 {
+        self.to_array()[1]
+    }
+
+    /// The right edge.
+    pub fn right(self) -> f32 {
+        self.to_array()[2]
+    }
+
+    /// The bottom edge.
+    pub fn bottom(self) -> f32 {
+        self.to_array()[3]
+    }
+
     /// Packed 8-byte form, used by `LayoutCore::hash_with_flags`.
     #[inline]
     pub(crate) const fn as_u64(self) -> u64 {
@@ -41,7 +61,7 @@ impl Spacing {
     #[inline]
     #[track_caller]
     pub fn all(v: f32) -> Self {
-        Self::from_array([v, v, v, v])
+        Self::checked([v, v, v, v])
     }
 
     /// `x` on left and right, `y` on top and bottom: horizontal first, as a `Vec2` orders them.
@@ -52,30 +72,19 @@ impl Spacing {
     #[inline]
     #[track_caller]
     pub fn xy(x: f32, y: f32) -> Self {
-        Self::from_array([x, y, x, y])
+        Self::checked([x, y, x, y])
     }
 
     /// Each edge independently, in logical pixels.
     ///
     /// # Panics
     ///
-    /// Panics unless every edge is a [lane](crate::widget::domain::lane): finite, and below 65520
+    /// Panics unless every edge is a [lane](crate::widget::domain::is_lane): finite, and below 65520
     /// in magnitude, which rounds to 65504. A larger edge would pack to infinity.
     #[inline]
     #[track_caller]
     pub fn new(left: f32, top: f32, right: f32, bottom: f32) -> Self {
-        Self::from_array([left, top, right, bottom])
-    }
-
-    /// Inverse of [`Self::to_array`]: the f32→f16 pack, for hot sites computing all four.
-    ///
-    /// # Panics
-    ///
-    /// Panics unless every lane fits, as [`Self::new`].
-    #[inline]
-    #[track_caller]
-    pub fn from_array(v: [f32; 4]) -> Self {
-        Self::checked(v)
+        Self::checked([left, top, right, bottom])
     }
 
     /// A spacing the crate derives from valid lengths (a padding grown by a border, ink past a
@@ -90,7 +99,7 @@ impl Spacing {
     #[inline]
     #[track_caller]
     pub(crate) fn saturating(lanes: [f32; 4]) -> Self {
-        Self::from_array(lanes.map(F16x4::saturate_lane))
+        Self::checked(lanes.map(F16x4::saturate_lane))
     }
 
     /// The size this spacing costs: `w = left + right`, `h = top + bottom`.

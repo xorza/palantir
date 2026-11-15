@@ -18,14 +18,17 @@ pub(super) struct RootOrder {
     poss: Vec<(WidgetId, NonMaxU32)>,
     /// Scratch: each current root's position last frame, `None` for a new root.
     matched: Vec<Option<NonMaxU32>>,
-    /// Scratch: each current root's painted extent.
-    extents: Vec<Rect>,
-    inversions: InvertedOverlaps,
 }
 
 impl RootOrder {
-    /// Damage into `out` the overlap of every two roots of `frame`'s plane whose order flipped, and remember this frame's order.
-    pub(super) fn diff(&mut self, frame: PlaneFrame<'_>, out: &mut Vec<Rect>) {
+    /// Damage into `out` the overlap of every two roots of `frame`'s plane whose order flipped,
+    /// through `inversions`, and remember this frame's order.
+    pub(super) fn diff(
+        &mut self,
+        frame: PlaneFrame<'_>,
+        inversions: &mut InvertedOverlaps,
+        out: &mut Vec<Rect>,
+    ) {
         let PlaneFrame {
             plane,
             tree,
@@ -42,11 +45,11 @@ impl RootOrder {
             self.poss.extend(
                 prev.iter()
                     .enumerate()
-                    .map(|(at, id)| (*id, NonMaxU32::index(at))),
+                    .map(|(at, id)| (*id, NonMaxU32::from_idx(at))),
             );
             self.poss.sort_unstable_by_key(|(id, _)| id.as_hash());
             self.matched.clear();
-            self.extents.clear();
+            let extents = inversions.cleared_extents();
             for slot in &tree.roots {
                 let id = ids[slot.first_node.idx()];
                 let at = self
@@ -55,10 +58,9 @@ impl RootOrder {
                     .ok()
                     .map(|found| self.poss[found].1);
                 self.matched.push(at);
-                self.extents
-                    .push(cascade.subtree_paint_rects[slot.first_node.idx()]);
+                extents.push(cascade.subtree_paint_rects[slot.first_node.idx()]);
             }
-            self.inversions.push(out, &self.matched, &self.extents);
+            inversions.push(out, &self.matched);
         }
         self.remember(frame);
     }
@@ -92,13 +94,8 @@ pub(crate) mod internals {
                 prev: _,
                 poss,
                 matched,
-                extents,
-                inversions,
             } = self;
-            scratch_report::vec_bytes(poss)
-                + scratch_report::vec_bytes(matched)
-                + scratch_report::vec_bytes(extents)
-                + inversions.scratch_bytes()
+            scratch_report::vec_bytes(poss) + scratch_report::vec_bytes(matched)
         }
     }
 }

@@ -16,19 +16,24 @@ use crate::renderer::frontend::payload::draw_shadow_payload::DrawShadowPayload;
 use crate::renderer::frontend::payload::draw_stroke_payload::DrawStrokePayload;
 use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
+use crate::renderer::frontend::payload::spin::Spin;
 
 /// Declares [`PaintCall`] with its three lockstep transcriptions (variant
-/// name, replay dispatch, [`PaintSink`] impl) from one table.
+/// name, replay dispatch, [`PaintSink`] impl) from one table: the stack calls
+/// with their argument, the draws with their payload and turn, and the pops.
 macro_rules! paint_calls {
     (
-        $( $variant:ident($payload:ty) => $method:ident, )*
+        $( $stack:ident($arg:ty) => $stack_method:ident, )*
+        --
+        $( $draw:ident($payload:ty) => $draw_method:ident, )*
         --
         $( $unit:ident => $unit_method:ident, )*
     ) => {
         /// One recorded [`PaintSink`] call.
         #[derive(Clone, Copy, Debug, PartialEq)]
         pub(crate) enum PaintCall {
-            $( $variant($payload), )*
+            $( $stack($arg), )*
+            $( $draw($payload, Option<Spin>), )*
             $( $unit, )*
         }
 
@@ -36,7 +41,8 @@ macro_rules! paint_calls {
             #[cfg(test)]
             pub(crate) const fn kind(&self) -> &'static str {
                 match self {
-                    $( Self::$variant(_) => stringify!($variant), )*
+                    $( Self::$stack(_) => stringify!($stack), )*
+                    $( Self::$draw(..) => stringify!($draw), )*
                     $( Self::$unit => stringify!($unit), )*
                 }
             }
@@ -44,7 +50,8 @@ macro_rules! paint_calls {
             /// Pushes this call into `sink` through the required half; see [`PaintCapture::replay`].
             fn replay_into(&self, sink: &mut impl PaintSink) {
                 match self {
-                    $( Self::$variant(payload) => sink.$method(*payload), )*
+                    $( Self::$stack(arg) => sink.$stack_method(*arg), )*
+                    $( Self::$draw(payload, spin) => sink.$draw_method(*payload, *spin), )*
                     $( Self::$unit => sink.$unit_method(), )*
                 }
             }
@@ -52,8 +59,13 @@ macro_rules! paint_calls {
 
         impl PaintSink for PaintCapture {
             $(
-                fn $method(&mut self, payload: $payload) {
-                    self.calls.push(PaintCall::$variant(payload));
+                fn $stack_method(&mut self, arg: $arg) {
+                    self.calls.push(PaintCall::$stack(arg));
+                }
+            )*
+            $(
+                fn $draw_method(&mut self, payload: $payload, spin: Option<Spin>) {
+                    self.calls.push(PaintCall::$draw(payload, spin));
                 }
             )*
             $(
@@ -68,6 +80,7 @@ macro_rules! paint_calls {
 paint_calls! {
     PushClip(PushClipPayload) => push_clip,
     PushTransform(TranslateScale) => push_transform,
+    --
     Fill(DrawClosedPayload<ClosedFill>) => fill,
     Shadow(DrawShadowPayload) => shadow,
     Text(DrawTextPayload) => text,
@@ -117,21 +130,21 @@ pub(crate) mod internals {
 
         pub(crate) fn as_text(&self) -> Option<&DrawTextPayload> {
             match self {
-                Self::Text(payload) => Some(payload),
+                Self::Text(payload, _) => Some(payload),
                 _ => None,
             }
         }
 
         pub(crate) fn as_stroke(&self) -> Option<&DrawStrokePayload> {
             match self {
-                Self::Stroke(payload) => Some(payload),
+                Self::Stroke(payload, _) => Some(payload),
                 _ => None,
             }
         }
 
         pub(crate) fn as_image(&self) -> Option<&DrawClosedPayload<ClosedImage>> {
             match self {
-                Self::Image(payload) => Some(payload),
+                Self::Image(payload, _) => Some(payload),
                 _ => None,
             }
         }

@@ -9,7 +9,7 @@ use crate::host::harness::Harness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::ui::Ui;
@@ -102,7 +102,7 @@ fn off_surface_first_seen_node_skips_prev_insert() {
         // `Panel::transform` applies to the body, so the chrome lands wholly off a 200×200 surface.
         Panel::canvas()
             .id(WidgetId::from_hash("outer"))
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .transform(TranslateScale::from_translation(Vec2::new(500.0, 500.0)))
             .show(ui, |ui| {
                 Panel::hstack()
@@ -116,7 +116,7 @@ fn off_surface_first_seen_node_skips_prev_insert() {
     assert!(
         !h.frames()
             .damage()
-            .prev
+            .prev()
             .contains_key(&WidgetId::from_hash("off")),
         "Vacant + off-surface paint_rect must not seed a prev entry — \
          hashmap insert + raw_rects push are both wasted work for a \

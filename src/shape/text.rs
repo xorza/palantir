@@ -3,13 +3,10 @@
 use crate::primitives::layout::align::Align;
 use crate::primitives::math::domain::{self, vec2};
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::text::interned_str::InternedStr;
+use crate::primitives::text::text_input::TextInput;
 use crate::shape::PaintedBy;
 use crate::shape::draw::Draw;
 use crate::shape::sealed;
-use crate::text::font_family::FontFamily;
-use crate::text::font_slant::FontSlant;
-use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::wrap::TextWrap;
 use glam::Vec2;
@@ -18,10 +15,11 @@ use glam::Vec2;
 /// alpha linear, is its paint ([`Ui::add_shape`](crate::Ui::add_shape)).
 #[derive(Clone, Debug)]
 #[must_use]
-pub struct TextShape {
+pub struct TextShape<'a> {
     /// `None`: the encoder places the glyph bbox in the owner's padded inner rect via `align`. `Some(origin)`: the widget owns positioning (bbox origin is `owner.min + origin`, `align`'s placement axes ignored), as TextEdit does for scroll offsets.
     pub(crate) local_origin: Option<Vec2>,
-    pub(crate) text: InternedStr,
+    /// Copied into the record pass's arena where it records, unless a handle of that pass.
+    pub(crate) text: TextInput<'a>,
     /// The face and metrics to shape in, one named type mirrored by [`ShapeRecord::Text`](crate::shape::record::ShapeRecord::Text).
     pub(crate) font: GlyphFont,
     pub(crate) wrap: TextWrap,
@@ -31,8 +29,8 @@ pub struct TextShape {
     pub(crate) align: Align,
 }
 
-impl TextShape {
-    pub(super) const fn new(text: InternedStr, font: GlyphFont) -> Self {
+impl<'a> TextShape<'a> {
+    pub(super) const fn new(text: TextInput<'a>, font: GlyphFont) -> Self {
         Self {
             local_origin: None,
             text,
@@ -46,7 +44,7 @@ impl TextShape {
     ///
     /// # Panics
     ///
-    /// Panics unless `origin` is an [offset](crate::widget::domain::offset).
+    /// Panics unless `origin` is an [offset](crate::widget::domain::is_offset).
     #[track_caller]
     pub const fn at_origin(mut self, origin: Vec2) -> Self {
         self.local_origin = Some(vec2::offset(origin));
@@ -61,34 +59,16 @@ impl TextShape {
 
     /// Where the run sits inside its owner. Unread once
     /// [`Self::at_origin`] takes placement over.
-    pub const fn align(mut self, a: Align) -> Self {
-        self.align = a;
-        self
-    }
-
-    /// Font family, over the one the run's font names.
-    pub const fn family(mut self, family: FontFamily) -> Self {
-        self.font.family = family;
-        self
-    }
-
-    /// Which weight to shape at, on the CSS 1–1000 scale, over the one the run's font names.
-    pub const fn weight(mut self, weight: FontWeight) -> Self {
-        self.font.weight = weight;
-        self
-    }
-
-    /// Font slant, over the one the run's font names.
-    pub const fn slant(mut self, slant: FontSlant) -> Self {
-        self.font.slant = slant;
+    pub fn align(mut self, a: impl Into<Align>) -> Self {
+        self.align = a.into();
         self
     }
 }
 
-impl PaintedBy<RgbaF32> for TextShape {}
+impl PaintedBy<RgbaF32> for TextShape<'_> {}
 
 /// A text run inked in a color.
-impl sealed::DrawWith<RgbaF32> for TextShape {
+impl sealed::DrawWith<RgbaF32> for TextShape<'_> {
     type Prepared = RgbaF32;
 
     fn prepare(paint: RgbaF32) -> RgbaF32 {
@@ -97,7 +77,7 @@ impl sealed::DrawWith<RgbaF32> for TextShape {
 
     /// # Panics
     ///
-    /// Unless the ink is a [color](crate::widget::domain::color).
+    /// Unless the ink is a [color](crate::widget::domain::is_color).
     #[track_caller]
     fn check(&self, color: &RgbaF32) {
         let _ = domain::color(*color);

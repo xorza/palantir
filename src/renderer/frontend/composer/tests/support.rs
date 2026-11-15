@@ -23,9 +23,11 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::line_style::{LineCap, LineJoin};
 use crate::renderer::frontend::composer::tests::curve_builder::CurveBuilder;
 use crate::renderer::frontend::composer::tests::quad_builder::QuadBuilder;
-use crate::renderer::frontend::paint_sink::PaintSink;
+use crate::renderer::frontend::paint_sink::{DrawAnimation, PaintSink};
 use crate::renderer::frontend::payload::draw_closed_payload::DrawClosedPayload;
-use crate::renderer::frontend::payload::draw_closed_payload::closed_effect::ClosedEffect;
+use crate::renderer::frontend::payload::draw_closed_payload::closed_effect::{
+    ClosedEffect, EffectRead,
+};
 use crate::renderer::frontend::payload::draw_closed_payload::closed_image::{
     ClosedImage, GpuViewDraw,
 };
@@ -35,11 +37,11 @@ use crate::renderer::frontend::payload::draw_stroke_payload::{
     DrawStrokePayload, PolylinePath, StrokePath,
 };
 use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
-use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::spin::Spin;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::draw_run::Lane;
+use crate::renderer::render_buffer::gpu_fill::GpuFill;
 use crate::renderer::render_buffer::image_flags::ImageFlags;
 use crate::shape::geometry::box_geometry::PlacedBox;
 use crate::shape::geometry::closed_geometry::PlacedClosed;
@@ -142,9 +144,8 @@ pub(super) fn inked_text(buf: &mut PaintCapture, r: Rect, ink: Spacing) {
                 key: TextShapeKey::fixture(),
                 span: Span::default(),
             },
-            spin: None,
         },
-        1.0,
+        DrawAnimation::STILL,
     );
 }
 
@@ -171,9 +172,9 @@ pub(super) fn run(
 pub(super) fn run_with_texture_cap(
     build: impl FnOnce(&mut PaintCapture, &mut RecordStore),
     display: &Display,
-    max_texture_dim: u32,
+    max_texture_dimension: u32,
 ) -> RenderBuffer {
-    let limit = TextureLimit::from_device(NonZeroU32::new(max_texture_dim).unwrap());
+    let limit = TextureLimit::from_device(NonZeroU32::new(max_texture_dimension).unwrap());
     run_in(ComposeRig::with_texture_limit(*display, limit), build)
 }
 
@@ -201,12 +202,12 @@ fn run_in(
 /// The payload the encoder builds for a `GpuView`: full arranged rect, untinted, full UV, default
 /// sampling, its view owned by one widget at epoch 0.
 pub(super) fn gpu_view_payload(rect: Rect, handle: TextureId) -> DrawClosedPayload<ClosedImage> {
-    DrawClosedPayload::new(
-        PlacedClosed::Box(PlacedBox {
+    DrawClosedPayload {
+        geometry: PlacedClosed::Box(PlacedBox {
             rect,
             corners: Corners::ZERO,
         }),
-        ClosedImage {
+        paint: ClosedImage {
             rect,
             uv_min: Vec2::ZERO,
             uv_size: Vec2::ONE,
@@ -218,7 +219,7 @@ pub(super) fn gpu_view_payload(rect: Rect, handle: TextureId) -> DrawClosedPaylo
                 epoch: 0,
             }),
         },
-    )
+    }
 }
 
 /// [`gpu_view_payload`] with no view: a registered image's draw.
@@ -230,7 +231,7 @@ pub(super) fn image_payload(rect: Rect, handle: TextureId) -> DrawClosedPayload<
 
 /// Draw a `GpuView` at `rect`: [`gpu_view_payload`], full alpha.
 pub(super) fn gpu_view(buf: &mut PaintCapture, rect: Rect, handle: TextureId) {
-    buf.draw(gpu_view_payload(rect, handle), 1.0);
+    buf.draw(gpu_view_payload(rect, handle), DrawAnimation::STILL);
 }
 
 /// The payload the encoder builds for an icon: fit-resolved logical rect, identity, tint.
@@ -241,9 +242,8 @@ pub(super) fn icon(buf: &mut PaintCapture, r: Rect, icon: IconRef) {
             icon,
             tint: RgbaF32::WHITE.to_f16(),
             desaturate: false,
-            spin: None,
         },
-        1.0,
+        DrawAnimation::STILL,
     );
 }
 
@@ -257,9 +257,8 @@ pub(super) fn mesh(buf: &mut PaintCapture, bbox: Rect) {
             tint: RgbaF32::WHITE.to_f16(),
             vertices: Span::new(0, 3),
             idxs: Span::new(0, 3),
-            spin: None,
         },
-        1.0,
+        DrawAnimation::STILL,
     );
 }
 
@@ -361,7 +360,6 @@ impl<'a> TestPolyline<'a> {
                     join,
                 }),
                 origin,
-                spin,
                 fill: GpuFill {
                     color: color.to_f16(),
                     ..GpuFill::default()
@@ -369,7 +367,7 @@ impl<'a> TestPolyline<'a> {
                 width,
                 cap,
             },
-            1.0,
+            DrawAnimation { alpha: 1.0, spin },
         );
     }
 }
@@ -396,19 +394,16 @@ pub(super) fn effect(b: &mut PaintCapture, r: Rect) {
                 rect: r,
                 corners: Corners::ZERO,
             }),
-            spin: None,
             paint: ClosedEffect {
                 effect: EffectId(0),
                 params: Span::new(0, 2),
                 images: Span::new(0, 0),
-                backdrop: None,
-                stage: None,
-                outside: None,
+                read: EffectRead::Color { outside: None },
                 opacity: 1.0,
                 time: 0.0,
             },
         },
-        1.0,
+        DrawAnimation::STILL,
     );
 }
 
@@ -419,7 +414,6 @@ pub(super) fn image(b: &mut PaintCapture, r: Rect) {
                 rect: r,
                 corners: Corners::ZERO,
             }),
-            spin: None,
             paint: ClosedImage {
                 rect: r,
                 uv_min: Vec2::ZERO,
@@ -430,6 +424,6 @@ pub(super) fn image(b: &mut PaintCapture, r: Rect) {
                 view: None,
             },
         },
-        1.0,
+        DrawAnimation::STILL,
     );
 }

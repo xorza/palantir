@@ -38,7 +38,7 @@ fn the_frame_group_binds_once_a_pass() {
             Stroke::new(RgbaF32::WHITE, 2.0),
         );
     });
-    let counts = host.ui().gpu_pass_stats().last_pass_counts();
+    let counts = host.ui().gpu_pass_stats().pass_counts;
     assert_eq!(counts.draws, 3, "{counts:?}");
     assert_eq!(counts.pipelines, 3, "{counts:?}");
     assert_eq!(
@@ -79,7 +79,7 @@ fn shadows_and_text_share_one_atlas_group() {
             }
         });
     });
-    let counts = host.ui().gpu_pass_stats().last_pass_counts();
+    let counts = host.ui().gpu_pass_stats().pass_counts;
     assert_eq!(
         counts.draws, 6,
         "a shadow, a fill and a run, twice: {counts:?}"

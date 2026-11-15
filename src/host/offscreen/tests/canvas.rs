@@ -10,7 +10,7 @@ use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::mesh::Mesh;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::layout::clip_mode::ClipMode;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::SizeSpec;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::paint::Paint;
@@ -33,7 +33,7 @@ use std::cell::Cell;
 fn scene(ui: &mut Ui, tile: RgbaF32, mesh: &Mesh) {
     Panel::canvas()
         .id_salt("canvas")
-        .size((Sizing::FILL, Sizing::FILL))
+        .size(SizeSpec::FILL)
         .show(ui, |ui| {
             Block::new()
                 .id_salt("shadowed")
@@ -83,10 +83,10 @@ fn scene(ui: &mut Ui, tile: RgbaF32, mesh: &Mesh) {
 fn a_canvas_paints_what_the_backbuffer_paints() {
     let gpu = headless_test_gpu();
     let mut mesh = Mesh::with_capacity(3, 3);
-    let a = mesh.vertex(Vec2::new(40.3, 50.7), RgbaF32::hex(0xff5e44));
-    let b = mesh.vertex(Vec2::new(55.6, 33.1), RgbaF32::hex(0xfacc15));
-    let c = mesh.vertex(Vec2::new(68.9, 57.45), RgbaF32::hex(0x46c46c));
-    mesh.triangle(a, b, c);
+    let a = mesh.add_vertex(Vec2::new(40.3, 50.7), RgbaF32::hex(0xff5e44));
+    let b = mesh.add_vertex(Vec2::new(55.6, 33.1), RgbaF32::hex(0xfacc15));
+    let c = mesh.add_vertex(Vec2::new(68.9, 57.45), RgbaF32::hex(0x46c46c));
+    mesh.add_triangle(a, b, c);
     let host = |traffic, out| {
         let mut host = OffscreenHost::builder(gpu.handles())
             .shaper(TextShaper::test_mono())
@@ -115,9 +115,9 @@ fn a_canvas_paints_what_the_backbuffer_paints() {
         let backbuffer_paint = on_backbuffer.frame(backbuffer_target.as_target(), &mut app);
         let canvas_paint = on_canvas.frame(canvas_target.as_target(), &mut app);
         let drawn_paint = drawn_out.frame(drawn_target.as_target(), &mut app);
-        assert_eq!(backbuffer_paint.paint(), want, "frame {frame}");
-        assert_eq!(canvas_paint.paint(), want, "frame {frame}");
-        assert_eq!(drawn_paint.paint(), want, "frame {frame}");
+        assert_eq!(backbuffer_paint.paint, want, "frame {frame}");
+        assert_eq!(canvas_paint.paint, want, "frame {frame}");
+        assert_eq!(drawn_paint.paint, want, "frame {frame}");
         let painted = backbuffer_target.read_back();
         assert!(
             painted == canvas_target.read_back(),

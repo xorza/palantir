@@ -1,5 +1,5 @@
 //! Describing a run to probe: the input half of the public text-geometry
-//! surface. Layout already measures and paints [`Shape::Text`](crate::widget::Shape);
+//! surface. Layout already measures and paints a [`TextShape`](crate::TextShape);
 //! this and [`probe`](crate::text::probe) add the other direction, mapping byte
 //! offsets to positions inside a run, for carets, clicks and selections.
 
@@ -11,9 +11,9 @@ use crate::text::request::TextShapeRequest;
 use crate::text::shaping_font::ShapingFont;
 use crate::text::wrap::TextWrap;
 
-/// One text run, described as [`Shape::Text`](crate::widget::Shape) describes one.
+/// One text run, described as a [`TextShape`](crate::TextShape) describes one.
 ///
-/// **The spelling mirrors `Shape::Text` on purpose:** a probe describing a
+/// **The spelling mirrors `TextShape` on purpose:** a probe describing a
 /// different run than the paint misplaces the caret invisibly, so the fields
 /// match one for one. Paint-only fields (`color`, `local_origin`) are absent;
 /// they never change shaping.
@@ -21,7 +21,7 @@ use crate::text::wrap::TextWrap;
 pub struct TextRun<'a> {
     /// The characters to shape.
     pub text: &'a str,
-    /// The face and metrics the run is shaped in: the [`GlyphFont`] `Shape::Text`
+    /// The face and metrics the run is shaped in: the [`GlyphFont`] a `TextShape`
     /// carries.
     pub font: GlyphFont,
     /// Whether the run breaks to the shaping width, and how.
@@ -31,7 +31,7 @@ pub struct TextRun<'a> {
     pub align: Align,
     /// The width the run is shaped against, or `None` for unbounded.
     ///
-    /// The one field `Shape::Text` lacks: a painted run's width comes from the
+    /// The one field `TextShape` lacks: a painted run's width comes from the
     /// arranged rect, so a probe must say which width it means (the inner width the
     /// run is laid out in).
     ///

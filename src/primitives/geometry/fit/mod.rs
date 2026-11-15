@@ -5,22 +5,27 @@ use crate::primitives::geometry::size::Size;
 use crate::primitives::math::domain::is_invisible;
 use glam::Vec2;
 
-/// How geometry of its own extent fills a rect: a point shape's points or an icon's artwork, with
-/// CSS `object-fit`'s names as [`ImageFit`](crate::ImageFit) has them, as WPF's `Stretch` scales
-/// a `Polygon`, a `Path` and an `Image`. A stroke's width and a triangle's corner radius do not
-/// scale, as WPF's stroke thickness does not.
+/// How content of its own extent fills a rect: an image's texels, an icon's artwork or a point
+/// shape's points, with CSS `object-fit`'s names, as WPF's `Stretch` scales a `Polygon`, a `Path`
+/// and an `Image` alike. A stroke's width and a triangle's corner radius do not scale, as WPF's
+/// stroke thickness does not. Each consumer keeps its own default: [`Self::Fill`] for an image,
+/// [`Self::Natural`] for a point shape. Refused: a second enum for images, whose `Natural`
+/// placed differently under the same name.
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Fit {
-    /// Unscaled, its coordinates from the rect's top-left: a point shape's points as given, an
-    /// icon's artwork from the corner. CSS `object-fit: none`, named for what it keeps.
+    /// Unscaled. Content with a size of its own, an image or an icon, centers in the rect, as
+    /// CSS `object-fit: none` and Flutter's `BoxFit.none` center it; a point shape's points stay as
+    /// given, as WPF's `Stretch.None` leaves a `Polygon`. Named for what it keeps, as `None` would
+    /// shadow `Option::None`.
     Natural = 0,
     /// Each axis scaled to fill the rect exactly.
     Fill = 1,
     /// Scaled uniformly to fit inside the rect, centered.
     Contain = 2,
-    /// Scaled uniformly to cover the rect, centered; what passes the rect paints past it, and a
-    /// clipping ancestor crops it. Refused: a crop of its own, which no stroke or SDF draws.
+    /// Scaled uniformly to cover the rect, centered. An image crops to the rect by UV, as it has
+    /// texels to drop; a shape's or an icon's overflow paints past it, and a clipping ancestor crops
+    /// it. Refused: a crop of their own, which no stroke or SDF draws.
     Cover = 3,
 }
 
@@ -113,13 +118,21 @@ impl Fit {
         }
     }
 
-    /// The rect artwork of `size` rasterizes to in `rect`.
+    /// The rect artwork of `size` rasterizes to in `rect`: [`Self::Natural`] centers it, as an
+    /// image's does, and the scaling fits place it as [`Self::map`] places points.
     pub(crate) fn place_artwork(self, rect: Rect, size: Size) -> Rect {
         let extent = Rect {
             min: Vec2::ZERO,
             size,
         };
-        self.map(extent, rect).apply_rect(extent)
+        let map = match self {
+            Self::Natural => FitMap {
+                offset: rect.center() - extent.center(),
+                scale: Vec2::ONE,
+            },
+            Self::Fill | Self::Contain | Self::Cover => self.map(extent, rect),
+        };
+        map.apply_rect(extent)
     }
 }
 

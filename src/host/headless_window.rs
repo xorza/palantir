@@ -14,11 +14,13 @@ use crate::host::system_preferences::SystemPreferences;
 use crate::host::wake_signal::WakeSignal;
 use crate::renderer::row_table::RowTable;
 use crate::text::font_scope::FontScope;
+use crate::theme::color_scheme::ColorScheme;
 use crate::ui::app::App;
-use crate::ui::frame_report::FrameReport;
+use crate::ui::frame_report::RecordedFrame;
 use crate::ui::window_frames::WindowFrames;
 use crate::ui::window_frames::present::{CpuFrame, FrameSpec, TargetKey};
 use crate::window::window_commands::{WindowCommand, WindowCommands};
+use std::num::NonZeroU32;
 use std::sync::Arc;
 use std::time::Duration;
 use std::vec::Drain;
@@ -34,8 +36,8 @@ pub(super) struct HeadlessWindow {
     pub(super) frames: WindowFrames,
     wake: Arc<WakeSignal>,
     pub(super) system_scale: SystemScale,
-    pub(super) refresh_millihertz: Option<u32>,
-    /// What the host reports of the system's settings, which [`Self::set_preferences`] writes.
+    pub(super) refresh_millihertz: Option<NonZeroU32>,
+    /// What the host reports of the system's settings, which the `set_system_*` setters write.
     preferences: SystemPreferences,
     /// The window commands the last frame recorded.
     commands: WindowCommands,
@@ -47,7 +49,7 @@ pub(super) struct HeadlessWindow {
 pub(super) struct HeadlessSettings {
     pub(super) options: HostOptions,
     pub(super) system_scale: SystemScale,
-    pub(super) refresh_millihertz: Option<u32>,
+    pub(super) refresh_millihertz: Option<NonZeroU32>,
     pub(super) preferences: SystemPreferences,
 }
 
@@ -108,12 +110,12 @@ impl HeadlessWindow {
         app: &mut impl App,
         target: TargetKey,
         now: Duration,
-    ) -> FrameReport {
+    ) -> RecordedFrame {
         self.take_wake();
-        let report = self.frames.record(self.spec(target, now), app);
+        let recorded = self.frames.record(self.spec(target, now), app);
         self.frames.finish_unpainted();
         record_window_commands(&mut self.frames, &mut self.commands);
-        report
+        recorded
     }
 
     /// [`Self::record_frame`] that also builds the draw list, on the CPU, and paints nothing.
@@ -122,15 +124,15 @@ impl HeadlessWindow {
         app: &mut impl App,
         canvas: ComposeCanvas<'_>,
         now: Duration,
-    ) -> FrameReport {
+    ) -> RecordedFrame {
         let ComposeCanvas { target, rows } = canvas;
-        let report = self.record_frame(app, target, now);
-        if let Some(plan) = report.plan {
+        let recorded = self.record_frame(app, target, now);
+        if let Some(plan) = recorded.plan {
             // With no backend to count display frames, each compose is one.
             rows.advance_to(rows.frame() + 1);
             self.frames.compose(&mut self.cpu.frontend, rows, plan);
         }
-        report
+        recorded
     }
 
     /// One frame of `app` at `now` that paints on `canvas` while its device lives.
@@ -139,16 +141,16 @@ impl HeadlessWindow {
         app: &mut impl App,
         canvas: HeadlessCanvas<'_>,
         now: Duration,
-    ) -> FrameReport {
+    ) -> RecordedFrame {
         let HeadlessCanvas { device, target } = canvas;
         self.take_wake();
         let spec = self.spec(TargetKey::of(target), now);
-        let CpuFrame { report, built } = device.frame(&mut self.cpu, &mut self.frames, spec, app);
+        let CpuFrame { recorded, built } = device.frame(&mut self.cpu, &mut self.frames, spec, app);
         if device.will_submit(&built) {
             device.submit(&mut self.frames, target, built);
         }
         record_window_commands(&mut self.frames, &mut self.commands);
-        report
+        recorded
     }
 
     /// A frame opens by taking the waker's wake.
@@ -191,10 +193,32 @@ impl HeadlessWindow {
         self.commands.drain()
     }
 
-    /// Report the system's settings as `change` leaves them; a change asks the window for a
-    /// frame.
-    pub(super) fn set_preferences(&mut self, change: impl FnOnce(&mut SystemPreferences)) {
-        change(&mut self.preferences);
+    /// Report `scheme` as the system's; `None` reports none.
+    pub(super) fn set_system_color_scheme(&mut self, scheme: Option<ColorScheme>) {
+        self.preferences.color_scheme = scheme;
+        self.apply_preferences();
+    }
+
+    /// Report the system as asking for less motion, or not.
+    pub(super) fn set_system_motion_reduced(&mut self, reduced: bool) {
+        self.preferences.set_motion_reduced(reduced);
+        self.apply_preferences();
+    }
+
+    /// Report the system as asking for less transparency, or not.
+    pub(super) fn set_system_transparency_reduced(&mut self, reduced: bool) {
+        self.preferences.set_transparency_reduced(reduced);
+        self.apply_preferences();
+    }
+
+    /// Report the system's power-saver mode as on, or not.
+    pub(super) fn set_system_power_reduced(&mut self, reduced: bool) {
+        self.preferences.set_power_reduced(reduced);
+        self.apply_preferences();
+    }
+
+    /// Write the reported settings; a change asks the window for a frame.
+    fn apply_preferences(&mut self) {
         if self.preferences.apply(&self.cpu.resources) {
             self.frames.ui_mut().request_repaint();
         }

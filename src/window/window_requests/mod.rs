@@ -2,10 +2,17 @@
 
 use crate::primitives::geometry::rect::Rect;
 use crate::window::cursor_icon::CursorIcon;
+use crate::window::error::ScreenshotRefusal;
 use crate::window::screenshot::{ScreenshotId, ScreenshotRequest};
 use crate::window::window_commands::WindowCommands;
 use crate::window::window_output::WindowOutput;
 use crate::window::window_token::WindowToken;
+
+/// How many screenshots a window owes at once, asked and not painted or on their way back from
+/// the device, so asks faster than the one a frame that lands cannot grow its readbacks without
+/// bound: each holds up to a whole window's pixels, 31.6 MiB at 4K. Eight leave room for a burst of
+/// regions in one frame over the frames a readback takes.
+pub(crate) const MAX_PENDING_SCREENSHOTS: usize = 8;
 
 /// Deferred recorder output consumed by the window host after a frame, split by what a host can do about it: `commands` are one-shot edges a host that cannot service must say so rather than swallow; `levels` are retained settings, so a host with nothing to apply them leaves the app's view intact. Only `vsync` reads back through `Ui`.
 #[derive(Debug, Default)]
@@ -18,6 +25,10 @@ pub(crate) struct WindowRequests {
     /// The images this frame asked for, one per distinct region; `WindowFrames` takes them once the
     /// frame is recorded.
     pub(crate) screenshots: Vec<ScreenshotRequest>,
+    /// The asks of earlier frames the window still owes an image: asked and not painted, or on
+    /// their way back from the device. `WindowFrames` states it each time it takes this frame's
+    /// asks; an image that lands or an ask dropped since leaves it high until then, never low.
+    pub(crate) screenshots_owed: usize,
     /// The id the next new ask takes; `None` before the first.
     next_screenshot: Option<ScreenshotId>,
 }
@@ -25,16 +36,22 @@ pub(crate) struct WindowRequests {
 impl WindowRequests {
     /// Ask for an image of the logical `region`, already clamped to the window and not empty.
     /// Asking a region again in the same frame, as a replayed record pass does, returns the same
-    /// id.
-    pub(crate) fn ask_screenshot(&mut self, region: Rect) -> ScreenshotId {
+    /// id; a new ask past [`MAX_PENDING_SCREENSHOTS`] owed is refused.
+    pub(crate) fn ask_screenshot(
+        &mut self,
+        region: Rect,
+    ) -> Result<ScreenshotId, ScreenshotRefusal> {
         debug_assert!(!region.is_paint_empty(), "an empty region asks nothing");
         if let Some(asked) = self.screenshots.iter().find(|asked| asked.region == region) {
-            return asked.id;
+            return Ok(asked.id);
+        }
+        if self.screenshots_owed + self.screenshots.len() >= MAX_PENDING_SCREENSHOTS {
+            return Err(ScreenshotRefusal::Full);
         }
         let id = self.next_screenshot.unwrap_or(ScreenshotId::FIRST);
         self.next_screenshot = Some(id.next());
         self.screenshots.push(ScreenshotRequest { region, id });
-        id
+        Ok(id)
     }
 
     /// Open a record pass: the levels a pass asserts afresh, the cursor and the IME area, start

@@ -21,9 +21,14 @@ pub struct RequestedGpu {
 }
 
 impl RequestedGpu {
-    /// Open one with no surface attached, taking the `optional` features that
-    /// are available. Blocks the calling thread until the driver answers.
-    pub fn headless(
+    /// Open one with no surface attached. Blocks the calling thread until the driver answers.
+    pub fn headless(power_preference: PowerPreference) -> Result<Self, GpuRequestError> {
+        Self::headless_with(power_preference, wgpu::Features::empty())
+    }
+
+    /// [`Self::headless`], taking the `optional` features that are available, as the crate's
+    /// benches ask for the timing ones.
+    pub(crate) fn headless_with(
         power_preference: PowerPreference,
         optional: wgpu::Features,
     ) -> Result<Self, GpuRequestError> {

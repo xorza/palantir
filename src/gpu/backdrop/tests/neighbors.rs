@@ -2,20 +2,20 @@
 //! rounded clip around one, more stale backdrops than a partial frame holds, and results past the
 //! atlas.
 
+use crate::cascade::blur_plan::BlurPlan;
 use crate::gpu::backdrop::tests::{
     Expect, Reference, SIZE, assert_blurred, assert_within_a_step, window,
 };
 use crate::gpu::test_gpu::headless_test_gpu;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
 use crate::primitives::paint::paint::Paint;
 use crate::renderer::backdrop_captures::BackdropCaptures;
 use crate::shape::Shape;
-use crate::shape::paint::blur_plan::BlurPlan;
 use crate::ui::Ui;
 use crate::ui::frame_report::FramePaint;
 use crate::widget_core::configure::Configure;
@@ -42,7 +42,7 @@ fn stripes(ui: &mut Ui, width: u32) {
 fn canvas(ui: &mut Ui, body: impl FnOnce(&mut Ui)) {
     Panel::canvas()
         .id_salt("backdrop-neighbors")
-        .size((Sizing::FILL, Sizing::FILL))
+        .size(SizeSpec::FILL)
         .show(ui, body);
 }
 
@@ -218,7 +218,7 @@ fn more_stale_backdrops_than_a_partial_frame_holds_paint_whole() {
         (0, (FramePaint::Partial, 2)),
         (9, (FramePaint::Full, 9)),
     ] {
-        let paint = window.frame(&mut scene(changed)).paint();
+        let paint = window.frame(&mut scene(changed)).paint;
         let what = format!("{changed} changed");
         assert_eq!((paint, window.backdrop_blurs()), want, "{what}");
         assert_within_a_step(&window.read_back(), &reference.paint(scene(changed)), &what);
@@ -260,7 +260,7 @@ fn a_result_past_the_atlas_grows_it_and_keeps_the_rest() {
         (true, false, (FramePaint::Partial, 0), "dot"),
         (true, true, (FramePaint::Partial, 1), "grown"),
     ] {
-        let painted = window.frame(&mut scene(dot, wide)).paint();
+        let painted = window.frame(&mut scene(dot, wide)).paint;
         assert_eq!((painted, window.backdrop_blurs()), want, "{what}");
         assert_within_a_step(
             &window.read_back(),

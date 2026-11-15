@@ -1,14 +1,14 @@
 //! One backdrop of a frame: what its capture reads and where its result comes from.
 
+use crate::cascade::blur_plan::BlurPlan;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::identity::backdrop_key::BackdropKey;
 use crate::primitives::packed::fill_axis::FillAxis;
-use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
+use crate::primitives::paint::fill_kind::FillKind;
 use crate::primitives::paint::lut_row::LutRow;
-use crate::renderer::frontend::payload::gpu_fill::GpuFill;
-use crate::shape::paint::blur_plan::BlurPlan;
+use crate::renderer::render_buffer::gpu_fill::GpuFill;
 
 /// What a backdrop's result is: the backdrop, the screen its capture reads, its blur, and the
 /// texels the result covers. The backdrop ledger decides it before a frame encodes, and the
@@ -101,13 +101,13 @@ impl BackdropSource {
 
 #[cfg(test)]
 pub(crate) mod internals {
+    use crate::cascade::blur_plan::BlurPlan;
     use crate::primitives::geometry::urect::URect;
     use crate::primitives::identity::backdrop_key::BackdropKey;
     use crate::primitives::identity::widget_id::WidgetId;
     use crate::renderer::render_buffer::backdrop_row::{
         BackdropCapture, BackdropRow, BackdropSource, MaterialLook,
     };
-    use crate::shape::paint::blur_plan::BlurPlan;
 
     impl BackdropRow {
         /// Backdrop `i` of the owner `"backdrop"`, reading `footprint` blurred by `plan`, which

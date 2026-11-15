@@ -1,7 +1,6 @@
 //! The windowed host on Windows.
 
-use std::mem;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
@@ -31,9 +30,11 @@ use windows::core::{Error, GUID, PCWSTR, w};
 use winit::event_loop::EventLoopBuilder;
 use winit::window::WindowAttributes;
 
-use crate::common::sync::MutexExt as _;
 use crate::host::winit::input::wheel_steps::WheelSteps;
+use crate::host::winit::platform::handoff::Handoff;
 use crate::primitives::reduction::Reduction;
+
+mod handoff;
 
 /// `WHEEL_PAGESCROLL`: the lines-per-notch value that means a page per notch. The value is the
 /// Win32 headers'; `windows` does not declare it.
@@ -129,17 +130,9 @@ const WINDOW_CLASS: PCWSTR = w!("PalantirPowerSaverWatch");
 /// performance slider.
 #[derive(Debug)]
 pub(super) struct PowerSaverWatch {
-    window: Arc<Mutex<WatchWindow>>,
+    window: Arc<Handoff<WindowHandle>>,
     /// The window's thread; `None` where no thread started, which leaves power full.
     thread: Option<JoinHandle<()>>,
-}
-
-/// The watch's window, as its thread opens it and the watch's drop closes it.
-#[derive(Debug)]
-enum WatchWindow {
-    Opening,
-    Open(WindowHandle),
-    Closed,
 }
 
 /// The watch's window handle, which the watch's drop posts its close to from another thread.
@@ -207,7 +200,7 @@ impl PowerSaverWatch {
     /// Follow the saver mode: `on_change` runs on the watch's thread with the mode as the
     /// registrations answer, which Windows does at once, then with each change.
     pub(super) fn follow(on_change: impl Fn(Reduction) + Send + Sync + 'static) -> Self {
-        let window = Arc::new(Mutex::new(WatchWindow::Opening));
+        let window = Arc::new(Handoff::new());
         let held = Arc::clone(&window);
         let thread = thread::Builder::new()
             .name("palantir-power-saver".to_owned())
@@ -224,8 +217,7 @@ impl PowerSaverWatch {
 
 impl Drop for PowerSaverWatch {
     fn drop(&mut self) {
-        let held = mem::replace(&mut *self.window.lock_unpoisoned(), WatchWindow::Closed);
-        if let WatchWindow::Open(WindowHandle(window)) = held {
+        if let Some(WindowHandle(window)) = self.window.close() {
             // SAFETY: the window lives until its thread reads this message.
             unsafe { PostMessageW(Some(window), WM_CLOSE, WPARAM(0), LPARAM(0)) }.ok();
         }
@@ -237,15 +229,14 @@ impl Drop for PowerSaverWatch {
 
 /// Open the window, register both settings to it, and report each value until the watch closes
 /// the window.
-fn follow_settings(held: &Mutex<WatchWindow>, on_change: &impl Fn(Reduction)) -> Result<(), Error> {
+fn follow_settings(
+    held: &Handoff<WindowHandle>,
+    on_change: &impl Fn(Reduction),
+) -> Result<(), Error> {
     let window = open_window()?;
-    {
-        let mut held = held.lock_unpoisoned();
-        if matches!(*held, WatchWindow::Closed) {
-            // SAFETY: this thread made the window.
-            return unsafe { DestroyWindow(window) };
-        }
-        *held = WatchWindow::Open(WindowHandle(window));
+    if held.file(WindowHandle(window)).is_err() {
+        // SAFETY: this thread made the window.
+        return unsafe { DestroyWindow(window) };
     }
     let registrations = SaverSetting::ALL.map(|setting| {
         let guid = setting.guid();
@@ -515,7 +506,7 @@ mod tests {
         );
         assert_eq!(SaverSetting::of(GUID::zeroed()), None);
         for (energy_saver, battery_saver, power) in [
-            (0, 0, Reduction::Full),
+            (0, 0, Reduction::Unreduced),
             (1, 0, Reduction::Reduced),
             (2, 0, Reduction::Reduced),
             (0, 1, Reduction::Reduced),

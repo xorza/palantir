@@ -44,7 +44,11 @@ fn record(ui: &mut Ui, id: WidgetId, editable: bool) -> Shown {
 /// A harness whose display does not snap, so rects compare exactly.
 fn harness() -> Harness {
     let surface = UVec2::new(300, 100);
-    Harness::builder(surface).mono().pixel_snap(false).build()
+    Harness::builder(surface)
+        .mono()
+        .pixel_snap(false)
+        .build()
+        .with_fixture_font_size()
 }
 
 /// Double-click the label `id` and run the frame its editor opens in.
@@ -102,7 +106,7 @@ fn the_label_and_its_editor_take_one_rect() {
             let idle = h.rect(id).expect("label arranged");
             heights.push(idle.size.h);
             if style.is_some() {
-                let text = h.rect(EditableLabel::label_id(id)).expect("text arranged");
+                let text = h.rect(id.with("label")).expect("text arranged");
                 assert_eq!(text.min.x, idle.min.x, "{name}: text on the leading edge");
             }
             let hit = idle.center();
@@ -236,6 +240,27 @@ fn a_caller_opens_the_editor() {
     assert!(!h.frame_value(in_disabled));
     assert!(!EditableLabel::is_editing(h.ui(), id));
     assert_eq!(h.ui().focus(), None);
+
+    // A focused label disabled on this very frame, before the cascade knows it, takes no F2.
+    let mut h = harness();
+    h.frame(|ui| {
+        record(ui, id, true);
+    });
+    h.ui_mut().set_focus(id);
+    h.frame(|ui| {
+        record(ui, id, true);
+    });
+    assert_eq!(h.ui().focus(), Some(id), "premise: the label holds focus");
+    h.key(Key::F2);
+    let opened = h.frame_passes(|ui| {
+        disabled(ui);
+        EditableLabel::is_editing(ui, id)
+    });
+    assert_eq!(
+        opened.count_where(|opened| *opened),
+        0,
+        "no pass opens the editor"
+    );
 }
 
 /// Escape closes the editor and commits nothing, and the next session starts from the text again.
@@ -289,7 +314,7 @@ fn a_label_that_is_not_editable_stays_a_label() {
     h.key(Key::Enter);
     assert_eq!(h.frame_value(|ui| record(ui, id, false)), Shown::default());
     assert!(
-        h.rect(EditableLabel::label_id(id)).is_some(),
+        h.rect(id.with("label")).is_some(),
         "the label stays a label"
     );
 }

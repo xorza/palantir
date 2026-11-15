@@ -2,9 +2,9 @@
 
 /// What happened, as an *edge*: something that became true this frame.
 ///
-/// **A second walk, not a projection of [`ButtonPhase`].** A widget's phase is one value per frame, so press-release-press collapses to the live press there; here the release still reports its click. Both read one `ReleaseKind::click`.
+/// **A second walk, not a projection of [`PointerButtonPhase`].** A widget's phase is one value per frame, so press-release-press collapses to the live press there; here the release still reports its click. Both read one `ReleaseKind::click`.
 ///
-/// [`ButtonPhase`]: crate::ButtonPhase
+/// [`PointerButtonPhase`]: crate::PointerButtonPhase
 ///
 /// **Edges only.** A drag's travel is a level, read off that widget's `Response`; reporting a delta here would duplicate it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

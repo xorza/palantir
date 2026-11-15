@@ -4,7 +4,8 @@
 use super::{at, list, square};
 use crate::gpu::atlas::Evictions;
 use crate::gpu::atlas::atlas_handle::{AtlasHandle, Placement};
-use crate::gpu::atlas::page_list::{DrainCount, Move, MoveBudget, PageList};
+use crate::gpu::atlas::page_list::move_budget::MoveBudget;
+use crate::gpu::atlas::page_list::{DrainCount, Move, PageList};
 use crate::gpu::atlas::page_slots::PageSlots;
 use crate::gpu::atlas::tenant::Tenant;
 use glam::{U16Vec2, UVec2};
@@ -20,7 +21,7 @@ fn insert(list: &mut PageList, n: usize, side: u32) -> Vec<AtlasHandle> {
     let mut evictions = Evictions::default();
     (0..n)
         .map(|_| {
-            list.allocate(Tenant::Glyphs, square(side), 0, &mut evictions)
+            list.allocate(Tenant::Glyphs.owner(), square(side), 0, &mut evictions)
                 .unwrap()
                 .handle
         })
@@ -41,7 +42,7 @@ fn decay(list: &mut PageList, frame: u64, mut budget: MoveBudget) -> Decayed {
     let moves = list.moves().to_vec();
     list.forget_moves();
     Decayed {
-        evicted: evictions.queues[Tenant::Glyphs as usize].clone(),
+        evicted: evictions.handles(Tenant::Glyphs),
         moves,
     }
 }
@@ -272,7 +273,7 @@ fn a_drain_that_finds_no_room_stalls_until_its_count_moves() {
     let first = insert(&mut list, 4, 32);
     let mut evictions = Evictions::default();
     let thin = list
-        .allocate(Tenant::Glyphs, UVec2::new(8, 48), 0, &mut evictions)
+        .allocate(Tenant::Glyphs.owner(), UVec2::new(8, 48), 0, &mut evictions)
         .unwrap()
         .handle;
     assert_eq!(at(&list, thin).0, 1);
@@ -358,7 +359,7 @@ fn no_drain_starts_while_moves_wait_for_the_commit() {
 fn a_shrink_opens_the_smallest_page_its_items_pack_into() {
     let mut evictions = Evictions::default();
     let mut insert = |list: &mut PageList, w: u32, h: u32| {
-        list.allocate(Tenant::Glyphs, UVec2::new(w, h), 0, &mut evictions)
+        list.allocate(Tenant::Glyphs.owner(), UVec2::new(w, h), 0, &mut evictions)
             .unwrap()
             .handle
     };

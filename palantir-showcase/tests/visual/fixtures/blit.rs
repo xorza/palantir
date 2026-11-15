@@ -9,13 +9,11 @@ use crate::visual_rig::VisualRig;
 /// The expander scene's text and disclosure arrows: antialiased edges expose a nearly-right blit (sampling through the linear group-0 sampler once lifted dark background from 16 to 26).
 #[test]
 fn a_target_that_takes_no_copy_presents_the_same_pixels() {
-    let copied = VisualRig::new()
-        .size(expander::SURFACE)
+    let copied = VisualRig::new(expander::SURFACE)
         .settled_frame(2, expander::scene)
         .image;
-    let drawn = VisualRig::new()
+    let drawn = VisualRig::new(expander::SURFACE)
         .without_copy_dst()
-        .size(expander::SURFACE)
         .settled_frame(2, expander::scene)
         .image;
     goldens::assert_same("blit_drawn_not_copied", &drawn, &copied);

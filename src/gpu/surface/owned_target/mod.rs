@@ -32,26 +32,13 @@ impl OwnedTarget {
     /// Panics unless each side of `spec.size` is in `1..=` the device's largest 2D texture, as
     /// wgpu would panic deep inside on a bad extent.
     pub fn new(gpu: &Gpu, spec: TargetSpec<'_>) -> Self {
-        let TargetSpec {
-            label,
-            size,
-            format,
-            usage,
-        } = spec;
-        let max = gpu.max_texture_dim().get();
+        let size = spec.size;
+        let max = gpu.max_texture_dimension().get();
         assert!(
             size.min_element() > 0 && size.max_element() <= max,
             "a target's size is 1..={max} physical pixels per side, got {size}",
         );
-        let texture = texel::texture_2d(
-            gpu,
-            TargetSpec {
-                label,
-                size,
-                format,
-                usage,
-            },
-        );
+        let texture = spec.texture(gpu);
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
         Self {
             texture,
@@ -127,10 +114,10 @@ impl OwnedTarget {
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
     use crate::gpu::device::gpu_wait::GpuWait;
-    use crate::gpu::surface::capture::TexelOrder;
+    use crate::gpu::surface::capture::ChannelOrder;
     use crate::gpu::surface::owned_target::OwnedTarget;
     use crate::gpu::surface::texel_readback::TexelReadback;
-    use image::RgbaImage;
+    use crate::primitives::paint::image::Image;
 
     impl OwnedTarget {
         /// The pixels, copied back from the device and waited for, in RGBA order: a BGRA texture is
@@ -141,14 +128,11 @@ pub(crate) mod internals {
         ///
         /// For a texture not in 8-bit RGBA or BGRA, or made without `COPY_SRC`, and when the device
         /// is lost before the copy maps or does not finish it.
-        pub fn read_back(&self) -> RgbaImage {
+        pub fn read_back(&self) -> Image {
             const COPIED: &str = "the read-back copy comes back";
             let format = self.texture.format();
-            let order = TexelOrder::of(format);
-            assert!(
-                order != TexelOrder::Blit,
-                "a read-back of a {format:?} texture"
-            );
+            let order = ChannelOrder::of(format)
+                .unwrap_or_else(|| panic!("a read-back of a {format:?} texture"));
             let size = self.size();
             let mut pixels = Vec::new();
             let waited = TexelReadback::new(&self.gpu, &self.texture).read(
@@ -158,8 +142,7 @@ pub(crate) mod internals {
             );
             assert_eq!(waited, GpuWait::Done, "{COPIED}");
             order.to_rgba(&mut pixels);
-            RgbaImage::from_raw(size.x, size.y, pixels)
-                .expect("one RGBA pixel per texel of the texture")
+            Image::from_srgba8(size, pixels).expect("one RGBA pixel per texel of the texture")
         }
 
         pub(crate) const fn view(&self) -> &wgpu::TextureView {

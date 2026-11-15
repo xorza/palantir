@@ -24,6 +24,29 @@ pub struct TargetSpec<'a> {
     pub usage: wgpu::TextureUsages,
 }
 
+impl TargetSpec<'_> {
+    /// A single-sample 2D texture of one mip level, as `spec` describes it: the shape every texture
+    /// of the backend but the blur's mip chain takes.
+    pub(crate) fn texture(self, gpu: &Gpu) -> wgpu::Texture {
+        let TargetSpec {
+            label,
+            size,
+            format,
+            usage,
+        } = self;
+        gpu.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some(label),
+            size: extent(size),
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format,
+            usage,
+            view_formats: &[],
+        })
+    }
+}
+
 /// The texel format of a [`RenderTarget`](crate::RenderTarget); opaque, only compared and keyed
 /// on.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -31,10 +54,10 @@ pub struct TargetFormat(wgpu::TextureFormat);
 
 impl TargetFormat {
     /// 8-bit sRGB RGBA, what an image file holds: the format of the crate's own window targets.
-    pub(crate) const RGBA8_SRGB: Self = Self(wgpu::TextureFormat::Rgba8UnormSrgb);
+    pub const RGBA8_SRGB: Self = Self(wgpu::TextureFormat::Rgba8UnormSrgb);
 
     /// 16-bit float RGBA, which keeps linear values past 8 bits.
-    pub(crate) const RGBA16_FLOAT: Self = Self(wgpu::TextureFormat::Rgba16Float);
+    pub const RGBA16_FLOAT: Self = Self(wgpu::TextureFormat::Rgba16Float);
 
     /// Name a format directly, under [`RenderTarget::new`](crate::RenderTarget::new)'s rule.
     ///
@@ -61,8 +84,19 @@ impl TargetFormat {
             )
     }
 
-    pub(crate) const fn get(self) -> wgpu::TextureFormat {
+    /// The wgpu format.
+    pub const fn get(self) -> wgpu::TextureFormat {
         self.0
+    }
+
+    /// A format the crate already holds to the rule: a target's or a swapchain's, which
+    /// [`Self::new`] checked or the surface configuration chose from sRGB and float formats.
+    pub(crate) fn held(format: wgpu::TextureFormat) -> Self {
+        debug_assert!(
+            Self::encodes_linear(format),
+            "a held format is sRGB or float"
+        );
+        Self(format)
     }
 }
 
@@ -87,25 +121,4 @@ pub(crate) const fn origin(at: UVec2) -> wgpu::Origin3d {
         y: at.y,
         z: 0,
     }
-}
-
-/// A single-sample 2D texture of one mip level, as `spec` describes it: the shape every texture
-/// of the backend but the blur's mip chain takes.
-pub(crate) fn texture_2d(gpu: &Gpu, spec: TargetSpec<'_>) -> wgpu::Texture {
-    let TargetSpec {
-        label,
-        size,
-        format,
-        usage,
-    } = spec;
-    gpu.device.create_texture(&wgpu::TextureDescriptor {
-        label: Some(label),
-        size: extent(size),
-        mip_level_count: 1,
-        sample_count: 1,
-        dimension: wgpu::TextureDimension::D2,
-        format,
-        usage,
-        view_formats: &[],
-    })
 }

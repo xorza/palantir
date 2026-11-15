@@ -1,5 +1,5 @@
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::primitives::input::interaction::scroll_delta::ScrollDelta;
+use crate::primitives::input::interaction::wheel_delta::WheelDelta;
 use crate::primitives::input::scroll_targets::{ScrollTargets, WheelDelivery};
 use glam::Vec2;
 
@@ -17,12 +17,11 @@ fn route_splits_by_axis_and_moves_only_a_pure_vertical_turn() {
     );
     let row = WidgetId::from_hash("row");
     let page = WidgetId::from_hash("page");
-    let lanes = |pixels: [f32; 2], lines: [f32; 2]| ScrollDelta {
+    let lanes = |pixels: [f32; 2], lines: [f32; 2]| WheelDelta {
         pixels: Vec2::from(pixels),
         lines: Vec2::from(lines),
         notches: Vec2::from(lines) * 0.5,
         pages: Vec2::from(lines) * 0.25,
-        ..ScrollDelta::NONE
     };
     let at = |target, pixels: [f32; 2], lines: [f32; 2]| {
         Some(WheelDelivery {
@@ -109,9 +108,9 @@ fn route_splits_by_axis_and_moves_only_a_pure_vertical_turn() {
         assert_eq!(targets.route(lanes(pixels, lines)), expected, "{label}");
     }
     // A setting of no lines still delivers the turn, which a wheel zoom reads.
-    let no_lines = ScrollDelta {
+    let no_lines = WheelDelta {
         notches: Vec2::new(0.0, 1.0),
-        ..ScrollDelta::NONE
+        ..WheelDelta::ZERO
     };
     assert_eq!(
         split.route(no_lines),

@@ -5,12 +5,12 @@ use glam::UVec2;
 
 use crate::gpu::test_gpu::headless_test_gpu;
 use crate::host::harness::Harness;
-use crate::host::harness::harness_builder::Depth;
+use crate::host::harness::harness_builder::HarnessDepth;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::brush::Brush;
-use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
+use crate::primitives::paint::brush::gradient::Gradient;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
 use crate::primitives::paint::paint::Paint;
@@ -54,20 +54,20 @@ fn reduced_transparency_records_every_material_by_its_fallback() {
     let mut h = Harness::mono(SURFACE);
     h.prime(2, record);
     assert!(filtered(&h), "full transparency");
-    assert!(!h.ui().is_transparency_reduced());
+    assert!(!h.ui().reductions().transparency.is_reduced());
 
     h.set_system_transparency_reduced(true);
     h.frame(record);
-    assert!(h.ui().is_transparency_reduced());
-    assert!(h.ui().system_transparency_reduced());
+    assert!(h.ui().reductions().transparency.is_reduced());
+    assert!(h.ui().system_reductions().transparency.is_reduced());
     assert!(!filtered(&h), "the system's ask");
 
     h.ui_mut().set_preferences(UiPreferences {
-        transparency: Preference::Fixed(Reduction::Full),
+        transparency: Preference::Fixed(Reduction::Unreduced),
         ..UiPreferences::default()
     });
     h.frame(record);
-    assert!(!h.ui().is_transparency_reduced());
+    assert!(!h.ui().reductions().transparency.is_reduced());
     assert!(filtered(&h), "a pick of full over the system's ask");
 
     h.set_system_transparency_reduced(false);
@@ -96,7 +96,7 @@ fn a_material_draws_as_a_plain_box_of_its_fallback_while_transparency_is_reduced
     let paint = |reduced: bool, under: bool, draw: &dyn Fn(&mut Ui)| {
         let mut h = Harness::builder(UVec2::new(32, 16))
             .mono()
-            .depth(Depth::gpu(gpu.handles()))
+            .depth(HarnessDepth::gpu(gpu.handles()))
             .build();
         h.set_system_transparency_reduced(reduced);
         h.prime(2, |ui| {
@@ -108,7 +108,7 @@ fn a_material_draws_as_a_plain_box_of_its_fallback_while_transparency_is_reduced
             }
             draw(ui);
         });
-        (h.read_back().get_pixel(12, 8).0, h.backdrop_blurs())
+        (h.read_back().texel(UVec2::new(12, 8)), h.backdrop_blurs())
     };
     let at = || Shape::rect().at(Rect::new(4.0, 4.0, 16.0, 8.0));
     let reduced = |fallback: Brush| {
@@ -133,7 +133,7 @@ fn a_material_draws_as_a_plain_box_of_its_fallback_while_transparency_is_reduced
         plain(half_black),
         "a translucent one"
     );
-    let ramp: Brush = LinearGradient::horizontal([
+    let ramp: Brush = Gradient::horizontal([
         RgbaF32::new(1.0, 0.0, 0.0, 1.0),
         RgbaF32::new(0.0, 0.0, 1.0, 1.0),
     ])

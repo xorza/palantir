@@ -16,7 +16,7 @@ use crate::theme::tooltip::TooltipTheme;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::configure::ThemeDefaults;
+use crate::widget_core::configure::ConfigureDefaults;
 use crate::widget_core::overlay_scope::{Barrier, OverlayScope, OverlaySpec};
 use crate::widget_core::widget::{MaterialBox, Widget};
 use crate::widgets::text::Text;
@@ -125,9 +125,9 @@ impl<'a> Tooltip<'a> {
 
         // The observation, not the reaction: a disabled trigger is never hovered,
         // which `when_disabled` is for.
-        let pointer_over = self.trigger.state.pointer_over;
-        let trigger_disabled = self.trigger.state.disabled;
-        let trigger_rect = self.trigger.state.rect;
+        let pointer_over = self.trigger.pointer_over;
+        let trigger_disabled = self.trigger.disabled;
+        let trigger_rect = self.trigger.rect;
         let active_trigger =
             pointer_over && !self.label.is_empty() && (!trigger_disabled || self.when_disabled);
 
@@ -235,22 +235,6 @@ impl Tooltip<'_> {
     pub const fn chrome(mut self, chrome: Chrome) -> Self {
         chrome.validate();
         self.chrome = Some(chrome);
-        self
-    }
-
-    /// Paint `chrome` unless the caller set one, for a wrapper theming a widget
-    /// after the caller's setters.
-    ///
-    /// # Panics
-    ///
-    /// Panics unless `chrome` holds the kinds [`Chrome`]
-    /// lists.
-    #[track_caller]
-    pub const fn default_chrome(mut self, chrome: Chrome) -> Self {
-        chrome.validate();
-        if self.chrome.is_none() {
-            self.chrome = Some(chrome);
-        }
         self
     }
 }

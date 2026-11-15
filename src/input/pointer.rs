@@ -1,7 +1,7 @@
 //! [`Pointer`]: where the pointer is, what it routes to, and each button's capture.
 
 use crate::cascade::Cascade;
-use crate::input::capture::{Capture, DRAG_THRESHOLD, PressDrag};
+use crate::input::capture::Capture;
 use crate::input::target_scroll_delta::TargetScrollDelta;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::interaction::scroll_delta::ScrollDelta;
@@ -13,7 +13,7 @@ use glam::Vec2;
 #[derive(Debug, Default)]
 pub(super) struct Pointer {
     pub(super) pos: Option<Vec2>,
-    pub(super) hovered: Option<WidgetId>,
+    pub(super) under_pointer: Option<WidgetId>,
     /// Topmost scroll-sensing widgets under the pointer.
     pub(super) scroll_targets: ScrollTargets,
     /// Topmost `Sense::PINCH` widget under the pointer; separate from scroll so a widget can pan
@@ -29,22 +29,13 @@ pub(super) struct Pointer {
 
 impl Pointer {
     /// Move to `p`, carrying every held press's travel; a press whose travel crosses
-    /// [`DRAG_THRESHOLD`] latches a drag, a right-drag's latch suppressing its click too, and
+    /// [`DRAG_THRESHOLD`](crate::input::capture::DRAG_THRESHOLD) latches a drag, a right-drag's latch suppressing its click too, and
     /// ends its multi-click run. Returns whether one latched.
     pub(super) fn move_to(&mut self, p: Vec2) -> bool {
         self.pos = Some(p);
         let mut latched = false;
         for cap in &mut self.captures {
-            if let Some(press) = &mut cap.press {
-                press.travel = p - press.origin;
-                if press.drag == PressDrag::None
-                    && press.travel.length_squared() >= DRAG_THRESHOLD * DRAG_THRESHOLD
-                {
-                    press.drag = PressDrag::Started;
-                    latched = true;
-                    cap.run = None;
-                }
-            }
+            latched |= cap.travel_to(p);
         }
         latched
     }
@@ -57,21 +48,21 @@ impl Pointer {
         &mut self.captures[b.idx()]
     }
 
-    /// The widget the pointer hovers: [`Self::hovered`], unless a held press of any button
+    /// The widget the pointer hovers: [`Self::under_pointer`], unless a held press of any button
     /// belongs to another widget, as a pointer capture holds every button's gesture (W3C Pointer
     /// Events, `setPointerCapture`). The one hover every reader reads.
-    pub(super) fn hover_target(&self) -> Option<WidgetId> {
-        let hovered = self.hovered?;
+    pub(super) fn hovered(&self) -> Option<WidgetId> {
+        let hovered = self.under_pointer?;
         self.captures
             .iter()
-            .all(|cap| cap.press.is_none_or(|press| press.target == hovered))
+            .all(|cap| cap.pressed_on().is_none_or(|target| target == hovered))
             .then_some(hovered)
     }
 
     /// Whether any button holds a live capture; a captured widget tracks the pointer wherever it
     /// is.
     pub(super) fn any_press(&self) -> bool {
-        self.captures.iter().any(|c| c.press.is_some())
+        self.captures.iter().any(Capture::is_pressed)
     }
 
     /// The scroll and zoom `target` took this frame.
@@ -100,11 +91,11 @@ impl Pointer {
     pub(super) fn retarget(&mut self, cascade: &Cascade) {
         if let Some(p) = self.pos {
             let hits = cascade.hit_test_targets(p);
-            self.hovered = hits.hover;
+            self.under_pointer = hits.hover;
             self.scroll_targets = hits.scroll;
             self.pinch_target = hits.pinch;
         } else {
-            self.hovered = None;
+            self.under_pointer = None;
             self.scroll_targets = ScrollTargets::default();
             self.pinch_target = None;
         }
@@ -114,13 +105,7 @@ impl Pointer {
     /// the deltas and the events.
     pub(super) fn end_frame(&mut self) {
         for cap in &mut self.captures {
-            cap.release = None;
-            if let Some(press) = &mut cap.press {
-                press.fresh = false;
-                if press.drag == PressDrag::Started {
-                    press.drag = PressDrag::Active;
-                }
-            }
+            cap.end_frame();
         }
         self.events.clear();
         self.target_deltas.clear();

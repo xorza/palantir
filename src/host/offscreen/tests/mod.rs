@@ -11,9 +11,10 @@ use crate::gpu::test_gpu::headless_test_gpu;
 use crate::host::headless_window::record_window_commands;
 use crate::internals::panic_probe;
 use crate::primitives::geometry::rect::Rect;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::SizeSpec;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::primitives::paint::material::Material;
 use crate::shape::Shape;
 use crate::ui::resources::UiResources;
@@ -27,7 +28,6 @@ use crate::window::vsync::Vsync;
 use crate::window::window_commands::WindowCommands;
 use crate::window::window_config::WindowConfig;
 use glam::UVec2;
-use image::{Rgba, imageops};
 
 /// The frames of this host's one window as it opens them, over `shared`, on a stream with no device.
 fn frames(token: WindowToken, shared: &UiResources) -> WindowFrames {
@@ -173,18 +173,18 @@ fn a_retained_partial_frame_repaints_the_target_in_place() {
     assert!(matches!(path.plan.damage, Damage::Partial(_)));
     let image = texture.read_back();
     assert_eq!(
-        *image.get_pixel(1, 1),
-        Rgba([255, 0, 0, 255]),
+        image.texel(UVec2::new(1, 1)),
+        SrgbaU8::rgb(255, 0, 0),
         "the damaged block"
     );
     assert_eq!(
-        *image.get_pixel(30, 6),
-        Rgba([0, 255, 0, 255]),
+        image.texel(UVec2::new(30, 6)),
+        SrgbaU8::rgb(0, 255, 0),
         "the kept marker"
     );
     assert_eq!(
-        *image.get_pixel(20, 2),
-        Rgba([0, 0, 0, 255]),
+        image.texel(UVec2::new(20, 2)),
+        SrgbaU8::rgb(0, 0, 0),
         "the kept clear"
     );
     assert_eq!(frame(&mut host), None, "a still frame");
@@ -267,7 +267,7 @@ fn a_retained_target_without_copies_captures_through_the_backbuffer() {
         move |ui: &mut Ui| {
             Panel::canvas()
                 .id_salt("uncopied")
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| {
                     ui.add_shape(
                         Shape::rect().at(Rect::new(8.0, 8.0, 4.0, 4.0)),
@@ -359,16 +359,19 @@ fn a_screenshot_request_carries_to_the_frame_that_paints_it() {
             .chrome(Chrome::new(RgbaF32::hex(0xd23f7a)))
             .show(ui);
         if ask {
-            asked.set(ui.request_screenshot(Some(Rect::new(20.0, 10.0, 30.0, 20.0))));
+            asked.set(
+                ui.request_screenshot(Some(Rect::new(20.0, 10.0, 30.0, 20.0)))
+                    .ok(),
+            );
         }
     };
 
     let large = gpu.target("palantir.offscreen.capture.large", UVec2::new(64, 48));
     let spec = host.spec(large.as_target());
     let mut asking = |ui: &mut Ui| scene(ui, true);
-    let CpuFrame { report, .. } = host.record(spec, &mut asking);
+    let CpuFrame { recorded, .. } = host.record(spec, &mut asking);
     assert!(
-        report.repaint_requested,
+        recorded.repaint_requested,
         "the unpainted request asks for a frame"
     );
 
@@ -385,8 +388,10 @@ fn a_screenshot_request_carries_to_the_frame_that_paints_it() {
     assert_eq!(shot.region(), Rect::new(20.0, 10.0, 12.0, 14.0));
     let image = shot.image();
     assert_eq!(image.size(), UVec2::new(12, 14));
-    let crop = imageops::crop_imm(&target, 20, 10, 12, 14).to_image();
-    assert_eq!(image.pixels, crop.into_raw());
+    assert_eq!(
+        *image,
+        target.cropped(UVec2::new(20, 10), UVec2::new(12, 14))
+    );
 }
 
 /// A carried request whose region the window shrank wholly past has no pixel to copy: the
@@ -402,7 +407,10 @@ fn a_carried_request_the_window_shrank_past_lands_nothing() {
     let large = gpu.target("palantir.offscreen.capture.large", UVec2::new(64, 48));
     let spec = host.spec(large.as_target());
     let mut asking = |ui: &mut Ui| {
-        asked.set(ui.request_screenshot(Some(Rect::new(40.0, 30.0, 10.0, 10.0))));
+        asked.set(
+            ui.request_screenshot(Some(Rect::new(40.0, 30.0, 10.0, 10.0)))
+                .ok(),
+        );
     };
     let _ = host.record(spec, &mut asking);
     let id = asked
@@ -437,7 +445,7 @@ fn the_system_facts_seed_at_build_and_change_by_setter() {
     let mut host = OffscreenHost::builder(gpu.handles())
         .shaper(TextShaper::test_mono())
         .system_scale(SystemScale::new(2.0).unwrap())
-        .refresh_millihertz(60_000)
+        .refresh_millihertz(NonZeroU32::new(60_000).unwrap())
         .system_color_scheme(ColorScheme::Light)
         .system_motion_reduced(true)
         .system_transparency_reduced(true)
@@ -449,12 +457,12 @@ fn the_system_facts_seed_at_build_and_change_by_setter() {
     let display = host.ui().display();
     assert_eq!(
         (display.system_scale, display.refresh_millihertz),
-        (SystemScale::new(2.0).unwrap(), Some(60_000))
+        (SystemScale::new(2.0).unwrap(), NonZeroU32::new(60_000))
     );
     assert_eq!(host.ui().system_color_scheme(), Some(ColorScheme::Light));
-    assert!(host.ui().is_motion_reduced());
-    assert!(host.ui().system_transparency_reduced());
-    assert!(host.ui().is_power_reduced());
+    assert!(host.ui().reductions().motion.is_reduced());
+    assert!(host.ui().system_reductions().transparency.is_reduced());
+    assert!(host.ui().reductions().power.is_reduced());
 
     host.set_system_scale(SystemScale::new(1.5).unwrap())
         .set_refresh_millihertz(None)
@@ -469,7 +477,34 @@ fn the_system_facts_seed_at_build_and_change_by_setter() {
         (SystemScale::new(1.5).unwrap(), None)
     );
     assert_eq!(host.ui().system_color_scheme(), None);
-    assert!(!host.ui().is_motion_reduced());
-    assert!(!host.ui().system_transparency_reduced());
-    assert!(!host.ui().is_power_reduced());
+    assert!(!host.ui().reductions().motion.is_reduced());
+    assert!(!host.ui().system_reductions().transparency.is_reduced());
+    assert!(!host.ui().reductions().power.is_reduced());
+}
+
+/// A [`Waker`](crate::Waker) wake shows on the offscreen host as on a harness: pending until a
+/// frame takes it, and a wait that returns at once while one is pending and times out while none
+/// is.
+#[test]
+fn a_waker_wake_is_pending_until_a_frame_takes_it() {
+    let gpu = headless_test_gpu();
+    let mut host = OffscreenHost::builder(gpu.handles())
+        .shaper(TextShaper::test_mono())
+        .time(OffscreenTime::Manual)
+        .build();
+    let texture = gpu.target("palantir.offscreen.wake", UVec2::new(8, 8));
+    host.frame(texture.as_target(), &mut |_: &mut Ui| {});
+    assert!(!host.has_pending_wake(), "nothing woke it yet");
+    assert!(
+        !host.wait_for_wake(Duration::ZERO),
+        "a wait with none pending times out"
+    );
+    host.ui().waker().wake();
+    assert!(host.has_pending_wake());
+    assert!(
+        host.wait_for_wake(Duration::ZERO),
+        "a pending wake ends the wait at once"
+    );
+    host.frame(texture.as_target(), &mut |_: &mut Ui| {});
+    assert!(!host.has_pending_wake(), "the frame took the wake");
 }

@@ -2,7 +2,8 @@ use crate::diagnostics::gpu_pass_stats::{BackdropTimes, BatchKind, GpuPassStats}
 use crate::gpu::device::device_requirements::DeviceRequirements;
 use crate::gpu::device::gpu_wait::GpuWait;
 use crate::gpu::frame::gpu_timings::query_tracer::{
-    BACKDROP_IDX, COPY_OUT_IDX, MAX_TIMESTAMPS, Publisher, QUERY_COUNT, QueryTracer, maps_landed,
+    BACKDROP_IDX, COPY_OUT_IDX, LAG_FRAMES, MAX_TIMESTAMPS, Publisher, QUERY_COUNT, QueryTracer,
+    maps_landed,
 };
 use crate::gpu::frame::main_segment::MainSegment;
 use crate::gpu::resource::map_state::MapState;
@@ -99,14 +100,14 @@ fn backdrops_publish_their_sums_or_clear() {
     let period_ns = 1.0;
     publisher(period_ns, &mut sink).backdrops(&bytes, 2);
     assert_eq!(
-        sink.last_backdrops(),
+        sink.backdrops,
         BackdropTimes {
             captures: Some(Duration::from_nanos(40)),
             blurs: Some(Duration::from_nanos(100)),
         }
     );
     publisher(period_ns, &mut sink).backdrops(&bytes, 0);
-    assert_eq!(sink.last_backdrops(), BackdropTimes::default());
+    assert_eq!(sink.backdrops, BackdropTimes::default());
 }
 
 #[test]
@@ -125,17 +126,22 @@ fn stats_publish_in_flag_declaration_order() {
 #[test]
 fn readback_waits_for_every_mapping() {
     let (idle, pending) = (MapState::new(), MapState::never_landing);
+
     let (mapped, failed) = (|| MapState::landed(true), || MapState::landed(false));
-    assert!(!maps_landed(&idle, &idle), "no map began");
-    assert!(maps_landed(&mapped(), &idle), "a slot with no statistics");
-    assert!(!maps_landed(&pending(), &idle));
+    assert!(!maps_landed(&idle, None), "no map began");
+    assert!(!maps_landed(&idle, Some(&mapped())), "no map began");
+    assert!(maps_landed(&mapped(), None), "a slot with no statistics");
+    assert!(!maps_landed(&pending(), None));
     assert!(
-        !maps_landed(&mapped(), &pending()),
+        !maps_landed(&mapped(), Some(&pending())),
         "the statistics still map"
     );
-    assert!(maps_landed(&mapped(), &mapped()));
-    assert!(maps_landed(&failed(), &mapped()), "a failure lands too");
-    assert!(maps_landed(&mapped(), &failed()));
+    assert!(maps_landed(&mapped(), Some(&mapped())));
+    assert!(
+        maps_landed(&failed(), Some(&mapped())),
+        "a failure lands too"
+    );
+    assert!(maps_landed(&mapped(), Some(&failed())));
 }
 
 /// A frame's pass time publishes two frames late: its queries resolve in the next frame, after
@@ -145,7 +151,7 @@ fn readback_waits_for_every_mapping() {
 #[test]
 fn a_frame_publishes_after_the_next_frame_resolved_it() {
     let test_gpu = test_gpu::headless_test_gpu();
-    let features = (test_gpu.device.features() & DeviceRequirements::GPU_TIMING_FEATURES)
+    let features = (test_gpu.device.features() & DeviceRequirements::GPU_STATS_FEATURES)
         .difference(wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES);
     if !features.contains(wgpu::Features::TIMESTAMP_QUERY) {
         return;
@@ -194,6 +200,61 @@ fn a_frame_publishes_after_the_next_frame_resolved_it() {
     );
 }
 
+/// On the frame path the queue's callbacks run inside a submit alone, so a slot is busy from its
+/// frame's write to the publish [`LAG_FRAMES`] frames later. Each frame here runs the callbacks of
+/// the work before it just ahead of its own submit, as that submit would, and every frame of a
+/// long run still finds a slot; the first publishes on frame [`LAG_FRAMES`]. Skipped on an adapter
+/// without timestamps.
+#[test]
+fn every_frame_is_measured_when_callbacks_land_only_in_a_submit() {
+    let test_gpu = test_gpu::headless_test_gpu();
+    let features = (test_gpu.device.features() & DeviceRequirements::GPU_STATS_FEATURES)
+        .difference(wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES);
+    if !features.contains(wgpu::Features::TIMESTAMP_QUERY) {
+        return;
+    }
+    let gpu = &*test_gpu;
+    let mut tracer = QueryTracer::new(gpu, gpu.queue.get_timestamp_period(), features);
+    let target = test_gpu.target("palantir.test.query_tracer", glam::UVec2::splat(64));
+    let mut sink = GpuPassStats::default();
+    let mut first_publish = None;
+    for frame in 0..4 * LAG_FRAMES {
+        let mut encoder = gpu
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        assert!(
+            tracer.pass_writes(MainSegment::Whole).is_some(),
+            "frame {frame} finds a slot"
+        );
+        drop(encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: None,
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: target.view(),
+                resolve_target: None,
+                depth_slice: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            timestamp_writes: tracer.pass_writes(MainSegment::Whole),
+            occlusion_query_set: None,
+            multiview_mask: None,
+        }));
+        tracer.finish(&mut encoder);
+        // What this frame's submit runs before it sends the frame: the callbacks of the work
+        // done before it.
+        assert_eq!(gpu.wait_until(&|| tracer.callbacks_landed()), GpuWait::Done);
+        gpu.queue.submit([encoder.finish()]);
+        tracer.after_submit(gpu, &mut sink);
+        if first_publish.is_none() && sink.last_pass().is_some() {
+            first_publish = Some(frame);
+        }
+    }
+    assert_eq!(first_publish, Some(LAG_FRAMES));
+}
+
 /// A main pass broken at a backdrop timestamps the break's start and end, and the segment between
 /// is of no kind: First opens at 0, Quads starts at 1, the break starts at 2 and ends at 3, Text
 /// starts at 4, and Last closes at 5. Each pass opens a statistics query. A break with no room
@@ -202,7 +263,7 @@ fn a_frame_publishes_after_the_next_frame_resolved_it() {
 #[test]
 fn a_break_between_passes_counts_in_no_kind() {
     let test_gpu = test_gpu::headless_test_gpu();
-    let features = test_gpu.device.features() & DeviceRequirements::GPU_TIMING_FEATURES;
+    let features = test_gpu.device.features() & DeviceRequirements::GPU_STATS_FEATURES;
     if !features.contains(wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES) {
         return;
     }
@@ -252,7 +313,7 @@ fn a_break_between_passes_counts_in_no_kind() {
         &[BatchKind::Quads, BatchKind::Text],
     );
     assert_eq!(
-        tracer.cursor.segment_kinds,
+        tracer.cursor.record.segment_kinds,
         [
             Some(BatchKind::Setup),
             Some(BatchKind::Quads),
@@ -262,9 +323,20 @@ fn a_break_between_passes_counts_in_no_kind() {
         ]
     );
     assert_eq!(tracer.cursor.next_idx, 6);
-    assert_eq!(tracer.cursor.stats_passes, 2);
+    assert_eq!(tracer.cursor.record.stats_passes, 2);
     assert!(!tracer.cursor.kinds_void);
+    let at = tracer.writing.expect("the frame is measured");
     tracer.finish(&mut encoder);
+    assert_eq!(
+        tracer.slots[at].record.segment_kinds.len(),
+        5,
+        "the slot took the record"
+    );
+    assert_eq!(tracer.slots[at].record.stats_passes(), Some(2));
+    assert!(
+        tracer.cursor.record.segment_kinds.is_empty() && tracer.cursor.record.stats_passes == 0,
+        "the cursor starts the next frame empty"
+    );
 
     segment(&mut encoder, &mut tracer, MainSegment::First, &[]);
     tracer.cursor.next_idx = MAX_TIMESTAMPS - 2;
@@ -277,6 +349,12 @@ fn a_break_between_passes_counts_in_no_kind() {
     );
     let at = tracer.writing.expect("the frame is measured");
     tracer.finish(&mut encoder);
-    assert!(tracer.slots[at].segment_kinds.iter().all(Option::is_none));
-    assert_eq!(tracer.slots[at].stats_passes, Some(3));
+    assert!(
+        tracer.slots[at]
+            .record
+            .segment_kinds
+            .iter()
+            .all(Option::is_none)
+    );
+    assert_eq!(tracer.slots[at].record.stats_passes(), Some(3));
 }

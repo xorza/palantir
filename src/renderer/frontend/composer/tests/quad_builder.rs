@@ -5,7 +5,7 @@ use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::paint::border::Border;
 use crate::primitives::paint::color::RgbaF32;
-use crate::renderer::frontend::paint_sink::{PaintPayload, PaintSink};
+use crate::renderer::frontend::paint_sink::{DrawAnimation, PaintSink};
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_closed_payload::DrawClosedPayload;
 use crate::renderer::frontend::payload::draw_closed_payload::closed_fill::ClosedFill;
@@ -70,15 +70,17 @@ impl QuadBuilder {
 
     pub(super) fn draw(self, buf: &mut PaintCapture) {
         buf.draw(
-            DrawClosedPayload::new(
-                PlacedClosed::Box(PlacedBox {
+            DrawClosedPayload {
+                geometry: PlacedClosed::Box(PlacedBox {
                     rect: self.rect,
                     corners: self.corners,
                 }),
-                ClosedFill::new(self.fill, LoweredBorder::lower(self.border)),
-            )
-            .turned(self.spin),
-            1.0,
+                paint: ClosedFill::new(self.fill, LoweredBorder::lower(self.border)),
+            },
+            DrawAnimation {
+                alpha: 1.0,
+                spin: self.spin,
+            },
         );
     }
 }

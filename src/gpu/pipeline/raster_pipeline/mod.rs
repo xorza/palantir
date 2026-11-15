@@ -9,7 +9,7 @@ use crate::gpu::atlas::page_slots::PageSlots;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::pipeline::atlas_binding::{ATLAS_GROUP, AtlasSlots};
 use crate::gpu::pipeline::clip_variant::{ClipVariant, Clipping};
-use crate::gpu::pipeline::instanced_pipeline::VariantTarget;
+use crate::gpu::pipeline::frame_variant::VariantTarget;
 use crate::gpu::pipeline::raster_pipeline::raster_quad::{
     FLAG_COLOR, FLAG_DESATURATE, FLAG_MASK, FLAG_PAGE, U_BITS, V_SHIFT,
 };
@@ -131,12 +131,12 @@ impl RasterPipeline {
         target: VariantTarget,
         draws: RasterDraws,
     ) {
-        let idx = slots_idx(target.slots);
-        let constants = target.slots.constants();
+        let idx = slots_idx(target.variant.slots);
+        let constants = target.variant.slots.constants();
         if draws != RasterDraws::None {
             variants.flat[idx].ensure(
                 gpu,
-                target.clipping,
+                target.variant.clipping,
                 &PipelineRecipe {
                     constants: &constants,
                     vertex_buffers: &[Some(RasterQuad::LAYOUT)],
@@ -153,7 +153,7 @@ impl RasterPipeline {
         if draws == RasterDraws::FlatAndSpun {
             variants.spun[idx].ensure(
                 gpu,
-                target.clipping,
+                target.variant.clipping,
                 &PipelineRecipe {
                     constants: &constants,
                     vertex_buffers: &[Some(SpunRasterQuad::LAYOUT)],

@@ -3,6 +3,7 @@
 use crate::common::non_max::NonMaxU16;
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::scroll_axes::ScrollAxes;
+use std::marker::PhantomData;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) enum LayoutMode {
@@ -18,12 +19,27 @@ pub(crate) enum LayoutMode {
     Scrollbars(ScrollbarsDefId),
 }
 
-/// Index into `Tree::grid_defs`; a type per side table, so a grid index can't reach the scrollbar table.
+/// An index into one of `Tree`'s side tables, a def too large for the 16 bits `LayoutMode` packs;
+/// typed by its `Table`, so a grid index can't reach the scrollbar table.
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub(crate) struct GridDefId(NonMaxU16);
+pub(crate) struct TableIdx<Table>(NonMaxU16, PhantomData<Table>);
 
-impl GridDefId {
+/// The table of `Tree::grid_defs`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub(crate) struct GridDefs;
+
+/// The table of `Tree::scrollbar_defs`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub(crate) struct ScrollbarsDefs;
+
+/// Index into `Tree::grid_defs`.
+pub(crate) type GridDefId = TableIdx<GridDefs>;
+
+/// Index into `Tree::scrollbar_defs`.
+pub(crate) type ScrollbarsDefId = TableIdx<ScrollbarsDefs>;
+
+impl<Table: Copy> TableIdx<Table> {
     pub(crate) const fn to_raw(self) -> u16 {
         NonMaxU16::to_raw(Some(self.0))
     }
@@ -31,7 +47,7 @@ impl GridDefId {
     /// The inverse of [`Self::to_raw`]; `None` for 0, which no id packs to.
     pub(crate) const fn from_raw(raw: u16) -> Option<Self> {
         match NonMaxU16::from_raw(raw) {
-            Some(idx) => Some(Self(idx)),
+            Some(idx) => Some(Self(idx, PhantomData)),
             None => None,
         }
     }
@@ -41,45 +57,12 @@ impl GridDefId {
     /// Panics past [`NonMaxU16::LAST`], at the caller's site.
     #[track_caller]
     pub(crate) fn from_idx(idx: usize) -> Self {
-        Self(NonMaxU16::index(idx))
+        Self(NonMaxU16::from_idx(idx), PhantomData)
     }
 }
 
-impl From<GridDefId> for usize {
-    fn from(value: GridDefId) -> Self {
-        value.0.idx()
-    }
-}
-
-/// Index into `Tree::scrollbar_defs`, a side table as the def exceeds the 16 bits `LayoutMode` packs.
-#[repr(transparent)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub(crate) struct ScrollbarsDefId(NonMaxU16);
-
-impl ScrollbarsDefId {
-    pub(crate) const fn to_raw(self) -> u16 {
-        NonMaxU16::to_raw(Some(self.0))
-    }
-
-    /// The inverse of [`Self::to_raw`]; `None` for 0, which no id packs to.
-    pub(crate) const fn from_raw(raw: u16) -> Option<Self> {
-        match NonMaxU16::from_raw(raw) {
-            Some(idx) => Some(Self(idx)),
-            None => None,
-        }
-    }
-
-    /// # Panics
-    ///
-    /// Panics past [`NonMaxU16::LAST`], at the caller's site.
-    #[track_caller]
-    pub(crate) fn from_idx(idx: usize) -> Self {
-        Self(NonMaxU16::index(idx))
-    }
-}
-
-impl From<ScrollbarsDefId> for usize {
-    fn from(value: ScrollbarsDefId) -> Self {
+impl<Table> From<TableIdx<Table>> for usize {
+    fn from(value: TableIdx<Table>) -> Self {
         value.0.idx()
     }
 }

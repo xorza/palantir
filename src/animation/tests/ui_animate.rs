@@ -99,7 +99,7 @@ fn animate_with_snap_spec_snaps_and_skips_repaint() {
             }
         ]
     );
-    assert!(!passes.report().repaint_requested);
+    assert!(!passes.recorded().repaint_requested);
     assert_eq!(h.animation_row_count::<f32>(), 0);
 }
 
@@ -166,10 +166,7 @@ fn widget_look_animate_resolves_components_and_falls_back() {
             shadow: Shadow::NONE,
         },
     };
-    let look = WidgetLook {
-        chrome: chrome.clone(),
-        text: TextStyleOverrides::NONE,
-    };
+    let look = WidgetLook::new(chrome.clone());
     let fallback = TextStyle::stock(ColorScheme::Dark);
 
     let captured: Cell<Option<AnimatedLook>> = Cell::new(None);
@@ -206,16 +203,13 @@ fn widget_look_animate_resolves_components_and_falls_back() {
     );
 
     // Retargeting the fill allocates one `AnimatedLook` row.
-    let look2 = WidgetLook {
-        chrome: Chrome {
-            paint: Paint {
-                fill: RgbaF32::hex(0xff0000).into(),
-                ..chrome.paint.clone()
-            },
-            ..chrome
+    let look2 = WidgetLook::new(Chrome {
+        paint: Paint {
+            fill: RgbaF32::hex(0xff0000).into(),
+            ..chrome.paint.clone()
         },
-        text: TextStyleOverrides::NONE,
-    };
+        ..chrome
+    });
     let _ = h.at(Duration::from_millis(32)).frame(|ui| {
         let target = look2.to_animated(fallback);
         let _ = ui.animate(
@@ -352,8 +346,18 @@ fn reduced_motion_and_a_hidden_span_snap_every_transition() {
         "reduced power snaps a transition that follows the system"
     );
     for (system_reduced, power, preference, role) in [
-        (true, false, Preference::Fixed(Reduction::Full), decorative),
-        (false, true, Preference::Fixed(Reduction::Full), decorative),
+        (
+            true,
+            false,
+            Preference::Fixed(Reduction::Unreduced),
+            decorative,
+        ),
+        (
+            false,
+            true,
+            Preference::Fixed(Reduction::Unreduced),
+            decorative,
+        ),
         (true, false, Preference::System, MotionRole::Essential),
         (false, true, Preference::System, MotionRole::Essential),
     ] {
@@ -399,7 +403,7 @@ fn a_look_follows_a_theme_change_and_fades_a_state_change() {
             let theme = Rc::clone(ui.theme());
             let plan = theme
                 .button
-                .plan(&response.state, Selection::Unselected, theme.text);
+                .plan(&response, Selection::Unselected, theme.text);
             let want = plan.target.clone();
             let look = leaf.wear(ui, plan);
             leaf.record(ui, Some(&look.chrome), |_| {});
@@ -414,7 +418,9 @@ fn a_look_follows_a_theme_change_and_fades_a_state_change() {
         ColorScheme::Light => ColorScheme::Dark,
         ColorScheme::Dark => ColorScheme::Light,
     };
-    h.ui_mut().set_theme(shown, Theme::stock(other)).unwrap();
+    h.ui_mut()
+        .set_scheme_theme(shown, Theme::stock(other))
+        .unwrap();
     let (look, want) = wear(h.advance(Duration::from_millis(16)));
     assert_eq!(look, want, "a theme change is followed at once");
 

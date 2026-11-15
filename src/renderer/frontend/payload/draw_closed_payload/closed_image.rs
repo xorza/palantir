@@ -8,6 +8,7 @@ use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::draw_closed_payload::{
     ClosedPaintPayload, DrawClosedPayload,
 };
+use crate::renderer::frontend::payload::spin::Spin;
 use crate::renderer::render_buffer::image_flags::ImageFlags;
 use crate::shape::geometry::closed_geometry::PlacedClosed;
 use glam::Vec2;
@@ -60,7 +61,7 @@ impl ClosedPaintPayload for ClosedImage {
             || (self.handle.0 == 0 && self.view.is_none())
     }
 
-    fn paint(draw: DrawClosedPayload<Self>, sink: &mut impl PaintSink) {
-        sink.image(draw);
+    fn paint(draw: DrawClosedPayload<Self>, spin: Option<Spin>, sink: &mut impl PaintSink) {
+        sink.image(draw, spin);
     }
 }

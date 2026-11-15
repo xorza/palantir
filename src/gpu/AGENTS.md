@@ -139,6 +139,9 @@ Facts and sources: `.notes/research/2026-11-12-atlas-pools.md` and
   reads its placement at the lookup that draws it, so a drain needs no tenant's help; only an
   eviction moves a handle's generation. Every tenant drops what the pool evicted at the end of the
   submit and after a purge, as a window decides what its backdrops hold before its next submit.
+  An item carries a tag its tenant allocates it under, the slot of the tenant's entry for it, and
+  an eviction hands the tag back, as WebRender's `CacheEntry::user_data`, so no tenant keeps a map
+  from handle to entry; the tenant drops the entry where its slot still holds the evicted handle.
 - **A list binds up to four pages together, the page in the instance**, as Skia's
   `kMaxMultitexturePages`, so a draw never splits by page; a closed page binds a 1 × 1 stand-in.
   The first page doubles from its first edge to the page edge; past it the list adds pages.
@@ -163,8 +166,10 @@ Facts and sources: `.notes/research/2026-11-12-atlas-pools.md` and
   shading. Cost: a table texel errs half an 8-bit step more, which the bake's test bounds.
 - **An item past half a page takes a scratch texture of its own, on Skia's `GetApproxSize`
   ladder, reused within twice its area as Chromium's `ResourcePool`, expired after an expiry
-  window.** Only per-draw tenants take one. Refused: exact sizes, which make a texture each
-  frame of a growing animation.
+  window.** Only per-draw tenants take one. Its bound is the large items a window draws, past the
+  list's soft budget, as each texture backs one drawn item and an idle one goes; the app's frame
+  sets how many. Refused: exact sizes, which make a texture each frame of a growing animation; a
+  hard cap that refuses an item, which would leave a backdrop the frame draws blank.
 - **A backdrop's composite binds the one texture its result lies in**, a page or a scratch
   texture, so a draw splits where that texture changes, as WebRender binds each batch's
   textures: the composite reads one texture, as before the pool. Refused: the pages and a scratch

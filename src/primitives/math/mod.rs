@@ -2,7 +2,7 @@
 //! hashing, numeric conversions, and the NaN screen.
 
 pub(crate) mod animatable;
-pub mod domain;
+pub(crate) mod domain;
 pub(crate) mod float_hash;
 pub(crate) mod lerp;
 pub(crate) mod libm_ext;

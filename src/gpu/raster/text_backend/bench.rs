@@ -14,14 +14,15 @@ use crate::bench::kind::{Kind, Scale};
 use crate::common::counters::CounterSet;
 use crate::gpu::atlas::atlas_format::{AtlasFormat, PerFormat};
 use crate::gpu::atlas::atlas_textures::AtlasTextures;
-use crate::gpu::atlas::page_list::{MoveBudget, PageListConfig};
+use crate::gpu::atlas::page_list::PageListConfig;
+use crate::gpu::atlas::page_list::move_budget::MoveBudget;
 use crate::gpu::atlas::row_texture::RowTexture;
 use crate::gpu::atlas::{AtlasPool, PoolConfig};
 use crate::gpu::bench_gpu::{BenchGpu, TARGET_FORMAT, Timing};
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::pipeline::atlas_binding::{AtlasGroup, AtlasSlots};
 use crate::gpu::pipeline::clip_variant::Clipping;
-use crate::gpu::pipeline::instanced_pipeline::VariantTarget;
+use crate::gpu::pipeline::frame_variant::FrameVariant;
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
 use crate::gpu::pipeline::raster_pipeline::{RasterDraws, RasterPipeline, RasterVariants};
 use crate::gpu::pipeline::viewport_push::ViewportPush;
@@ -61,7 +62,7 @@ const CHURN_IDX_STRIDE: u32 = 37;
 
 const ROWS: u32 = 32;
 
-/// Distinct-text run count for the large-stable-key-set workload: the steady scene's runs collapse onto few cache rows (`EncodedKey` folds in only text key, quantized scale, color and subpixel bins), and maintenance scales with rows.
+/// Distinct-text run count for the large-stable-key-set workload: the steady scene's runs collapse onto few cache rows (`EncodedKey` folds in only text key, quantized scale and subpixel bins), and maintenance scales with rows.
 const DISTINCT_RUNS: usize = 512;
 
 /// Gray of a run's color: a label is brighter than a value.
@@ -229,8 +230,8 @@ impl Fixture {
             pipelines: RasterVariants::NONE,
             pool: AtlasPool::new(PoolConfig {
                 lists: bench_configs(),
-                rows: RowTableConfig::of_device(g.gpu.max_texture_dim().get()),
-                device_edge: g.gpu.max_texture_dim().get(),
+                rows: RowTableConfig::of_device(g.gpu.max_texture_dimension().get()),
+                device_edge: g.gpu.max_texture_dimension().get(),
                 move_budget: MoveBudget::of(g.gpu.pass_traffic()),
             }),
             atlas,
@@ -279,15 +280,15 @@ impl Fixture {
                     },
                 );
             }
-            self.atlas.commit(ctx.gpu, ctx.encoder, &mut self.pool);
+            self.atlas.commit(&mut ctx, &mut self.pool);
             self.program.ensure(
                 &mut self.pipelines,
                 ctx.gpu,
-                VariantTarget {
-                    format: TARGET_FORMAT.get(),
+                FrameVariant {
                     clipping: Clipping::Off,
                     slots: AtlasSlots::of(&self.pool),
-                },
+                }
+                .target(TARGET_FORMAT.get()),
                 RasterDraws::of(true, self.backend.turns_rasters()),
             );
             self.group.follow(ctx.gpu, &self.atlas);

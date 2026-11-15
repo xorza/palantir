@@ -19,11 +19,10 @@ mod encoded_counters;
 
 use crate::gpu::atlas::AtlasPool;
 use crate::gpu::atlas::atlas_textures::AtlasTextures;
-use crate::gpu::atlas::tenant::Tenant;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
 use crate::gpu::pipeline::raster_pipeline::RasterPipelinePair;
-use crate::gpu::raster::raster_pass::{RasterPass, RasterPassConfig};
+use crate::gpu::raster::raster_pass::{RasterPass, RasterTenant};
 use crate::gpu::raster::text_backend::encode::encoder::TextEncoder;
 use crate::gpu::resource::gpu_ctx::GpuCtx;
 use crate::primitives::text::interned_text::InternedText;
@@ -55,16 +54,7 @@ impl TextBackend {
         Self {
             shaper,
             encoder: TextEncoder::default(),
-            pass: RasterPass::new(
-                gpu,
-                RasterPassConfig {
-                    label: "palantir.text",
-                    tenant: Tenant::Glyphs,
-                    vbuf: "palantir.text.vbuf",
-                    spun_vbuf: "palantir.text.spun_vbuf",
-                    initial_instances: 4096,
-                },
-            ),
+            pass: RasterPass::new(gpu, RasterTenant::Glyphs),
         }
     }
 

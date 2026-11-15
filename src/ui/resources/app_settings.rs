@@ -57,6 +57,31 @@ impl Default for AppSettings {
     }
 }
 
+/// The person's preferences resolved against the system's report, as [`AppSettings::resolve`]
+/// hands them over.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct ResolvedPreferences {
+    /// The scheme every window shows, or [`ColorScheme::FALLBACK`] where nothing reports one.
+    pub(crate) scheme: ColorScheme,
+    /// Reduced power also reduces transparency where its preference follows the system, as
+    /// Windows' Energy saver turns transparency effects off; a pick by hand wins.
+    pub(crate) reductions: Reductions,
+    /// Whether value transitions run whole or snap: reduced with motion, and under reduced power
+    /// where the motion preference follows the system, so a state change costs one frame; a pick
+    /// of full motion by hand wins. Paint loops follow motion alone, and run on at the reduced
+    /// frame rate.
+    pub(crate) transitions: Reduction,
+    /// Whether every window starts a frame at most at 30 Hz: the frame-rate preference resolved
+    /// against the power use, so `System` caps it under reduced power and a pick by hand wins.
+    pub(crate) frame_rate: Reduction,
+}
+
+impl Default for ResolvedPreferences {
+    fn default() -> Self {
+        AppSettings::default().resolve()
+    }
+}
+
 impl AppSettings {
     pub(crate) const fn debug_overlay(&self) -> DebugOverlayConfig {
         self.debug_overlay.get()
@@ -106,47 +131,31 @@ impl AppSettings {
         self.write(&self.system_reductions, reductions)
     }
 
-    /// The reductions every window runs under now: each preference resolved against the system's
-    /// report, the one place they are resolved. Reduced power also reduces transparency where its
-    /// preference follows the system, as Windows' Energy saver turns transparency effects off; a
-    /// pick by hand wins. A frame fixes them at its start (`FrameRuntime::reductions`).
-    pub(crate) const fn reductions(&self) -> Reductions {
+    /// The preferences every window runs under now, each resolved against the system's report,
+    /// the one place they are resolved. A frame fixes them at its start
+    /// (`FrameRuntime::preferences`), so it never mixes two.
+    pub(crate) const fn resolve(&self) -> ResolvedPreferences {
         let preferences = self.preferences();
         let system = self.system_reductions();
-        let power = self.power();
-        Reductions {
-            transparency: preferences.transparency.resolve(Reduction::of(
-                power.is_reduced() || system.transparency.is_reduced(),
+        let power = preferences.power.resolve(system.power);
+        let scheme = match self.system_color_scheme() {
+            Some(scheme) => scheme,
+            None => ColorScheme::FALLBACK,
+        };
+        ResolvedPreferences {
+            scheme: preferences.scheme.resolve(scheme),
+            reductions: Reductions {
+                transparency: preferences.transparency.resolve(Reduction::of(
+                    power.is_reduced() || system.transparency.is_reduced(),
+                )),
+                motion: preferences.motion.resolve(system.motion),
+                power,
+            },
+            transitions: preferences.motion.resolve(Reduction::of(
+                power.is_reduced() || system.motion.is_reduced(),
             )),
-            motion: preferences.motion.resolve(system.motion),
-            power,
+            frame_rate: preferences.frame_rate.resolve(power),
         }
-    }
-
-    /// Whether value transitions run whole or snap: reduced with motion, and under reduced power
-    /// where the motion preference follows the system, so a state change costs one frame; a pick
-    /// of full motion by hand wins. Paint loops follow motion alone, and run on at the reduced
-    /// frame rate ([`Self::frame_rate`]). Resolved beside [`Self::reductions`], and a frame fixes both at its start.
-    pub(crate) const fn transitions(&self) -> Reduction {
-        let system = self.system_reductions();
-        self.preferences().motion.resolve(Reduction::of(
-            self.power().is_reduced() || system.motion.is_reduced(),
-        ))
-    }
-
-    /// Whether every window starts a frame at most at 30 Hz: the frame-rate preference resolved
-    /// against the power use, so `System` caps it under reduced power and a pick by hand wins.
-    /// Resolved beside [`Self::reductions`], and a frame fixes both at its start.
-    pub(crate) const fn frame_rate(&self) -> Reduction {
-        self.preferences().frame_rate.resolve(self.power())
-    }
-
-    /// The power use the preference and the system's report resolve to, which
-    /// [`Self::reductions`], [`Self::transitions`] and [`Self::frame_rate`] follow.
-    const fn power(&self) -> Reduction {
-        self.preferences()
-            .power
-            .resolve(self.system_reductions().power)
     }
 
     pub(crate) const fn double_click_interval(&self) -> Duration {
@@ -155,16 +164,6 @@ impl AppSettings {
 
     pub(crate) fn set_double_click_interval(&self, interval: Duration) -> bool {
         self.write(&self.double_click_interval, interval)
-    }
-
-    /// The scheme every window shows now: the preference resolved against the system's, or
-    /// [`ColorScheme::FALLBACK`] where nothing reports one.
-    pub(crate) const fn color_scheme(&self) -> ColorScheme {
-        let system = match self.system_color_scheme() {
-            Some(scheme) => scheme,
-            None => ColorScheme::FALLBACK,
-        };
-        self.preferences().scheme.resolve(system)
     }
 
     /// Whether a setting moved since the last ask, which lowers the signal.
@@ -201,7 +200,7 @@ mod tests {
         let settings = AppSettings::default();
         assert!(!settings.take_change(), "nothing has written yet");
         assert_eq!(
-            settings.color_scheme(),
+            settings.resolve().scheme,
             ColorScheme::FALLBACK,
             "nothing reports a scheme"
         );
@@ -218,7 +217,7 @@ mod tests {
                 s.set_system_reductions(Reductions {
                     transparency: Reduction::Reduced,
                     motion: Reduction::Reduced,
-                    power: Reduction::Full,
+                    power: Reduction::Unreduced,
                 })
             },
             &|s| {
@@ -230,7 +229,7 @@ mod tests {
             &|s| {
                 s.set_preferences(UiPreferences {
                     scheme: Preference::Fixed(ColorScheme::Light),
-                    motion: Preference::Fixed(Reduction::Full),
+                    motion: Preference::Fixed(Reduction::Unreduced),
                     transparency: Preference::System,
                     power: Preference::System,
                     frame_rate: Preference::System,
@@ -238,7 +237,7 @@ mod tests {
             },
             &|s| {
                 s.set_preferences(UiPreferences {
-                    power: Preference::Fixed(Reduction::Full),
+                    power: Preference::Fixed(Reduction::Unreduced),
                     ..s.preferences()
                 })
             },
@@ -255,20 +254,24 @@ mod tests {
         }
         assert!(settings.debug_overlay().frame_stats);
         assert_eq!(settings.user_scale(), UserScale::new(1.25).unwrap());
-        assert_eq!(settings.color_scheme(), ColorScheme::Light, "the pick wins");
         assert_eq!(
-            settings.reductions().motion,
-            Reduction::Full,
+            settings.resolve().scheme,
+            ColorScheme::Light,
+            "the pick wins"
+        );
+        assert_eq!(
+            settings.resolve().reductions.motion,
+            Reduction::Unreduced,
             "the pick wins over the system"
         );
         assert_eq!(
-            settings.reductions().transparency,
+            settings.resolve().reductions.transparency,
             Reduction::Reduced,
             "System follows the system"
         );
         assert_eq!(
-            settings.reductions().power,
-            Reduction::Full,
+            settings.resolve().reductions.power,
+            Reduction::Unreduced,
             "the last pick of full wins over the system's saver mode"
         );
         assert!(settings.set_preferences(UiPreferences {
@@ -276,17 +279,17 @@ mod tests {
             ..settings.preferences()
         }));
         assert_eq!(
-            settings.reductions().power,
+            settings.resolve().reductions.power,
             Reduction::Reduced,
             "System follows the saver mode"
         );
         assert!(settings.set_system_reductions(Reductions {
-            power: Reduction::Full,
+            power: Reduction::Unreduced,
             ..settings.system_reductions()
         }));
         assert_eq!(
-            settings.reductions().power,
-            Reduction::Full,
+            settings.resolve().reductions.power,
+            Reduction::Unreduced,
             "the mode turned off"
         );
         assert!(settings.set_preferences(UiPreferences {
@@ -294,7 +297,7 @@ mod tests {
             ..settings.preferences()
         }));
         assert_eq!(
-            settings.reductions().power,
+            settings.resolve().reductions.power,
             Reduction::Reduced,
             "a pick of reduced over a system with no saver mode"
         );
@@ -309,7 +312,7 @@ mod tests {
     #[test]
     fn reduced_power_reduces_what_follows_the_system() {
         use Preference::{Fixed, System};
-        use Reduction::{Full, Reduced};
+        use Reduction::{Reduced, Unreduced as Full};
         let rows = [
             (
                 Full,
@@ -400,17 +403,13 @@ mod tests {
                 power,
                 frame_rate,
             });
-            let reductions = settings.reductions();
+            let resolved = settings.resolve();
             let [transitions, want_motion, want_transparency, want_frame_rate] = want;
-            assert_eq!(settings.transitions(), transitions, "row {row} transitions");
+            assert_eq!(resolved.transitions, transitions, "row {row} transitions");
+            assert_eq!(resolved.frame_rate, want_frame_rate, "row {row} frame rate");
+            assert_eq!(resolved.reductions.motion, want_motion, "row {row} motion");
             assert_eq!(
-                settings.frame_rate(),
-                want_frame_rate,
-                "row {row} frame rate"
-            );
-            assert_eq!(reductions.motion, want_motion, "row {row} motion");
-            assert_eq!(
-                reductions.transparency, want_transparency,
+                resolved.reductions.transparency, want_transparency,
                 "row {row} transparency"
             );
         }

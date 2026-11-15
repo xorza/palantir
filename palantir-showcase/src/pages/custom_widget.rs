@@ -1,19 +1,20 @@
 //! Authoring a widget from the published API only: `Stepper` (`[ − ] value [ + ]` over a caller-owned `&mut i32`) is built as an outside crate would be.
 //!
-//! Nothing enforces that no crate internal is reached (the showcase builds with `internals`); the listing beside the demo is the check.
+//! The showcase is a crate of its own, so the stepper names only what `palantir` exports; its
+//! tests turn on `internals`, so the listing beside the demo is what shows it reaches no further.
 
+use crate::scaffold;
 use crate::scaffold::api;
+use crate::scaffold::kit::Kit;
+use crate::scaffold::section::Section;
 use crate::scaffold::tokens::M;
-use crate::support;
-use crate::support::{Col, Kit, RADIUS, ROW_GAP, Section};
-use palantir::LineCap;
-use palantir::LineJoin;
-use palantir::Stroke;
+use crate::scaffold::{Col, RADIUS, ROW_GAP};
 use palantir::glam::Vec2;
-use palantir::widget::{AddedShape, Configurator, PolylineShape, Shape, Widget};
+use palantir::widget::{Configurator, Widget};
 use palantir::{
-    Align, Chrome, Configure, Corners, DragValue, Key, Panel, Response, RgbaF32, Sense, Sizing,
-    Text, Ui, VAlign, WidgetId, fmt,
+    AddedShape, Align, Chrome, Configure, Corners, DragValue, Engagement, Key, LineCap, LineJoin,
+    Panel, PolylineShape, Response, RgbaF32, Sense, Shape, SizeSpec, Sizing, Stroke, Text, Ui,
+    VAlign, WidgetId, fmt,
 };
 
 const BUTTON: f32 = 28.0;
@@ -55,7 +56,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
 }
 
 fn page(ui: &mut Ui, k: Kit, s: &mut State) {
-    support::cols(ui, |ui, col| match col {
+    scaffold::cols(ui, |ui, col| match col {
         Col::Left => demo(ui, k, s),
         Col::Right => surface(ui, k),
     });
@@ -65,13 +66,13 @@ fn demo(ui: &mut Ui, k: Kit, s: &mut State) {
     Section::new("Stepper")
         .apis(&[api!(Widget::hstack), api!(Widget::key_pressed)])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "Two instances over separate values. Click a sign, or Tab to a stepper and \
                  use ↑ ↓ Home End.",
             );
-            support::well(ui, k, |ui| {
+            scaffold::well(ui, k, |ui| {
                 labeled(ui, k, "volume", |ui| {
                     Stepper::new(&mut s.volume)
                         .range(s.lo as i32, s.hi as i32)
@@ -85,13 +86,13 @@ fn demo(ui: &mut Ui, k: Kit, s: &mut State) {
         });
 
     Section::new("The call site").show(ui, k, |ui| {
-        support::note(
+        scaffold::note(
             ui,
             k,
             "The volume stepper's range and step: drag a value, and the stepper and the call \
              site below follow it.",
         );
-        support::row(ui, |ui| {
+        scaffold::row(ui, |ui| {
             for (label, value, range) in [
                 ("from", &mut s.lo, -100.0..=0.0),
                 ("to", &mut s.hi, 1.0..=200.0),
@@ -105,7 +106,7 @@ fn demo(ui: &mut Ui, k: Kit, s: &mut State) {
                     .show(ui);
             }
         });
-        support::well(ui, k, |ui| {
+        scaffold::well(ui, k, |ui| {
             let range = fmt!(ui, "    .range({}, {})", s.lo, s.hi);
             let step = fmt!(ui, "    .step({})", s.step);
             let lines = [
@@ -171,13 +172,13 @@ fn surface(ui: &mut Ui, k: Kit) {
         (api!(type Response), "the value a caller chains on"),
     ];
     Section::new("The authoring surface it uses").show(ui, k, |ui| {
-        support::well(ui, k, |ui| {
+        scaffold::well(ui, k, |ui| {
             for (i, (item, what)) in surface.into_iter().enumerate() {
                 Panel::hstack()
                     .id_salt(i)
-                    .size((Sizing::FILL, Sizing::HUG))
+                    .size(SizeSpec::FILL_W)
                     .gap(ROW_GAP)
-                    .child_align(Align::v(VAlign::Center))
+                    .child_align(VAlign::Center)
                     .show(ui, |ui| {
                         Text::new(item)
                             .style(&k.t.mono(k.t.ink))
@@ -194,9 +195,9 @@ fn surface(ui: &mut Ui, k: Kit) {
 fn labeled(ui: &mut Ui, k: Kit, label: &'static str, body: impl FnOnce(&mut Ui)) {
     Panel::hstack()
         .auto_id()
-        .size((Sizing::FILL, Sizing::HUG))
+        .size(SizeSpec::FILL_W)
         .gap(ROW_GAP)
-        .child_align(Align::v(VAlign::Center))
+        .child_align(VAlign::Center)
         .show(ui, |ui| {
             Text::new(label)
                 .style(&k.t.caption())
@@ -228,7 +229,7 @@ impl<'a> Stepper<'a> {
         }
         .gap(M.space.sm)
         .padding(RING_ROOM)
-        .child_align(Align::v(VAlign::Center))
+        .child_align(VAlign::Center)
         .focusable(true)
     }
 
@@ -330,14 +331,11 @@ impl StepButton {
         let Self { response, glyph } = self;
         // The theme's button looks, so the stepper follows a scheme switch as palantir's own
         // widgets do; only the corners are the stepper's.
-        let looks = &ui.theme().button.unselected;
-        let look = if response.pressed() {
-            &looks.active
-        } else if response.hovered() {
-            &looks.hovered
-        } else {
-            &looks.normal
-        };
+        let look = ui
+            .theme()
+            .button
+            .unselected
+            .pick(&response, Engagement::Pressed);
         let chrome = Chrome {
             corners: Corners::all(RADIUS),
             ..look.chrome.clone()

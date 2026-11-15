@@ -3,7 +3,7 @@
 use crate::damage::Damage;
 use crate::primitives::paint::color::RgbaF32;
 
-/// WindowFrames-facing render plan, present only when there is render work; `FrameReport.plan = None` is the skip signal. Pairs the clear color with the frame's [`Damage`].
+/// WindowFrames-facing render plan, present only when there is render work; `RecordedFrame::plan` = `None` is the skip signal. Pairs the clear color with the frame's [`Damage`].
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct RenderPlan {
     /// Surface clear color for this frame.

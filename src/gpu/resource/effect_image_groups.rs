@@ -42,7 +42,9 @@ impl EffectImages {
 /// The most groups kept past the sets one frame draws, each for a set of images some frame drew:
 /// a new set past it takes the place of the set drawn longest ago, unless the frame draws every
 /// set kept, as a page of 300 thumbnails each under an effect does, and then the cache holds them
-/// all, as a set left out would paint nothing.
+/// all, as a set left out would paint nothing. A cache past its bound sheds two sets for each new
+/// one, so it returns to the bound once a frame draws fewer, as `src/gpu/AGENTS.md`'s "Scratch
+/// decays" asks of a cache.
 pub(crate) const MAX_GROUPS: usize = 256;
 
 /// The group for each set of images effect draws bind, made the first frame a set draws and kept
@@ -81,15 +83,28 @@ impl EffectImageGroups {
             return;
         };
         if self.groups.len() >= MAX_GROUPS {
-            // A scan of the kept sets, only on a new set past the bound.
-            let (oldest, drawn) = self
+            // A scan of the kept sets, only on a new set past the bound: the two drawn longest
+            // ago before this frame, the second only where the cache is past its bound.
+            let shed = if self.groups.len() > MAX_GROUPS { 2 } else { 1 };
+            let older = |held: Option<(EffectImages, u64)>, drawn: u64| {
+                held.is_none_or(|(_, held)| drawn < held)
+            };
+            let oldest = self
                 .groups
                 .iter()
-                .map(|(images, kept)| (*images, kept.drawn))
-                .min_by_key(|&(_, drawn)| drawn)
-                .expect("a full cache holds a group");
-            if drawn < frame {
-                self.groups.remove(&oldest);
+                .filter(|(_, kept)| kept.drawn < frame)
+                .fold([None; 2], |oldest, (images, kept)| {
+                    let candidate = Some((*images, kept.drawn));
+                    if older(oldest[0], kept.drawn) {
+                        [candidate, oldest[0]]
+                    } else if older(oldest[1], kept.drawn) {
+                        [oldest[0], candidate]
+                    } else {
+                        oldest
+                    }
+                });
+            for (images, _) in oldest.into_iter().take(shed).flatten() {
+                self.groups.remove(&images);
             }
         }
         self.groups.insert(
@@ -146,7 +161,9 @@ mod tests {
     /// [`MAX_GROUPS`], a new set takes the place of the set drawn longest ago: with sets 1 to 256
     /// drawn at frames 1 to 256 and set 1 drawn again at 300, set 257 at 301 pushes out set 2. A
     /// frame that draws every kept set pushes none out: 256 sets and a 257th, all at frame 400,
-    /// keep 257.
+    /// keep 257. Past the bound, each new set sheds the two drawn longest ago, so the cache is
+    /// back at 256 after one more set: sets 1 and 2 go for set 258 at 401, and a 259th at 402
+    /// sheds set 3 alone, at the bound.
     #[test]
     fn a_group_is_made_once_and_kept_within_its_bound() {
         let gpu = headless_test_gpu();
@@ -195,5 +212,23 @@ mod tests {
         }
         assert_eq!(groups.len(), MAX_GROUPS + 1);
         assert!(groups.get(&set(&[1])).is_some(), "drawn this frame");
+        // Draw frames apart so the order of age is the order of the ids.
+        for id in 1..=MAX_GROUPS as u64 + 1 {
+            groups.ensure(set(&[id]), 400 + id, make);
+        }
+        let next = 400 + MAX_GROUPS as u64 + 2;
+        groups.ensure(set(&[MAX_GROUPS as u64 + 2]), next, make);
+        assert_eq!(
+            groups.len(),
+            MAX_GROUPS,
+            "two shed for one, back at the bound"
+        );
+        assert!(groups.get(&set(&[1])).is_none());
+        assert!(groups.get(&set(&[2])).is_none());
+        assert!(groups.get(&set(&[3])).is_some());
+        groups.ensure(set(&[MAX_GROUPS as u64 + 3]), next + 1, make);
+        assert_eq!(groups.len(), MAX_GROUPS, "one shed for one at the bound");
+        assert!(groups.get(&set(&[3])).is_none());
+        assert!(groups.get(&set(&[4])).is_some());
     }
 }

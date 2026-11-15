@@ -68,7 +68,7 @@ impl AnchorAlign {
 /// Where a side layer lands next to the thing it belongs to, for
 /// [`LayerScope::anchor`](crate::LayerScope::anchor). The body measures against the room the
 /// roomier side leaves, and the origin resolves after measure: the requested side if the body
-/// fits, else the opposite, else shifted inside the surface. [`LayerScope::fixed_at`](crate::LayerScope::fixed_at) never moves.
+/// fits, else the opposite, else shifted inside the surface. [`LayerScope::at`](crate::LayerScope::at) never moves.
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[must_use]
 pub struct Anchor {
@@ -97,7 +97,7 @@ impl Anchor {
     ///
     /// # Panics
     ///
-    /// Panics unless both axes of `point` are [offsets](crate::widget::domain::offset).
+    /// Panics unless both axes of `point` are [offsets](crate::widget::domain::is_offset).
     #[track_caller]
     pub const fn at_point(point: Vec2) -> Self {
         let point = vec2::offset(point);
@@ -117,7 +117,7 @@ impl Anchor {
     ///
     /// # Panics
     ///
-    /// Panics unless every component of `rect` is an [offset](crate::widget::domain::offset).
+    /// Panics unless every component of `rect` is an [offset](crate::widget::domain::is_offset).
     #[track_caller]
     pub const fn above(rect: Rect) -> Self {
         Self::on_side(rect, AnchorSide::Above)
@@ -127,7 +127,7 @@ impl Anchor {
     ///
     /// # Panics
     ///
-    /// Panics unless every component of `rect` is an [offset](crate::widget::domain::offset).
+    /// Panics unless every component of `rect` is an [offset](crate::widget::domain::is_offset).
     #[track_caller]
     pub const fn below(rect: Rect) -> Self {
         Self::on_side(rect, AnchorSide::Below)
@@ -137,7 +137,7 @@ impl Anchor {
     ///
     /// # Panics
     ///
-    /// Panics unless every component of `rect` is an [offset](crate::widget::domain::offset).
+    /// Panics unless every component of `rect` is an [offset](crate::widget::domain::is_offset).
     #[track_caller]
     pub const fn left_of(rect: Rect) -> Self {
         Self::on_side(rect, AnchorSide::LeftOf)
@@ -147,7 +147,7 @@ impl Anchor {
     ///
     /// # Panics
     ///
-    /// Panics unless every component of `rect` is an [offset](crate::widget::domain::offset).
+    /// Panics unless every component of `rect` is an [offset](crate::widget::domain::is_offset).
     #[track_caller]
     pub const fn right_of(rect: Rect) -> Self {
         Self::on_side(rect, AnchorSide::RightOf)
@@ -163,7 +163,7 @@ impl Anchor {
     ///
     /// # Panics
     ///
-    /// Panics unless `px` is a [length](crate::widget::domain::length).
+    /// Panics unless `px` is a [length](crate::widget::domain::is_length).
     #[track_caller]
     pub const fn with_gap(mut self, px: f32) -> Self {
         self.gap = domain::length(px);

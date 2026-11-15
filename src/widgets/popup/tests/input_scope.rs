@@ -3,12 +3,13 @@
 use crate::host::harness::Harness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::input_event::InputEvent;
+use crate::primitives::input::interaction::wheel_delta::WheelDelta;
 use crate::primitives::input::keyboard::key::Key;
 use crate::primitives::input::pointer::PointerButton;
 use crate::primitives::input::sense::Sense;
 use crate::primitives::input::zoom_factor::ZoomFactor;
 use crate::primitives::layout::anchor::Anchor;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::ui::Ui;
 use crate::widget_core::click_outside::ClickOutside;
 use crate::widget_core::configure::Configure;
@@ -29,7 +30,7 @@ fn outside_pointer_gestures_do_not_leak_to_main() {
         let scene = |ui: &mut Ui| {
             Panel::vstack()
                 .id(bg_id)
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .sense(Sense::DRAG | Sense::SCROLL | Sense::PINCH)
                 .show(ui, |ui| {
                     Popup::new()
@@ -49,19 +50,19 @@ fn outside_pointer_gestures_do_not_leak_to_main() {
 
         let outside = Vec2::new(300.0, 300.0);
         h.scroll_pixels(outside, Vec2::new(0.0, 25.0));
-        h.on_input(InputEvent::scroll_lines(Vec2::new(0.0, 3.0)));
+        h.on_input(InputEvent::Scroll(WheelDelta::notches(Vec2::new(0.0, 3.0))));
         h.on_input(InputEvent::Pinch(ZoomFactor::new(1.4).unwrap()));
         h.on_input(InputEvent::PointerPressed(PointerButton::Middle));
         h.hover(outside + Vec2::new(40.0, 0.0));
 
         let bg = h.response_in(bg_id, scene);
         assert_eq!(
-            bg.scroll.pixels != Vec2::ZERO,
+            bg.scroll.wheel.pixels != Vec2::ZERO,
             leaks,
             "{mode:?}: scroll pixels"
         );
         assert_eq!(
-            bg.scroll.lines != Vec2::ZERO,
+            bg.scroll.wheel.lines != Vec2::ZERO,
             leaks,
             "{mode:?}: scroll lines"
         );
@@ -123,7 +124,7 @@ fn only_pass_through_leaves_the_keyboard_to_the_layers_below() {
         let scene = |ui: &mut Ui| {
             Panel::vstack()
                 .id(WidgetId::from_hash("main-bg"))
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| {
                     // Read from `Main`; `F5`, not Esc, which the popup itself consumes.
                     let saw = ui.shortcut_pressed(Key::F5);
@@ -212,7 +213,7 @@ fn a_field_decides_whether_escape_closes_the_popup_around_it() {
         let scene = |ui: &mut Ui, buf: &mut String| {
             Panel::vstack()
                 .id(WidgetId::from_hash("main-bg"))
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| {
                     Popup::new()
                         .anchor(Anchor::at_point(ANCHOR))

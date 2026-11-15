@@ -16,13 +16,13 @@ use crate::renderer::frontend::composer::tests::curve_builder::CurveBuilder;
 use crate::renderer::frontend::composer::tests::support::{
     TestPolyline, clip, image, lanes, params, rows_of, run, text,
 };
-use crate::renderer::frontend::paint_sink::PaintSink;
+use crate::renderer::frontend::paint_sink::{DrawAnimation, PaintSink};
 use crate::renderer::frontend::payload::draw_stroke_payload::{
     DrawStrokePayload, PolylinePath, StrokePath,
 };
-use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::spin::Spin;
 use crate::renderer::render_buffer::draw_run::Lane;
+use crate::renderer::render_buffer::gpu_fill::GpuFill;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
 use crate::shape::geometry::stroke_geometry::PolylineColorSpan;
 use crate::shape::polyline::PolylineColors;
@@ -424,7 +424,7 @@ fn compose_splits_curve_batches_across_scissor_groups() {
 /// the fallback row.
 #[test]
 fn compose_threads_curve_fill_kind_and_lut_row_into_instances() {
-    use crate::primitives::packed::fill_kind::FillKind;
+    use crate::primitives::paint::fill_kind::FillKind;
     let tint = RgbaF32::new(0.25, 0.5, 1.0, 0.75).to_f16();
     let buf = run(
         |b, _arena| {
@@ -739,22 +739,25 @@ fn degenerate_polyline_emits_nothing_rather_than_panicking() {
         let buf = run(
             |b, arena| {
                 arena.polyline_points.push(Vec2::ZERO);
-                b.stroke(DrawStrokePayload {
-                    path: StrokePath::Polyline(PolylinePath {
-                        bbox: Rect::new(0.0, 0.0, 4.0, 4.0),
-                        fit: FitMap::IDENTITY,
-                        points: Span::new(0, points_len),
-                        colors: PolylineColorSpan::Single,
-                        join: LineJoin::Miter,
-                    }),
-                    origin: Vec2::ZERO,
-                    fill: GpuFill {
-                        color: RgbaF32::WHITE.to_f16(),
-                        ..GpuFill::default()
+                b.stroke(
+                    DrawStrokePayload {
+                        path: StrokePath::Polyline(PolylinePath {
+                            bbox: Rect::new(0.0, 0.0, 4.0, 4.0),
+                            fit: FitMap::IDENTITY,
+                            points: Span::new(0, points_len),
+                            colors: PolylineColorSpan::Single,
+                            join: LineJoin::Miter,
+                        }),
+                        origin: Vec2::ZERO,
+                        fill: GpuFill {
+                            color: RgbaF32::WHITE.to_f16(),
+                            ..GpuFill::default()
+                        },
+                        width: 2.0,
+                        ..DrawStrokePayload::fixture()
                     },
-                    width: 2.0,
-                    ..Default::default()
-                });
+                    None,
+                );
             },
             &params(1.0, UVec2::new(64, 64)),
         );
@@ -810,9 +813,11 @@ fn a_turned_draw_is_culled_by_its_bound_at_its_angle() {
                         tint: RgbaF32::WHITE.to_f16(),
                         vertices: Span::new(0, 3),
                         idxs: Span::new(0, 3),
+                    },
+                    DrawAnimation {
+                        alpha: 1.0,
                         spin: Some(turn),
                     },
-                    1.0,
                 );
                 b.pop_clip();
             },

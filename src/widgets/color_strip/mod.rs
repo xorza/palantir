@@ -141,6 +141,7 @@ impl StripPaint {
 
 impl AreaValue for StripKind<'_> {
     type Surface = StripPaint;
+    type Value = f32;
 
     fn themed(theme: &ColorPickerTheme) -> Size {
         Size::new(
@@ -162,6 +163,10 @@ impl AreaValue for StripKind<'_> {
             at = at.rem_euclid(1.0);
         }
         self.write(at)
+    }
+
+    fn value(&self) -> f32 {
+        self.read()
     }
 
     fn surface(&self) -> StripPaint {

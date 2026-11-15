@@ -49,7 +49,7 @@ impl TextGeometry {
             measured,
             caret_pos,
         } = {
-            let probe = ui.probe_text(layout.ctx.run(input.text));
+            let probe = ui.probe_text(layout.run(input.text));
             match input.selection {
                 Some(selection) => probe.selection_rects(selection, selection_rects),
                 None => selection_rects.clear(),
@@ -60,7 +60,7 @@ impl TextGeometry {
             }
         };
         let placeholder_measured = if input.text.is_empty() && !input.placeholder.is_empty() {
-            ui.probe_text(layout.ctx.run(input.placeholder)).size()
+            ui.probe_text(layout.run(input.placeholder)).size()
         } else {
             measured
         };

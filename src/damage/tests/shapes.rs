@@ -36,8 +36,8 @@ fn first_frame_marks_every_painting_node_dirty() {
         .iter()
         .filter(|s| s.len > 0)
         .count();
-    assert_eq!(h.frames().damage().counters.dirty().len(), painting);
-    assert!(h.frames().damage().raw_rects.is_empty());
+    assert_eq!(h.frames().damage().counters().dirty().len(), painting);
+    assert!(h.frames().damage().raw_rects().is_empty());
 }
 
 /// Re-recording identical authoring gives zero dirty nodes and no damage rect.
@@ -50,7 +50,7 @@ fn unchanged_authoring_produces_no_damage() {
     frame(&mut h, build);
     frame(&mut h, build);
 
-    assert!(h.frames().damage().counters.dirty().is_empty());
+    assert!(h.frames().damage().counters().dirty().is_empty());
     assert!(h.damage_region().is_empty());
     assert_eq!(Damage::new(h.collapsed_damage()), None);
 }
@@ -66,8 +66,8 @@ fn fill_change_marks_only_the_changed_leaf() {
         one_frame(ui, RED);
     });
 
-    assert_eq!(h.frames().damage().counters.dirty().len(), 1);
-    let dirty_id = h.frames().damage().counters.dirty()[0];
+    assert_eq!(h.frames().damage().counters().dirty().len(), 1);
+    let dirty_id = h.frames().damage().counters().dirty()[0];
     assert_eq!(
         h.ui().tree(Layer::Main).records.widget_id()[dirty_id.idx()],
         WidgetId::from_hash("a")
@@ -105,7 +105,7 @@ fn sibling_reflow_marks_downstream_neighbor_dirty() {
     let dirty_ids: Vec<WidgetId> = h
         .frames()
         .damage()
-        .counters
+        .counters()
         .dirty()
         .iter()
         .map(|n| h.ui().tree(Layer::Main).records.widget_id()[n.idx()])
@@ -168,7 +168,7 @@ fn added_widget_contributes_curr_rect_to_damage() {
     let dirty_ids: Vec<WidgetId> = h
         .frames()
         .damage()
-        .counters
+        .counters()
         .dirty()
         .iter()
         .map(|n| h.ui().tree(Layer::Main).records.widget_id()[n.idx()])
@@ -216,13 +216,13 @@ fn button_hover_and_unhover_damage_cover_only_the_button() {
         build(&mut h);
         build(&mut h);
         assert!(
-            h.frames().damage().counters.dirty().is_empty(),
+            h.frames().damage().counters().dirty().is_empty(),
             "{direction}: the pointer settles before it moves"
         );
 
         h.hover(to);
         build(&mut h);
-        let dirty: Vec<_> = h.frames().damage().counters.dirty().to_vec();
+        let dirty: Vec<_> = h.frames().damage().counters().dirty().to_vec();
         assert_eq!(dirty.len(), 1, "{direction}: only the button is dirty");
         assert_eq!(
             h.ui().tree(Layer::Main).records.widget_id()[dirty[0].idx()],
@@ -242,7 +242,7 @@ fn button_hover_and_unhover_damage_cover_only_the_button() {
 
         build(&mut h);
         assert!(
-            h.frames().damage().counters.dirty().is_empty(),
+            h.frames().damage().counters().dirty().is_empty(),
             "{direction}: a settled pointer damages nothing more"
         );
     }
@@ -280,8 +280,8 @@ fn a_turning_shape_is_damaged_against_the_square_it_sweeps() {
     let (lo, hi) = (Vec2::new(10.0, 10.0), Vec2::new(70.0, 30.0));
     let corner = Vec2::new(10.0, 30.0);
     let mut mesh = Mesh::with_capacity(3, 3);
-    let vertices = [lo, hi, corner].map(|pos| mesh.vertex(pos, RED));
-    mesh.triangle(vertices[0], vertices[1], vertices[2]);
+    let vertices = [lo, hi, corner].map(|pos| mesh.add_vertex(pos, RED));
+    mesh.add_triangle(vertices[0], vertices[1], vertices[2]);
     let owner_id = WidgetId::from_hash("spin_owner");
     let r = 30.0_f32.libm_hypot(10.0);
     for (kind, pad) in [
@@ -336,9 +336,8 @@ fn a_turning_shape_is_damaged_against_the_square_it_sweeps() {
                                     }
                                 }
                                 Kind::Text => {
-                                    let label = ui.intern("abcdef");
                                     if let Some(shape) = ui.add_shape(
-                                        Shape::text(label, GlyphFont::new(20.0)).at_origin(lo),
+                                        Shape::text("abcdef", GlyphFont::new(20.0)).at_origin(lo),
                                         RgbaF32::WHITE,
                                     ) {
                                         shape.animate(turn);
@@ -376,7 +375,7 @@ fn a_turning_shape_is_damaged_against_the_square_it_sweeps() {
 /// `NodeSnapshot.paint_span` covers one entry per Paint row (chrome at row 0, then direct shapes), mirroring the plane's `paint_arena`.
 #[test]
 fn node_snapshot_decomposition_matches_cascade() {
-    use crate::widget::Shape;
+    use crate::shape::Shape;
     let mut h = Harness::cold(DISPLAY.physical);
     frame(&mut h, |ui| {
         Panel::hstack()
@@ -428,7 +427,7 @@ fn node_snapshot_decomposition_matches_cascade() {
         );
     }
 
-    assert!(h.frames().damage().raw_rects.is_empty());
+    assert!(h.frames().damage().raw_rects().is_empty());
 
     let two_lines = |ui: &mut Ui| {
         ui.add_shape(
@@ -457,19 +456,19 @@ fn node_snapshot_decomposition_matches_cascade() {
         .damage()
         .prev_paint_rows(WidgetId::from_hash("multi2"));
     assert_eq!(
-        h.frames().damage().raw_rects.len(),
+        h.frames().damage().raw_rects().len(),
         3,
         "incremental Vacant insert pushes one rect per paint row",
     );
-    assert_eq!(h.frames().damage().raw_rects[0], snap2_paints[0].screen);
-    assert_eq!(h.frames().damage().raw_rects[1], snap2_paints[1].screen);
-    assert_eq!(h.frames().damage().raw_rects[2], snap2_paints[2].screen);
+    assert_eq!(h.frames().damage().raw_rects()[0], snap2_paints[0].screen);
+    assert_eq!(h.frames().damage().raw_rects()[1], snap2_paints[1].screen);
+    assert_eq!(h.frames().damage().raw_rects()[2], snap2_paints[2].screen);
 }
 
 /// A multi-shape owner with disjoint shapes pushes only the moved shape's rect pair (the darkroom graph pattern).
 #[test]
 fn per_shape_damage_only_pushes_changed_shapes() {
-    use crate::widget::Shape;
+    use crate::shape::Shape;
 
     let mut h = Harness::mono(DISPLAY.physical);
     let build = |moving_y: f32, ui: &mut Ui| {
@@ -496,13 +495,13 @@ fn per_shape_damage_only_pushes_changed_shapes() {
     frame(&mut h, |ui| build(120.0, ui));
     frame(&mut h, |ui| build(120.0, ui));
     assert!(
-        h.frames().damage().counters.dirty().is_empty(),
+        h.frames().damage().counters().dirty().is_empty(),
         "steady frame must produce no diff"
     );
 
     // Frame 3 nudges shape 2's y: only its prev (y=120) and curr (y=140) rects enter damage.
-    let prev_snap = h.frames().damage().prev[&WidgetId::from_hash("canvas")];
-    let prev_arena_len = h.frames().damage().paints.slots.len();
+    let prev_snap = h.frames().damage().prev()[&WidgetId::from_hash("canvas")];
+    let prev_arena_len = h.frames().damage().paints().slots.len();
     let prev_shape2_rect = h
         .frames()
         .damage()
@@ -510,7 +509,7 @@ fn per_shape_damage_only_pushes_changed_shapes() {
         .screen;
     frame(&mut h, |ui| build(140.0, ui));
 
-    let canvas_snap = h.frames().damage().prev[&WidgetId::from_hash("canvas")];
+    let canvas_snap = h.frames().damage().prev()[&WidgetId::from_hash("canvas")];
     let cur_shape2_rect = h
         .frames()
         .damage()
@@ -521,7 +520,7 @@ fn per_shape_damage_only_pushes_changed_shapes() {
         "same-count paint changes must refresh the existing arena span",
     );
     assert_eq!(
-        h.frames().damage().paints.slots.len(),
+        h.frames().damage().paints().slots.len(),
         prev_arena_len,
         "an in-place refresh must not touch the allocator at all",
     );
@@ -631,14 +630,14 @@ fn chrome_only_owner_has_nonzero_paint_span() {
     frame(&mut h, build); // settle prev
 
     let widget_id = WidgetId::from_hash("chrome_only");
-    let snap = h.frames().damage().prev[&widget_id];
+    let snap = h.frames().damage().prev()[&widget_id];
     assert_eq!(
         snap.paint_span.len, 1,
         "chrome-only owner must contribute exactly one Paint row (chrome)",
     );
 
     #[expect(clippy::iter_over_hash_type, reason = "each entry is checked alone")]
-    for (k, s) in &h.frames().damage().prev {
+    for (k, s) in h.frames().damage().prev() {
         assert!(
             s.paint_span.len > 0,
             "prev entry {k:?} has zero-len paint_span, violating painting-only invariant",
@@ -646,7 +645,7 @@ fn chrome_only_owner_has_nonzero_paint_span() {
     }
 }
 
-/// Changing a `Shape::Text` with `local_origin: Some(_)` damages the shaped-text bbox, not just the origin point: prev and curr extents come from `PlaneLayout::text_shapes`.
+/// Changing a `TextShape` with `local_origin: Some(_)` damages the shaped-text bbox, not just the origin point: prev and curr extents come from `PlaneLayout::text_shapes`.
 #[test]
 fn text_content_change_damages_shaped_extent_not_just_origin() {
     use crate::shape::Shape;
@@ -686,7 +685,7 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
     frame(&mut h, |ui| build("abc", ui));
     frame(&mut h, |ui| build("abc", ui));
     assert!(
-        h.frames().damage().counters.dirty().is_empty(),
+        h.frames().damage().counters().dirty().is_empty(),
         "steady frame must produce no diff"
     );
 

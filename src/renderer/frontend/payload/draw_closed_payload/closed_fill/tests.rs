@@ -1,11 +1,11 @@
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::packed::fill_axis::FillAxis;
-use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::border::Border;
 use crate::primitives::paint::brush::gradient::Spread;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
+use crate::primitives::paint::fill_kind::FillKind;
 use crate::primitives::paint::lut_row::LutRow;
 use crate::renderer::frontend::paint_sink::PaintPayload;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
@@ -88,14 +88,38 @@ fn a_fill_paints_nothing_over_an_empty_box() {
         rect: Rect::new(4.0, 4.0, 0.0, 10.0),
         corners: Corners::ZERO,
     });
-    assert!(!DrawClosedPayload::new(square(), white).is_noop());
-    assert!(DrawClosedPayload::new(empty, white).is_noop());
-    assert!(!DrawClosedPayload::new(triangle(), white).is_noop());
+    assert!(
+        !DrawClosedPayload {
+            geometry: square(),
+            paint: white
+        }
+        .is_noop()
+    );
+    assert!(
+        DrawClosedPayload {
+            geometry: empty,
+            paint: white
+        }
+        .is_noop()
+    );
+    assert!(
+        !DrawClosedPayload {
+            geometry: triangle(),
+            paint: white
+        }
+        .is_noop()
+    );
     let clear = ClosedFill::new(
         BrushSource::Solid(RgbaF16::TRANSPARENT),
         LoweredBorder::NONE,
     );
-    assert!(DrawClosedPayload::new(triangle(), clear).is_noop());
+    assert!(
+        DrawClosedPayload {
+            geometry: triangle(),
+            paint: clear
+        }
+        .is_noop()
+    );
 }
 
 /// A fade reaches a solid fill and a gradient fill through the one alpha
@@ -109,7 +133,10 @@ fn a_fade_reaches_the_solid_alpha_and_the_gradients_multiplier() {
         width: 2.0,
         color: RgbaF16::new(1.0, 1.0, 1.0, 1.0),
     };
-    let quad = |fill| DrawClosedPayload::new(square(), ClosedFill::new(fill, border));
+    let quad = |fill| DrawClosedPayload {
+        geometry: square(),
+        paint: ClosedFill::new(fill, border),
+    };
 
     let solid = quad(BrushSource::Solid(RgbaF16::new(0.25, 0.5, 0.75, 0.8)));
     assert_eq!(solid.faded(1.0), solid);
@@ -151,7 +178,13 @@ fn only_a_solid_box_is_a_solid_box() {
         BrushSource::Solid(RgbaF32::WHITE.to_f16()),
         LoweredBorder::NONE,
     );
-    assert!(DrawClosedPayload::new(square(), solid).is_solid_box());
+    assert!(
+        DrawClosedPayload {
+            geometry: square(),
+            paint: solid
+        }
+        .is_solid_box()
+    );
     let gradient = ClosedFill::new(
         BrushSource::Gradient(ResolvedGradient {
             axis: FillAxis::ZERO,
@@ -160,6 +193,18 @@ fn only_a_solid_box_is_a_solid_box() {
         }),
         LoweredBorder::NONE,
     );
-    assert!(!DrawClosedPayload::new(square(), gradient).is_solid_box());
-    assert!(!DrawClosedPayload::new(triangle(), solid).is_solid_box());
+    assert!(
+        !DrawClosedPayload {
+            geometry: square(),
+            paint: gradient
+        }
+        .is_solid_box()
+    );
+    assert!(
+        !DrawClosedPayload {
+            geometry: triangle(),
+            paint: solid
+        }
+        .is_solid_box()
+    );
 }

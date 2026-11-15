@@ -1,13 +1,15 @@
+use crate::cascade::blur_plan::BlurPlan;
 use crate::common::expiry_window::EXPIRY_FRAMES;
 use crate::display::Display;
 use crate::gpu::atlas::atlas_format::AtlasFormat;
 use crate::gpu::atlas::atlas_format::PerFormat;
 use crate::gpu::atlas::atlas_textures::AtlasTextures;
-use crate::gpu::atlas::page_list::{MoveBudget, PageListConfig};
+use crate::gpu::atlas::page_list::PageListConfig;
+use crate::gpu::atlas::page_list::move_budget::MoveBudget;
 use crate::gpu::atlas::tenant::Tenant;
 use crate::gpu::atlas::{AtlasPool, PoolConfig};
 use crate::gpu::backdrop::backdrops::{
-    BackdropFrame, BackdropSlot, Backdrops, Kept, RESULTS, SpectrumCell, held_clear,
+    BackdropFrame, BackdropSlot, Backdrops, Kept, RESULTS, ResultKey, SpectrumCell, held_clear,
 };
 use crate::gpu::backdrop::tests::CLEAR;
 use crate::gpu::pipeline::effect_pipeline::backdrop_groups::ResultTexture;
@@ -24,7 +26,6 @@ use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::backdrop_row::{BackdropRow, BackdropSource};
 use crate::renderer::row_table::RowTableConfig;
-use crate::shape::paint::blur_plan::BlurPlan;
 use glam::{UVec2, Vec2};
 use std::mem::offset_of;
 
@@ -109,7 +110,7 @@ impl Rig {
                 },
                 pool,
             );
-            textures.commit(ctx.gpu, ctx.encoder, pool);
+            textures.commit(ctx, pool);
             backdrops.follow(ctx.gpu, textures);
         });
         backdrops.drop_evicted(pool);
@@ -122,7 +123,7 @@ impl Rig {
 
     /// Where `owner`'s backdrop `i`'s result lies, if it holds one: its texture and its texels.
     fn slot(&self, owner: RenderOwnerId, i: u32) -> Option<(ResultTexture, URect)> {
-        let kept = *self.backdrops.cache.get(&(owner, key(i)))?;
+        let kept = self.backdrops.kept(ResultKey { owner, key: key(i) })?;
         let placed = kept.placed(&self.pool)?;
         let size = match kept {
             Kept::Item(handle) => self.pool.placement(handle)?.size.as_uvec2(),
@@ -173,7 +174,13 @@ fn each_window_keeps_its_own_results() {
     assert_eq!(rig.backdrops.blurs(), 0);
     assert_eq!(rig.slot(a, 0), Some(at_a), "held");
     rig.prepare(a, &[]);
-    assert!(!rig.backdrops.cache.contains_key(&(a, key(0))), "left");
+    assert!(
+        !rig.backdrops.cache.contains_key(&ResultKey {
+            owner: a,
+            key: key(0)
+        }),
+        "left"
+    );
     assert_eq!(rig.slot(b, 0), Some(at_b), "the other window's");
     rig.backdrops.retire(b, &mut rig.pool);
     assert!(rig.backdrops.cache.is_empty(), "retired");
@@ -199,13 +206,15 @@ fn a_backdrop_of_the_clear_frees_its_slot() {
     assert_eq!(rig.backdrops.blurs(), 0);
     let held = held_clear(CLEAR.to_f16(), TargetFormat::RGBA8_SRGB);
     assert!(matches!(
-        rig.backdrops.cache[&(owner, key(0))],
+        rig.backdrops.kept(ResultKey { owner, key: key(0) }).unwrap(),
         Kept::Clear(clear) if clear == held
     ));
     rig.prepare(owner, &[row(0, BackdropSource::Held), captured(1)]);
     assert_eq!(rig.backdrops.blurs(), 1);
     assert!(matches!(
-        rig.backdrops.cache[&(owner, key(0))],
+        rig.backdrops
+            .kept(ResultKey { owner, key: key(0) })
+            .unwrap(),
         Kept::Clear(_)
     ));
     assert_eq!(rig.slot(owner, 1), Some(first));
@@ -333,31 +342,38 @@ fn a_large_result_takes_a_scratch_texture_of_its_own() {
     let mut rig = Rig::new(AtlasPool::of_edge(16384));
     let pool = &mut rig.pool;
     let backdrops = &mut rig.backdrops;
-    let (small, _) = backdrops
-        .slot_for((owner, key(0)), UVec2::new(400, 300), pool)
+    let small = backdrops
+        .slot_for(ResultKey { owner, key: key(0) }, UVec2::new(400, 300), pool)
         .unwrap();
     assert!(matches!(small, Kept::Item(_)));
-    let (large, placed) = backdrops
-        .slot_for((owner, key(1)), UVec2::new(1936, 1088), pool)
+    let large = backdrops
+        .slot_for(
+            ResultKey { owner, key: key(1) },
+            UVec2::new(1936, 1088),
+            pool,
+        )
         .unwrap();
     let Kept::Scratch(id) = large else {
         panic!("a large result is scratch: {large:?}");
     };
+    let placed = large.placed(pool).expect("a scratch texture of its own");
     assert_eq!(placed.texture, ResultTexture::Scratch(id));
     assert_eq!(placed.origin, UVec2::ZERO);
     assert_eq!(pool.scratch_size(id), Some(UVec2::new(2048, 1536)));
-    backdrops.cache.insert((owner, key(1)), large);
-    backdrops.drop_result((owner, key(1)), pool);
-    let (again, _) = backdrops
-        .slot_for((owner, key(2)), UVec2::new(1900, 1000), pool)
+    backdrops.drop_result(ResultKey { owner, key: key(1) }, pool);
+    let again = backdrops
+        .slot_for(
+            ResultKey { owner, key: key(2) },
+            UVec2::new(1900, 1000),
+            pool,
+        )
         .unwrap();
     let Kept::Scratch(reused) = again else {
         panic!("a large result is scratch: {again:?}");
     };
     assert_eq!(reused.idx, id.idx, "the idle texture reused");
     assert_eq!(pool.scratch_size(reused), Some(UVec2::new(2048, 1536)));
-    backdrops.cache.insert((owner, key(2)), again);
-    backdrops.drop_result((owner, key(2)), pool);
+    backdrops.drop_result(ResultKey { owner, key: key(2) }, pool);
     pool.advance_to(EXPIRY_FRAMES - 1);
     pool.end_submit();
     assert_eq!(pool.list(RESULTS).scratch().texels(), 2048 * 1536);
@@ -436,7 +452,7 @@ fn a_held_result_a_drain_moved_shows_where_it_moved() {
     let glyphs: Vec<_> = (0..4)
         .map(|_| {
             rig.pool
-                .allocate(RESULTS, Tenant::Glyphs, UVec2::splat(32))
+                .allocate(RESULTS, Tenant::Glyphs.owner(), UVec2::splat(32))
                 .unwrap()
                 .handle
         })
@@ -480,11 +496,37 @@ fn a_result_past_the_device_edge_shows_its_clear() {
     rig.prepare(owner, &[wide]);
     assert_eq!(rig.backdrops.slots[0].lattice, 0.0, "it shows the clear");
     assert!(matches!(
-        rig.backdrops.cache.get(&(owner, key(0))),
+        rig.backdrops.kept(ResultKey { owner, key: key(0) }),
         Some(Kept::Clear(_))
     ));
     assert_eq!(rig.backdrops.evicted(owner).count(), 0);
     rig.prepare(owner, &[wide.with_source(BackdropSource::Held)]);
     assert_eq!(rig.backdrops.slots[0].lattice, 0.0);
     assert_eq!(rig.backdrops.blurs(), 0);
+}
+
+/// A drain leaves the result filed where an evicted one lay: `a`'s 32² result is evicted for `b`'s
+/// two display frames on, over a soft budget of nothing, and forgotten as a held frame forgets it;
+/// `c`'s result then takes `a`'s freed slot, the page doubling as `b` was drawn this frame. The
+/// eviction's tag names that slot, whose result is `c`'s now, so the drain keeps it and lists
+/// nothing.
+#[test]
+fn a_drain_keeps_the_result_filed_where_an_evicted_one_lay() {
+    let mut owners = RenderOwners::default();
+    let owner = owners.reserve();
+    let mut rig = Rig::new(pool(32, 64, 0));
+    let at = |i: u32| ResultKey { owner, key: key(i) };
+    let size = UVec2::splat(32);
+    let Kept::Item(a) = rig.backdrops.slot_for(at(0), size, &mut rig.pool).unwrap() else {
+        panic!("a result within half a page lands on a page");
+    };
+    rig.pool.advance_to(2);
+    rig.backdrops.slot_for(at(1), size, &mut rig.pool).unwrap();
+    assert_eq!(rig.pool.placement(a), None, "a's result evicted for b's");
+    assert!(rig.backdrops.unfile(at(0)).is_some());
+    let c = rig.backdrops.slot_for(at(2), size, &mut rig.pool).unwrap();
+    rig.backdrops.drop_evicted(&mut rig.pool);
+    assert_eq!(rig.backdrops.kept(at(2)), Some(c), "c's result kept");
+    assert!(rig.backdrops.kept(at(1)).is_some());
+    assert_eq!(rig.backdrops.evicted(owner).count(), 0);
 }

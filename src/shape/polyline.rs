@@ -17,12 +17,12 @@ use glam::Vec2;
 /// vertex or one per point or segment multiplies its [`Stroke`]'s color as vertex data, as a
 /// mesh's colors are. A `Stroke` draws it, centered on its points
 /// ([`Ui::add_shape`](crate::Ui::add_shape)).
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 #[must_use]
 pub struct PolylineShape<'a> {
     pub(crate) points: &'a [Vec2],
     pub(crate) colors: PolylineColors<'a>,
-    /// The points' AABB, folded once at construction so [`Shape::polyline`](crate::widget::Shape::polyline) checks every point in one test.
+    /// The points' AABB, folded once at construction so [`Shape::polyline`](crate::Shape::polyline) checks every point in one test.
     pub(crate) bbox: Rect,
     pub(crate) placement: PointPlacement,
 }
@@ -42,7 +42,7 @@ impl<'a> PolylineShape<'a> {
     ///
     /// # Panics
     ///
-    /// Panics unless every component of `rect` is an [offset](crate::widget::domain::offset).
+    /// Panics unless every component of `rect` is an [offset](crate::widget::domain::is_offset).
     #[track_caller]
     pub const fn at(mut self, rect: Rect) -> Self {
         rect.validate();
@@ -61,10 +61,10 @@ impl<'a> PolylineShape<'a> {
     /// # Panics
     ///
     /// Panics unless `colors` has one entry per point and every color is a
-    /// [color](crate::widget::domain::color); its product with the stroke's color is checked
+    /// [color](crate::widget::domain::is_color); its product with the stroke's color is checked
     /// where [`Ui::add_shape`](crate::Ui::add_shape) joins them.
     #[track_caller]
-    pub const fn per_point(mut self, colors: &'a [RgbaF32]) -> Self {
+    pub const fn point_colors(mut self, colors: &'a [RgbaF32]) -> Self {
         assert!(
             colors.len() == self.points.len(),
             "per-point polyline colors must number the points",
@@ -79,10 +79,10 @@ impl<'a> PolylineShape<'a> {
     /// # Panics
     ///
     /// Panics unless `colors` has one entry per segment, one fewer than the points, and every
-    /// color is a [color](crate::widget::domain::color); its product with the stroke's color is
+    /// color is a [color](crate::widget::domain::is_color); its product with the stroke's color is
     /// checked where [`Ui::add_shape`](crate::Ui::add_shape) joins them.
     #[track_caller]
-    pub const fn per_segment(mut self, colors: &'a [RgbaF32]) -> Self {
+    pub const fn segment_colors(mut self, colors: &'a [RgbaF32]) -> Self {
         assert!(
             colors.len() == self.points.len().saturating_sub(1),
             "per-segment polyline colors must number the segments, one fewer than the points",
@@ -134,8 +134,8 @@ const fn check_color_products(colors: &[RgbaF32], stroke: RgbaF32) {
 }
 
 impl PolylineColors<'_> {
-    /// Whether the colors fit `points_len` points, as [`PolylineShape::per_point`] and
-    /// [`PolylineShape::per_segment`] assert.
+    /// Whether the colors fit `points_len` points, as [`PolylineShape::point_colors`] and
+    /// [`PolylineShape::segment_colors`] assert.
     pub(crate) const fn matches(&self, points_len: usize) -> bool {
         match self {
             PolylineColors::Single => true,

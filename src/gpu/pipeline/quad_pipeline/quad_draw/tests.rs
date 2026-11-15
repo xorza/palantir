@@ -1,5 +1,5 @@
 use crate::common::span::Span;
-use crate::gpu::pipeline::quad_pipeline::cutout_plan::ShadowEntry;
+use crate::gpu::pipeline::quad_pipeline::quad_draw::ShadowEntry;
 use crate::gpu::pipeline::quad_pipeline::quad_draw::{self, QuadDraw, ShapeCells};
 use crate::gpu::pipeline::runs::{Run, Runs};
 use crate::renderer::render_buffer::fill_form::{FillBrush, FillForm};

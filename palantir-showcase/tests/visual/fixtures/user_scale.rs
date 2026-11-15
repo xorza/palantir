@@ -1,8 +1,10 @@
 //! The app's scale against the platform's: the render path sees only their product, and a larger product paints larger. Neither fixture holds a golden; each asserts a relation between two renders.
 
-use image::{Rgba, RgbaImage};
+use palantir::Image;
 use palantir::glam::UVec2;
-use palantir::{Block, Chrome, Configure, Panel, RgbaF32, Sizing, SystemScale, Ui, UserScale};
+use palantir::{
+    Block, Chrome, Configure, Panel, RgbaF32, SizeSpec, Sizing, SrgbaU8, SystemScale, Ui, UserScale,
+};
 
 use crate::goldens;
 use crate::visual_rig::VisualRig;
@@ -13,7 +15,7 @@ const SURFACE: UVec2 = UVec2::new(200, 160);
 fn block(ui: &mut Ui) {
     Panel::vstack()
         .id_salt("root")
-        .size((Sizing::FILL, Sizing::FILL))
+        .size(SizeSpec::FILL)
         .show(ui, |ui| {
             Block::new()
                 .id_salt("block")
@@ -24,11 +26,10 @@ fn block(ui: &mut Ui) {
 }
 
 /// How far the painted region reaches from the corner. `bg` is read from an empty render on the same pipeline, so it is the exact bytes of an unpainted pixel.
-fn painted_extent(img: &RgbaImage, bg: Rgba<u8>) -> UVec2 {
-    let painted = |p: &Rgba<u8>| *p != bg;
+fn painted_extent(img: &Image, bg: SrgbaU8) -> UVec2 {
     let mut extent = UVec2::ZERO;
-    for (x, y, pixel) in img.enumerate_pixels() {
-        if painted(pixel) {
+    for (UVec2 { x, y }, pixel) in img.enumerate_texels() {
+        if pixel != bg {
             extent = extent.max(UVec2::new(x + 1, y + 1));
         }
     }
@@ -38,13 +39,9 @@ fn painted_extent(img: &RgbaImage, bg: Rgba<u8>) -> UVec2 {
 /// The two scale halves are interchangeable: dpr 2 with no user scale paints the same pixels as dpr 1 at 200%, which lets user scale reuse the hi-dpi path.
 #[test]
 fn the_two_halves_of_the_scale_factor_are_interchangeable() {
-    let mut h = VisualRig::new();
+    let mut h = VisualRig::new(SURFACE);
 
-    let system = h
-        .size(SURFACE)
-        .scale(SystemScale::new(2.0).unwrap())
-        .frame(block)
-        .image;
+    let system = h.scale(SystemScale::new(2.0).unwrap()).frame(block).image;
     h.host.ui_mut().set_user_scale(UserScale::new(2.0).unwrap());
     let user = h.scale(SystemScale::ONE).frame(block).image;
 
@@ -54,11 +51,11 @@ fn the_two_halves_of_the_scale_factor_are_interchangeable() {
 /// Scaling up paints up: 40×24 physical at 100%, 80×48 at 200%.
 #[test]
 fn a_larger_user_scale_paints_a_larger_block() {
-    let mut h = VisualRig::new();
+    let mut h = VisualRig::new(SURFACE);
     // Read back, not converted: `DARK_BG` is linear and the target sRGB, so use what an empty render says.
     let bg = {
         let empty = h.size(SURFACE).frame(|_: &mut Ui| {}).image;
-        *empty.get_pixel(SURFACE.x - 1, SURFACE.y - 1)
+        empty.texel(UVec2::new(SURFACE.x - 1, SURFACE.y - 1))
     };
 
     let plain = h.frame(block).image;

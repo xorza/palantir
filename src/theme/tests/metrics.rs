@@ -7,7 +7,7 @@ use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
-use crate::primitives::paint::material::material_fallback::MaterialFallback;
+use crate::primitives::paint::material::backdrop_fallback::BackdropFallback;
 use crate::primitives::paint::shadow::Shadow;
 use crate::theme::color_scheme::ColorScheme;
 use crate::theme::metrics::{
@@ -159,10 +159,14 @@ fn every_recipe_reads_its_geometry_from_the_metrics() {
         ("scrollbar gap", t.scrollbar.gap, 1.0),
         (
             "dock preview radius",
-            t.dock.preview.corners.to_array()[0],
+            t.dock.preview.corners.top_left(),
             11.0,
         ),
-        ("tab radius", t.tabs.radius, 15.0),
+        (
+            "tab radius",
+            t.tabs.unselected.normal.chrome.corners.top_left(),
+            15.0,
+        ),
         ("separator", t.separator.thickness, 0.25),
         ("splitter rule", t.splitter.rule_thickness, 0.25),
         (
@@ -186,7 +190,7 @@ fn every_recipe_reads_its_geometry_from_the_metrics() {
         ("picker handle", t.color_picker.handle_width, 0.5),
         ("focus ring", t.focus_ring.width, 0.75),
         ("tab cap", t.tabs.cap_thickness, 0.75),
-        ("tab caret", t.tabs.caret_width, 0.75),
+        ("tab caret", t.tabs.drop_mark_width, 0.75),
         ("check mark", t.checkbox.indicator_width, 0.75),
     ];
     for (slot, got, want) in lengths {
@@ -211,7 +215,7 @@ fn every_recipe_reads_its_geometry_from_the_metrics() {
         assert_eq!(material.backdrop_blur, 31.0, "{slot} blur");
         let fill = panel.paint.fill.as_solid().expect(slot);
         assert_eq!(fill.a, 0.5, "{slot} fill");
-        let MaterialFallback::Brush(Brush::Solid(fallback)) = material.fallback else {
+        let BackdropFallback::Brush(Brush::Solid(fallback)) = material.fallback else {
             panic!("{slot}: a fallback of its panel");
         };
         assert_eq!(
@@ -258,7 +262,7 @@ fn every_recipe_reads_its_geometry_from_the_metrics() {
     assert_eq!(t.tabs.selected.normal.chrome.corners, Corners::top(15.0));
     for (slot, animation) in [
         ("button", t.button.defaults.transition),
-        ("menu bar title", t.menu_bar.defaults.transition),
+        ("menu bar title", t.menu_bar.title.defaults.transition),
         ("menu item", t.menu.item.defaults.transition),
         ("tab chip", t.tabs.defaults.transition),
         ("drag value", t.drag_value.defaults.transition),
@@ -279,7 +283,7 @@ fn every_recipe_reads_its_geometry_from_the_metrics() {
     }
 }
 
-/// A float the material cannot hold its ink in keeps its opaque panel, as `dress_float` falls
+/// A float the material cannot hold its ink in keeps its opaque panel, as its `from_parts` falls
 /// back: a mid-grey muted ink on the light popup needs a floor past white, which the bound
 /// refuses as a case, not a panic.
 #[test]

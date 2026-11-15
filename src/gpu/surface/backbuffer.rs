@@ -50,19 +50,17 @@ impl Backbuffer {
     /// A backbuffer [`fitting`](Self::fits) `target`. `binding` is what
     /// targets without copy support draw through.
     pub(crate) fn new(gpu: &Gpu, binding: &TextureBinding, target: RenderTarget<'_>) -> Self {
-        let texture = texel::texture_2d(
-            gpu,
-            TargetSpec {
-                label: "palantir.renderer.backbuffer",
-                size: texel::size(target.texture()),
-                format: target.texture().format(),
-                // `COPY_DST` takes a damage canvas's rects.
-                usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-                    | wgpu::TextureUsages::COPY_SRC
-                    | wgpu::TextureUsages::COPY_DST
-                    | wgpu::TextureUsages::TEXTURE_BINDING,
-            },
-        );
+        let texture = TargetSpec {
+            label: "palantir.renderer.backbuffer",
+            size: texel::size(target.texture()),
+            format: target.texture().format(),
+            // `COPY_DST` takes a damage canvas's rects.
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::COPY_SRC
+                | wgpu::TextureUsages::COPY_DST
+                | wgpu::TextureUsages::TEXTURE_BINDING,
+        }
+        .texture(gpu);
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
         let bind_group = binding.texture_group(gpu, &view, "palantir.renderer.backbuffer.bg");
         Self {

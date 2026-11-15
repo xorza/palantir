@@ -1,11 +1,11 @@
 //! A lowered brush and the GPU fill lanes it expands into.
 
 use crate::primitives::packed::fill_axis::FillAxis;
-use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
+use crate::primitives::paint::fill_kind::FillKind;
 use crate::primitives::paint::lut_row::LutRow;
-use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
+use crate::renderer::render_buffer::gpu_fill::GpuFill;
 
 /// Lowered brush input: `Solid` (an `RgbaF16`) or `Gradient` (atlas row, axis, kind). An enum, so a
 /// solid holds no gradient axis; the lanes are derived from it once, as the payload is built.

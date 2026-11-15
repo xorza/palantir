@@ -1,6 +1,6 @@
 use crate::internals::panic_probe;
 use crate::primitives::geometry::corners::Corners;
-use crate::primitives::geometry::rect::{EdgeRounding, Rect};
+use crate::primitives::geometry::rect::{self, EdgeRounding, Rect};
 use crate::primitives::geometry::spacing::Spacing;
 use glam::Vec2;
 
@@ -105,18 +105,82 @@ fn intersects_cases() {
     assert_eq!(missed, Rect::new(50.0, 50.0, 0.0, 0.0));
 }
 
-/// A NaN operand is a broken contract, not a miss (`f32::max` would drop it).
+/// `intersect` answers `Some` exactly where `intersects` is true, in every build: an overlap,
+/// and never a touch, an empty or negative operand, or a NaN (`f32::max` would drop one and
+/// answer with the other rect whole).
+#[test]
+fn intersect_agrees_with_intersects() {
+    let ten = Rect::new(0.0, 0.0, 10.0, 10.0);
+    let cases: &[(&str, Rect, Rect, Option<Rect>)] = &[
+        (
+            "overlap",
+            ten,
+            Rect::new(5.0, 6.0, 10.0, 10.0),
+            Some(Rect::new(5.0, 6.0, 5.0, 4.0)),
+        ),
+        (
+            "inside",
+            Rect::new(2.0, 3.0, 4.0, 5.0),
+            ten,
+            Some(Rect::new(2.0, 3.0, 4.0, 5.0)),
+        ),
+        ("touching edges", ten, Rect::new(10.0, 0.0, 5.0, 10.0), None),
+        ("apart", ten, Rect::new(50.0, 50.0, 5.0, 5.0), None),
+        ("empty operand", Rect::new(5.0, 5.0, 0.0, 4.0), ten, None),
+        (
+            "negative operand",
+            Rect::new(8.0, 8.0, -4.0, -4.0),
+            ten,
+            None,
+        ),
+        ("nan first", Rect::NAN, ten, None),
+        ("nan second", ten, Rect::NAN, None),
+        (
+            "nan size alone",
+            Rect::new(1.0, 1.0, f32::NAN, 2.0),
+            ten,
+            None,
+        ),
+        (
+            "nan origin alone",
+            Rect::new(f32::NAN, 1.0, 2.0, 2.0),
+            ten,
+            None,
+        ),
+    ];
+    for (label, a, b, want) in cases {
+        assert_eq!(a.intersect(*b), *want, "{label}");
+        assert_eq!(
+            b.intersect(*a).is_some(),
+            want.is_some(),
+            "{label}, swapped"
+        );
+        assert_eq!(a.intersects(*b), want.is_some(), "{label}");
+        assert_eq!(b.intersects(*a), want.is_some(), "{label}, swapped");
+    }
+}
+
+/// Two corners in either order: a `max` below `min` gives a negative extent, which paints
+/// nothing, in every build.
+#[test]
+fn from_min_max_takes_corners_in_either_order() {
+    let reversed = Rect::from_min_max(Vec2::new(11.0, 19.0), Vec2::new(-4.0, 7.0));
+    assert_eq!(reversed, Rect::new(11.0, 19.0, -15.0, -12.0));
+    assert!(reversed.is_paint_empty());
+}
+
+/// A NaN operand to the saturating clamp is a broken contract, not a miss (`f32::max` would drop
+/// it).
 #[test]
 #[cfg_attr(
     not(debug_assertions),
     ignore = "probes a debug_assert!, which release compiles out"
 )]
-fn a_nan_operand_is_refused() {
+fn clamp_to_refuses_a_nan_operand() {
     for (a, b) in [
         (Rect::NAN, Rect::new(0.0, 0.0, 10.0, 10.0)),
         (Rect::new(0.0, 0.0, 10.0, 10.0), Rect::NAN),
     ] {
-        panic_probe::assert_panics_with("NaN operand", || a.intersect(b));
         panic_probe::assert_panics_with("NaN operand", || a.clamp_to(b));
     }
 }
@@ -263,5 +327,64 @@ fn resolve_local_places_a_local_rect_on_its_owner() {
     assert_eq!(
         owner.resolve_local(Some(Rect::new(3.0, -4.0, 8.0, 6.0))),
         Rect::new(13.0, 16.0, 8.0, 6.0),
+    );
+}
+
+/// What a turned or spun rect covers about a pivot. The spin radius takes each axis's farthest
+/// corner apart: the rect `(-3, 1)`–`(-1, 4)` reaches 3 on x at its min corner and 4 on y at its
+/// max, so its radius about the origin is `√(3² + 4²) = 5` though neither corner lies 5 away, and
+/// its cover is the square of half-side 5 there. A quarter turn of the 16-square at the origin about
+/// the origin moves its center `(8, 8)` to `(−8, 8)` and keeps its 8 reach on both axes, so it
+/// covers `(−16, 0)`–`(0, 16)`, each edge within `16 · 4.4e-8 ≈ 7e-7` as the f32 `π/2` leaves
+/// `cos` at `−4.4e-8`, not 0. A turn of 0 leaves the rect as it is, whatever the pivot.
+#[test]
+fn turned_and_spun_covers_bound_the_rect_about_its_pivot() {
+    let rect = Rect::from_min_max(Vec2::new(-3.0, 1.0), Vec2::new(-1.0, 4.0));
+    assert_eq!(rect.spun_radius(Vec2::ZERO), 5.0);
+    assert_eq!(
+        rect.spun_cover(Vec2::ZERO),
+        Rect::new(-5.0, -5.0, 10.0, 10.0)
+    );
+    assert_eq!(rect.spun_radius(Vec2::new(-3.0, 1.0)), 13.0_f32.sqrt());
+
+    let square = Rect::new(0.0, 0.0, 16.0, 16.0);
+    let turned = square.turned_cover(Vec2::ZERO, std::f32::consts::FRAC_PI_2);
+    let want = Rect::new(-16.0, 0.0, 16.0, 16.0);
+    for (got, want) in [
+        (turned.min.x, want.min.x),
+        (turned.min.y, want.min.y),
+        (turned.max().x, want.max().x),
+        (turned.max().y, want.max().y),
+    ] {
+        assert!((got - want).abs() <= 1e-6, "{turned:?}");
+    }
+    let off = Rect::new(2.0, 4.0, 6.0, 2.0);
+    assert_eq!(off.turned_cover(Vec2::new(1.0, 1.0), 0.0), off);
+}
+
+/// Each pixel counts once: two 10² squares sharing 5² are 175, one inside another 100, apart 200,
+/// touching at an edge 200, and three across one strip, 10 × 10 twice 5 px apart and a third inside
+/// their overlap, 150; none is 0.
+#[test]
+fn union_area_counts_each_pixel_once() {
+    let area = |rects: &[Rect]| {
+        let mut edges = vec![0.0; 2 * rects.len()];
+        let mut spans = vec![(0.0, 0.0); rects.len()];
+        rect::union_area(rects, &mut edges, &mut spans)
+    };
+    let a = Rect::new(0.0, 0.0, 10.0, 10.0);
+    assert_eq!(area(&[]), 0.0);
+    assert_eq!(area(&[a]), 100.0);
+    assert_eq!(area(&[a, Rect::new(5.0, 5.0, 10.0, 10.0)]), 175.0);
+    assert_eq!(area(&[a, Rect::new(2.0, 2.0, 3.0, 3.0)]), 100.0);
+    assert_eq!(area(&[a, Rect::new(20.0, 0.0, 10.0, 10.0)]), 200.0);
+    assert_eq!(area(&[a, Rect::new(10.0, 0.0, 10.0, 10.0)]), 200.0);
+    assert_eq!(
+        area(&[
+            a,
+            Rect::new(5.0, 0.0, 10.0, 10.0),
+            Rect::new(6.0, 2.0, 3.0, 3.0),
+        ]),
+        150.0
     );
 }

@@ -5,16 +5,14 @@
 use std::time::Duration;
 
 use palantir::glam::{UVec2, Vec2};
-use palantir::widget::{PaintAnimation, PaintRepeat, Shape};
 use palantir::{
-    Block, Chrome, Configure, Image, ImageFit, ImageHandle, Layer, Panel, RadialGradient, Rect,
-    RgbaF32, Shadow, Sizing, SrgbaU8, Text, Ui,
+    Block, Chrome, Configure, Fit, Gradient, Image, ImageHandle, ImagePaint, Layer, PaintAnimation,
+    PaintRepeat, Panel, Rect, RgbaF32, Shadow, ShadowKind, Shape, SizeSpec, Sizing, SrgbaU8,
+    Stroke, Text, Ui,
 };
 
 use crate::goldens;
 use crate::visual_rig::VisualRig;
-use palantir::Stroke;
-use palantir::widget::ImagePaint;
 
 const SURFACE: UVec2 = UVec2::new(320, 240);
 
@@ -49,13 +47,13 @@ impl Knobs {
 
 fn scene(ui: &mut Ui, k: Knobs, picture: &ImageHandle) {
     // Translucent and varying in both axes, so every damaged pixel blends a value of its own over the clear.
-    let veil = RadialGradient::centered([
+    let veil = Gradient::centered_radial([
         RgbaF32::srgba(1.0, 1.0, 1.0, 0.6),
         RgbaF32::srgba(0.3, 0.6, 1.0, 0.05),
     ]);
     Panel::vstack()
         .id_salt("root")
-        .size((Sizing::FILL, Sizing::FILL))
+        .size(SizeSpec::FILL)
         .chrome(Chrome::new(veil))
         .gap(4.0)
         .show(ui, |ui| {
@@ -99,11 +97,7 @@ fn scene(ui: &mut Ui, k: Knobs, picture: &ImageHandle) {
                 .id_salt("picture")
                 .size(30.0)
                 .show(ui, |ui| {
-                    let fit = if k.fit_none {
-                        ImageFit::Natural
-                    } else {
-                        ImageFit::Fill
-                    };
+                    let fit = if k.fit_none { Fit::Natural } else { Fit::Fill };
                     ui.add_shape(Shape::rect(), ImagePaint::new(picture.clone()).fit(fit));
                 });
             if k.extra {
@@ -134,7 +128,7 @@ fn scene(ui: &mut Ui, k: Knobs, picture: &ImageHandle) {
             RgbaF32::srgb(0.0, 0.5, 1.0)
         };
         ui.layer(Layer::Popup)
-            .fixed_at(Vec2::new(220.0, 30.0))
+            .at(Vec2::new(220.0, 30.0))
             .show(|ui| {
                 Block::new()
                     .id_salt(name)
@@ -153,7 +147,7 @@ fn shadows(ui: &mut Ui, k: Knobs) {
         offset: Vec2::ZERO,
         blur,
         spread: 0.0,
-        inset: false,
+        kind: ShadowKind::Drop,
     };
     let cast = |ui: &mut Ui, id: usize, at: Rect, blur: f32, radius: f32| {
         Panel::canvas()
@@ -169,7 +163,7 @@ fn shadows(ui: &mut Ui, k: Knobs) {
                 );
             });
     };
-    ui.layer(Layer::Modal).fixed_at(Vec2::ZERO).show(|ui| {
+    ui.layer(Layer::Modal).at(Vec2::ZERO).show(|ui| {
         Panel::canvas()
             .id_salt("shadows")
             .size((Sizing::fixed(320.0), Sizing::fixed(240.0)))
@@ -196,10 +190,8 @@ fn picture(h: &VisualRig) -> ImageHandle {
 
 /// Run `script` after two primed frames, comparing every frame.
 fn run(name: &str, script: &[Knobs]) {
-    let mut partial = VisualRig::new();
-    let mut full = VisualRig::new();
-    partial.size(SURFACE);
-    full.size(SURFACE);
+    let mut partial = VisualRig::new(SURFACE);
+    let mut full = VisualRig::new(SURFACE);
     let (partial_picture, full_picture) = (picture(&partial), picture(&full));
     for (frame, k) in [Knobs::BASE, Knobs::BASE].iter().chain(script).enumerate() {
         let repainted = partial.frame(|ui| scene(ui, *k, &partial_picture)).image;

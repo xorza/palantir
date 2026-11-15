@@ -1,4 +1,3 @@
-use crate::primitives::input::zoom_factor::error::ZoomFactorError;
 use crate::primitives::input::zoom_factor::{ZoomFactor, clamp, is_valid};
 
 /// Every `f64` maps to a factor [`is_valid`] accepts. Both saturating ends resolve to the `f32` extremes, an ordinary product passes through, and NaN (which neither comparison in `clamp` accepts) resolves to identity.
@@ -28,7 +27,11 @@ fn only_a_finite_positive_number_is_a_factor() {
     assert_eq!(1.0 / 1.0e-40_f32, f32::INFINITY);
     assert!((1.0 / f32::MIN_POSITIVE).is_finite());
     for good in [f32::MIN_POSITIVE, 0.5, 1.0, 2.0, f32::MAX] {
-        assert!(ZoomFactor::new(good).is_some(), "{good} is a factor");
+        assert_eq!(
+            ZoomFactor::new(good).map(ZoomFactor::get),
+            Some(good),
+            "{good} is a factor"
+        );
     }
     for bad in [
         0.0,
@@ -87,23 +90,4 @@ fn wheel_notches_negate_into_the_factor() {
         ZoomFactor::from_wheel(1.03, 10_000.0).get(),
         f32::MIN_POSITIVE
     );
-}
-
-/// `TryFrom` answers as `new` does, with the refused factor in its error: 1.5 and the smallest
-/// normal pass; zero, a negative, a subnormal and the non-finite are refused.
-#[test]
-fn try_from_answers_as_new() {
-    for factor in [1.5, f32::MIN_POSITIVE] {
-        assert_eq!(
-            ZoomFactor::try_from(factor).map(ZoomFactor::get),
-            Ok(factor)
-        );
-    }
-    for factor in [0.0, -1.0, 1.0e-40, f32::INFINITY] {
-        assert_eq!(
-            ZoomFactor::try_from(factor),
-            Err(ZoomFactorError { found: factor })
-        );
-    }
-    assert!(ZoomFactor::try_from(f32::NAN).is_err());
 }

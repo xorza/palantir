@@ -33,7 +33,7 @@ impl Stop {
     ///
     /// # Panics
     ///
-    /// Panics unless `color` is a [color](crate::widget::domain::color).
+    /// Panics unless `color` is a [color](crate::widget::domain::is_color).
     #[inline]
     #[track_caller]
     pub fn new(offset: f32, color: impl Into<RgbaF32>) -> Self {
@@ -97,7 +97,7 @@ impl<'de> Deserialize<'de> for Stop {
 /// bake one LUT row. Hence no `DerefMut`.
 ///
 /// A `u8` count beside a fixed array (not `ArrayVec`'s `u16`) keeps
-/// `LinearGradient` at 48 B. Slots past `len` hold `Stop::default()` so `Eq` agrees
+/// `Gradient` at 64 B. Slots past `len` hold `Stop::default()` so `Eq` agrees
 /// with the live-stops-only `Hash`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct GradientStops {
@@ -114,11 +114,7 @@ impl GradientStops {
     /// Panics unless there are two through eight stops.
     #[track_caller]
     pub fn new(stops: impl IntoIterator<Item = Stop>) -> Self {
-        let mut builder = GradientStopsBuilder::default();
-        for stop in stops {
-            builder.push(stop);
-        }
-        builder.build()
+        Self::sorted(collect_capped(stops))
     }
 
     pub(crate) const fn as_slice(&self) -> &[Stop] {
@@ -130,7 +126,7 @@ impl GradientStops {
     }
 
     /// The one place a `GradientStops` is built, so the ascending invariant is
-    /// established here for both [`GradientStopsBuilder::build`] and `Deserialize`.
+    /// established here for both [`Self::new`] and `Deserialize`.
     /// Stable insertion sort: input is nearly ordered and the strict `>` keeps
     /// equal offsets in written order.
     fn sorted(mut values: ArrayVec<[Stop; MAX_STOPS]>) -> Self {
@@ -150,30 +146,30 @@ impl GradientStops {
     }
 }
 
-/// The accumulating half of [`GradientStops`] and the one place the `MAX_STOPS`
-/// rule lives; a gradient builder holds one so a ninth stop panics at its call.
-#[derive(Clone, Debug, Default)]
-pub(crate) struct GradientStopsBuilder(ArrayVec<[Stop; MAX_STOPS]>);
-
-impl GradientStopsBuilder {
-    #[track_caller]
-    pub(crate) fn push(&mut self, stop: Stop) {
+/// `items` held inline, as a gradient holds its stops: the one place the two-to-[`MAX_STOPS`]
+/// rule lives, so a ninth item panics at its caller's line.
+///
+/// # Panics
+///
+/// Unless there are two through [`MAX_STOPS`] items.
+#[track_caller]
+pub(crate) fn collect_capped<T: Default>(
+    items: impl IntoIterator<Item = T>,
+) -> ArrayVec<[T; MAX_STOPS]> {
+    let mut held = ArrayVec::new();
+    for item in items {
         assert!(
-            self.0.len() < MAX_STOPS,
+            held.len() < MAX_STOPS,
             "gradient stop count exceeds MAX_STOPS = {MAX_STOPS}",
         );
-        self.0.push(stop);
+        held.push(item);
     }
-
-    #[track_caller]
-    pub(crate) fn build(self) -> GradientStops {
-        assert!(
-            self.0.len() >= 2,
-            "gradient requires at least 2 stops, got {}",
-            self.0.len(),
-        );
-        GradientStops::sorted(self.0)
-    }
+    assert!(
+        held.len() >= 2,
+        "gradient requires at least 2 stops, got {}",
+        held.len(),
+    );
+    held
 }
 
 impl ops::Deref for GradientStops {

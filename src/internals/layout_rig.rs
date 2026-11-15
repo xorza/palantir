@@ -225,14 +225,13 @@ impl NodeRecorder<'_> {
     /// Record `widget`'s node under the id `id`, holding `run` and no children.
     pub(crate) fn text_leaf(&mut self, id: &str, widget: Widget, run: TextRun<'_>) {
         self.node(id, widget, |rec| {
-            let text = rec.forest.record_store.text.intern(run.text);
             let font = GlyphFont::new(run.px);
             let resolve = Resolve {
                 effects: rec.effects,
                 reductions: Reductions::default(),
                 material_fallback: RgbaF32::TRANSPARENT,
             };
-            let shape = Shape::text(text, font).wrap(run.wrap);
+            let shape = Shape::text(run.text, font).wrap(run.wrap);
             rec.forest.add_draw(shape.draw(&RgbaF32::WHITE), resolve);
         });
     }

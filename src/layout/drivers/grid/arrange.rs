@@ -24,7 +24,7 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner: Size) {
 
     // Resolve track sizes. Fast path: when measure resolved this axis against the same `total` (`track_state.total_used` is `Some`) and arrange's `inner.size.X` equals measure's `inner_avail.X` (no Stretch grow since), copy the persisted sizes instead of re-solving. Offsets are cheap, so they are always recomputed.
     {
-        let tracks = &mut pass.grid_mut().track_state;
+        let tracks = pass.grid_tracks_mut();
         tracks.resolve_or_reuse(cols, inner.w);
         tracks.resolve_or_reuse(rows, inner.h);
         tracks.compute_offsets(cols.id, cols.gap);
@@ -38,7 +38,7 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner: Size) {
         let cell = grid.cell(tree, c);
 
         let slot = {
-            let tracks = &pass.grid_mut().track_state;
+            let tracks = &pass.grid_tracks_mut();
             Rect {
                 min: Vec2::new(
                     tracks.offset(cols.id, cell.col() as usize),

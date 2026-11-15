@@ -22,6 +22,7 @@ use crate::widgets::dock::dock_tab::DockTab;
 use crate::widgets::dock::error::DockError;
 use crate::widgets::dock::split_side::SplitSide;
 use crate::widgets::dock::tab_group::{TabGroup, TabGroupId};
+use crate::widgets::splitter::split_half::SplitHalf;
 use crate::widgets::tabs::reindex;
 use std::mem;
 
@@ -202,7 +203,7 @@ impl<T: DockTab> DockState<T> {
             DockOperation::CloseTab { tab } => self.close_tab(tab),
             DockOperation::MoveTab { tab, to } => self.move_tab(tab, to),
             DockOperation::SetRatio { split, ratio } => self.set_ratio(split, ratio),
-            DockOperation::FocusPane { group } => self.focus(group),
+            DockOperation::FocusGroup { group } => self.focus(group),
         }
     }
 
@@ -275,7 +276,7 @@ impl<T: DockTab> DockState<T> {
             .remove_tab(source.idx);
 
         match drop {
-            DockDrop::Into { group, idx } => {
+            DockDrop::Join { group, idx } => {
                 // `idx` addresses the strip as the caller saw it, before the tab left it.
                 let idx = if group == source.group {
                     reindex::landing(source.idx, idx)
@@ -343,7 +344,7 @@ impl<T: DockTab> DockState<T> {
             return false;
         };
         let target = match drop {
-            DockDrop::Into { group, .. } | DockDrop::Split { group, .. } => group,
+            DockDrop::Join { group, .. } | DockDrop::Split { group, .. } => group,
         };
         if self.group(target).is_none() {
             return false;
@@ -391,15 +392,14 @@ impl<T: DockTab> DockState<T> {
         };
         let existing_idx = NodeIdx::at(self.layout.nodes.len());
         let fresh_idx = NodeIdx::at(self.layout.nodes.len() + 1);
-        let (first, second) = if side.new_pane_first() {
-            (fresh_idx, existing_idx)
-        } else {
-            (existing_idx, fresh_idx)
+        let (first, second) = match side.half() {
+            SplitHalf::First => (fresh_idx, existing_idx),
+            SplitHalf::Second => (existing_idx, fresh_idx),
         };
         let existing = mem::replace(
             &mut self.layout.nodes[slot],
             DockNode::Split(DockSplit {
-                direction: side.direction(),
+                axis: side.axis(),
                 ratio: 0.5,
                 first,
                 second,
@@ -548,29 +548,13 @@ impl<T: DockTab> DockState<T> {
 
 #[cfg(test)]
 mod internals {
-    use crate::widgets::dock::dock_node::DockNode;
     use crate::widgets::dock::dock_state::DockState;
     use crate::widgets::dock::dock_tab::DockTab;
     use crate::widgets::dock::tab_group::TabGroupId;
 
     impl<T: DockTab> DockState<T> {
-        /// Raw node access for the validation suite to build corrupt trees.
-        pub(crate) fn nodes_mut(&mut self) -> &mut Vec<DockNode<T>> {
-            &mut self.layout.nodes
-        }
-
-        /// Point `focused` at a group without checking it exists.
-        pub(crate) fn set_focused_unchecked(&mut self, group: TabGroupId) {
-            self.layout.focused = group;
-        }
-
         pub(crate) fn absent_group(&self) -> TabGroupId {
             TabGroupId(self.layout.next_group + 1000)
-        }
-
-        /// Park the id counter where no operation sequence could.
-        pub(crate) fn set_next_group_unchecked(&mut self, next: u64) {
-            self.layout.next_group = next;
         }
 
         /// Append `tab` to a live `group` without activating it or moving focus.

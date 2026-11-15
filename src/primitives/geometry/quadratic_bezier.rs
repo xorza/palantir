@@ -1,4 +1,4 @@
-//! The quadratic Bézier [`Shape::quadratic_bezier`](crate::widget::Shape::quadratic_bezier) strokes; lowering promotes it to a [`CubicBezier`](crate::widget::CubicBezier).
+//! The quadratic Bézier [`Shape::quadratic_bezier`](crate::Shape::quadratic_bezier) strokes; lowering promotes it to a [`CubicBezier`](crate::CubicBezier).
 
 use crate::primitives::math::domain::vec2;
 use glam::Vec2;
@@ -15,7 +15,7 @@ pub struct QuadraticBezier {
 }
 
 impl QuadraticBezier {
-    /// Panics unless every control point is an [offset](crate::widget::domain::offset).
+    /// Panics unless every control point is an [offset](crate::widget::domain::is_offset).
     #[inline]
     #[track_caller]
     pub(crate) const fn validate(self) {

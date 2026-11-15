@@ -26,12 +26,12 @@ impl ShapedTextRef {
         }
     }
 
-    /// Resolve the bytes and rebuild the shaping request replayed on an encoded-cache miss. [`TextShapeRequest::for_key`] checks the bytes against the key's content hash, which makes cached-buffer reuse sound. `TextShape::is_noop` drops empty runs before recording, so the `expect` is that contract.
+    /// Resolve the bytes and rebuild the shaping request replayed on an encoded-cache miss. [`TextShapeRequest::for_key`] checks the bytes against the key's content hash, which makes cached-buffer reuse sound. The record drops an empty run, so the `expect` is that contract.
     pub(crate) fn resolve_request<'a>(
         self,
         interned_text: &'a InternedText<'_>,
     ) -> TextShapeRequest<'a> {
         TextShapeRequest::for_key(interned_text.resolve(self.span), self.key)
-            .expect("a recorded text run has bytes — `TextShape::is_noop` drops the empty one")
+            .expect("a recorded text run has bytes: the record drops an empty one")
     }
 }

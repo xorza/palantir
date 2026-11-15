@@ -7,7 +7,6 @@ use crate::layout::cache::measure_snapshot::SubtreeKey;
 use crate::layout::cache::{CaptureTreeInput, MeasureCache};
 use crate::layout::layout_scratch::LayoutScratch;
 use crate::layout::pass::LayoutPass;
-use crate::layout::placed_child::{Placed, PlacedChild};
 use crate::layout::plane_input::PlaneInput;
 use crate::layout::text::text_shape_input::TextShapeInput;
 use crate::primitives::geometry::rect::Rect;
@@ -143,16 +142,11 @@ impl LayoutEngine {
                 let root = slot.first_node;
                 let available = slot.available(surface);
                 // Per root, so the zone budget stays flat.
-                let measured = {
+                {
                     tracy::zone!("Layout::measure");
-                    pass.measure(root, available)
-                };
-                let size = PlacedChild {
-                    layout: &tree.records.layout()[root.idx()],
-                    bounds: tree.bounds(root),
-                    measured: Placed::of(measured.size, measured.floor),
+                    pass.measure(root, available);
                 }
-                .arrange_size(available);
+                let size = pass.placed(root).arrange_size(available);
                 // Overlay policies need the current measured body, not a retained response rect.
                 let arranged = Rect {
                     min: slot.origin(size, surface),

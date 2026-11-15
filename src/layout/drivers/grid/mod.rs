@@ -3,7 +3,8 @@
 
 use crate::common::span::Span;
 use crate::layout::drivers::LayoutDriver;
-use crate::layout::drivers::grid::grid_track_store::{GridAxis, GridAxisId};
+use crate::layout::drivers::grid::grid_axis::GridAxis;
+use crate::layout::drivers::grid::grid_track_store::GridAxisId;
 use crate::layout::intrinsic::intrinsic_pass::IntrinsicPass;
 use crate::layout::intrinsic::intrinsic_query::IntrinsicQuery;
 use crate::layout::intrinsic::intrinsic_range::IntrinsicRange;
@@ -15,15 +16,25 @@ use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::grid_cell::GridCell;
 use crate::primitives::layout::layout_mode::GridDefId;
-use crate::primitives::layout::track::Track;
 use crate::primitives::math::num::F32Px;
 use crate::scene::tree::Tree;
 use crate::scene::tree::node_id::NodeId;
+use std::num::NonZeroU16;
 
 mod arrange;
+mod grid_axis;
 pub(crate) mod grid_ctx;
 pub(crate) mod grid_track_store;
 mod measure;
+
+/// The two rounds CSS Grid §12.5 grows spanning cells in.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SpanRound {
+    /// Step 3: the spans that cross no Fill track.
+    Rigid,
+    /// Step 4: the spans that cross a Fill track.
+    Flexible,
+}
 
 #[derive(Clone, Copy, Debug)]
 pub(super) struct Grid {
@@ -41,10 +52,48 @@ impl Grid {
     fn cell(self, tree: &Tree, child: NodeId) -> GridCell {
         let def = tree.grid_defs[usize::from(self.def)];
         // A cell addresses at most `u16::MAX` tracks, so a longer list holds it at that.
-        let tracks = |span: Span| u16::try_from(span.len).unwrap_or(u16::MAX);
+        let tracks = |span: Span| {
+            NonZeroU16::new(u16::try_from(span.len).unwrap_or(u16::MAX))
+                .expect("a grid that places cells has tracks")
+        };
         tree.bounds(child)
             .grid
             .clamped_to(tracks(def.rows), tracks(def.cols))
+    }
+
+    /// Each child that spans two tracks or more of `grid_axis`, with its span, in the order CSS
+    /// Grid §12.5 grows them: [`SpanRound::Rigid`], then [`SpanRound::Flexible`].
+    fn spans<'t>(
+        self,
+        tree: &'t Tree,
+        grid_axis: GridAxis<'t>,
+    ) -> impl Iterator<Item = (NodeId, Span)> + 't {
+        [SpanRound::Rigid, SpanRound::Flexible]
+            .into_iter()
+            .flat_map(move |round| self.spans_in(tree, grid_axis, round))
+    }
+
+    /// Each child of `round` that spans two tracks or more of `grid_axis`, with its span, in
+    /// child order. A grid none of whose cells asked for a span walks no child
+    /// ([`GridDef::has_spans`](crate::primitives::layout::grid_def::GridDef::has_spans)).
+    fn spans_in<'t>(
+        self,
+        tree: &'t Tree,
+        grid_axis: GridAxis<'t>,
+        round: SpanRound,
+    ) -> impl Iterator<Item = (NodeId, Span)> + 't {
+        let axis = grid_axis.id.axis;
+        let walks = tree.grid_defs[usize::from(self.def)].has_spans(axis);
+        let flexible = round == SpanRound::Flexible;
+        walks
+            .then(move || {
+                tree.active_children(self.node).filter_map(move |c| {
+                    let span = self.cell(tree, c).track_span(axis);
+                    (span.len >= 2 && grid_axis.crosses_fill(span) == flexible).then_some((c, span))
+                })
+            })
+            .into_iter()
+            .flatten()
     }
 
     /// This grid's tracks on `axis` and the gap between them: columns and `gap`
@@ -146,23 +195,17 @@ impl LayoutDriver for Grid {
             }
         }
 
-        for flexible in [false, true] {
-            for c in tree.active_children(self.node) {
-                let cell_span = self.cell(tree, c).track_span(axis);
-                if cell_span.len < 2 || crosses_fill(tracks, cell_span) != flexible {
-                    continue;
-                }
-                let child = pass.query(c, query);
-                if wants_min {
-                    let extents = &mut pass.grid_track_aggregator().since(base)
-                        [min_base..min_base + track_count];
-                    grid_axis.distribute_span(cell_span, child.min, extents);
-                }
-                if wants_max {
-                    let extents = &mut pass.grid_track_aggregator().since(base)
-                        [max_base..max_base + track_count];
-                    grid_axis.distribute_span(cell_span, child.max, extents);
-                }
+        for (c, cell_span) in self.spans(tree, grid_axis) {
+            let child = pass.query(c, query);
+            if wants_min {
+                let extents =
+                    &mut pass.grid_track_aggregator().since(base)[min_base..min_base + track_count];
+                grid_axis.distribute_span(cell_span, child.min, extents);
+            }
+            if wants_max {
+                let extents =
+                    &mut pass.grid_track_aggregator().since(base)[max_base..max_base + track_count];
+                grid_axis.distribute_span(cell_span, child.max, extents);
             }
         }
 
@@ -177,126 +220,10 @@ impl LayoutDriver for Grid {
         if wants_max {
             let extents =
                 &pass.grid_track_aggregator().since(base)[max_base..max_base + track_count];
-            range.max = sum_non_fill(tracks, extents) + fill_extent(tracks, extents) + gaps;
+            range.max = grid_axis.sum_non_fill(extents) + grid_axis.fill_extent(extents) + gaps;
         }
         pass.grid_track_aggregator().truncate(base);
         range
-    }
-}
-
-/// The flexible fraction the Fill tracks of `tracks` need to hold their `extents`, each at least
-/// its track's `min`, where no leftover exists to share, as CSS Grid finds the size of an `fr` for
-/// indefinite free space (§12.7.1): the largest extent over its track's weight, so a track of
-/// weight `w` takes `fraction · w` and holds its extent. `0` with no Fill track.
-pub(super) fn fill_fraction(tracks: &[Track], extents: &[f32]) -> f32 {
-    tracks
-        .iter()
-        .zip(extents)
-        .filter_map(|(t, &extent)| Some(extent.max(t.min()) / t.sizing().fill_weight()?))
-        .fold(0.0, f32::max)
-}
-
-/// What the Fill tracks of `tracks` take at the [`fill_fraction`] of `extents`: the fraction times
-/// their summed weight.
-pub(super) fn fill_extent(tracks: &[Track], extents: &[f32]) -> f32 {
-    let weights: f32 = tracks.iter().filter_map(|t| t.sizing().fill_weight()).sum();
-    fill_fraction(tracks, extents) * weights
-}
-
-/// The sum of `sizes` over the tracks that do not Fill.
-pub(super) fn sum_non_fill(tracks: &[Track], sizes: &[f32]) -> f32 {
-    sum_of(tracks, sizes, |t| t.sizing().fill_weight().is_none())
-}
-
-/// The sum of `sizes` over the tracks that Fill.
-pub(super) fn sum_fill(tracks: &[Track], sizes: &[f32]) -> f32 {
-    sum_of(tracks, sizes, |t| t.sizing().fill_weight().is_some())
-}
-
-fn sum_of(tracks: &[Track], sizes: &[f32], keep: impl Fn(&Track) -> bool) -> f32 {
-    tracks
-        .iter()
-        .zip(sizes)
-        .filter(|(t, _)| keep(t))
-        .map(|(_, &size)| size)
-        .sum()
-}
-
-/// Whether `span` crosses a Fill track of `tracks`: such a span grows only its Fill tracks
-/// ([`GridAxis::distribute_span`]), and after every span that crosses none, as CSS Grid §12.5 steps 3 and 4
-/// order them.
-pub(super) fn crosses_fill(tracks: &[Track], span: Span) -> bool {
-    has_fill(&tracks[span.range()])
-}
-
-pub(super) fn has_fill(tracks: &[Track]) -> bool {
-    tracks.iter().any(|t| t.sizing().fill_weight().is_some())
-}
-
-impl GridAxis<'_> {
-    /// Grow the tracks `span` crosses until the span holds `need` (CSS Grid §12.5 steps 3 and 4):
-    /// the shortfall over the tracks' extents and the gaps between them splits over the tracks that
-    /// grow. A span that crosses a Fill track grows only its Fill tracks, in proportion to their
-    /// weights, and holds every other track at its extent (step 4); one that crosses none grows its
-    /// Hug tracks evenly (step 3). A track that reaches its `max` stops there, as the track solve
-    /// holds it, and what it could not take splits again over the rest; what no track can take
-    /// overflows. A Fixed track's extent is its size; `extents` holds the rest. Fill weights split
-    /// as WPF star ratios, so a weight under 1 takes its ratio of the whole shortfall, where CSS
-    /// splits only that fraction of it.
-    fn distribute_span(self, span: Span, need: f32, extents: &mut [f32]) {
-        let Self { tracks, gap, .. } = self;
-        let range = span.range();
-        let crossed = &tracks[range.clone()];
-        let extents = &mut extents[range];
-        let held: f32 = crossed
-            .iter()
-            .zip(extents.iter())
-            .map(|(t, &extent)| {
-                t.sizing()
-                    .fixed_value()
-                    .map_or(extent, |v| v.clamp(t.min(), t.max()))
-            })
-            .sum::<f32>()
-            + gap.gaps_between(crossed.len());
-        let flexible = has_fill(crossed);
-        // The share a track grows by: its weight among the Fill tracks of a span that crosses one,
-        // else 1 for each Hug track; 0 for a track that does not grow.
-        let weight = |t: &Track| {
-            if flexible {
-                t.sizing().fill_weight().unwrap_or(0.0)
-            } else if t.sizing().is_hug() {
-                1.0
-            } else {
-                0.0
-            }
-        };
-        let mut shortfall = need - held;
-        // Each round fills every open track or closes at least one, so one round per track and a
-        // last one suffice. Bounded, not `while`: a share too small to move a large extent in f32
-        // would leave the shortfall where it was.
-        for _ in 0..=crossed.len() {
-            if shortfall <= 0.0 {
-                return;
-            }
-            let open: f32 = crossed
-                .iter()
-                .zip(extents.iter())
-                .filter(|(t, extent)| **extent < t.max())
-                .map(|(t, _)| weight(t))
-                .sum();
-            if open <= 0.0 {
-                return;
-            }
-            let per_weight = shortfall / open;
-            for (t, extent) in crossed.iter().zip(extents.iter_mut()) {
-                let w = weight(t);
-                if w > 0.0 && *extent < t.max() {
-                    let grown = (*extent + per_weight * w).min(t.max());
-                    shortfall -= grown - *extent;
-                    *extent = grown;
-                }
-            }
-        }
     }
 }
 

@@ -4,7 +4,7 @@
 
 use crate::animation::animation_request::AnimationRequest;
 use crate::animation::animation_slot::AnimationSlot;
-use crate::effect::press_input::PressInput;
+use crate::primitives::effect::press_params::PressParams;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
@@ -44,8 +44,8 @@ use crate::ui::Ui;
 use crate::widget_core::activation::Activation;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
+use crate::widget_core::inner_response::InnerResponse;
 use crate::widget_core::press_list::PressList;
-use crate::widget_core::response::InnerResponse;
 use glam::Vec2;
 use std::panic::Location;
 
@@ -236,7 +236,7 @@ impl Widget {
     pub fn response(&mut self, ui: &mut Ui) -> Response {
         let id = self.resolve(ui);
         let mut response = ui.response_for(id);
-        response.state.merge_disabled(self.node.flags.is_disabled());
+        response.merge_disabled(self.node.flags.is_disabled());
         response
     }
 
@@ -261,7 +261,7 @@ impl Widget {
             let enter = activation == Activation::Button
                 && ui.class_pressed_as(response.id, KeyClass::Enter);
             if space || enter {
-                response.state.activate();
+                response.activate();
             }
         }
         response
@@ -399,9 +399,9 @@ impl Widget {
         })
     }
 
-    /// [`Self::record`] plus the [`Response`] of the node just recorded, for decorative
-    /// widgets. A widget that acts on input opens with [`Self::response`] and hands that back
-    /// instead.
+    /// [`Self::response`], then [`Self::record`], for decorative widgets: the response is the one
+    /// a widget that acts on input opens with, its own `disabled` folded in, read before the body
+    /// resolves ids of its own.
     ///
     /// # Panics
     ///
@@ -413,12 +413,9 @@ impl Widget {
         chrome: Option<&Chrome>,
         body: impl FnOnce(&mut Ui) -> R,
     ) -> InnerResponse<R> {
-        let id = self.resolve(ui);
+        let response = self.response(ui);
         let inner = self.record(ui, chrome, body);
-        InnerResponse {
-            response: ui.response_for(id),
-            inner,
-        }
+        InnerResponse { response, inner }
     }
 
     /// What the caller authored on this widget: each setting as the caller left it, for a widget
@@ -633,12 +630,12 @@ impl Authored<'_> {
     }
 }
 
-/// The span [`PressInput::seed`] wraps in, seconds: the sparkle ripple reads it as a noise phase
+/// The span [`PressParams::seed`] wraps in, seconds: the sparkle ripple reads it as a noise phase
 /// in ms, which an f32 then holds to 1/128 ms.
 const SEED_PERIOD_S: f64 = 64.0;
 
 /// Draw each live press of the widget `id` opened, in the effect its [`PressList`] holds, over
-/// `chrome` and under the content, inside the chrome's corners, each timed as [`PressInput`] says.
+/// `chrome` and under the content, inside the chrome's corners, each timed as [`PressParams`] says.
 fn draw_presses(ui: &mut Ui, id: WidgetId, chrome: Option<&Chrome>) {
     let corners = chrome.map_or(Corners::ZERO, |chrome| chrome.corners);
     let presses = ui
@@ -652,13 +649,13 @@ fn draw_presses(ui: &mut Ui, id: WidgetId, chrome: Option<&Chrome>) {
         let period = live
             .ends_at(&press)
             .map_or(press.enter, |end| end - live.pressed_at);
-        let input = PressInput {
+        let input = PressParams {
             color: press.color,
             highlight: press.highlight,
             point: live.point,
-            released,
-            enter: press.enter.as_secs_f32(),
-            exit: press.exit.as_secs_f32(),
+            released_seconds: released,
+            enter_seconds: press.enter.as_secs_f32(),
+            exit_seconds: press.exit.as_secs_f32(),
             seed: (live.pressed_at.as_secs_f64() % SEED_PERIOD_S) as f32,
             pad0: 0.0,
             pad1: 0.0,

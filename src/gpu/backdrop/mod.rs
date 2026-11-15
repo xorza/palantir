@@ -1,7 +1,7 @@
 //! Backdrops: the pixels painted before a material or a backdrop effect, captured, blurred and
 //! shaded.
 //!
-//! [`backdrop_blur`] runs the blur a [`BlurPlan`](crate::shape::paint::blur_plan::BlurPlan)
+//! [`backdrop_blur`] runs the blur a [`BlurPlan`](crate::cascade::blur_plan::BlurPlan)
 //! describes, from a full-resolution capture of the pixels behind a backdrop, copied out of the
 //! target where the main pass breaks at the backdrop; [`backdrops`] keeps each backdrop's result in
 //! an atlas across frames, and blurs again the backdrops
@@ -23,17 +23,16 @@
 //!   it (fanless: −8 % on `*/under`, −6 % on `*/moving`). A swapchain image is sampled by no pass,
 //!   as a group for it would be made each frame.
 //! - **A result is cached across frames.** It is kept per render owner and backdrop key (the
-//!   owner's `WidgetId` and its row in the owner's paint span) in one atlas a roster keeps alive,
-//!   and dropped with the owner; the window's backdrop ledger holds its plan and region. A hover or
-//!   a caret inside a frosted menu repaints its rect and reads the cache: no capture, no blur.
-//! - **A full atlas evicts the least recently used result, and tells its window.** Past the
-//!   device's largest texture, a result that finds no room evicts results no backdrop of the frame
-//!   reads, oldest first and from any window, as WebRender's texture cache evicts at a failed
-//!   allocation (Mozilla bugs 1641751, 1505639); each window's ledger drops the ones it held
-//!   before its next frame decides, so they capture again. One that finds no room even then
-//!   shows its fill over the clear for the frame. Refused: a release panic on data-driven
-//!   content; a standalone texture per result that misses the atlas, which splits the
-//!   composite's draw run.
+//!   owner's `WidgetId` and its row in the owner's paint span) in the shared atlas pool
+//!   (`backdrops`), and dropped with the owner; the window's backdrop ledger holds its plan and
+//!   region. A hover or a caret inside a frosted menu repaints its rect and reads the cache: no
+//!   capture, no blur.
+//! - **The pool evicts the results no frame reads, and tells their window.** Past its soft
+//!   budget the pool evicts results no backdrop of this display frame or the last reads, oldest
+//!   first and from any window, as WebRender's texture cache evicts at a failed allocation
+//!   (Mozilla bugs 1641751, 1505639); each window's ledger drops the ones it held before its next
+//!   frame decides, so they capture again. One that finds no room even then shows its fill over
+//!   the clear for the frame. Refused: a release panic on data-driven content.
 //! - **The composer infers sharing.** A backdrop whose footprint misses every draw since the last
 //!   break captures at that break, as it would see the same pixels at its own place; else it opens
 //!   a barrier, where a group and the text batch end, so nothing prunes or coalesces across it. The
@@ -92,12 +91,12 @@
 //!   adds interleaved gradient noise of one encoded step, scaled to linear by the sRGB curve's
 //!   slope. Grain (the frost's `noise`) is separate and fixed to the box, so it moves and turns
 //!   with it.
-//! - **A still backdrop costs nothing, and an app with none pays for nothing.** The atlas and the
-//!   slot table are made on the first frame with a backdrop, and the blur's pipelines on the first
-//!   that blurs, so a frame of held results compiles no blur. The capture and the levels hold
-//!   one break's footprints from the first texel the break reads, and grow by 256-texel steps to
-//!   the largest break seen, so a resize drag makes them again only now and then; the atlas grows
-//!   with the largest result. No allocation after warmup. Refused: a capture and levels of the
+//! - **A still backdrop costs nothing, and an app with none pays for nothing.** The slot table is
+//!   made on the first frame with a backdrop, and the blur's pipelines on the first that blurs, so
+//!   a frame of held results compiles no blur. The capture and the levels hold one break's
+//!   footprints from the first texel the break reads, and grow by 256-texel steps to the largest
+//!   break seen, so a resize drag makes them again only now and then. No allocation after
+//!   warmup. Refused: a capture and levels of the
 //!   whole surface, 55 MB at 4K for a menu of a few hundred px.
 //!
 //! Out of scope: a filter on a subtree's own pixels (CSS `filter: blur`), which needs isolated

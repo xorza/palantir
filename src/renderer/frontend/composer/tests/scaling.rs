@@ -10,11 +10,11 @@ use crate::primitives::geometry::urect::URect;
 use crate::primitives::identity::icon_ref::IconRef;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::packed::fill_axis::FillAxis;
-use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::border::Border;
 use crate::primitives::paint::brush::gradient::Spread;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
+use crate::primitives::paint::fill_kind::FillKind;
 use crate::primitives::paint::line_style::{LineCap, LineJoin};
 use crate::primitives::paint::lut_row::LutRow;
 use crate::renderer::frontend::composer::stroke_bbox::StrokeBbox;
@@ -22,7 +22,7 @@ use crate::renderer::frontend::composer::tests::quad_builder::QuadBuilder;
 use crate::renderer::frontend::composer::tests::support::{
     clip, draw, params, params_unsnapped, quad_runs, rows_of, run, text,
 };
-use crate::renderer::frontend::paint_sink::{PaintPayload, PaintSink};
+use crate::renderer::frontend::paint_sink::{DrawAnimation, PaintSink};
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_closed_payload::DrawClosedPayload;
 use crate::renderer::frontend::payload::draw_closed_payload::closed_fill::ClosedFill;
@@ -141,8 +141,8 @@ fn nan_border_width_normalizes_away_on_every_quad_geometry() {
     let buf = run(
         |b, _arena| {
             b.draw(
-                DrawClosedPayload::new(
-                    PlacedClosed::Triangle(PlacedTriangle {
+                DrawClosedPayload {
+                    geometry: PlacedClosed::Triangle(PlacedTriangle {
                         centers: [
                             Vec2::new(0.0, 0.0),
                             Vec2::new(10.0, 0.0),
@@ -150,12 +150,12 @@ fn nan_border_width_normalizes_away_on_every_quad_geometry() {
                         ],
                         radius: 0.0,
                     }),
-                    ClosedFill::new(
+                    paint: ClosedFill::new(
                         BrushSource::Solid(RgbaF32::WHITE.to_f16()),
                         LoweredBorder::lower(nan_border),
                     ),
-                ),
-                1.0,
+                },
+                DrawAnimation::STILL,
             );
         },
         &display,
@@ -223,7 +223,7 @@ fn compose_scales_radius_and_border_under_transform() {
     );
     let q = &buf.quads.instance()[0];
     assert_eq!(q.header.rect.size, Size::new(100.0, 100.0));
-    assert_eq!(q.header.corners.to_array()[0], 16.0);
+    assert_eq!(q.header.corners.top_left(), 16.0);
     assert_eq!(q.border_width, 3.0);
 }
 
@@ -450,17 +450,17 @@ fn a_wide_triangle_keeps_its_corners_to_a_fraction_of_a_pixel() {
     let buf = run(
         |b, _arena| {
             b.draw(
-                DrawClosedPayload::new(
-                    PlacedClosed::Triangle(PlacedTriangle {
+                DrawClosedPayload {
+                    geometry: PlacedClosed::Triangle(PlacedTriangle {
                         centers: points,
                         radius: 2.0,
                     }),
-                    ClosedFill::new(
+                    paint: ClosedFill::new(
                         BrushSource::Solid(RgbaF32::WHITE.to_f16()),
                         LoweredBorder::lower(Border::NONE),
                     ),
-                ),
-                1.0,
+                },
+                DrawAnimation::STILL,
             );
         },
         &params(1.0, UVec2::new(4000, 4000)),
@@ -514,8 +514,8 @@ fn a_turned_triangle_turns_its_quad_about_its_pivot() {
         let buf = run(
             |b, _| {
                 b.draw(
-                    DrawClosedPayload::new(
-                        PlacedClosed::Triangle(PlacedTriangle {
+                    DrawClosedPayload {
+                        geometry: PlacedClosed::Triangle(PlacedTriangle {
                             centers: [
                                 Vec2::new(4.0, 4.0),
                                 Vec2::new(14.0, 4.0),
@@ -523,13 +523,12 @@ fn a_turned_triangle_turns_its_quad_about_its_pivot() {
                             ],
                             radius: 1.0,
                         }),
-                        ClosedFill::new(
+                        paint: ClosedFill::new(
                             BrushSource::Solid(RgbaF32::WHITE.to_f16()),
                             LoweredBorder::lower(Border::NONE),
                         ),
-                    )
-                    .turned(spin),
-                    1.0,
+                    },
+                    DrawAnimation { alpha: 1.0, spin },
                 );
             },
             &params(2.0, UVec2::new(100, 100)),
@@ -573,8 +572,8 @@ fn a_triangle_carries_its_gradient_lanes() {
     let buf = run(
         |b, _| {
             b.draw(
-                DrawClosedPayload::new(
-                    PlacedClosed::Triangle(PlacedTriangle {
+                DrawClosedPayload {
+                    geometry: PlacedClosed::Triangle(PlacedTriangle {
                         centers: [
                             Vec2::new(4.0, 4.0),
                             Vec2::new(14.0, 4.0),
@@ -582,7 +581,7 @@ fn a_triangle_carries_its_gradient_lanes() {
                         ],
                         radius: 1.0,
                     }),
-                    ClosedFill::new(
+                    paint: ClosedFill::new(
                         BrushSource::Gradient(ResolvedGradient {
                             axis,
                             lut_row: LutRow(3),
@@ -590,8 +589,8 @@ fn a_triangle_carries_its_gradient_lanes() {
                         }),
                         LoweredBorder::lower(Border::NONE),
                     ),
-                ),
-                1.0,
+                },
+                DrawAnimation::STILL,
             );
         },
         &params(2.0, UVec2::new(100, 100)),
@@ -685,13 +684,13 @@ fn drop_shadow_quad_grows_from_the_snapped_source() {
         let [x, y, blur, spread] = lanes;
         let shadow = Shadow::drop(RgbaF32::srgba(0.0, 0.0, 0.0, 0.5), Vec2::new(x, y), blur)
             .with_spread(spread);
-        DrawShadowPayload::new(
-            PlacedBox {
+        DrawShadowPayload {
+            source: PlacedBox {
                 rect: source,
                 corners: Corners::all(corners),
             },
-            LoweredShadow::lower(shadow),
-        )
+            shadow: LoweredShadow::lower(shadow),
+        }
     };
     let buf = run(
         |b, _| {
@@ -701,7 +700,7 @@ fn drop_shadow_quad_grows_from_the_snapped_source() {
                     4.0,
                     [2.0, -1.0, 2.0, 1.0],
                 ),
-                1.0,
+                DrawAnimation::STILL,
             );
         },
         &params(1.5, UVec2::new(400, 400)),
@@ -728,7 +727,7 @@ fn drop_shadow_quad_grows_from_the_snapped_source() {
                 )
                 .with_spread(1.0),
             );
-            b.draw(p, 1.0);
+            b.draw(p, DrawAnimation::STILL);
         },
         &params(1.5, UVec2::new(400, 400)),
     );
@@ -746,8 +745,8 @@ fn drop_shadow_quad_grows_from_the_snapped_source() {
     let point = Rect::new(50.0, 50.0, 0.0, 0.0);
     let buf = run(
         |b, _| {
-            b.draw(drop(point, 0.0, [0.0, 0.0, 0.0, 2.0]), 1.0);
-            b.draw(drop(point, 0.0, [0.0, 0.0, 0.0, 0.0]), 1.0);
+            b.draw(drop(point, 0.0, [0.0, 0.0, 0.0, 2.0]), DrawAnimation::STILL);
+            b.draw(drop(point, 0.0, [0.0, 0.0, 0.0, 0.0]), DrawAnimation::STILL);
         },
         &params(1.0, UVec2::new(200, 200)),
     );
@@ -765,7 +764,7 @@ fn drop_shadow_quad_grows_from_the_snapped_source() {
                     0.0,
                     [0.0, 0.0, 40000.0, 0.0],
                 ),
-                1.0,
+                DrawAnimation::STILL,
             );
         },
         &params(2.0, UVec2::new(200, 200)),
@@ -802,9 +801,8 @@ fn a_mesh_instance_fits_turns_and_scales_at_once() {
                         tint: RgbaF32::WHITE.to_f16(),
                         vertices: Span::new(0, 3),
                         idxs: Span::new(0, 3),
-                        spin,
                     },
-                    1.0,
+                    DrawAnimation { alpha: 1.0, spin },
                 );
             },
             &params(2.0, UVec2::new(200, 200)),
@@ -911,7 +909,6 @@ fn a_shaped_image_carries_its_uv_and_decal_over_its_shape() {
                             rect: Rect::new(5.0, 5.0, 50.0, 25.0),
                             corners: Corners::all(4.0),
                         }),
-                        spin,
                         paint: ClosedImage {
                             rect: image,
                             uv_min: Vec2::ZERO,
@@ -922,7 +919,7 @@ fn a_shaped_image_carries_its_uv_and_decal_over_its_shape() {
                             view: None,
                         },
                     },
-                    1.0,
+                    DrawAnimation { alpha: 1.0, spin },
                 );
             },
             &params(2.0, UVec2::new(200, 200)),
@@ -1001,7 +998,6 @@ fn a_triangle_image_packs_its_shape_as_a_triangle_quad_does() {
                         centers: points,
                         radius: 1.0,
                     }),
-                    spin: None,
                     paint: ClosedImage {
                         rect: Rect::new(4.0, 4.0, 22.0, 12.0),
                         uv_min: Vec2::ZERO,
@@ -1012,20 +1008,20 @@ fn a_triangle_image_packs_its_shape_as_a_triangle_quad_does() {
                         view: None,
                     },
                 },
-                1.0,
+                DrawAnimation::STILL,
             );
             b.draw(
-                DrawClosedPayload::new(
-                    PlacedClosed::Triangle(PlacedTriangle {
+                DrawClosedPayload {
+                    geometry: PlacedClosed::Triangle(PlacedTriangle {
                         centers: points,
                         radius: 1.0,
                     }),
-                    ClosedFill::new(
+                    paint: ClosedFill::new(
                         BrushSource::Solid(RgbaF32::WHITE.to_f16()),
                         LoweredBorder::lower(Border::NONE),
                     ),
-                ),
-                1.0,
+                },
+                DrawAnimation::STILL,
             );
         },
         &params(2.0, UVec2::new(200, 200)),
@@ -1061,7 +1057,6 @@ fn an_image_edge_on_its_shape_leaves_the_fade_to_the_shape() {
                 b.draw(
                     DrawClosedPayload {
                         geometry: shape,
-                        spin,
                         paint: ClosedImage {
                             rect,
                             uv_min: Vec2::ZERO,
@@ -1072,7 +1067,7 @@ fn an_image_edge_on_its_shape_leaves_the_fade_to_the_shape() {
                             view: None,
                         },
                     },
-                    1.0,
+                    DrawAnimation { alpha: 1.0, spin },
                 );
             },
             &params(scale, UVec2::new(200, 200)),

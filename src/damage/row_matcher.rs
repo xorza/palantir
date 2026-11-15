@@ -141,7 +141,7 @@ impl RowMatcher {
             let (p, c) = (prev[row], cur[row]);
             if p == c {
                 self.prev_matched[row] = true;
-                self.matched_pos[row] = Some(NonMaxU32::index(row));
+                self.matched_pos[row] = Some(NonMaxU32::from_idx(row));
             } else {
                 self.prev_keyed.push((PaintKey::of(&p), row as u32));
                 self.cur_keyed.push((PaintKey::of(&c), row as u32));
@@ -172,7 +172,7 @@ impl RowMatcher {
                     // Key-equal means bit-equal (modulo -0.0), but NaN screens are never `==`.
                     if prev[prow as usize] == cur[crow as usize] {
                         self.prev_matched[prow as usize] = true;
-                        self.matched_pos[crow as usize] = Some(NonMaxU32::index(prow as usize));
+                        self.matched_pos[crow as usize] = Some(NonMaxU32::from_idx(prow as usize));
                         ci += 1;
                     }
                     pi += 1;
@@ -248,7 +248,7 @@ impl RowMatcher {
         before.resize(prev_len + 1, None);
         for (crow, matched) in self.matched_pos.iter().enumerate() {
             if let Some(prow) = matched {
-                before[prow.idx() + 1] = Some(NonMaxU32::index(crow));
+                before[prow.idx() + 1] = Some(NonMaxU32::from_idx(crow));
             }
         }
         for t in 1..before.len() {
@@ -347,7 +347,7 @@ mod tests {
     fn the_gone_index_holds_the_last_match_below_each_row() {
         let mut matcher = RowMatcher {
             matched_pos: [Some(3), None, Some(0), Some(5), None, Some(6)]
-                .map(|prow| prow.map(NonMaxU32::index))
+                .map(|prow| prow.map(NonMaxU32::from_idx))
                 .to_vec(),
             ..RowMatcher::default()
         };

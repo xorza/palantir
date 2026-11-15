@@ -85,10 +85,15 @@ impl FrameScene<'_> {
 pub(crate) struct Frontend {
     encoder: Encoder,
     composer: Composer,
-    pub(crate) buffer: RenderBuffer,
+    buffer: RenderBuffer,
 }
 
 impl Frontend {
+    /// The draw list the last build made.
+    pub(crate) const fn buffer(&self) -> &RenderBuffer {
+        &self.buffer
+    }
+
     /// A frontend with no device yet, whose [`Composer`] downsamples no `GpuView`.
     pub(crate) fn new() -> Self {
         Self {

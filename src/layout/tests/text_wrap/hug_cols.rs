@@ -6,7 +6,7 @@ use crate::layout::intrinsic::len_req::LenReq;
 use crate::layout::tests::support::PARAGRAPH;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::axis::Axis;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::primitives::layout::track::Track;
 use crate::text::wrap::TextWrap;
 use crate::widget_core::configure::Configure;
@@ -30,7 +30,7 @@ fn two_hug_cols_nonwrapping_label_floors_at_full_width() {
             rec.node("outer", Widget::vstack().padding(12.0).size(FILL), |rec| {
                 rec.node("panel", Widget::zstack().padding(16.0).size(FILL), |rec| {
                     rec.node("body", Widget::vstack().size(FILL), |rec| {
-                        let section = Widget::vstack().size((Sizing::FILL, Sizing::HUG)).gap(6.0);
+                        let section = Widget::vstack().size(SizeSpec::FILL_W).gap(6.0);
                         rec.node("section", section, |rec| {
                             let title = TextRun::new(
                                 "two Hug columns: paragraph wraps to fit, label stays natural",
@@ -102,7 +102,7 @@ fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
         for surface_w in surface_ws {
             let mut rig = LayoutRig::new();
             rig.run(Size::new(surface_w, 400.0), |rec| {
-                let grid = Widget::grid().size((Sizing::FILL, Sizing::HUG));
+                let grid = Widget::grid().size(SizeSpec::FILL_W);
                 rec.grid("grid", grid, HUG_COLS, |rec| {
                     let run = TextRun::new(paragraph, 14.0, TextWrap::WrapWithOverflow);
                     rec.text_leaf("paragraph", Widget::leaf().grid_cell((0, 0)), run);

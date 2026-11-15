@@ -200,6 +200,7 @@ macro_rules! f16x4_lanes {
 }
 
 pub(crate) mod effect;
+pub(crate) mod file;
 pub(crate) mod geometry;
 pub(crate) mod identity;
 pub(crate) mod input;

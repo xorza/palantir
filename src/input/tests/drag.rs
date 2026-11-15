@@ -136,14 +136,14 @@ fn held_is_rect_independent_unlike_pressed() {
     h.hover(Vec2::new(50.0, 50.0));
     let r = h.response_in(id(), build_clickable);
     assert!(
-        !r.left.held() && !r.pressed(),
+        !r.left.held() && !r.is_pressed(),
         "hover without press is neither"
     );
 
     h.on_input(InputEvent::PointerPressed(PointerButton::Left));
     let r = h.response_in(id(), build_clickable);
     assert!(
-        r.left.held() && r.pressed(),
+        r.left.held() && r.is_pressed(),
         "press over the widget sets both"
     );
 
@@ -152,13 +152,16 @@ fn held_is_rect_independent_unlike_pressed() {
     let r = h.response_in(id(), build_clickable);
     assert!(r.left.held(), "held survives the pointer leaving the rect");
     assert!(
-        !r.pressed(),
+        !r.is_pressed(),
         "pressed dies once the pointer leaves the rect"
     );
 
     h.release(PointerButton::Left);
     let r = h.response_in(id(), build_clickable);
-    assert!(!r.left.held() && !r.pressed(), "release clears the capture");
+    assert!(
+        !r.left.held() && !r.is_pressed(),
+        "release clears the capture"
+    );
 }
 
 /// Leaving the surface mid-drag is the gesture working, not ending: the capture

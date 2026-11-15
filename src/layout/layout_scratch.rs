@@ -124,7 +124,7 @@ impl LayoutScratch {
             .iter_mut()
             .zip(rows.clone())
         {
-            *src = Some(NonMaxU32::index(row));
+            *src = Some(NonMaxU32::from_idx(row));
         }
         plane.scroll_content[subtree.clone()].copy_from_slice(scroll_content);
         // Append the snapshot's text-shape range to the live buffer, rebasing its spans by `dest_start`.

@@ -11,20 +11,19 @@ use crate::primitives::math::domain::EPS;
 use crate::primitives::math::libm_ext::LibmVec2;
 use crate::primitives::math::num::Vec2Ext;
 use crate::primitives::paint::antialias::AA_HALF_WIDTH;
-use crate::renderer::backdrop_captures::BackdropTicket;
 use crate::renderer::frontend::composer::Composer;
 use crate::renderer::frontend::composer::clip_stack::ClipFrame;
 use crate::renderer::frontend::composer::curve_run::CurveRun;
 use crate::renderer::frontend::composer::geometry;
 use crate::renderer::frontend::composer::lowering::{Lowering, ScaledRect};
-use crate::renderer::frontend::composer::paint_order::{Admitted, GroupClose, Ordering};
+use crate::renderer::frontend::composer::paint_order::{GroupClose, Ordering};
 use crate::renderer::frontend::composer::polyline_scratch::{PolylineLook, StagedColors};
 use crate::renderer::frontend::composer::stroke_bbox::StrokeBbox;
 use crate::renderer::frontend::composer::template_shape::TemplateShape;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::draw_closed_payload::DrawClosedPayload;
 use crate::renderer::frontend::payload::draw_closed_payload::closed_effect::{
-    ClosedEffect, EffectCaptureDraw,
+    ClosedEffect, EffectCaptureDraw, EffectRead,
 };
 use crate::renderer::frontend::payload::draw_closed_payload::closed_fill::ClosedFill;
 use crate::renderer::frontend::payload::draw_closed_payload::closed_image::ClosedImage;
@@ -229,20 +228,21 @@ impl PaintSink for ComposeSession<'_> {
         self.composer.transform.pop();
     }
 
-    fn fill(&mut self, p: DrawClosedPayload<ClosedFill>) {
+    fn fill(&mut self, p: DrawClosedPayload<ClosedFill>, spin: Option<Spin>) {
         let lowering = self.lowering();
-        let shape = TemplateShape::of(p.geometry, p.spin, &lowering).turned(p.spin, &lowering);
+        let shape = TemplateShape::of(p.geometry, spin, &lowering).turned(spin, &lowering);
         let border_width = p.paint.border.width * lowering.transform.physical_scale();
         if self.fold_into_clear(&p, &shape, border_width) {
             return;
         }
         // The clipped rect is also the overlap test's rect, so an ancestor-clipped quad does not
         // force a needless flush.
-        let Some(Admitted { visible, scissor }) =
-            self.ordering().admit(Lane::Quad, shape.rect.urect)
-        else {
+        let Some(visible) = self.ordering().admit(Lane::Quad, shape.rect.urect) else {
             return;
         };
+        // A quad takes the clip in force, which the group's join trades for its run's scissor
+        // ([`QuadRuns::join`]).
+        let scissor = self.composer.clip.scissor();
         let clip = self.clip_chain(visible);
         let form = FillForm::new(ShapeForm::of(&p.geometry), FillBrush::of(p.paint.fill.kind));
         self.push_quad(
@@ -262,7 +262,7 @@ impl PaintSink for ComposeSession<'_> {
     }
 
     /// A shadow in the quad stream, among the fills it lies under or over.
-    fn shadow(&mut self, p: DrawShadowPayload) {
+    fn shadow(&mut self, p: DrawShadowPayload, spin: Option<Spin>) {
         let lowering = self.lowering();
         // The lanes are logical px, scaled here; the quad is built from the same lanes, so the
         // shader finds its source again.
@@ -270,13 +270,19 @@ impl PaintSink for ComposeSession<'_> {
             .shadow
             .geometry_f16
             .scaled_saturating(lowering.transform.physical_scale());
-        let shape =
-            TemplateShape::shadow(&p, ShadowGeometry::from_lanes(geometry.lanes()), &lowering);
-        let Some(Admitted { visible, scissor }) =
-            self.ordering().admit(Lane::Quad, shape.rect.urect)
-        else {
+        let source = TemplateShape::of(PlacedClosed::Box(p.source), spin, &lowering);
+        let shape = if p.shadow.inset() {
+            source
+        } else {
+            source.drop_shadow(ShadowGeometry::from_lanes(geometry.lanes()), &lowering)
+        }
+        .turned(spin, &lowering);
+        let Some(visible) = self.ordering().admit(Lane::Quad, shape.rect.urect) else {
             return;
         };
+        // A quad takes the clip in force, which the group's join trades for its run's scissor
+        // ([`QuadRuns::join`]).
+        let scissor = self.composer.clip.scissor();
         let clip = self.clip_chain(visible);
         let shadow = ShadowInstance {
             header: shape.header(clip),
@@ -292,7 +298,7 @@ impl PaintSink for ComposeSession<'_> {
         self.push_quad(QuadKey::Shadow, scissor, QuadInstance::from(shadow));
     }
 
-    fn mesh(&mut self, p: DrawMeshPayload) {
+    fn mesh(&mut self, p: DrawMeshPayload, spin: Option<Spin>) {
         let viewport_physical = self.out.display.physical;
         // `draw_mesh` already gated empty meshes, so `vertices` is non-empty. Inflate by 0.5 phys px
         // like polyline's AA fringe: overlap-test false negatives reorder paint. Mesh
@@ -300,7 +306,7 @@ impl PaintSink for ComposeSession<'_> {
         let to_physical = self.composer.transform.physical_map(p.origin);
         // The vertices are relative to `origin`, and so the pivot they turn about; the cull takes
         // the bound at this frame's angle.
-        let spin = p.spin.map(|spin| spin.relative_to(p.origin));
+        let spin = spin.map(|spin| spin.relative_to(p.origin));
         let bbox = spin.map_or(p.bbox, |spin| p.bbox.turned_cover(spin.pivot, spin.angle));
         let physical = to_physical.bbox(bbox);
         let fringe = Vec2::splat(AA_HALF_WIDTH);
@@ -311,7 +317,7 @@ impl PaintSink for ComposeSession<'_> {
         );
         // A surviving mesh closes the open text batch so its text emits before this above-text
         // geometry.
-        let Some(Admitted { visible, .. }) = self
+        let Some(visible) = self
             .ordering()
             .admit(Lane::Tier(PaintTier::Mesh), mesh_urect)
         else {
@@ -344,14 +350,14 @@ impl PaintSink for ComposeSession<'_> {
         });
     }
 
-    fn icon(&mut self, p: DrawIconPayload) {
+    fn icon(&mut self, p: DrawIconPayload, spin: Option<Spin>) {
         let ScaledRect {
             physical: physical_rect,
             urect,
         } = self.lowering().scaled_rect(p.rect);
         // A turned icon is placed as an unturned one and turned whole about the pivot on the GPU,
         // so only what it reaches changes.
-        let spin = p.spin.map(|spin| self.lowering().physical_spin(spin));
+        let spin = spin.map(|spin| self.lowering().physical_spin(spin));
         let urect = match spin {
             None => urect,
             Some(spin) => {
@@ -359,9 +365,7 @@ impl PaintSink for ComposeSession<'_> {
                 geometry::urect_from_physical(reach.min, reach.max(), self.out.display.physical)
             }
         };
-        let Some(Admitted { visible, .. }) =
-            self.ordering().admit(Lane::Tier(PaintTier::Icon), urect)
-        else {
+        let Some(visible) = self.ordering().admit(Lane::Tier(PaintTier::Icon), urect) else {
             return;
         };
         let box_px = Vec2::new(physical_rect.size.w, physical_rect.size.h);
@@ -394,12 +398,12 @@ impl PaintSink for ComposeSession<'_> {
 
     /// An image over a square-cornered box, which clips nothing past the image's own rect, draws
     /// one quad over that rect; any other shape draws its template.
-    fn image(&mut self, p: DrawClosedPayload<ClosedImage>) {
+    fn image(&mut self, p: DrawClosedPayload<ClosedImage>, spin: Option<Spin>) {
         match p.geometry {
             PlacedClosed::Box(PlacedBox { corners, .. }) if corners == Corners::ZERO => {
-                self.plain_image(p);
+                self.plain_image(p, spin);
             }
-            _ => self.shaped_image(p),
+            _ => self.shaped_image(p, spin),
         }
     }
 
@@ -407,14 +411,19 @@ impl PaintSink for ComposeSession<'_> {
     /// turned about its center by a paint animation's turn, whose edges snap to no pixel. A
     /// material's box draws through its effect's material stage: it neither folds into the clear
     /// nor covers anything opaquely, as what it reads shows through it.
-    fn effect(&mut self, p: DrawClosedPayload<ClosedEffect>) {
+    fn effect(&mut self, p: DrawClosedPayload<ClosedEffect>, spin: Option<Spin>) {
         let lowering = self.lowering();
         let scale = lowering.transform.physical_scale();
-        let unturned = TemplateShape::of(p.geometry, p.spin, &lowering);
+        let unturned = TemplateShape::of(p.geometry, spin, &lowering);
+        let (outside, capture, stage) = match p.paint.read {
+            EffectRead::Color { outside } => (outside, None, None),
+            EffectRead::Backdrop { capture } => (None, Some(capture), None),
+            EffectRead::Material { capture, stage } => (None, Some(capture), Some(stage)),
+        };
         // A halo reaches past its shape, so it is culled, ordered and clipped by what it covers.
-        let halo = p.paint.outside.map(|outside| outside * scale);
-        let covered = halo.map(|reach| unturned.halo(reach, p.spin, &lowering));
-        let shape = unturned.turned(p.spin, &lowering);
+        let halo = outside.map(|outside| outside * scale);
+        let covered = halo.map(|reach| unturned.halo(reach, spin, &lowering));
+        let shape = unturned.turned(spin, &lowering);
         let border_width = p.paint.border().width * scale;
         let physical = shape.rect.physical;
         let Some(seen) = self.ordering().cull(
@@ -425,38 +434,45 @@ impl PaintSink for ComposeSession<'_> {
             return;
         };
         let visible = seen.visible;
-        let look = p.paint.stage.map(|stage| MaterialLook {
+        let look = stage.map(|stage| MaterialLook {
             max_luminance: stage.max_luminance,
             min_luminance: stage.min_luminance,
-            fill: stage.fill,
-            fill_axis: stage.fill_axis,
-            border_color: stage.border.color,
+            fill: stage.paint.fill,
+            fill_axis: stage.paint.fill_axis,
+            border_color: stage.paint.border.color,
             border_width,
         });
         // A backdrop is listed before it is ordered, so its own paint is not among what it shares a
         // break past.
-        let backdrop_idx = match p.paint.backdrop {
+        let backdrop_idx = match capture {
             Some(EffectCaptureDraw { ticket, reach }) => {
                 // The rect, or its turn's cover, grown by its reach, inside the capture by half a
                 // pixel, so a read at the window's edge blends no texel past it.
-                let cover = match p.spin {
+                let cover = match spin {
                     None => physical,
                     Some(spin) => physical.turned_cover(physical.center(), spin.angle),
                 };
                 let reads = cover
                     .inflated(reach.margin(scale, None) as f32)
                     .clamp_to(Rect::from(ticket.capture.footprint).deflated(0.5));
-                self.list_backdrop(visible, ticket, |source| BackdropRow {
+                debug_assert!(
+                    ticket.capture.footprint.union(visible) == ticket.capture.footprint,
+                    "a backdrop's footprint holds what it shows"
+                );
+                let source = self.ordering().backdrop_source(ticket);
+                let idx = self.out.backdrops.len() as u32;
+                self.out.backdrops.push(BackdropRow {
                     reads,
                     look,
                     capture: ticket.capture,
                     source,
-                })
+                });
+                idx
             }
             None => 0,
         };
         let form = ShapeForm::of(&p.geometry);
-        let flags = if p.paint.stage.is_some() {
+        let flags = if stage.is_some() {
             EffectInstance::MATERIAL
         } else {
             0
@@ -491,15 +507,15 @@ impl PaintSink for ComposeSession<'_> {
         });
     }
 
-    fn stroke(&mut self, p: DrawStrokePayload) {
+    fn stroke(&mut self, p: DrawStrokePayload, spin: Option<Spin>) {
         match p.path {
-            StrokePath::Curve(basis) => self.curve(basis, &p),
-            StrokePath::Polyline(path) => self.polyline(path, &p),
+            StrokePath::Curve(basis) => self.curve(basis, &p, spin),
+            StrokePath::Polyline(path) => self.polyline(path, &p, spin),
         }
     }
 
-    fn text(&mut self, t: DrawTextPayload) {
-        let spin = t.spin.map(|spin| self.lowering().physical_spin(spin));
+    fn text(&mut self, t: DrawTextPayload, spin: Option<Spin>) {
+        let spin = spin.map(|spin| self.lowering().physical_spin(spin));
         let world = self.composer.transform.apply_rect(t.rect);
         let scale = self.out.display.scale_factor();
         let physical_rect = self
@@ -529,10 +545,7 @@ impl PaintSink for ComposeSession<'_> {
             geometry::urect_from_physical(reach.min, reach.max(), self.out.display.physical);
         // `bounds` feeds the batch's bounds, the backend's per-line y-cull and, where an edge cuts
         // the run, the clip of its glyphs' quads.
-        let Some(Admitted {
-            visible: bounds, ..
-        }) = self.ordering().admit(Lane::Text, unclipped)
-        else {
+        let Some(bounds) = self.ordering().admit(Lane::Text, unclipped) else {
             return;
         };
         let clip = self.clip_chain(bounds);
@@ -574,16 +587,16 @@ impl ComposeSession<'_> {
     /// An image clipped to `placed`: its quad is the shape's rect, snapped, or moved and turned
     /// about its center as a quad's is, with the image's uv carried over the whole rect and its
     /// own rect relative to the quad.
-    fn shaped_image(&mut self, p: DrawClosedPayload<ClosedImage>) {
+    fn shaped_image(&mut self, p: DrawClosedPayload<ClosedImage>, spin: Option<Spin>) {
         debug_assert!(
             p.paint.view.is_none(),
             "a `GpuView` composites a plain image"
         );
         let placed = p.geometry;
         let lowering = self.lowering();
-        let unturned = TemplateShape::of(placed, p.spin, &lowering);
+        let unturned = TemplateShape::of(placed, spin, &lowering);
         // The image's rect lies on the pixels its shape's does.
-        let edges = TemplateShape::edges(placed, p.spin, &lowering);
+        let edges = TemplateShape::edges(placed, spin, &lowering);
         let form = ShapeForm::of(&placed);
         let image = lowering.scaled_rect_with(p.paint.rect, edges).physical;
         if image.is_paint_empty() {
@@ -592,8 +605,8 @@ impl ComposeSession<'_> {
         // The image's place in the shape, before a turn moves the two together.
         let size = Vec2::from(unturned.rect.physical.size);
         let lo = image.min - unturned.rect.physical.min;
-        let shape = unturned.turned(p.spin, &lowering);
-        let Some(Admitted { visible, .. }) = self
+        let shape = unturned.turned(spin, &lowering);
+        let Some(visible) = self
             .ordering()
             .admit(Lane::Tier(PaintTier::Image), shape.rect.urect)
         else {
@@ -626,13 +639,13 @@ impl ComposeSession<'_> {
         clippy::cast_sign_loss,
         reason = "every value is clamped to a non-negative range before the cast"
     )]
-    fn plain_image(&mut self, p: DrawClosedPayload<ClosedImage>) {
+    fn plain_image(&mut self, p: DrawClosedPayload<ClosedImage>, spin: Option<Spin>) {
         let view = p.paint.view;
         // A turned image snaps to no pixel, and moves its center about the pivot as a quad does.
         let ScaledRect {
             physical: physical_rect,
             urect: image_urect,
-        } = match p.spin {
+        } = match spin {
             None => self.lowering().scaled_rect(p.paint.rect),
             Some(spin) => {
                 let exact = self
@@ -642,7 +655,7 @@ impl ComposeSession<'_> {
                 self.lowering().turned_rect(exact, spin)
             }
         };
-        let Some(Admitted { visible, .. }) = self
+        let Some(visible) = self
             .ordering()
             .admit(Lane::Tier(PaintTier::Image), image_urect)
         else {
@@ -651,14 +664,14 @@ impl ComposeSession<'_> {
         // A `GpuView` draws over only its visible part, since that is all its target holds; a
         // turned one draws whole, as its visible part is not a rect of its own.
         let seen = view
-            .filter(|_| p.spin.is_none())
+            .filter(|_| spin.is_none())
             .and_then(|_| self.seen(physical_rect));
         let composite = seen.unwrap_or(physical_rect);
         let clip = self.clip_chain(visible);
         // A sharp box over what it composites, which the plain form draws as one quad.
         let mut instance = ImageInstance {
             header: ShapeHeader {
-                rotation: p.spin.map_or(0.0, |spin| spin.angle),
+                rotation: spin.map_or(0.0, |spin| spin.angle),
                 clip,
                 ..ShapeHeader::of_box(composite)
             },
@@ -728,29 +741,10 @@ impl ComposeSession<'_> {
         });
     }
 
-    /// List the backdrop of `ticket`, seen at `visible`, as `row` makes it from the source paint
-    /// order gives it ([`Ordering::backdrop_source`]); its index is its effect instance's
-    /// `backdrop`.
-    fn list_backdrop(
-        &mut self,
-        visible: URect,
-        ticket: BackdropTicket,
-        row: impl FnOnce(BackdropSource) -> BackdropRow,
-    ) -> u32 {
-        debug_assert!(
-            ticket.capture.footprint.union(visible) == ticket.capture.footprint,
-            "a backdrop's footprint holds what it shows"
-        );
-        let source = self.ordering().backdrop_source(ticket);
-        let idx = self.out.backdrops.len() as u32;
-        self.out.backdrops.push(row(source));
-        idx
-    }
-
     /// A cubic or an arc of `p`: turned, culled by its centerline's bounds grown by the stroke,
     /// and lowered to its sub-instances.
-    fn curve(&mut self, basis: CurveBasis, p: &DrawStrokePayload) {
-        let basis = p.spin.map_or(basis, |spin| {
+    fn curve(&mut self, basis: CurveBasis, p: &DrawStrokePayload, spin: Option<Spin>) {
+        let basis = spin.map_or(basis, |spin| {
             CurveRun::turned(basis, spin.relative_to(p.origin))
         });
         let bbox_urect = StrokeBbox {
@@ -763,7 +757,7 @@ impl ComposeSession<'_> {
             display: self.out.display,
         }
         .urect();
-        let Some(Admitted { visible, .. }) = self
+        let Some(visible) = self
             .ordering()
             .admit(Lane::Tier(PaintTier::Curve), bbox_urect)
         else {
@@ -776,14 +770,14 @@ impl ComposeSession<'_> {
 
     /// The polyline of `p` along `path`: its points fitted, turned and taken to physical px, culled
     /// once and ordered once it proves to emit, then lowered to segments and joints.
-    fn polyline(&mut self, path: PolylinePath, p: &DrawStrokePayload) {
+    fn polyline(&mut self, path: PolylinePath, p: &DrawStrokePayload, spin: Option<Spin>) {
         let display = self.out.display;
         let width_physical = p.width * self.composer.transform.physical_scale();
 
         // Inflating by the stroke fringe means the cull never trims reachable pixels. The points
         // are relative to `origin`, and so the pivot they turn about; the cull takes their bound
         // at this frame's angle.
-        let spin = p.spin.map(|spin| spin.relative_to(p.origin));
+        let spin = spin.map(|spin| spin.relative_to(p.origin));
         let bbox = StrokeBbox {
             transform: self.composer.transform.cur(),
             bbox: spin.map_or(path.bbox, |spin| {

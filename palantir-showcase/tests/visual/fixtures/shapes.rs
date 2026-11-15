@@ -2,20 +2,15 @@
 //! arcs and triangles, and the order they paint in.
 
 use palantir::glam::{UVec2, Vec2};
-use palantir::widget::{CubicBezier, QuadraticBezier, Shape};
 use palantir::{
-    Block, Border, Chrome, ColorRamp, Configure, Corners, LinearGradient, Panel, Rect, RgbaF32,
-    Sizing, Ui,
+    Block, Border, Chrome, ColorRamp, Configure, Corners, CubicBezier, Gradient, LineCap, LineJoin,
+    Paint, Panel, QuadraticBezier, Rect, RgbaF32, Shape, SizeSpec, Sizing, Stroke, Ui,
 };
 
 use crate::fixtures;
 use crate::golden_name::GoldenName;
 use crate::goldens;
 use crate::visual_rig::VisualRig;
-use palantir::LineCap;
-use palantir::LineJoin;
-use palantir::Paint;
-use palantir::Stroke;
 
 /// Pin the slot mechanism: three sub-rect shapes interleaved with two child Frames, each overlapping the children that paint under it, so pixels tell "right slot" from "all collapsed to slot 0".
 ///
@@ -27,7 +22,7 @@ fn interleaved_shapes_paint_in_record_order() {
     GoldenName::InterleavedShapesPaintOrder.assert_scene(UVec2::new(220, 60), |ui| {
         Panel::hstack()
             .auto_id()
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .padding(0.0)
             .show(ui, |ui| {
                 ui.add_shape(
@@ -76,7 +71,7 @@ fn line_diagonal_aa_matches_golden() {
     });
 }
 
-/// Pin: `Shape::polyline` with `per_point` colors paints a gradient by vertex interpolation; a stride-1 cross-section would collapse to single-color strips.
+/// Pin: `Shape::polyline` with `point_colors` paints a gradient by vertex interpolation; a stride-1 cross-section would collapse to single-color strips.
 #[test]
 fn polyline_gradient_matches_golden() {
     GoldenName::PolylineGradient.assert_scene(UVec2::new(160, 140), |ui| {
@@ -94,7 +89,7 @@ fn polyline_gradient_matches_golden() {
                 RgbaF32::srgb(0.2, 0.6, 1.0),
             ];
             ui.add_shape(
-                Shape::polyline(&pts).per_point(&cols),
+                Shape::polyline(&pts).point_colors(&cols),
                 Stroke::new(RgbaF32::WHITE, 5.0),
             );
         });
@@ -170,9 +165,8 @@ fn polyline_round_join_matches_golden() {
 /// Pin: translucent polyline joints must not double-blend; an α=0.5 stroke stays α=0.5 through every joint.
 #[test]
 fn polyline_translucent_joins_have_uniform_coverage() {
-    let mut h = VisualRig::new();
+    let mut h = VisualRig::new(UVec2::new(180, 160));
     let img = h
-        .size(UVec2::new(180, 160))
         .clear(RgbaF32::BLACK)
         .frame(|ui| {
             fixtures::canvas(ui, |ui| {
@@ -197,8 +191,8 @@ fn polyline_translucent_joins_have_uniform_coverage() {
     // Analytic probe: a point 4 px below each apex lies in the concave overlap and must equal a straight-run pixel. Double-blending α 0.5 would raise green by ~35 sRGB steps.
     for i in 0..3u32 {
         let y = 40 + i * 45;
-        let joint = img.get_pixel(90, y - 21);
-        let straight = img.get_pixel(55, y - 12);
+        let joint = img.texel(UVec2::new(90, y - 21));
+        let straight = img.texel(UVec2::new(55, y - 12));
         assert_eq!(
             joint, straight,
             "row {i}: the joint interior differs from a straight one — \
@@ -211,8 +205,7 @@ fn polyline_translucent_joins_have_uniform_coverage() {
 /// Pin: a translucent polyline blends correctly through `PREMULTIPLIED_ALPHA_BLENDING`. Green α=0.5 over magenta gives linear `(0.5, 0.5, 0.5)`, sRGB 188 gray; a straight-alpha source tints green (>220).
 #[test]
 fn polyline_translucent_premultiplies_in_stroke_shader() {
-    let img = VisualRig::new()
-        .size(UVec2::new(120, 120))
+    let img = VisualRig::new(UVec2::new(120, 120))
         .clear(RgbaF32::BLACK)
         .frame(|ui| {
             fixtures::canvas(ui, |ui| {
@@ -230,8 +223,8 @@ fn polyline_translucent_premultiplies_in_stroke_shader() {
         .image;
     let gray = RgbaF32::new(0.5, 0.5, 0.5, 1.0).to_srgba8();
     fixtures::assert_px(
-        img.get_pixel(60, 60).0,
-        [gray.r, gray.g, gray.b, 255],
+        img.texel(UVec2::new(60, 60)),
+        gray,
         "the stroke's center blends to gray; green means the stroke shader skipped premultiplying",
     );
 }
@@ -345,9 +338,8 @@ fn arc_shapes_match_golden() {
 /// A rect off the pixel grid covers, per side, the pixel its edge crosses, even where that pixel's center is outside. With snap off, (40.75, 20.75)..(100.25, 60.25) covers column 40 and row 20 by 0.25 and column 100 and row 60 likewise; pixels just inside are full. Black over white leaves `1 − coverage`.
 #[test]
 fn an_unsnapped_rect_covers_the_pixels_across_each_edge() {
-    let mut h = VisualRig::unsnapped();
+    let mut h = VisualRig::unsnapped(UVec2::new(140, 80));
     let img = h
-        .size(UVec2::new(140, 80))
         .clear(RgbaF32::WHITE)
         .frame(|ui| {
             fixtures::canvas(ui, |ui| {
@@ -377,7 +369,7 @@ fn an_unsnapped_rect_covers_the_pixels_across_each_edge() {
         (70, 60, 0.25),
         (70, 61, 0.0),
     ] {
-        let got = img.get_pixel(x, y).0[0];
+        let got = img.texel(UVec2::new(x, y)).r;
         let want = encode(coverage);
         assert!(
             got.abs_diff(want) <= 1,
@@ -391,8 +383,7 @@ fn an_unsnapped_rect_covers_the_pixels_across_each_edge() {
 /// thin bars, mixed radii, capsules, circles, triangles, gradients and turned shapes,
 /// all off the pixel grid and translucent, so a pixel shaded twice or missed moves its value.
 fn template_sweep(ui: &mut Ui) {
-    use palantir::RadialGradient;
-    use palantir::widget::{PaintAnimation, PaintRepeat};
+    use palantir::{PaintAnimation, PaintRepeat};
     use std::time::Duration;
     const CELL: f32 = 72.0;
     const COLS: usize = 8;
@@ -470,7 +461,7 @@ fn template_sweep(ui: &mut Ui) {
         );
         ui.add_shape(
             Shape::rect().at(cell(next(), 56.0, 40.0)).corners(10.0),
-            LinearGradient::new(
+            Gradient::linear(
                 0.6,
                 [
                     RgbaF32::srgba(1.0, 0.3, 0.2, 0.9),
@@ -480,7 +471,7 @@ fn template_sweep(ui: &mut Ui) {
         );
         ui.add_shape(
             Shape::circle().at(cell(next(), 50.0, 50.0)),
-            RadialGradient::centered([
+            Gradient::centered_radial([
                 RgbaF32::srgba(1.0, 1.0, 1.0, 0.9),
                 RgbaF32::srgba(0.2, 0.3, 1.0, 0.4),
             ]),
@@ -510,8 +501,8 @@ fn template_sweep(ui: &mut Ui) {
 #[test]
 fn a_template_matches_the_one_quad_form() {
     let size = UVec2::new(8 * 72, 5 * 72);
-    let mut template = VisualRig::unsnapped();
-    let mut one_quad = VisualRig::unsnapped();
+    let mut template = VisualRig::unsnapped(size);
+    let mut one_quad = VisualRig::unsnapped(size);
     one_quad.host.disable_shape_template();
     let [template, one_quad] = [&mut template, &mut one_quad].map(|rig| {
         rig.size(size)
@@ -520,9 +511,9 @@ fn a_template_matches_the_one_quad_form() {
             .image
     });
     let deltas: Vec<u8> = template
-        .as_raw()
+        .as_srgba8()
         .iter()
-        .zip(one_quad.as_raw())
+        .zip(one_quad.as_srgba8())
         .map(|(&a, &b)| a.abs_diff(b))
         .collect();
     let most = deltas.iter().copied().max().unwrap();

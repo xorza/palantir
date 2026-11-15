@@ -11,17 +11,19 @@ use crate::primitives::identity::effect_id::EffectId;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::packed::fill_axis::FillAxis;
-use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::fill_kind::FillKind;
 use crate::primitives::paint::lut_row::LutRow;
 use crate::renderer::frontend::composer::tests::quad_builder::QuadBuilder;
 use crate::renderer::frontend::composer::tests::support::{
     gpu_view, gpu_view_payload, params, rows_of, run, run_with_texture_cap,
 };
-use crate::renderer::frontend::paint_sink::{PaintPayload, PaintSink};
+use crate::renderer::frontend::paint_sink::{DrawAnimation, PaintSink};
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_closed_payload::DrawClosedPayload;
-use crate::renderer::frontend::payload::draw_closed_payload::closed_effect::ClosedEffect;
+use crate::renderer::frontend::payload::draw_closed_payload::closed_effect::{
+    ClosedEffect, EffectRead,
+};
 use crate::renderer::frontend::payload::draw_closed_payload::closed_image::{
     ClosedImage, GpuViewDraw,
 };
@@ -71,12 +73,11 @@ fn compose_solid_brush_emits_kind_zero_quad() {
 /// which the composer pipes to the QuadInstance.
 #[test]
 fn compose_linear_brush_emits_kind_one_with_table_row() {
-    use crate::primitives::packed::fill_kind::FillKind;
+    use crate::primitives::paint::brush::gradient::Gradient;
     use crate::primitives::paint::brush::gradient::Spread;
-    use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
+    use crate::primitives::paint::fill_kind::FillKind;
     use crate::renderer::row_table::RowTable;
-    let g =
-        LinearGradient::horizontal([RgbaF32::WHITE, RgbaF32::BLACK]).with_spread(Spread::Reflect);
+    let g = Gradient::horizontal([RgbaF32::WHITE, RgbaF32::BLACK]).with_spread(Spread::Reflect);
     let expected_axis = g.axis();
     let mut table = RowTable::default();
     let row = table.register(&g.ramp);
@@ -105,10 +106,10 @@ fn compose_linear_brush_emits_kind_one_with_table_row() {
 /// addressing).
 #[test]
 fn compose_repeated_linear_brush_shares_table_row() {
-    use crate::primitives::packed::fill_kind::FillKind;
-    use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
+    use crate::primitives::paint::brush::gradient::Gradient;
+    use crate::primitives::paint::fill_kind::FillKind;
     use crate::renderer::row_table::RowTable;
-    let g = LinearGradient::new(0.5, [RgbaF32::hex(0x336699), RgbaF32::hex(0xddaa44)]);
+    let g = Gradient::linear(0.5, [RgbaF32::hex(0x336699), RgbaF32::hex(0xddaa44)]);
     let mut table = RowTable::default();
     let lowered = ResolvedGradient {
         axis: g.axis(),
@@ -148,7 +149,6 @@ fn compose_emits_image_batch_for_drawimage() {
                         rect: Rect::new(10.0, 20.0, 30.0, 40.0),
                         corners: Corners::ZERO,
                     }),
-                    spin: None,
                     paint: ClosedImage {
                         rect: Rect::new(10.0, 20.0, 30.0, 40.0),
                         uv_min: Vec2::ZERO,
@@ -159,7 +159,7 @@ fn compose_emits_image_batch_for_drawimage() {
                         view: None,
                     },
                 },
-                1.0,
+                DrawAnimation::STILL,
             );
         },
         &params(2.0, UVec2::new(400, 400)),
@@ -421,7 +421,6 @@ fn compose_image_forwards_uv_crop_for_cover_fit() {
                         rect: Rect::new(0.0, 0.0, 100.0, 100.0),
                         corners: Corners::ZERO,
                     }),
-                    spin: None,
                     paint: ClosedImage {
                         rect: Rect::new(0.0, 0.0, 100.0, 100.0),
                         uv_min: Vec2::new(0.25, 0.0),
@@ -432,7 +431,7 @@ fn compose_image_forwards_uv_crop_for_cover_fit() {
                         view: None,
                     },
                 },
-                1.0,
+                DrawAnimation::STILL,
             );
         },
         &params(1.0, UVec2::new(400, 400)),
@@ -453,7 +452,6 @@ fn compose_forwards_flags_and_repeat_uv() {
                         rect: Rect::new(0.0, 0.0, 50.0, 50.0),
                         corners: Corners::ZERO,
                     }),
-                    spin: None,
                     paint: ClosedImage {
                         rect: Rect::new(0.0, 0.0, 50.0, 50.0),
                         uv_min: Vec2::ZERO,
@@ -464,7 +462,7 @@ fn compose_forwards_flags_and_repeat_uv() {
                         view: None,
                     },
                 },
-                1.0,
+                DrawAnimation::STILL,
             );
             // Tiled draw: UV size > 1 (3×2 repeats) + tiled bit.
             b.draw(
@@ -473,7 +471,6 @@ fn compose_forwards_flags_and_repeat_uv() {
                         rect: Rect::new(0.0, 0.0, 50.0, 50.0),
                         corners: Corners::ZERO,
                     }),
-                    spin: None,
                     paint: ClosedImage {
                         rect: Rect::new(0.0, 0.0, 50.0, 50.0),
                         uv_min: Vec2::ZERO,
@@ -484,7 +481,7 @@ fn compose_forwards_flags_and_repeat_uv() {
                         view: None,
                     },
                 },
-                1.0,
+                DrawAnimation::STILL,
             );
             // The two nearest-filter bits ride through together.
             b.draw(
@@ -493,7 +490,6 @@ fn compose_forwards_flags_and_repeat_uv() {
                         rect: Rect::new(0.0, 0.0, 50.0, 50.0),
                         corners: Corners::ZERO,
                     }),
-                    spin: None,
                     paint: ClosedImage {
                         rect: Rect::new(0.0, 0.0, 50.0, 50.0),
                         uv_min: Vec2::ZERO,
@@ -504,7 +500,7 @@ fn compose_forwards_flags_and_repeat_uv() {
                         view: None,
                     },
                 },
-                1.0,
+                DrawAnimation::STILL,
             );
         },
         &params(1.0, UVec2::new(400, 400)),
@@ -537,7 +533,6 @@ fn a_turned_image_moves_its_center_and_keeps_its_uv() {
                         rect: Rect::new(40.0, 40.0, 20.0, 10.0),
                         corners: Corners::ZERO,
                     }),
-                    spin,
                     paint: ClosedImage {
                         rect: Rect::new(40.0, 40.0, 20.0, 10.0),
                         uv_min: Vec2::ZERO,
@@ -548,7 +543,7 @@ fn a_turned_image_moves_its_center_and_keeps_its_uv() {
                         view: None,
                     },
                 },
-                1.0,
+                DrawAnimation { alpha: 1.0, spin },
             );
         },
         &params(1.0, UVec2::new(200, 200)),
@@ -572,14 +567,14 @@ fn a_turned_image_moves_its_center_and_keeps_its_uv() {
         |b, _| {
             b.draw(
                 {
-                    let mut view = gpu_view_payload(half_off, TextureId(2)).turned(spin);
+                    let mut view = gpu_view_payload(half_off, TextureId(2));
                     view.paint.view = Some(GpuViewDraw {
                         owner: WidgetId::from_hash("view"),
                         epoch: 1,
                     });
                     view
                 },
-                1.0,
+                DrawAnimation { alpha: 1.0, spin },
             );
         },
         &params(1.0, UVec2::new(200, 200)),
@@ -604,24 +599,35 @@ fn a_halo_lands_as_a_rim_culled_by_its_reach() {
             rect,
             corners: Corners::ZERO,
         }),
-        spin: None,
         paint: ClosedEffect {
             effect: EffectId(3),
             params: Span::new(0, 0),
             images: Span::new(0, 0),
-            backdrop: None,
-            stage: None,
-            outside: Some(outside),
+            read: EffectRead::Color {
+                outside: Some(outside),
+            },
             opacity: 1.0,
             time: 0.0,
         },
     };
     let buf = run(
         |b, _arena| {
-            b.draw(halo(Rect::new(5.0, 6.0, 10.0, 8.0), 3.0), 1.0);
-            b.draw(halo(Rect::new(-12.0, 20.0, 10.0, 8.0), 3.0), 1.0);
-            b.draw(halo(Rect::new(-12.0, 20.0, 10.0, 8.0), 1.0), 1.0);
-            b.draw(halo(Rect::new(40.0, 6.0, 10.0, 8.0), 0.1), 1.0);
+            b.draw(
+                halo(Rect::new(5.0, 6.0, 10.0, 8.0), 3.0),
+                DrawAnimation::STILL,
+            );
+            b.draw(
+                halo(Rect::new(-12.0, 20.0, 10.0, 8.0), 3.0),
+                DrawAnimation::STILL,
+            );
+            b.draw(
+                halo(Rect::new(-12.0, 20.0, 10.0, 8.0), 1.0),
+                DrawAnimation::STILL,
+            );
+            b.draw(
+                halo(Rect::new(40.0, 6.0, 10.0, 8.0), 0.1),
+                DrawAnimation::STILL,
+            );
         },
         &params(2.0, UVec2::new(400, 400)),
     );
@@ -663,19 +669,19 @@ fn an_effect_lands_as_one_physical_row() {
                         rect: Rect::new(5.0, 6.0, 10.0, 8.0),
                         corners: Corners::new(4.0, 6.0, 6.0, 4.0),
                     }),
-                    spin: None,
                     paint: ClosedEffect {
                         effect: EffectId(3),
                         params: Span::new(12, 8),
                         images: Span::new(4, 2),
-                        backdrop: None,
-                        stage: None,
-                        outside: None,
+                        read: EffectRead::Color { outside: None },
                         opacity: 1.0,
                         time: 1.25,
                     },
                 },
-                0.5,
+                DrawAnimation {
+                    alpha: 0.5,
+                    spin: None,
+                },
             );
         },
         &params(2.0, UVec2::new(400, 400)),

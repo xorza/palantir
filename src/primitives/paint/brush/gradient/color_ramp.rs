@@ -3,14 +3,12 @@
 use crate::primitives::math::animatable::Animatable;
 use crate::primitives::math::domain;
 use crate::primitives::paint::brush::gradient::Interpolation;
-use crate::primitives::paint::brush::gradient::stops::{GradientStops, MAX_STOPS, Stop};
+use crate::primitives::paint::brush::gradient::stops::{self, GradientStops, MAX_STOPS, Stop};
 use crate::primitives::paint::color::RgbaF32;
 
 /// A color for every value in `0..=1`: stops plus the interpolation space.
 ///
 /// A [`Gradient`](crate::Gradient) is a ramp plus a geometry; a stroked curve's own parameter runs 0 to 1, so it takes a bare ramp ([`Stroke::with_ramp`](crate::Stroke::with_ramp)). Also the identity of a baked atlas row: equal ramps bake equal texels.
-// `repr(C)` keeps `interpolation` last; see the note on `Gradient`.
-#[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 #[must_use]
@@ -41,20 +39,11 @@ impl ColorRamp {
     /// # Panics
     ///
     /// Panics unless there are two through eight `colors`, each a
-    /// [color](crate::widget::domain::color).
+    /// [color](crate::widget::domain::is_color).
     #[track_caller]
     pub fn evenly(colors: impl IntoIterator<Item = RgbaF32>) -> Self {
-        let mut held = [RgbaF32::TRANSPARENT; MAX_STOPS];
-        let mut len = 0;
-        for color in colors {
-            assert!(
-                len < MAX_STOPS,
-                "gradient stop count exceeds MAX_STOPS = {MAX_STOPS}"
-            );
-            held[len] = color;
-            len += 1;
-        }
-        assert!(len >= 2, "gradient requires at least 2 stops, got {len}");
+        let held = stops::collect_capped(colors);
+        let len = held.len();
         let last = (len - 1) as f32;
         let mut stops = [Stop::default(); MAX_STOPS];
         // A loop, not a closure, so each stop's check reports the caller's line.
@@ -65,9 +54,11 @@ impl ColorRamp {
     }
 
     /// The straight color `t` maps to, as the ramp interpolates it, before the bake rounds it
-    /// to f16; past either end stop, that stop's color. A curve split into pieces paints its
-    /// ramp through them with the colors at its split points.
+    /// to f16; past either end stop, that stop's color, and the first stop's for a NaN. A curve
+    /// split into pieces paints its ramp through them with the colors at its split points.
     pub fn color_at(&self, t: f32) -> RgbaF32 {
+        // A NaN passes both end tests and would blend to a NaN color.
+        let t = if t.is_nan() { 0.0 } else { t };
         let premultiplied = RampColors::of(self).at(t, &mut 1);
         if premultiplied.a <= 0.0 {
             return RgbaF32::TRANSPARENT;
@@ -203,6 +194,9 @@ mod tests {
         assert_eq!(linear.color_at(0.25), RgbaF32::new(0.25, 0.25, 0.25, 1.0));
         assert_eq!(linear.color_at(-1.0), RgbaF32::BLACK);
         assert_eq!(linear.color_at(2.0), RgbaF32::WHITE);
+        assert_eq!(linear.color_at(f32::NEG_INFINITY), RgbaF32::BLACK);
+        assert_eq!(linear.color_at(f32::INFINITY), RgbaF32::WHITE);
+        assert_eq!(linear.color_at(f32::NAN), RgbaF32::BLACK);
         let fade = ColorRamp::from([
             RgbaF32::new(1.0, 0.0, 0.0, 1.0),
             RgbaF32::new(0.0, 0.0, 1.0, 0.0),

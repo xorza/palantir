@@ -6,16 +6,16 @@
 //! `IconTable::from_svgs` derives each icon's viewBox and tintability from the artwork, so a demo
 //! page states only its SVGs.
 
+use crate::scaffold;
 use crate::scaffold::api;
-use crate::support;
-use crate::support::{DemoCell, Kit, Knob, Section};
-use palantir::widget::IconPaint;
-use palantir::widget::Shape;
+use crate::scaffold::demo_cell::DemoCell;
+use crate::scaffold::kit::Kit;
+use crate::scaffold::knob::Knob;
+use crate::scaffold::section::Section;
 use palantir::{
-    Align, ColorButton, ColorPicker, Configure, CursorIcon, IconHandle, IconSet, IconTable, Panel,
-    RgbaF32, Sense, Sizing, Text, Ui, WidgetId,
+    Align, ColorButton, ColorPicker, Configure, CursorIcon, IconHandle, IconPaint, IconSet,
+    IconTable, Panel, RgbaF32, Sense, Shape, Sizing, Text, Ui, WidgetId,
 };
-use std::rc::Rc;
 
 /// A diskette: several flat fills over a vertical gradient, inside a clip
 /// path. The "real toolbar icon" case.
@@ -85,9 +85,10 @@ impl Icons {
     /// atlas rasters, so letting one drop at the end of every frame would unload and re-rasterize the
     /// set each frame. The row is scoped to the `Ui` that minted the handles, not to the thread.
     fn load(ui: &mut Ui) -> Self {
-        ui.with_state::<Option<Self>, _>(WidgetId::from_hash("showcase::icons::set"), |ui, held| {
-            held.get_or_insert_with(|| {
-                let set = ui.load_icons(Rc::new(
+        ui.with_state_or_insert_with(
+            WidgetId::from_hash("showcase::icons::set"),
+            |ui| {
+                let set = ui.load_icons(
                     IconTable::from_svgs([
                         ("folder", FOLDER_SVG),
                         ("new-file", NEW_FILE_SVG),
@@ -95,7 +96,7 @@ impl Icons {
                         ("wide", WIDE_SVG),
                     ])
                     .expect("the bundled icons are readable SVGs with distinct names"),
-                ));
+                );
                 let handle = |name| set.by_name(name).expect("bundled icon");
                 Self {
                     folder: handle("folder"),
@@ -104,9 +105,9 @@ impl Icons {
                     wide: handle("wide"),
                     set,
                 }
-            })
-            .clone()
-        })
+            },
+            |_, held: &mut Self| held.clone(),
+        )
     }
 
     fn draw(ui: &mut Ui, icon: IconHandle, tint: RgbaF32) {
@@ -125,14 +126,14 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
             api!(IconSet::by_name),
         ])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "Each cell rasterizes the icon at its own physical size — not a \
                  scaled copy. Change the UI scale and every cell rasterizes again, so \
                  edges stay exact.",
             );
-            support::tiles(ui, |ui| {
+            scaffold::tiles(ui, |ui| {
                 for (px, label) in SIZES {
                     DemoCell::new(label)
                         .size(px + 24.0, px + 24.0)
@@ -146,13 +147,13 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
     Section::new("Artwork")
         .apis(&[api!(type IconTable)])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "Gradients, a clip path, a filter, a tintable outline, and a 2:1 \
                  aspect.",
             );
-            support::tiles(ui, |ui| {
+            scaffold::tiles(ui, |ui| {
                 DemoCell::new("save — gradient + clip path")
                     .size(120.0, 120.0)
                     .show(ui, k, |ui| {
@@ -177,13 +178,13 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
         });
 
     Section::new("Tint").show(ui, k, |ui| {
-        support::note(
+        scaffold::note(
             ui,
             k,
             "A single-color icon takes the whole tint. A color icon takes only \
                  its alpha, and desaturate is the other half of a disabled look.",
         );
-        support::tiles(ui, |ui| {
+        scaffold::tiles(ui, |ui| {
             for (label, tint) in [
                 ("tintable, ink", k.t.ink),
                 ("tintable, amber", RgbaF32::srgb(0.98, 0.75, 0.15)),
@@ -249,7 +250,7 @@ fn live(ui: &mut Ui, k: Kit, icons: &Icons) {
     Section::new("Live icon")
         .apis(&[api!(type IconSet)])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "Size the outline and tint it: each size is a raster of its own, never a scaled \
@@ -258,7 +259,7 @@ fn live(ui: &mut Ui, k: Kit, icons: &Icons) {
             let id = WidgetId::from_hash("showcase::icons::live");
             ui.with_state::<LiveIcon, _>(id, |ui, l| {
                 let mut tint = l.tint.unwrap_or(k.t.ink);
-                support::row(ui, |ui| {
+                scaffold::row(ui, |ui| {
                     Knob {
                         label: "size",
                         range: 12.0..=128.0,
@@ -301,13 +302,13 @@ fn cursors(ui: &mut Ui, k: Kit) {
     Section::new("Cursors")
         .apis(&[api!(Ui::request_cursor), api!(type CursorIcon)])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "Hover a cell: it asks for its pointer shape on each frame the pointer is over \
                  it, and the platform draws its own.",
             );
-            support::tiles(ui, |ui| {
+            scaffold::tiles(ui, |ui| {
                 for (icon, name) in CURSORS {
                     let hovered = Panel::zstack()
                         .id_salt(name)

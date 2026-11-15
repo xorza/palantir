@@ -14,7 +14,7 @@ use crate::ui::Ui;
 use crate::widget_core::activation::Activation;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::response::InnerResponse;
+use crate::widget_core::inner_response::InnerResponse;
 use crate::widget_core::widget::Widget;
 
 /// A clickable, themed rectangle carrying an optional label.
@@ -73,8 +73,8 @@ impl<'a> Button<'a> {
     }
 
     /// Label position inside the button's rect (unlike [`Configure::align`], which places the button).
-    pub const fn text_align(mut self, a: Align) -> Self {
-        self.label_align = a;
+    pub fn text_align(mut self, a: impl Into<Align>) -> Self {
+        self.label_align = a.into();
         self
     }
 
@@ -122,7 +122,6 @@ impl<'a> Button<'a> {
 
         let inner = self.widget.record(ui, Some(&look.chrome), |ui| {
             if !label.is_empty() {
-                let label = ui.intern(label);
                 ui.add_shape(
                     Shape::text(label, look.text.font())
                         .wrap(label_wrap)

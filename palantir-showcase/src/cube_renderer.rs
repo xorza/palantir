@@ -1,10 +1,5 @@
 //! The tour's cube: raw wgpu behind a `GpuView`, for the page that shows it and the reel's slide.
 
-#![expect(
-    clippy::disallowed_types,
-    reason = "the `GpuView` escape hatch is raw wgpu by definition, so naming its types is what this file is for"
-)]
-
 use palantir::glam::camera::rh::{proj::directx, view};
 use palantir::glam::{Mat4, UVec2, Vec3};
 use palantir::wgpu;
@@ -76,8 +71,15 @@ struct CubeGpu {
     idxs: wgpu::Buffer,
     uniform: wgpu::Buffer,
     bind_group: wgpu::BindGroup,
-    /// Private depth attachment and the target texture size it was made for.
-    depth: Option<(wgpu::TextureView, wgpu::Extent3d)>,
+    /// Private depth attachment, made for the target's size.
+    depth: Option<DepthTarget>,
+}
+
+/// The cube's depth attachment and the target texture size it was made for.
+#[derive(Debug)]
+struct DepthTarget {
+    view: wgpu::TextureView,
+    size: wgpu::Extent3d,
 }
 
 /// Draws the cube, its GPU resources built in [`Self::init`]: `'static`, as a `GpuView` holds its
@@ -213,7 +215,7 @@ impl CubeRenderer {
         let gpu = self.gpu.as_mut().expect("init ran before paint");
         // Depth matches the color texture, which can be larger than `physical_size`.
         let target_size = ctx.target.texture().size();
-        let need_depth = gpu.depth.as_ref().map(|(_, s)| *s) != Some(target_size);
+        let need_depth = gpu.depth.as_ref().map(|depth| depth.size) != Some(target_size);
         if need_depth {
             let texture = ctx.gpu.device().create_texture(&wgpu::TextureDescriptor {
                 label: Some("showcase.cube.depth"),
@@ -226,9 +228,12 @@ impl CubeRenderer {
                 view_formats: &[],
             });
             let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-            gpu.depth = Some((view, target_size));
+            gpu.depth = Some(DepthTarget {
+                view,
+                size: target_size,
+            });
         }
-        let depth_view = &gpu.depth.as_ref().expect("depth just ensured").0;
+        let depth_view = &gpu.depth.as_ref().expect("depth just ensured").view;
 
         ctx.gpu
             .queue()

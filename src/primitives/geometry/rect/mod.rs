@@ -52,7 +52,7 @@ impl FloatHash for Rect {
 }
 
 impl Rect {
-    /// Panics unless every component is an [offset](crate::widget::domain::offset) (finite). A negative size is not refused: it paints nothing.
+    /// Panics unless every component is an [offset](crate::widget::domain::is_offset) (finite). A negative size is not refused: it paints nothing.
     #[inline]
     #[track_caller]
     pub(crate) const fn validate(self) {
@@ -82,17 +82,11 @@ impl Rect {
         }
     }
 
-    /// A rect from two corners.
-    ///
-    /// # Panics
-    ///
-    /// Debug-asserts that `min` is componentwise `<= max`, unless a corner is NaN.
+    /// A rect from two corners. Total: a `max` below `min` on an axis gives a negative extent
+    /// there, which paints nothing, and a NaN corner is carried into the size, so a bound folded
+    /// from a NaN point reports it.
     #[inline]
     pub const fn from_min_max(min: Vec2, max: Vec2) -> Self {
-        // A NaN corner is expected under the AABB NaN contract (see [`Aabb`](aabb::Aabb)): it is carried into the bounds so the shape-level gate can name the shape. `max - min` keeps the NaN in `size`.
-        debug_assert!(
-            (min.x <= max.x && min.y <= max.y) || nan::vec2_has_nan(min) || nan::vec2_has_nan(max)
-        );
         Self {
             min,
             size: Size::new(max.x - min.x, max.y - min.y),
@@ -298,12 +292,15 @@ impl Rect {
         overlaps(self.min.x, a.x, other.min.x, b.x) && overlaps(self.min.y, a.y, other.min.y, b.y)
     }
 
-    /// Strict intersection: `None` when the inputs don't overlap, touching included. [`Self::clamp_to`] is the saturating one.
+    /// Strict intersection: `Some` exactly where [`Self::intersects`] is true, so `None` when the
+    /// inputs don't overlap, touching included, and for an empty operand or a NaN, in every
+    /// build. [`Self::clamp_to`] is the saturating one.
     #[inline]
     pub const fn intersect(self, other: Self) -> Option<Self> {
-        let clamped = self.clamp_to(other);
-        if clamped.size.w > 0.0 && clamped.size.h > 0.0 {
-            Some(clamped)
+        // Asked first, by comparisons a NaN fails: `clamp_to`'s `f32::max` and `min` drop a NaN
+        // operand, which would answer with the other rect whole.
+        if self.intersects(other) {
+            Some(self.clamp_to(other))
         } else {
             None
         }
@@ -373,6 +370,53 @@ impl NanCheck for Rect {
     fn has_nan(&self) -> bool {
         Self::has_nan(*self)
     }
+}
+
+/// The area `rects` cover together, each pixel once: their sum when no two overlap, as most
+/// frames' damage has, else strips between their sorted x edges, each the merged y spans of the
+/// rects across it, summed in `f64`. `edges` holds two per rect and `spans` one, scratch the
+/// caller sizes, so a bounded caller keeps both on its stack.
+pub(crate) fn union_area(rects: &[Rect], edges: &mut [f32], spans: &mut [(f32, f32)]) -> f32 {
+    debug_assert_eq!(edges.len(), 2 * rects.len(), "two edges per rect");
+    debug_assert_eq!(spans.len(), rects.len(), "one span per rect");
+    let overlapped = rects
+        .iter()
+        .enumerate()
+        .any(|(i, a)| rects[i + 1..].iter().any(|b| a.intersects(*b)));
+    if !overlapped {
+        return rects.iter().map(|r| f64::from(r.area())).sum::<f64>() as f32;
+    }
+    for (pair, r) in edges.as_chunks_mut::<2>().0.iter_mut().zip(rects) {
+        *pair = [r.min.x, r.max().x];
+    }
+    edges.sort_unstable_by(f32::total_cmp);
+    let mut area = 0.0f64;
+    for strip in edges.windows(2) {
+        if strip[1] <= strip[0] {
+            continue;
+        }
+        let mut across = 0;
+        for r in rects
+            .iter()
+            .filter(|r| r.min.x <= strip[0] && r.max().x >= strip[1])
+        {
+            spans[across] = (r.min.y, r.max().y);
+            across += 1;
+        }
+        let spans = &mut spans[..across];
+        spans.sort_unstable_by(|a, b| a.0.total_cmp(&b.0));
+        let mut covered = 0.0f64;
+        let mut end = f32::NEG_INFINITY;
+        for &(from, to) in spans.iter() {
+            let from = from.max(end);
+            if to > from {
+                covered += f64::from(to - from);
+                end = to;
+            }
+        }
+        area += covered * f64::from(strip[1] - strip[0]);
+    }
+    area as f32
 }
 
 #[cfg(test)]

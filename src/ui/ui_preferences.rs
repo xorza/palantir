@@ -21,15 +21,15 @@ pub struct UiPreferences {
     /// reports one.
     pub scheme: Preference<ColorScheme>,
     /// Whether motion is reduced, from every window's next frame
-    /// ([`Ui::is_motion_reduced`](crate::Ui::is_motion_reduced)); under reduced [`Self::power`],
+    /// ([`Ui::reductions`](crate::Reductions::motion)); under reduced [`Self::power`],
     /// `System` also snaps value transitions.
     pub motion: Preference<Reduction>,
     /// Whether transparency is reduced, from every window's next frame
-    /// ([`Ui::is_transparency_reduced`](crate::Ui::is_transparency_reduced)); `System` also reduces
+    /// ([`Ui::reductions`](crate::Reductions::transparency)); `System` also reduces
     /// it under reduced [`Self::power`].
     pub transparency: Preference<Reduction>,
     /// Whether power use is reduced, from every window's next frame
-    /// ([`Ui::is_power_reduced`](crate::Ui::is_power_reduced)).
+    /// ([`Ui::reductions`](crate::Reductions::power)).
     pub power: Preference<Reduction>,
     /// Whether the frame rate is reduced, from every window's next frame
     /// ([`Ui::is_frame_rate_reduced`](crate::Ui::is_frame_rate_reduced)); `System` reduces it

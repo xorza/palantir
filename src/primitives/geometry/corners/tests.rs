@@ -6,8 +6,15 @@ use crate::primitives::packed::serde::internals::{from_ron, ron_text};
 
 #[test]
 fn to_array_reads_clockwise_from_the_top_left() {
+    let corners = Corners::new(1.0, 2.0, 3.0, 4.0);
+    assert_eq!(corners.to_array(), [1.0, 2.0, 3.0, 4.0]);
     assert_eq!(
-        Corners::new(1.0, 2.0, 3.0, 4.0).to_array(),
+        [
+            corners.top_left(),
+            corners.top_right(),
+            corners.bottom_right(),
+            corners.bottom_left()
+        ],
         [1.0, 2.0, 3.0, 4.0]
     );
 }
@@ -79,9 +86,7 @@ fn scaled_by_multiplies_each_corner() {
         [65504.0, 2.0, 0.0, 4.0]
     );
     for bad in [-1.0, f32::NAN, f32::INFINITY] {
-        panic_probe::assert_panics_with("a corner scale must be finite", || {
-            Corners::all(1.0).scaled_by(bad)
-        });
+        panic_probe::assert_panics_with(domain::FACTOR_RULE, || Corners::all(1.0).scaled_by(bad));
     }
 }
 

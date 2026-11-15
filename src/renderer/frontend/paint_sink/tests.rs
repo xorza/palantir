@@ -9,8 +9,8 @@ use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::line_style::LineJoin;
-use crate::renderer::frontend::paint_sink::PaintPayload;
 use crate::renderer::frontend::paint_sink::PaintSink;
+use crate::renderer::frontend::paint_sink::{DrawAnimation, PaintPayload};
 use crate::renderer::frontend::payload::draw_closed_payload::DrawClosedPayload;
 use crate::renderer::frontend::payload::draw_closed_payload::closed_image::{
     ClosedImage, GpuViewDraw,
@@ -18,7 +18,7 @@ use crate::renderer::frontend::payload::draw_closed_payload::closed_image::{
 use crate::renderer::frontend::payload::draw_stroke_payload::{
     DrawStrokePayload, PolylinePath, StrokePath,
 };
-use crate::renderer::frontend::payload::gpu_fill::GpuFill;
+use crate::renderer::render_buffer::gpu_fill::GpuFill;
 use crate::renderer::render_buffer::image_flags::ImageFlags;
 use crate::shape::geometry::box_geometry::PlacedBox;
 use crate::shape::geometry::closed_geometry::PlacedClosed;
@@ -41,7 +41,7 @@ fn polyline(points_len: u32, width: f32, alpha: f32) -> DrawStrokePayload {
             ..GpuFill::default()
         },
         width,
-        ..DrawStrokePayload::default()
+        ..DrawStrokePayload::fixture()
     }
 }
 
@@ -160,7 +160,6 @@ fn gpu_view_gate_drops_zero_extent_and_keeps_the_view() {
                     rect,
                     corners: Corners::ZERO,
                 }),
-                spin: None,
                 paint: ClosedImage {
                     rect,
                     uv_min: Vec2::ZERO,
@@ -171,13 +170,13 @@ fn gpu_view_gate_drops_zero_extent_and_keeps_the_view() {
                     view: has_paint.then_some(view),
                 },
             },
-            1.0,
+            DrawAnimation::STILL,
         );
         if !expect_call {
             assert!(sink.calls.is_empty(), "case {label}: {:?}", sink.calls);
             continue;
         }
-        let [PaintCall::Image(payload)] = sink.calls.as_slice() else {
+        let [PaintCall::Image(payload, _)] = sink.calls.as_slice() else {
             panic!(
                 "case {label}: expected one Image call, got {:?}",
                 sink.calls
@@ -205,7 +204,6 @@ fn the_gate_sees_the_faded_payload() {
             rect: Rect::new(0.0, 0.0, 4.0, 4.0),
             corners: Corners::ZERO,
         }),
-        spin: None,
         paint: ClosedImage {
             rect: Rect::new(0.0, 0.0, 4.0, 4.0),
             uv_min: Vec2::ZERO,
@@ -218,7 +216,13 @@ fn the_gate_sees_the_faded_payload() {
     };
 
     let mut faded_out = PaintCapture::default();
-    faded_out.draw(draw(), 0.0);
+    faded_out.draw(
+        draw(),
+        DrawAnimation {
+            alpha: 0.0,
+            spin: None,
+        },
+    );
     assert!(
         faded_out.calls.is_empty(),
         "a draw animated to nothing must not reach the sink: {:?}",
@@ -226,8 +230,14 @@ fn the_gate_sees_the_faded_payload() {
     );
 
     let mut half = PaintCapture::default();
-    half.draw(draw(), 0.5);
-    let [PaintCall::Image(payload)] = half.calls.as_slice() else {
+    half.draw(
+        draw(),
+        DrawAnimation {
+            alpha: 0.5,
+            spin: None,
+        },
+    );
+    let [PaintCall::Image(payload, _)] = half.calls.as_slice() else {
         panic!("expected one Image call, got {:?}", half.calls);
     };
     // Half an opaque white tint's alpha, color untouched; exact in f16.
@@ -238,24 +248,36 @@ fn the_gate_sees_the_faded_payload() {
     // multiply.
     let line = polyline(2, 1.0, 1.0);
     let mut faded_out = PaintCapture::default();
-    faded_out.draw(line, 0.0);
+    faded_out.draw(
+        line,
+        DrawAnimation {
+            alpha: 0.0,
+            spin: None,
+        },
+    );
     assert!(
         faded_out.calls.is_empty(),
         "a polyline animated to nothing must not reach the sink: {:?}",
         faded_out.calls,
     );
     let mut half = PaintCapture::default();
-    half.draw(line, 0.5);
-    let [PaintCall::Stroke(payload)] = half.calls.as_slice() else {
+    half.draw(
+        line,
+        DrawAnimation {
+            alpha: 0.5,
+            spin: None,
+        },
+    );
+    let [PaintCall::Stroke(payload, _)] = half.calls.as_slice() else {
         panic!("expected one Stroke call, got {:?}", half.calls);
     };
     assert_eq!(RgbaF32::from(payload.fill.color).a, 0.5);
 }
 
-/// The gate turns what it fades: a draw handed a turn reaches the sink with it, a polyline's
-/// alike, and a fade alone, an `f32`, leaves a draw as it was turned, still or not.
+/// The gate hands the sink each draw's turn: a draw handed a turn reaches the sink with it, a
+/// polyline's alike and a faded one too, and a still draw reaches it unturned.
 #[test]
-fn the_gate_turns_the_payload() {
+fn the_gate_hands_the_sink_its_turn() {
     use crate::renderer::frontend::paint_sink::DrawAnimation;
     use crate::renderer::frontend::payload::spin::Spin;
 
@@ -263,12 +285,12 @@ fn the_gate_turns_the_payload() {
         pivot: Vec2::new(2.0, 2.0),
         angle: 0.5,
     };
-    let image = DrawClosedPayload::new(
-        PlacedClosed::Box(PlacedBox {
+    let image = DrawClosedPayload {
+        geometry: PlacedClosed::Box(PlacedBox {
             rect: Rect::new(0.0, 0.0, 4.0, 4.0),
             corners: Corners::ZERO,
         }),
-        ClosedImage {
+        paint: ClosedImage {
             rect: Rect::new(0.0, 0.0, 4.0, 4.0),
             uv_min: Vec2::ZERO,
             uv_size: Vec2::ONE,
@@ -277,7 +299,7 @@ fn the_gate_turns_the_payload() {
             flags: ImageFlags::NONE,
             view: None,
         },
-    );
+    };
     let line = polyline(2, 1.0, 1.0);
 
     let mut sink = PaintCapture::default();
@@ -287,14 +309,19 @@ fn the_gate_turns_the_payload() {
     };
     sink.draw(image, animation);
     sink.draw(line, animation);
-    sink.draw(image, 1.0);
-    sink.draw(image.turned(Some(turn)), 1.0);
+    sink.draw(image, DrawAnimation::STILL);
+    sink.draw(
+        image,
+        DrawAnimation {
+            alpha: 0.5,
+            spin: Some(turn),
+        },
+    );
     let spins: Vec<_> = sink
         .calls
         .iter()
         .map(|call| match call {
-            PaintCall::Image(p) => p.spin,
-            PaintCall::Stroke(p) => p.spin,
+            PaintCall::Image(_, spin) | PaintCall::Stroke(_, spin) => *spin,
             other => panic!("unexpected call {other:?}"),
         })
         .collect();

@@ -3,7 +3,7 @@
 // grained as frosted glass is. Lengths are the material's own logical px; a displacement is
 // equivariant in scale, so the bend lands where the physical one would.
 
-// What the glass reads (`GlassInput`): the frost's saturation and grain, then its lens.
+// What the glass reads (`GlassParams`): the frost's saturation and grain, then its lens.
 struct Params {
     saturation: f32,
     noise: f32,

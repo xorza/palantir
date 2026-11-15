@@ -5,7 +5,7 @@
 //!
 //! - **Shapes.** `Ui::add_shape` and the shape setters check their inputs and panic on a NaN;
 //!   `Shapes::push` debug-asserts none got past.
-//! - **Paints.** `lower::lower_paint`, which every box and chrome lowers through, debug-asserts the
+//! - **Paints.** `RecordStore::lower_paint`, which every box and chrome lowers through, debug-asserts the
 //!   `Paint` it receives holds none.
 //!
 //! Impls are `O(1)`, so the setter checks run in release too. Bulk inputs (polyline points, mesh

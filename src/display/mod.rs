@@ -17,14 +17,9 @@ use crate::display::system_scale::SystemScale;
 use crate::display::user_scale::UserScale;
 use crate::primitives::geometry::rect::{EdgeRounding, Rect};
 use crate::primitives::geometry::size::Size;
-use crate::primitives::math::domain::EPS;
 use crate::primitives::math::num::Vec2Ext;
 use glam::{UVec2, Vec2};
-
-#[inline]
-pub(crate) const fn scale_factor_is_valid(scale_factor: f32) -> bool {
-    scale_factor.is_finite() && scale_factor >= EPS
-}
+use std::num::NonZeroU32;
 
 /// Display state for the current output, read by the renderer at submit, by
 /// hosts computing the logical surface rect, and by the repaint scheduler.
@@ -39,7 +34,7 @@ pub struct Display {
     pub(crate) system_scale: SystemScale,
     pub(crate) user_scale: UserScale,
     pub(crate) pixel_snap: bool,
-    pub(crate) refresh_millihertz: Option<u32>,
+    pub(crate) refresh_millihertz: Option<NonZeroU32>,
 }
 
 impl Default for Display {
@@ -57,7 +52,7 @@ impl Default for Display {
 impl Display {
     /// Physical surface size in pixels, as in `wgpu::SurfaceConfiguration`.
     #[inline]
-    pub const fn physical(&self) -> UVec2 {
+    pub const fn physical_size(&self) -> UVec2 {
         self.physical
     }
 
@@ -88,7 +83,7 @@ impl Display {
     /// VRR). Read only by wake pacing (repaint coalescing, reduced frame rate); it never forces a
     /// relayout.
     #[inline]
-    pub const fn refresh_millihertz(&self) -> Option<u32> {
+    pub const fn refresh_millihertz(&self) -> Option<NonZeroU32> {
         self.refresh_millihertz
     }
 

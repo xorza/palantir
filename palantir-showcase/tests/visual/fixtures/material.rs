@@ -1,18 +1,14 @@
 //! Materials over the pixels painted before them.
 
 use palantir::glam::{UVec2, Vec2};
-use palantir::widget::{PaintAnimation, Shape};
 use palantir::{
-    Border, ColorScheme, Configure, Corners, Lens, Material, Panel, PopupTrigger, Rect, RgbaF32,
-    Sizing, Text, Ui, WidgetId,
+    Border, ColorScheme, Configure, Corners, Lens, Material, Paint, PaintAnimation, Panel,
+    PopupTrigger, Rect, RgbaF32, Shape, SizeSpec, Text, Ui, WidgetId,
 };
-use palantir_showcase::pages::materials;
-use palantir_showcase::support;
-use palantir_showcase::support::Kits;
+use palantir_showcase::internals::{self, PageScene};
 
 use crate::golden_name::GoldenName;
 use crate::visual_rig::FIXTURE_PALETTE;
-use palantir::Paint;
 
 /// Stripes of three colors and widths, and two lines of text over them, filling `size`.
 fn backdrop_scene(ui: &mut Ui, size: UVec2) {
@@ -42,7 +38,7 @@ fn materials_match_golden() {
     GoldenName::Materials.assert_scene(size, |ui| {
         Panel::canvas()
             .id(WidgetId::from_hash("backdrop-canvas"))
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 backdrop_scene(ui, size);
                 ui.add_shape(
@@ -87,7 +83,7 @@ fn triangle_materials_match_golden() {
     GoldenName::TriangleMaterials.assert_scene(size, |ui| {
         Panel::canvas()
             .id(WidgetId::from_hash("backdrop-triangles"))
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 backdrop_scene(ui, size);
                 ui.add_shape(
@@ -139,7 +135,7 @@ fn a_turned_material_matches_golden() {
     GoldenName::MaterialTurned.assert_scene(size, |ui| {
         Panel::canvas()
             .id(WidgetId::from_hash("backdrop-turned"))
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 backdrop_scene(ui, size);
                 if let Some(shape) = ui.add_shape(
@@ -165,7 +161,7 @@ fn glass_matches_golden() {
     GoldenName::MaterialGlass.assert_scene(size, |ui| {
         Panel::canvas()
             .id(WidgetId::from_hash("backdrop-glass"))
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 backdrop_scene(ui, size);
                 ui.add_shape(
@@ -201,12 +197,9 @@ fn glass_matches_golden() {
 /// frosted popup open over the page.
 #[test]
 fn showcase_materials_page_matches_golden() {
-    let k = Kits::default().kit(ColorScheme::Dark, &FIXTURE_PALETTE);
+    let mut page = PageScene::new("Materials", ColorScheme::Dark, FIXTURE_PALETTE);
     GoldenName::ShowcaseMaterialsPage.assert_settled_scene(UVec2::new(760, 760), 2, |ui| {
-        PopupTrigger::open(ui, materials::popup_button());
-        Panel::vstack()
-            .auto_id()
-            .gap(support::PAGE_GAP)
-            .show(ui, |ui| materials::build(ui, k));
+        PopupTrigger::open(ui, internals::materials_popup_button());
+        page.record(ui);
     });
 }

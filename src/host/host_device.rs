@@ -4,10 +4,10 @@
 //! ([`HostCore::new`](crate::host::host_core::HostCore::new)) and a recovery from a lost device
 //! ([`HostDevice::attach`]) both run, so no code tells the two apart.
 
+use crate::gpu::device::device_requirements::DeviceRequirements;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_wait::GpuWait;
 use crate::gpu::frame::gpu_timings::FrameTiming;
-use crate::gpu::pipeline::effect_pipeline::wgpu_effect_store::WgpuEffectStore;
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::resource::wgpu_image_store::WgpuImageStore;
 use crate::gpu::surface::render_target::RenderTarget;
@@ -20,28 +20,28 @@ use crate::ui::window_frames::WindowFrames;
 use crate::ui::window_frames::present::{BuildCtx, BuiltFrame, CpuFrame, FrameSpec};
 use std::rc::Rc;
 
-/// The one [`WgpuBackend`] every window of a host renders through.
+/// The one [`WgpuBackend`] every window of a host renders through, and what each device's backend
+/// is built from.
 #[derive(Debug)]
 pub(super) struct HostDevice {
     backend: WgpuBackend,
+    spec: BackendSpec,
 }
 
-/// What the backend is built from on each device the host attaches; the old backend holds both
-/// for the next.
+/// What the backend is built from on each device the host attaches.
 #[derive(Debug)]
 pub(super) struct BackendSpec {
     /// Built with no device, so the registry every recorder clones holds it from the start.
     pub(super) image_store: Rc<WgpuImageStore>,
-    /// Built with no device, so the registry every recorder clones loads through it from the start.
-    pub(super) effect_store: Rc<WgpuEffectStore>,
     pub(super) timing: FrameTiming,
 }
 
 impl HostDevice {
     /// The backend `spec` builds on `gpu` over `cpu`, as [`Self::attach`] builds it again.
-    pub(super) fn new(spec: &BackendSpec, gpu: Gpu, cpu: &mut HostCpu) -> Self {
+    pub(super) fn new(spec: BackendSpec, gpu: Gpu, cpu: &mut HostCpu) -> Self {
         Self {
             backend: spec.open(gpu, cpu),
+            spec,
         }
     }
 
@@ -54,12 +54,7 @@ impl HostDevice {
         cpu: &mut HostCpu,
         windows: impl IntoIterator<Item = &'a mut WindowFrames>,
     ) {
-        let spec = BackendSpec {
-            image_store: Rc::clone(self.backend.image_store()),
-            effect_store: Rc::clone(self.backend.effect_store()),
-            timing: self.backend.frame_timing(),
-        };
-        self.backend = spec.open(gpu, cpu);
+        self.backend = self.spec.open(gpu, cpu);
         for frames in windows {
             self.attach_window(frames);
         }
@@ -105,10 +100,11 @@ impl HostDevice {
         spec: FrameSpec,
         app: &mut T,
     ) -> CpuFrame<'c> {
-        self.backend.prepare_format(spec.target.format);
-        frames.deliver_screenshot(&self.backend);
+        self.backend
+            .prepare_format(spec.target.format, cpu.resources.effects());
+        frames.deliver_screenshot(self.backend.gpu());
         frames.forget_evicted_backdrops(&mut self.backend);
-        let report = frames.record(spec, app);
+        let recorded = frames.record(spec, app);
         let frame = self.backend.next_frame(frames.render_owner());
         frames.build_paint(
             BuildCtx {
@@ -116,7 +112,7 @@ impl HostDevice {
                 placing: self.backend.cutout_placing(),
                 frame,
             },
-            report,
+            recorded,
         )
     }
 
@@ -163,22 +159,20 @@ impl BackendSpec {
     /// # Panics
     ///
     /// If `gpu` cannot run Palantir's pipelines, see
-    /// [`DeviceRequirements`](crate::DeviceRequirements): a caller's mistake every painting host
+    /// [`DeviceRequirements`]: a caller's mistake every painting host
     /// meets here, at startup and at a recovery alike.
     fn open(&self, gpu: Gpu, cpu: &mut HostCpu) -> WgpuBackend {
-        if let Err(unmet) = gpu.requirements_met() {
+        if let Err(unmet) = DeviceRequirements::met_by(&gpu.device) {
             panic!("a host's device cannot run Palantir: {unmet}");
         }
         let texture_binding = TextureBinding::new(&gpu);
         self.image_store.attach(&gpu, texture_binding.clone());
-        self.effect_store.attach(&gpu, &texture_binding);
-        cpu.attach_device(TextureLimit::from_device(gpu.max_texture_dim()));
+        cpu.attach_device(TextureLimit::from_device(gpu.max_texture_dimension()));
         WgpuBackend::new(
             gpu,
             BackendResources {
                 text: cpu.resources.text(),
                 image_store: &self.image_store,
-                effect_store: &self.effect_store,
                 icons: cpu.resources.icons(),
                 texture_binding,
             },

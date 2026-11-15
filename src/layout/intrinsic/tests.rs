@@ -21,17 +21,13 @@ const SURFACE: Size = Size::new(400.0, 300.0);
 /// A Fill row around a Fill leaf `msg` that wraps `text` in the 16 px mono face, 8 px a char.
 fn wrapping_row(rig: &mut LayoutRig, text: &str) {
     rig.run(SURFACE, |rec| {
-        rec.node(
-            "row",
-            Widget::hstack().size((Sizing::FILL, Sizing::HUG)),
-            |rec| {
-                rec.text_leaf(
-                    "msg",
-                    Widget::leaf().size((Sizing::FILL, Sizing::HUG)),
-                    TextRun::new(text, 16.0, TextWrap::WrapWithOverflow),
-                );
-            },
-        );
+        rec.node("row", Widget::hstack().size(SizeSpec::FILL_W), |rec| {
+            rec.text_leaf(
+                "msg",
+                Widget::leaf().size(SizeSpec::FILL_W),
+                TextRun::new(text, 16.0, TextWrap::WrapWithOverflow),
+            );
+        });
     });
 }
 
@@ -247,22 +243,18 @@ fn a_leaf_intrinsic_walk_records_the_axis_it_was_not_asked_about() {
 
     let mut rig = LayoutRig::new();
     rig.run(SURFACE, |rec| {
-        rec.node(
-            "row",
-            Widget::hstack().size((Sizing::FILL, Sizing::HUG)),
-            |rec| {
-                let leaf = Widget::leaf().padding((3.0, 5.0)).margin((1.0, 2.0));
-                rec.text_leaf(
-                    "msg",
-                    leaf,
-                    TextRun::new(
-                        "lorem ipsum dolor sit amet",
-                        16.0,
-                        TextWrap::WrapWithOverflow,
-                    ),
-                );
-            },
-        );
+        rec.node("row", Widget::hstack().size(SizeSpec::FILL_W), |rec| {
+            let leaf = Widget::leaf().padding((3.0, 5.0)).margin((1.0, 2.0));
+            rec.text_leaf(
+                "msg",
+                leaf,
+                TextRun::new(
+                    "lorem ipsum dolor sit amet",
+                    16.0,
+                    TextWrap::WrapWithOverflow,
+                ),
+            );
+        });
     });
     let leaf = rig.node("msg");
     let slots = |rig: &LayoutRig| rig.engine().scratch.measure.intrinsics[leaf.idx()];

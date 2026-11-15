@@ -7,8 +7,10 @@ use std::time::Duration;
 use palantir::glam::{UVec2, Vec2};
 use palantir::{
     Action, ColorScheme, Locator, PointerButton, Rect, Shortcut, ShortcutMods, SystemScale,
-    ZoomFactor,
+    WheelDelta, ZoomFactor,
 };
+use std::num::NonZeroU32;
+use std::str::FromStr;
 
 /// What a script sets before its first step; each has the default [`Header::default`] names.
 #[derive(Clone, Debug, PartialEq)]
@@ -20,7 +22,7 @@ pub(crate) struct Header {
     /// The page the shell opens on, by its label; the first page for none.
     pub(crate) page: Option<String>,
     /// The longest side a picture is written at.
-    pub(crate) max_side: u32,
+    pub(crate) max_side: NonZeroU32,
     /// The scheme the window reports as the system's; `None` reports nothing, so a page that
     /// follows the system shows the fallback.
     pub(crate) scheme: Option<ColorScheme>,
@@ -33,7 +35,7 @@ impl Default for Header {
             size: UVec2::new(1600, 1000),
             scale: SystemScale::ONE,
             page: None,
-            max_side: 2576,
+            max_side: NonZeroU32::new(2576).unwrap(),
             scheme: None,
         }
     }
@@ -57,7 +59,7 @@ pub(crate) enum StepKind {
         name: String,
         region: Option<Region>,
         /// The magnification of the region, nearest; 1 fits the picture to the largest side.
-        zoom: u32,
+        zoom: NonZeroU32,
     },
     /// Print the sRGB bytes under one logical pixel.
     Probe(Vec2),
@@ -119,11 +121,15 @@ impl Display for ParseError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "line {}: ", self.line)?;
         match &self.kind {
-            ParseErrorKind::Unknown(word) => write!(
-                f,
-                "unknown instruction `{word}`; expected size, scale, page, max-side, scheme, click, \
-                 double-click, hover, drag, scroll-pixels, scroll-lines, pinch, key, type, wait, shot, probe or widgets"
-            ),
+            ParseErrorKind::Unknown(word) => {
+                write!(f, "unknown instruction `{word}`; expected ")?;
+                let (last, rest) = Instruction::ALL.split_last().expect("instructions exist");
+                for (idx, instruction) in rest.iter().enumerate() {
+                    let sep = if idx == 0 { "" } else { ", " };
+                    write!(f, "{sep}{}", instruction.word())?;
+                }
+                write!(f, " or {}", last.word())
+            }
             ParseErrorKind::LateHeader(word) => {
                 write!(f, "`{word}` sets the header, before the first step")
             }
@@ -154,36 +160,11 @@ impl Script {
             }
             let mut words = Words::of(trimmed).map_err(fail)?;
             let head = words.next_word("an instruction").map_err(fail)?;
-            let header_word = matches!(
-                head.as_str(),
-                "size" | "scale" | "page" | "max-side" | "scheme"
-            );
-            if header_word && !steps.is_empty() {
+            let instruction = head.parse::<Instruction>().map_err(fail)?;
+            if instruction.is_header() && !steps.is_empty() {
                 return Err(fail(ParseErrorKind::LateHeader(head)));
             }
-            let kind = match head.as_str() {
-                "size" => {
-                    header.size = words.size().map_err(fail)?;
-                    None
-                }
-                "scale" => {
-                    header.scale = words.system_scale().map_err(fail)?;
-                    None
-                }
-                "page" => {
-                    header.page = Some(words.text("a quoted page label").map_err(fail)?);
-                    None
-                }
-                "max-side" => {
-                    header.max_side = words.count("a largest side in pixels").map_err(fail)?;
-                    None
-                }
-                "scheme" => {
-                    header.scheme = Some(words.color_scheme().map_err(fail)?);
-                    None
-                }
-                _ => Some(step(&head, &mut words).map_err(fail)?),
-            };
+            let kind = read(instruction, &mut words, &mut header).map_err(fail)?;
             words.end().map_err(fail)?;
             if let Some(kind) = kind {
                 steps.push(Step { line, kind });
@@ -193,18 +174,131 @@ impl Script {
     }
 }
 
-/// The step `head` names, its words read from `words`.
-fn step(head: &str, words: &mut Words) -> Result<StepKind, ParseErrorKind> {
-    let act = |action| Ok(StepKind::Act(action));
-    match head {
-        "click" => {
+/// Each instruction a line starts with: the header's, then the steps'.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Instruction {
+    Size,
+    Scale,
+    Page,
+    MaxSide,
+    Scheme,
+    Click,
+    DoubleClick,
+    Hover,
+    Drag,
+    ScrollPixels,
+    ScrollLines,
+    Pinch,
+    Key,
+    Type,
+    Wait,
+    Shot,
+    Probe,
+    Widgets,
+}
+
+impl Instruction {
+    pub(super) const ALL: [Self; 18] = [
+        Self::Size,
+        Self::Scale,
+        Self::Page,
+        Self::MaxSide,
+        Self::Scheme,
+        Self::Click,
+        Self::DoubleClick,
+        Self::Hover,
+        Self::Drag,
+        Self::ScrollPixels,
+        Self::ScrollLines,
+        Self::Pinch,
+        Self::Key,
+        Self::Type,
+        Self::Wait,
+        Self::Shot,
+        Self::Probe,
+        Self::Widgets,
+    ];
+
+    /// The word a script spells it with.
+    pub(super) const fn word(self) -> &'static str {
+        match self {
+            Self::Size => "size",
+            Self::Scale => "scale",
+            Self::Page => "page",
+            Self::MaxSide => "max-side",
+            Self::Scheme => "scheme",
+            Self::Click => "click",
+            Self::DoubleClick => "double-click",
+            Self::Hover => "hover",
+            Self::Drag => "drag",
+            Self::ScrollPixels => "scroll-pixels",
+            Self::ScrollLines => "scroll-lines",
+            Self::Pinch => "pinch",
+            Self::Key => "key",
+            Self::Type => "type",
+            Self::Wait => "wait",
+            Self::Shot => "shot",
+            Self::Probe => "probe",
+            Self::Widgets => "widgets",
+        }
+    }
+
+    /// Whether it sets the header, which comes before the first step.
+    pub(super) const fn is_header(self) -> bool {
+        matches!(
+            self,
+            Self::Size | Self::Scale | Self::Page | Self::MaxSide | Self::Scheme
+        )
+    }
+}
+
+impl FromStr for Instruction {
+    type Err = ParseErrorKind;
+
+    fn from_str(word: &str) -> Result<Self, ParseErrorKind> {
+        Self::ALL
+            .into_iter()
+            .find(|instruction| instruction.word() == word)
+            .ok_or_else(|| ParseErrorKind::Unknown(word.to_owned()))
+    }
+}
+
+/// `instruction` read from `words`: a header's value set in `header`, `None`; a step's kind.
+fn read(
+    instruction: Instruction,
+    words: &mut Words,
+    header: &mut Header,
+) -> Result<Option<StepKind>, ParseErrorKind> {
+    let act = |action| Ok(Some(StepKind::Act(action)));
+    match instruction {
+        Instruction::Size => {
+            header.size = words.size()?;
+            Ok(None)
+        }
+        Instruction::Scale => {
+            header.scale = words.system_scale()?;
+            Ok(None)
+        }
+        Instruction::Page => {
+            header.page = Some(words.text("a quoted page label")?);
+            Ok(None)
+        }
+        Instruction::MaxSide => {
+            header.max_side = words.count("a largest side in pixels")?;
+            Ok(None)
+        }
+        Instruction::Scheme => {
+            header.scheme = Some(words.color_scheme()?);
+            Ok(None)
+        }
+        Instruction::Click => {
             let at = words.locator()?;
             let Press { button, mods } = words.press()?;
             act(Action::Click { at, button, mods })
         }
-        "double-click" => act(Action::DoubleClick(words.locator()?)),
-        "hover" => act(Action::Hover(words.locator()?)),
-        "drag" => {
+        Instruction::DoubleClick => act(Action::DoubleClick(words.locator()?)),
+        Instruction::Hover => act(Action::Hover(words.locator()?)),
+        Instruction::Drag => {
             let from = words.locator()?;
             words.keyword("to")?;
             let to = words.locator()?;
@@ -217,22 +311,22 @@ fn step(head: &str, words: &mut Words) -> Result<StepKind, ParseErrorKind> {
                 steps: Action::DRAG_STEPS,
             })
         }
-        "scroll-pixels" => {
+        Instruction::ScrollPixels => {
             let at = words.locator()?;
-            let delta = words.pair("a scroll dx,dy in pixels")?;
-            act(Action::ScrollPixels { at, delta })
+            let delta = WheelDelta::pixels(words.pair("a scroll dx,dy in pixels")?);
+            act(Action::Scroll { at, delta })
         }
-        "scroll-lines" => {
+        Instruction::ScrollLines => {
             let at = words.locator()?;
-            let delta = words.pair("a scroll dx,dy in notches")?;
-            act(Action::ScrollLines { at, delta })
+            let delta = WheelDelta::notches(words.pair("a scroll dx,dy in notches")?);
+            act(Action::Scroll { at, delta })
         }
-        "pinch" => {
+        Instruction::Pinch => {
             let at = words.locator()?;
             let factor = words.zoom("a pinch factor above 0")?;
             act(Action::Pinch { at, factor })
         }
-        "key" => {
+        Instruction::Key => {
             let word = words.next_word("a key, as ctrl+z")?;
             let shortcut = word.parse::<Shortcut>().map_err(|_| ParseErrorKind::Bad {
                 expected: "a key, as ctrl+z or enter",
@@ -240,32 +334,31 @@ fn step(head: &str, words: &mut Words) -> Result<StepKind, ParseErrorKind> {
             })?;
             act(Action::Key(shortcut))
         }
-        "type" => act(Action::Type(words.text("quoted text")?)),
-        "wait" => act(Action::Wait(words.duration()?)),
-        "shot" => {
+        Instruction::Type => act(Action::Type(words.text("quoted text")?)),
+        Instruction::Wait => act(Action::Wait(words.duration()?)),
+        Instruction::Shot => {
             let name = words.next_word("a shot name")?;
             let mut region = None;
-            let mut zoom = 1;
+            let mut zoom = NonZeroU32::MIN;
             while let Some(option) = words.peek() {
                 match option {
                     "region" => {
-                        words.next_word("region")?;
+                        words.skip();
                         region = Some(words.region()?);
                     }
                     "zoom" => {
-                        words.next_word("zoom")?;
+                        words.skip();
                         zoom = words.count("a zoom of 1 or more")?;
                     }
                     _ => break,
                 }
             }
-            Ok(StepKind::Shot { name, region, zoom })
+            Ok(Some(StepKind::Shot { name, region, zoom }))
         }
-        "probe" => Ok(StepKind::Probe(words.pair("a logical point x,y")?)),
-        "widgets" => Ok(StepKind::Widgets(
+        Instruction::Probe => Ok(Some(StepKind::Probe(words.pair("a logical point x,y")?))),
+        Instruction::Widgets => Ok(Some(StepKind::Widgets(
             words.peek().is_some().then(|| words.word_or_text()),
-        )),
-        _ => Err(ParseErrorKind::Unknown(head.to_owned())),
+        ))),
     }
 }
 
@@ -320,8 +413,14 @@ impl Words {
             .get(self.next)
             .cloned()
             .ok_or(ParseErrorKind::Missing(expected))?;
-        self.next += 1;
+        self.skip();
         Ok(word)
+    }
+
+    /// Step past the word [`Self::peek`] read.
+    fn skip(&mut self) {
+        debug_assert!(self.next < self.words.len(), "a word was peeked");
+        self.next += 1;
     }
 
     fn end(&self) -> Result<(), ParseErrorKind> {
@@ -369,7 +468,7 @@ impl Words {
     /// A quoted string, or a bare word as it is.
     fn word_or_text(&mut self) -> String {
         let word = self.words[self.next].clone();
-        self.next += 1;
+        self.skip();
         let text = unquote(&word)
             .filter(|(_, rest)| rest.is_empty())
             .map(|(text, _)| text);
@@ -397,15 +496,12 @@ impl Words {
             })
     }
 
-    fn count(&mut self, expected: &'static str) -> Result<u32, ParseErrorKind> {
+    fn count(&mut self, expected: &'static str) -> Result<NonZeroU32, ParseErrorKind> {
         let word = self.next_word(expected)?;
-        word.parse::<u32>()
-            .ok()
-            .filter(|count| *count > 0)
-            .ok_or(ParseErrorKind::Bad {
-                expected,
-                found: word,
-            })
+        word.parse::<NonZeroU32>().ok().ok_or(ParseErrorKind::Bad {
+            expected,
+            found: word,
+        })
     }
 
     fn pair(&mut self, expected: &'static str) -> Result<Vec2, ParseErrorKind> {
@@ -434,10 +530,11 @@ impl Words {
         let duration = if let Some(ms) = word.strip_suffix("ms") {
             ms.parse::<u64>().ok().map(Duration::from_millis)
         } else {
+            // `try_from_secs_f64` refuses a negative, a NaN and one past `Duration`'s range,
+            // where `from_secs_f64` panics.
             word.strip_suffix('s')
                 .and_then(|seconds| seconds.parse::<f64>().ok())
-                .filter(|seconds| seconds.is_finite() && *seconds >= 0.0)
-                .map(Duration::from_secs_f64)
+                .and_then(|seconds| Duration::try_from_secs_f64(seconds).ok())
         };
         duration.ok_or(ParseErrorKind::Bad {
             expected,
@@ -478,7 +575,7 @@ impl Words {
         while let Some(option) = self.peek() {
             match option {
                 "button" => {
-                    self.next += 1;
+                    self.skip();
                     let word = self.next_word("left, right or middle")?;
                     button = match word.as_str() {
                         "left" => PointerButton::Left,
@@ -493,16 +590,12 @@ impl Words {
                     };
                 }
                 "mods" => {
-                    self.next += 1;
+                    self.skip();
                     let word = self.next_word("modifiers, as ctrl+shift")?;
-                    // A shortcut with a key, so its parse reads the modifiers alone.
-                    mods = format!("{word}+a")
-                        .parse::<Shortcut>()
-                        .map_err(|_| ParseErrorKind::Bad {
-                            expected: "modifiers, as ctrl+shift",
-                            found: word,
-                        })?
-                        .mods;
+                    mods = word.parse().map_err(|_| ParseErrorKind::Bad {
+                        expected: "modifiers, as ctrl+shift",
+                        found: word,
+                    })?;
                 }
                 _ => break,
             }
@@ -563,7 +656,7 @@ fn pair(word: &str) -> Option<Vec2> {
 
 fn locator(word: &str) -> Option<Locator> {
     let (base, offset) = if let Some((text, rest)) = unquote(word) {
-        let text = Locator::Text(text);
+        let text = Locator::text(text);
         if let Some(rest) = rest.strip_prefix('#') {
             let end = rest.find('+').unwrap_or(rest.len());
             let nth = rest[..end].parse::<usize>().ok()?;
@@ -575,7 +668,7 @@ fn locator(word: &str) -> Option<Locator> {
         // `x,y` with an optional `+dx,dy`: the offset starts at the `+` after the comma.
         let comma = word.find(',')?;
         let end = word[comma..].find('+').map_or(word.len(), |at| comma + at);
-        (Locator::Point(pair(&word[..end])?), &word[end..])
+        (Locator::point(pair(&word[..end])?), &word[end..])
     };
     if offset.is_empty() {
         return Some(base);

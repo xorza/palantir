@@ -1,7 +1,7 @@
 //! The passes one frame records, in order, planned before any is: the backend runs the plan.
 
 use crate::gpu::frame::main_segment::MainSegment;
-use crate::gpu::frame::schedule::RunSpan;
+use crate::gpu::frame::schedule::{ColorLoad, RunSpan};
 
 /// One step of a frame's passes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -24,15 +24,6 @@ pub(crate) enum PassStep {
     /// Outline the damage on the target, after the backbuffer reached it, so the outline never
     /// lands in the backbuffer.
     Overlay,
-}
-
-/// What a main pass does with the color target's pixels before it paints.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ColorLoad {
-    /// Clear to the frame's clear color: the first pass of a whole frame.
-    Clear,
-    /// Keep them: a partial frame, or a pass after a break.
-    Load,
 }
 
 /// Where a frame's main pass paints.

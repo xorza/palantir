@@ -1,11 +1,12 @@
 //! Raw pointer vocabulary: [`PointerButton`] and the [`PointerEvent`] stream watchers read.
 
+use crate::primitives::input::interaction::wheel_delta::WheelDelta;
 use crate::primitives::input::zoom_factor::ZoomFactor;
 use glam::Vec2;
 
 /// Which pointer button an event came from; the discriminants are dense indices, for the host's
-/// per-button tables. [`ResponseState::button`](crate::ResponseState::button) maps one to its
-/// [`ButtonState`](crate::ButtonState).
+/// per-button tables. [`Response::button`](crate::Response::button) maps one to its
+/// [`PointerButtonState`](crate::PointerButtonState).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[repr(u8)]
 pub enum PointerButton {
@@ -42,7 +43,7 @@ const _: () = {
 
 /// Unified pointer event stream, populated when the matching
 /// [`PointerWake`](crate::PointerWake) flag is set. No "click": that is
-/// per-widget logic ([`ButtonState::clicked`](crate::ButtonState::clicked)). An
+/// per-widget logic ([`PointerButtonState::clicked`](crate::PointerButtonState::clicked)). An
 /// overlay scrim empties it for the layers below.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum PointerEvent {
@@ -66,14 +67,8 @@ pub enum PointerEvent {
     Scroll {
         /// Cursor position, logical px.
         pos: Vec2,
-        /// Pixel-precise delta, as touchpads report it.
-        pixels: Vec2,
-        /// Notched delta in lines, under the system's scroll setting.
-        lines: Vec2,
-        /// How far a notched wheel turned, whatever that setting makes of it.
-        notches: Vec2,
-        /// Notched delta in pages, where that setting is a page per notch.
-        pages: Vec2,
+        /// The turn.
+        delta: WheelDelta,
     },
     /// Pinch-zoom; gated on [`PointerWake::PINCH`](crate::primitives::input::watch::PointerWake::PINCH).
     Pinch {

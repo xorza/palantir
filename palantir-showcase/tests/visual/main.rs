@@ -17,15 +17,15 @@ mod theme;
 mod visual_rig;
 
 use palantir::glam::UVec2;
-use palantir::{FramePaint, RgbaF32, Ui, WindowCommand, WindowConfig, WindowToken};
+use palantir::{FramePaint, RgbaF32, SrgbaU8, Ui, WindowCommand, WindowConfig, WindowToken};
 
 use crate::visual_rig::VisualRig;
 
 /// VisualRig smoke test: an empty scene reads back as the clear color, and a replayed record pass reproduces it pixel-for-pixel.
 #[test]
 fn readback_returns_clear_color_for_empty_scene() {
-    let mut h = VisualRig::new();
     let size = UVec2::new(16, 16);
+    let mut h = VisualRig::new(size);
     let (sr, sg, sb) = (0.5, 0.25, 0.75);
     let clear = RgbaF32::srgb(sr, sg, sb);
     let scene = |ui: &mut Ui| {
@@ -33,7 +33,7 @@ fn readback_returns_clear_color_for_empty_scene() {
         ui.keep_open();
         ui.request_relayout();
     };
-    let first = h.size(size).clear(clear).frame(scene);
+    let first = h.clear(clear).frame(scene);
     assert_eq!(first.paint, FramePaint::Full);
     let img = first.image;
 
@@ -42,17 +42,16 @@ fn readback_returns_clear_color_for_empty_scene() {
     let replayed = h.frame(scene);
     assert_eq!(replayed.paint, FramePaint::Full, "the replay repaints");
     goldens::assert_same("replay_empty_scene", &replayed.image, &img);
-    assert_eq!(img.dimensions(), (size.x, size.y));
+    assert_eq!(img.size(), size);
 
     // sRGB → linear (`RgbaF32::srgb`) → sRGB (wgpu target) round-trips to the original 8-bit values.
-    let expected = [
+    let expected = SrgbaU8::rgb(
         (sr * 255.0).round() as u8,
         (sg * 255.0).round() as u8,
         (sb * 255.0).round() as u8,
-        255,
-    ];
-    for (x, y, p) in img.enumerate_pixels() {
-        fixtures::assert_px(p.0, expected, format_args!("clear pixel ({x}, {y})"));
+    );
+    for (UVec2 { x, y }, p) in img.enumerate_texels() {
+        fixtures::assert_px(p, expected, format_args!("clear pixel ({x}, {y})"));
     }
 }
 
@@ -60,7 +59,8 @@ fn readback_returns_clear_color_for_empty_scene() {
 /// app to read, and the frame paints as any other.
 #[test]
 fn an_offscreen_frame_records_its_window_commands() {
-    let mut h = VisualRig::new();
+    let size = UVec2::new(16, 16);
+    let mut h = VisualRig::new(size);
     h.size(UVec2::new(16, 16))
         .clear(RgbaF32::BLACK)
         .frame(|ui| {

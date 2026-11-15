@@ -8,12 +8,13 @@ pub(crate) mod bench;
 use crate::common::span::Span;
 use crate::gpu::device::gpu::{FilledBuffer, Gpu};
 use crate::gpu::pipeline::clip_variant::ClipVariant;
-use crate::gpu::pipeline::instanced_pipeline::{InstancedPipeline, InstancedSpec, VariantTarget};
+use crate::gpu::pipeline::frame_variant::VariantTarget;
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
+use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use crate::gpu::resource::gpu_ctx::GpuCtx;
 use crate::gpu::resource::pipeline_recipe::{self, Pipeline, PipelineRecipe, vertex_attr};
 use crate::gpu::resource::shader_body::{ShaderBody, ShaderConstant};
-use crate::primitives::packed::fill_kind::FillKind;
+use crate::primitives::paint::fill_kind::FillKind;
 use crate::primitives::paint::line_style::LineCap;
 use crate::primitives::wgsl;
 use crate::renderer::render_buffer::curve_caps::CurveCaps;
@@ -50,7 +51,11 @@ const _: () = {
 
 #[derive(Debug)]
 pub(crate) struct CurvePipeline {
-    family: InstancedPipeline<CurveInstance>,
+    /// This frame's instances, uploaded each frame.
+    instances: DynamicBuffer<CurveInstance>,
+    shader: wgpu::ShaderModule,
+    /// The pipeline layout every format's pipelines build over.
+    layout: wgpu::PipelineLayout,
     idx_buffer: wgpu::Buffer,
 }
 
@@ -75,15 +80,9 @@ impl CurvePipeline {
             &[idxs],
         );
         Self {
-            family: InstancedPipeline::new(
-                gpu,
-                InstancedSpec {
-                    shader: Self::SHADER,
-                    layout,
-                    instances: "palantir.curve.instances",
-                    capacity: 64,
-                },
-            ),
+            instances: DynamicBuffer::vertex(gpu, "palantir.curve.instances", 64),
+            shader: Self::SHADER.module(gpu),
+            layout: layout.clone(),
             idx_buffer,
         }
     }
@@ -91,16 +90,21 @@ impl CurvePipeline {
     pub(super) fn ensure(&self, variant: &mut ClipVariant, gpu: &Gpu, target: VariantTarget) {
         variant.ensure(
             gpu,
-            target.clipping,
+            target.variant.clipping,
             &PipelineRecipe {
                 vertex_buffers: &[Some(INSTANCE_LAYOUT)],
-                ..self.family.recipe("palantir.curve.pipeline", target.format)
+                ..PipelineRecipe::color(
+                    "palantir.curve.pipeline",
+                    &self.shader,
+                    &self.layout,
+                    target.format,
+                )
             },
         );
     }
 
     pub(crate) fn upload(&mut self, ctx: &mut GpuCtx<'_>, instances: &[CurveInstance]) {
-        self.family.upload(ctx, instances);
+        self.instances.upload_instances(ctx, instances);
     }
 
     /// Draw one curve group batch, `instances`, through `pipeline`, its gradients read through the
@@ -115,7 +119,7 @@ impl CurvePipeline {
             return;
         }
         rec.pipeline(pipeline);
-        rec.vertex(0, self.family.instances());
+        rec.vertex(0, &self.instances.buffer);
         rec.index(&self.idx_buffer, wgpu::IndexFormat::Uint16);
         rec.draw_indexed(0..IDXS_PER_INSTANCE, 0, instances.u32_range());
     }

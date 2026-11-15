@@ -1,13 +1,12 @@
 //! Shared headless GPU lifecycle for feature-gated tests.
 
+use crate::common::error_chain::ErrorChain;
 use crate::common::sync::MutexExt;
 use crate::gpu::device::device_requirements::DeviceRequirements;
 use crate::gpu::device::power_preference::PowerPreference;
 use glam::UVec2;
 use std::env;
-use std::error::Error;
 use std::ffi::c_int;
-use std::fmt::{self, Display, Formatter};
 use std::fs::{File, OpenOptions};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::mem;
@@ -29,23 +28,6 @@ use crate::gpu::texel::TargetSpec;
 
 /// HighPerformance, as the benches use: with several adapters, goldens must record the one users see.
 const TEST_POWER: PowerPreference = PowerPreference::HighPerformance;
-
-/// An error and each cause [`Error::source`] reaches under it, joined by `": "`, as anyhow's
-/// `{:#}` prints a chain: palantir's errors name their cause in `source` alone, so a panic that
-/// prints the error by itself hides what failed under it.
-struct Chain<'a>(&'a dyn Error);
-
-impl Display for Chain<'_> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)?;
-        let mut cause = self.0.source();
-        while let Some(error) = cause {
-            write!(f, ": {error}")?;
-            cause = error.source();
-        }
-        Ok(())
-    }
-}
 
 /// A headless device and its queue. It lends its [`Gpu`], as a guard does, and dropping it closes
 /// nothing the process shares (`PROCESS`).
@@ -104,6 +86,30 @@ impl TestGpu {
     /// Block until every submission on the device has finished.
     pub fn wait(&self) {
         self.gpu.wait();
+    }
+
+    /// Clear `texture`, a render attachment, to `color`, and submit the clear.
+    #[cfg(test)]
+    pub(crate) fn clear(&self, texture: &wgpu::Texture, color: wgpu::Color) {
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let mut encoder = self
+            .gpu
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        drop(encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("palantir.test.clear"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &view,
+                depth_slice: None,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(color),
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            ..Default::default()
+        }));
+        self.gpu.queue.submit([encoder.finish()]);
     }
 
     /// Run `encode` on an encoder and a staging belt of its own, then finish, submit and wait for
@@ -193,7 +199,9 @@ impl ProcessGpu {
                     assert_eq!(atexit(close_at_exit), 0, "the C library takes the handler");
                     Self::Open(open)
                 }
-                Err(why) => Self::NoAdapter(format!("open headless test gpu: {}", Chain(&why))),
+                Err(why) => {
+                    Self::NoAdapter(format!("open headless test gpu: {}", ErrorChain(&why)))
+                }
             };
         }
         match self {
@@ -239,20 +247,20 @@ impl OpenGpu {
 }
 
 /// A new device on `adapter`, whose `max_texture_dimension_2d` is the adapter's, or
-/// `max_texture_dim` where that is below it.
+/// `max_texture_dimension` where that is below it.
 ///
 /// # Panics
 ///
 /// Panics if the device does not open.
-fn device_on(adapter: &wgpu::Adapter, max_texture_dim: u32) -> Gpu {
+fn device_on(adapter: &wgpu::Adapter, max_texture_dimension: u32) -> Gpu {
     let request = test_request();
     let mut requirements = DeviceRequirements::negotiate(adapter, request.optional)
-        .unwrap_or_else(|why| panic!("the test adapter runs Palantir: {}", Chain(&why)));
+        .unwrap_or_else(|why| panic!("the test adapter runs Palantir: {}", ErrorChain(&why)));
     let limit = &mut requirements.limits.max_texture_dimension_2d;
-    *limit = (*limit).min(max_texture_dim);
+    *limit = (*limit).min(max_texture_dimension);
     request
         .open_with(adapter.clone(), requirements)
-        .unwrap_or_else(|why| panic!("open headless test gpu: {}", Chain(&why)))
+        .unwrap_or_else(|why| panic!("open headless test gpu: {}", ErrorChain(&why)))
         .gpu
 }
 
@@ -262,7 +270,7 @@ const fn test_request() -> GpuRequest<'static> {
     GpuRequest {
         label: "palantir.test.device",
         power_preference: TEST_POWER,
-        optional: DeviceRequirements::GPU_TIMING_FEATURES,
+        optional: DeviceRequirements::GPU_STATS_FEATURES,
         compatible_surface: None,
     }
 }
@@ -283,14 +291,14 @@ pub fn isolated_headless_test_gpu() -> TestGpu {
 }
 
 /// [`isolated_headless_test_gpu`] with its `max_texture_dimension_2d` capped at
-/// `max_texture_dim`, as a device on a smaller GPU has.
+/// `max_texture_dimension`, as a device on a smaller GPU has.
 ///
 /// # Panics
 ///
 /// Panics if the process has no adapter or the device does not open.
 #[cfg(test)]
-pub(crate) fn isolated_headless_test_gpu_capped(max_texture_dim: u32) -> TestGpu {
-    on_open(|open| TestGpu::new(device_on(&open.adapter, max_texture_dim)))
+pub(crate) fn isolated_headless_test_gpu_capped(max_texture_dimension: u32) -> TestGpu {
+    on_open(|open| TestGpu::new(device_on(&open.adapter, max_texture_dimension)))
 }
 
 /// The adapter every test device opens on, `name (backend, driver)`; golden suites record it.

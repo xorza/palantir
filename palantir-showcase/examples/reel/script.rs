@@ -1,13 +1,9 @@
 //! A slide's choreography: the steps a person and the camera take, run one after another on the
 //! frame clock.
-#![expect(
-    clippy::disallowed_methods,
-    reason = "a demo of the crate, whose frames owe no two systems the same bits"
-)]
-
 use std::time::Duration;
 
 use palantir::glam::Vec2;
+use palantir::widget::{DOUBLE_CLICK_INTERVAL, DOUBLE_CLICK_RADIUS};
 use palantir::{Harness, PointerButton, Ui, WidgetId};
 
 use crate::deck::Deck;
@@ -49,12 +45,6 @@ const PRESS: Duration = Duration::from_millis(90);
 
 /// The pause after a click before the next step, so its ring is seen.
 const AFTER_CLICK: Duration = Duration::from_millis(350);
-
-/// Two presses this close in time and space, bounds included, read as a double click: palantir's
-/// own window and radius (`DOUBLE_CLICK_INTERVAL` and `DOUBLE_CLICK_RADIUS` in
-/// `src/input/capture.rs`).
-const DOUBLE_CLICK: Duration = Duration::from_millis(500);
-const DOUBLE_CLICK_RADIUS: f32 = 5.0;
 
 /// Fitts' law, `a + b · log2(D / W + 1)`, with MacKenzie's mouse constants (a ≈ 0.2 s,
 /// b ≈ 0.1 s a bit; "Fitts' law as a research and design tool", 1992), slowed by [`CALM`] so a
@@ -107,10 +97,24 @@ pub(crate) struct Runner {
     drag_release: bool,
     camera: View,
     camera_run: Option<CameraRun>,
-    typing: Option<(&'static str, usize)>,
+    typing: Option<Typing>,
     /// When a click's press is released.
     release_at: Option<Duration>,
-    last_press: Option<(Duration, Vec2)>,
+    last_press: Option<Click>,
+}
+
+/// A press, when and where, for the click's ring.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Click {
+    pub(crate) at: Duration,
+    pub(crate) pos: Vec2,
+}
+
+/// Text being typed, a character a step, and how many of its characters are done.
+#[derive(Clone, Copy, Debug)]
+struct Typing {
+    text: &'static str,
+    done: usize,
 }
 
 impl Runner {
@@ -140,7 +144,7 @@ impl Runner {
     }
 
     /// The last press, when and where, for the click's ring.
-    pub(crate) const fn last_click(&self) -> Option<(Duration, Vec2)> {
+    pub(crate) const fn last_click(&self) -> Option<Click> {
         self.last_press
     }
 
@@ -159,7 +163,7 @@ impl Runner {
                 h.release(PointerButton::Left);
                 continue;
             }
-            if let Some((text, done)) = self.typing {
+            if let Some(Typing { text, done }) = self.typing {
                 let due = self
                     .step_end
                     .saturating_sub(TYPE_STEP * (text.chars().count() - done) as u32);
@@ -167,7 +171,10 @@ impl Runner {
                     let c = text.chars().nth(done).expect("a character left");
                     let mut buf = [0; 4];
                     h.type_text(c.encode_utf8(&mut buf));
-                    self.typing = (done + 1 < text.chars().count()).then_some((text, done + 1));
+                    self.typing = (done + 1 < text.chars().count()).then_some(Typing {
+                        text,
+                        done: done + 1,
+                    });
                     continue;
                 }
             }
@@ -237,7 +244,7 @@ impl Runner {
                 self.step_end = start + PRESS + AFTER_CLICK;
             }
             Step::Type(text) => {
-                self.typing = Some((text, 0));
+                self.typing = Some(Typing { text, done: 0 });
                 self.step_end = start + TYPE_STEP * text.chars().count() as u32;
             }
             Step::Act(act) => {
@@ -273,8 +280,11 @@ impl Runner {
     /// double-click interval: a reel that reads as a double click where it means two clicks would
     /// show a selection it never meant.
     fn press(&mut self, at: Duration, h: &mut Harness) {
-        if let Some((last, place)) = self.last_press
-            && at.saturating_sub(last) <= DOUBLE_CLICK
+        if let Some(Click {
+            at: last,
+            pos: place,
+        }) = self.last_press
+            && at.saturating_sub(last) <= DOUBLE_CLICK_INTERVAL
             && place.distance(self.cursor) <= DOUBLE_CLICK_RADIUS
         {
             panic!(
@@ -283,7 +293,10 @@ impl Runner {
                 at - last
             );
         }
-        self.last_press = Some((at, self.cursor));
+        self.last_press = Some(Click {
+            at,
+            pos: self.cursor,
+        });
         h.press(self.cursor, PointerButton::Left);
     }
 }

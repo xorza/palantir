@@ -23,7 +23,7 @@ gate-test-nowinit = "test --workspace --exclude palantir-showcase --lib --no-def
 gate-doc = 'doc --workspace --no-deps --document-private-items --all-features --keep-going --config target."cfg(all())".rustdocflags=["-D","warnings"] --config build.build-dir="{workspace-root}/target/build-doc"'
 gate-doctest = "test --workspace --doc --no-fail-fast --features golden,gpu-debug-markers"
 visual = "test --workspace --features golden,gpu-debug-markers --test visual"
-shot = "run -p palantir-showcase --features golden -- --shot"
+shot = "run -p palantir-showcase -- --shot"
 reel = "run -p palantir-showcase --example reel --profile release-dev --"
 # One bench target: the criterion cases, or the study its first argument names, as
 # `damage-sweep` and `atlas-memory` pass theirs. `--bench *`, not `--benches`, which also selects

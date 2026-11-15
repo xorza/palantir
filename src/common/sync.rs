@@ -5,8 +5,6 @@
     reason = "the one place a std lock is taken and its poison checked"
 )]
 
-#[cfg(test)]
-use std::sync::TryLockError;
 use std::sync::{Condvar, Mutex, MutexGuard};
 use std::time::Duration;
 
@@ -21,28 +19,11 @@ pub(crate) trait MutexExt<T: ?Sized> {
     ///
     /// When a panic poisoned the lock.
     fn lock_unpoisoned(&self) -> MutexGuard<'_, T>;
-
-    /// [`Mutex::try_lock`]; `None` while another holds it.
-    ///
-    /// # Panics
-    ///
-    /// When a panic poisoned the lock.
-    #[cfg(test)]
-    fn try_lock_unpoisoned(&self) -> Option<MutexGuard<'_, T>>;
 }
 
 impl<T: ?Sized> MutexExt<T> for Mutex<T> {
     fn lock_unpoisoned(&self) -> MutexGuard<'_, T> {
         self.lock().unwrap_or_else(|_| panic!("{POISONED}"))
-    }
-
-    #[cfg(test)]
-    fn try_lock_unpoisoned(&self) -> Option<MutexGuard<'_, T>> {
-        match self.try_lock() {
-            Ok(guard) => Some(guard),
-            Err(TryLockError::WouldBlock) => None,
-            Err(TryLockError::Poisoned(_)) => panic!("{POISONED}"),
-        }
     }
 }
 
@@ -91,18 +72,14 @@ mod tests {
             .expect("a formatted message")
     }
 
-    /// A healthy lock gives its value, a held one `None` to `try_lock`, and a timed wait with no
-    /// wake gives back the guard unchanged; once a panic poisons the lock, every call panics with
+    /// A healthy lock gives its value, and a timed wait with no wake gives back the guard
+    /// unchanged; once a panic poisons the lock, every call panics with
     /// [`POISONED`].
     #[test]
     fn a_poisoned_lock_panics_on_every_call() {
         let m = Mutex::new(3);
         let wake = Condvar::new();
         assert_eq!(*m.lock_unpoisoned(), 3);
-        {
-            let _held = m.lock_unpoisoned();
-            assert!(m.try_lock_unpoisoned().is_none());
-        }
         let guard =
             wake.wait_timeout_while_unpoisoned(m.lock_unpoisoned(), Duration::ZERO, |_| true);
         assert_eq!(*guard, 3);
@@ -114,6 +91,5 @@ mod tests {
         }));
         assert!(unwound.is_err());
         assert_eq!(panic_message(|| drop(m.lock_unpoisoned())), POISONED);
-        assert_eq!(panic_message(|| drop(m.try_lock_unpoisoned())), POISONED);
     }
 }

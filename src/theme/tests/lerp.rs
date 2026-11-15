@@ -14,6 +14,7 @@ use crate::primitives::math::lerp::Lerp;
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::shadow::ShadowKind;
 use crate::text::font_family::FontFamily;
 use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
@@ -21,18 +22,18 @@ use crate::theme::close_shown::CloseShown;
 use crate::theme::color_scheme::ColorScheme;
 use crate::theme::text_style::TextStyle;
 use crate::theme::text_style_overrides::TextStyleOverrides;
-use crate::theme::{Theme, ThemeText, ThemeWalk};
+use crate::theme::{Theme, ThemeTextRef, ThemeWalk};
 
 const RED: RgbaF32 = RgbaF32::new(1.0, 0.0, 0.0, 1.0);
 
 /// Every text slot resolved over its theme's ambient style, in walk order.
-fn resolved_text(theme: &mut Theme) -> Vec<TextStyle> {
+fn resolved_text(theme: &Theme) -> Vec<TextStyle> {
     let ambient = theme.text;
     let mut styles = Vec::new();
-    theme.for_each_text(None, &mut |text, _| {
+    theme.each_text(&mut |text| {
         styles.push(match text {
-            ThemeText::Style(style) => *style,
-            ThemeText::Overrides(o) => o.apply(&ambient),
+            ThemeTextRef::Style(style) => *style,
+            ThemeTextRef::Overrides(o) => o.apply(&ambient),
         });
     });
     styles
@@ -130,8 +131,11 @@ fn values_with_no_blend_switch_halfway() {
     b.text.family = FontFamily::MONO;
     b.text.weight = FontWeight::BOLD;
     b.text.slant = FontSlant::Italic;
-    b.button.unselected.normal.chrome.paint.shadow.inset =
-        !a.button.unselected.normal.chrome.paint.shadow.inset;
+    b.button.unselected.normal.chrome.paint.shadow.kind =
+        match a.button.unselected.normal.chrome.paint.shadow.kind {
+            ShadowKind::Drop => ShadowKind::Inset,
+            ShadowKind::Inset => ShadowKind::Drop,
+        };
 
     for (t, want) in [(0.25, &a), (0.49, &a), (0.5, &b), (0.75, &b)] {
         let mix = Theme::lerp(&a.clone(), &b.clone(), t);
@@ -147,8 +151,8 @@ fn values_with_no_blend_switch_halfway() {
         assert_eq!(mix.text.weight, want.text.weight, "{t}");
         assert_eq!(mix.text.slant, want.text.slant, "{t}");
         assert_eq!(
-            mix.button.unselected.normal.chrome.paint.shadow.inset,
-            want.button.unselected.normal.chrome.paint.shadow.inset,
+            mix.button.unselected.normal.chrome.paint.shadow.kind,
+            want.button.unselected.normal.chrome.paint.shadow.kind,
             "{t}"
         );
     }
@@ -237,7 +241,7 @@ fn sharing_text_axes_keeps_what_each_end_shows() {
     let mut b = Theme::stock(ColorScheme::Light);
     a.button.unselected.normal.text = TextStyleOverrides::NONE.with_font_size(20.0);
     b.tooltip.text = TextStyleOverrides::NONE;
-    let (shown_a, shown_b) = (resolved_text(&mut a), resolved_text(&mut b));
+    let (shown_a, shown_b) = (resolved_text(&a), resolved_text(&b));
     let before = (a.clone(), b.clone());
     Theme::share_text_axes(&mut a, &mut b);
     assert_ne!(
@@ -245,8 +249,8 @@ fn sharing_text_axes_keeps_what_each_end_shows() {
         (&before.0, &before.1),
         "the pair names axes only one end had"
     );
-    assert_eq!(resolved_text(&mut a), shown_a);
-    assert_eq!(resolved_text(&mut b), shown_b);
+    assert_eq!(resolved_text(&a), shown_a);
+    assert_eq!(resolved_text(&b), shown_b);
 }
 
 /// A blend in place is the blend, bit for bit: `Lerp::lerp_into` of borrowed ends, and

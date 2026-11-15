@@ -1,6 +1,5 @@
 //! The app-global handles a backend is built over.
 
-use crate::gpu::pipeline::effect_pipeline::wgpu_effect_store::WgpuEffectStore;
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::resource::wgpu_image_store::WgpuImageStore;
 use crate::icons::icon_registry::IconRegistry;
@@ -12,7 +11,6 @@ use std::rc::Rc;
 pub(crate) struct BackendResources<'a> {
     pub(crate) text: &'a TextShaper,
     pub(crate) image_store: &'a Rc<WgpuImageStore>,
-    pub(crate) effect_store: &'a Rc<WgpuEffectStore>,
     pub(crate) icons: &'a IconRegistry,
     /// The group-0 layout and sampler every pipeline builds over, made with the device and
     /// shared with the image store.

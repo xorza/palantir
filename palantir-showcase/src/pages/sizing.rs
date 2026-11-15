@@ -5,18 +5,21 @@
     reason = "the showcase casts non-negative sizes, ids and color channels"
 )]
 
+use crate::scaffold;
+use crate::scaffold::Col;
 use crate::scaffold::api;
+use crate::scaffold::kit::Kit;
+use crate::scaffold::knob::Knob;
+use crate::scaffold::section::Section;
 use crate::scaffold::tokens::M;
-use crate::support;
-use crate::support::{Col, Kit, Knob, Section};
 use palantir::{
-    Align, Block, ComboBox, Configure, HAlign, Justify, Panel, RgbaF32, Sizing, Spacing, Text, Ui,
-    VAlign, Visibility, WidgetId,
+    Align, Block, ComboBox, Configure, HAlign, Justify, Panel, RgbaF32, SizeSpec, Sizing, Spacing,
+    Text, Ui, VAlign, Visibility, WidgetId,
 };
 
 pub(crate) fn build(ui: &mut Ui, k: Kit) {
     playground(ui, k);
-    support::cols(ui, |ui, col| match col {
+    scaffold::cols(ui, |ui, col| match col {
         Col::Left => {
             sizing(ui, k);
             justify(ui, k);
@@ -34,33 +37,33 @@ fn sizing(ui: &mut Ui, k: Kit) {
     Section::new("Sizing")
         .apis(&[api!(Sizing::fixed), api!(Sizing::HUG), api!(Sizing::fill)])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "Fixed takes exact pixels, Hug takes its content's size — here only padding \
                  of 20 and 40 — and Fill shares the leftover by weight, 1 : 2 : 1.",
             );
-            support::row(ui, |ui| {
+            scaffold::row(ui, |ui| {
                 for (i, w) in [50.0, 100.0, 200.0].into_iter().enumerate() {
-                    support::swatch(k.swatch.orange)
+                    scaffold::swatch(k.swatch.orange)
                         .id_salt(("fx", i))
                         .size((Sizing::fixed(w), Sizing::fixed(32.0)))
                         .show(ui);
                 }
             });
-            support::row(ui, |ui| {
+            scaffold::row(ui, |ui| {
                 for (i, pad) in [20.0, 40.0].into_iter().enumerate() {
                     Block::new()
                         .id_salt(i)
                         .size((Sizing::HUG, Sizing::fixed(32.0)))
                         .padding((pad, 0.0, pad, 0.0))
-                        .chrome(support::swatch_chrome(k.swatch.lime))
+                        .chrome(scaffold::swatch_chrome(k.swatch.lime))
                         .show(ui);
                 }
             });
-            support::row(ui, |ui| {
+            scaffold::row(ui, |ui| {
                 for (i, weight) in [1.0, 2.0, 1.0].into_iter().enumerate() {
-                    support::swatch(k.swatch.teal)
+                    scaffold::swatch(k.swatch.teal)
                         .id_salt(("fill", i))
                         .size((Sizing::fill(weight), Sizing::fixed(32.0)))
                         .show(ui);
@@ -73,7 +76,7 @@ fn justify(ui: &mut Ui, k: Kit) {
     Section::new("Justify")
         .apis(&[api!(Panel::justify)])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "Where a stack puts its leftover room along its axis: Start, Center, End, \
@@ -94,7 +97,7 @@ fn justify(ui: &mut Ui, k: Kit) {
                     .chrome(k.t.card())
                     .show(ui, |ui| {
                         for i in 0..3 {
-                            support::swatch(k.swatch.teal)
+                            scaffold::swatch(k.swatch.teal)
                                 .id_salt((id, i))
                                 .size((Sizing::fixed(36.0), Sizing::fixed(22.0)))
                                 .show(ui);
@@ -108,7 +111,7 @@ fn visibility(ui: &mut Ui, k: Kit) {
     Section::new("Visibility")
         .apis(&[api!(Block::visibility)])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "The orange chip is Visible, then Hidden — it keeps its slot — then \
@@ -135,7 +138,7 @@ fn visibility(ui: &mut Ui, k: Kit) {
                                 .id_salt((id, key))
                                 .size((Sizing::fixed(70.0), Sizing::fixed(28.0)))
                                 .visibility(v)
-                                .chrome(support::swatch_chrome(c))
+                                .chrome(scaffold::swatch_chrome(c))
                                 .show(ui);
                         }
                     });
@@ -145,9 +148,12 @@ fn visibility(ui: &mut Ui, k: Kit) {
 
 fn alignment(ui: &mut Ui, k: Kit) {
     Section::new("Alignment")
-        .apis(&[api!(Panel::child_align), api!(Block::align)])
+        .apis(&[
+            api!(Panel::child_align as fn(Panel, Align) -> Panel),
+            api!(Block::align as fn(Block, Align) -> Block),
+        ])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "child_align places a container's children across its axis: centered in the \
@@ -157,7 +163,7 @@ fn alignment(ui: &mut Ui, k: Kit) {
                 .size((Sizing::FILL, Sizing::fixed(96.0)))
                 .gap(8.0)
                 .padding(8.0)
-                .child_align(Align::v(VAlign::Center))
+                .child_align(VAlign::Center)
                 .chrome(k.t.card())
                 .show(ui, |ui| {
                     aligned_chip(k.swatch.teal, Align::default())
@@ -166,7 +172,7 @@ fn alignment(ui: &mut Ui, k: Kit) {
                     aligned_chip(k.swatch.teal, Align::default())
                         .id_salt("b")
                         .show(ui);
-                    aligned_chip(k.swatch.orange, Align::v(VAlign::Bottom))
+                    aligned_chip(k.swatch.orange, Align::from(VAlign::Bottom))
                         .id_salt("c-self-bot")
                         .show(ui);
                     aligned_chip(k.swatch.teal, Align::default())
@@ -177,13 +183,13 @@ fn alignment(ui: &mut Ui, k: Kit) {
                 .size((Sizing::FILL, Sizing::fixed(110.0)))
                 .gap(8.0)
                 .padding(8.0)
-                .child_align(Align::h(HAlign::Right))
+                .child_align(HAlign::Right)
                 .chrome(k.t.card())
                 .show(ui, |ui| {
                     aligned_chip(k.swatch.teal, Align::default())
                         .id_salt("a-vs")
                         .show(ui);
-                    aligned_chip(k.swatch.orange, Align::h(HAlign::Left))
+                    aligned_chip(k.swatch.orange, Align::from(HAlign::Left))
                         .id_salt("b-self-left")
                         .show(ui);
                     aligned_chip(k.swatch.teal, Align::default())
@@ -197,7 +203,7 @@ fn spacing(ui: &mut Ui, k: Kit) {
     Section::new("Padding and margin")
         .apis(&[api!(type Spacing)])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "Padding reserves room inside the parent, a margin shrinks the child's slot, \
@@ -210,7 +216,7 @@ fn spacing(ui: &mut Ui, k: Kit) {
                 .chrome(k.t.card())
                 .show(ui, |ui| {
                     for i in 0..3 {
-                        support::swatch(k.swatch.teal)
+                        scaffold::swatch(k.swatch.teal)
                             .id_salt(("p", i))
                             .size((Sizing::fixed(40.0), Sizing::FILL))
                             .show(ui);
@@ -224,12 +230,12 @@ fn spacing(ui: &mut Ui, k: Kit) {
                     Block::new()
                         .size((Sizing::fixed(60.0), Sizing::fixed(40.0)))
                         .margin(8.0)
-                        .chrome(support::swatch_chrome(k.swatch.teal))
+                        .chrome(scaffold::swatch_chrome(k.swatch.teal))
                         .show(ui);
                     Block::new()
                         .size((Sizing::fixed(60.0), Sizing::fixed(40.0)))
                         .margin((16.0, 16.0, 0.0, 0.0))
-                        .chrome(support::swatch_chrome(k.swatch.teal))
+                        .chrome(scaffold::swatch_chrome(k.swatch.teal))
                         .show(ui);
                 });
             // The orange box's left margin pulls it back 30 px so the two overlap.
@@ -238,14 +244,14 @@ fn spacing(ui: &mut Ui, k: Kit) {
                 .padding(8.0)
                 .chrome(k.t.card())
                 .show(ui, |ui| {
-                    support::swatch(k.swatch.teal)
+                    scaffold::swatch(k.swatch.teal)
                         .id_salt(("neg", "a"))
                         .size((Sizing::fixed(80.0), Sizing::fixed(40.0)))
                         .show(ui);
                     Block::new()
                         .size((Sizing::fixed(80.0), Sizing::fixed(40.0)))
                         .margin((-30.0, 0.0, 0.0, 0.0))
-                        .chrome(support::swatch_chrome(k.swatch.orange))
+                        .chrome(scaffold::swatch_chrome(k.swatch.orange))
                         .show(ui);
                 });
         });
@@ -255,7 +261,7 @@ fn gap(ui: &mut Ui, k: Kit) {
     Section::new("Gap")
         .apis(&[api!(Panel::gap)])
         .show(ui, k, |ui| {
-            support::note(ui, k, "0, 8 and 24 px between siblings.");
+            scaffold::note(ui, k, "0, 8 and 24 px between siblings.");
             for g in [0.0, 8.0, 24.0] {
                 Panel::hstack()
                     .id_salt(("gap", g as u32))
@@ -265,7 +271,7 @@ fn gap(ui: &mut Ui, k: Kit) {
                     .chrome(k.t.card())
                     .show(ui, |ui| {
                         for i in 0..5 {
-                            support::swatch(k.swatch.teal)
+                            scaffold::swatch(k.swatch.teal)
                                 .id_salt(("gap-tile", g as u32, i))
                                 .size((Sizing::fixed(32.0), Sizing::fixed(24.0)))
                                 .show(ui);
@@ -276,7 +282,7 @@ fn gap(ui: &mut Ui, k: Kit) {
 }
 
 fn aligned_chip(c: RgbaF32, align: Align) -> Block {
-    support::swatch(c)
+    scaffold::swatch(c)
         .size((Sizing::fixed(56.0), Sizing::fixed(24.0)))
         .align(align)
 }
@@ -298,19 +304,19 @@ static JUSTIFIES: [(&str, Justify); 5] = [
 /// The playground's knobs: each child's sizing, and the row's padding, gap and justification.
 #[derive(Debug)]
 struct Playground {
-    sizing: [&'static (&'static str, Sizing); 3],
+    sizing: [(&'static str, Sizing); 3],
     padding: f32,
     gap: f32,
-    justify: &'static (&'static str, Justify),
+    justify: (&'static str, Justify),
 }
 
 impl Default for Playground {
     fn default() -> Self {
         Self {
-            sizing: [&SIZINGS[0], &SIZINGS[1], &SIZINGS[2]],
+            sizing: [SIZINGS[0], SIZINGS[1], SIZINGS[2]],
             padding: 8.0,
             gap: 8.0,
-            justify: &JUSTIFIES[0],
+            justify: JUSTIFIES[0],
         }
     }
 }
@@ -321,7 +327,7 @@ fn playground(ui: &mut Ui, k: Kit) {
     Section::new("Playground")
         .apis(&[api!(type Sizing), api!(Panel::justify)])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "Pick each child's sizing and the row's padding, gap and justification. Fill \
@@ -329,22 +335,22 @@ fn playground(ui: &mut Ui, k: Kit) {
             );
             let id = WidgetId::from_hash("showcase::sizing::playground");
             ui.with_state::<Playground, _>(id, |ui, p| {
-                support::row(ui, |ui| {
+                scaffold::row(ui, |ui| {
                     for (i, (sizing, name)) in p.sizing.iter_mut().zip(["A", "B", "C"]).enumerate()
                     {
                         Text::new(name).style(&k.t.caption()).show(ui);
-                        ComboBox::labeled(sizing, &SIZINGS, |sizing| sizing.0)
+                        ComboBox::labeled(sizing, SIZINGS, |sizing| sizing.0)
                             .id_salt(("sizing", i))
                             .size((Sizing::fixed(110.0), Sizing::HUG))
                             .show(ui);
                     }
                     Text::new("justify").style(&k.t.caption()).show(ui);
-                    ComboBox::labeled(&mut p.justify, &JUSTIFIES, |justify| justify.0)
+                    ComboBox::labeled(&mut p.justify, JUSTIFIES, |justify| justify.0)
                         .id_salt("justify")
                         .size((Sizing::fixed(140.0), Sizing::HUG))
                         .show(ui);
                 });
-                support::row(ui, |ui| {
+                scaffold::row(ui, |ui| {
                     Knob {
                         label: "padding",
                         range: 0.0..=40.0,
@@ -363,7 +369,7 @@ fn playground(ui: &mut Ui, k: Kit) {
                 let justify = p.justify.1;
                 Panel::hstack()
                     .id_salt("playground row")
-                    .size((Sizing::FILL, Sizing::HUG))
+                    .size(SizeSpec::FILL_W)
                     .padding(p.padding)
                     .gap(p.gap)
                     .justify(justify)
@@ -378,10 +384,10 @@ fn playground(ui: &mut Ui, k: Kit) {
                                 .id_salt(name)
                                 .size((width, Sizing::fixed(36.0)))
                                 .padding((M.space.md, M.space.sm))
-                                .child_align(Align::v(VAlign::Center))
-                                .chrome(support::swatch_chrome(color))
+                                .child_align(VAlign::Center)
+                                .chrome(scaffold::swatch_chrome(color))
                                 .show(ui, |ui| {
-                                    Text::new(name).style(&support::on_swatch_style()).show(ui);
+                                    Text::new(name).style(&scaffold::on_swatch_style()).show(ui);
                                 });
                         }
                     });

@@ -25,11 +25,11 @@ use crate::diagnostics::gpu_pass_stats::BatchKind;
 use crate::effect::effect_source::EffectSource;
 use crate::gpu::bench_gpu::{BenchGpu, Timing};
 use crate::host::harness::Harness;
-use crate::host::harness::harness_builder::Depth;
+use crate::host::harness::harness_builder::HarnessDepth;
 use crate::primitives::effect::effect_name::EffectName;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::SizeSpec;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::paint::Paint;
 use crate::primitives::paint::shadow::Shadow;
@@ -212,7 +212,7 @@ fn record(ui: &mut Ui, arm: GlowArm) {
     );
     Panel::canvas()
         .id_salt("effect-bench")
-        .size((Sizing::FILL, Sizing::FILL))
+        .size(SizeSpec::FILL)
         .show(ui, |ui| {
             for i in 0..CARDS {
                 let card = card(i);
@@ -254,7 +254,7 @@ impl WholeFrames {
             .system_scale(BENCH_DPR)
             .swapchain_present()
             .collect_gpu_stats(true)
-            .depth(Depth::gpu(gpu.handles()))
+            .depth(HarnessDepth::gpu(gpu.handles()))
             .build();
         window.ui_mut().theme_mut().panel_chrome = None;
         window
@@ -275,7 +275,7 @@ impl WholeFrames {
         } else {
             RgbaF32::srgb(0.0, 0.0, 0.01)
         };
-        let paint = self.window.frame(|ui| record(ui, arm)).paint();
+        let paint = self.window.frame(|ui| record(ui, arm)).paint;
         assert_eq!(paint, FramePaint::Full, "effect scene {}", arm.label());
         let effects = self.window.render_buffer().effects.len();
         assert_eq!(

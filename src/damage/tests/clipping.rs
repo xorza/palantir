@@ -5,9 +5,10 @@ use crate::host::harness::Harness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::shadow::ShadowKind;
 use crate::scene::layer::Layer;
 use crate::scene::plane::Plane;
 use crate::scene::tree::node_id::NodeId;
@@ -94,7 +95,7 @@ fn drop_shadow_overhang_contributes_to_damage_on_remove() {
                             offset: Vec2::new(12.0, -7.0),
                             blur: 8.0,
                             spread: 2.0,
-                            inset: false,
+                            kind: ShadowKind::Drop,
                         },
                     );
                 });
@@ -108,7 +109,7 @@ fn drop_shadow_overhang_contributes_to_damage_on_remove() {
                     offset: Vec2::new(12.0, -7.0),
                     blur: 8.0,
                     spread: 2.0,
-                    inset: false,
+                    kind: ShadowKind::Drop,
                 }))
                 .show(ui, |_| {});
         }),
@@ -183,7 +184,7 @@ fn shadow_overhang_inside_clipped_parent_is_clamped() {
                                             offset: Vec2::ZERO,
                                             blur,
                                             spread: 0.0,
-                                            inset: false,
+                                            kind: ShadowKind::Drop,
                                         },
                                     );
                                 });
@@ -205,7 +206,7 @@ fn shadow_overhang_inside_clipped_parent_is_clamped() {
 
 /// A direct shape on a clipped node has its per-shape rect (the column the
 /// damage diff reads) clipped to the node's own clip mask, not just the ancestor
-/// clip: a `Shape::Text` with a scroll `local_origin` would otherwise report its full shaped
+/// clip: a `TextShape` with a scroll `local_origin` would otherwise report its full shaped
 /// extent, and a scrolling multi-line `TextEdit` damage the entire text.
 ///
 /// Faked with a rect shape extending past the host's clip on the right; the per-shape rect must
@@ -237,9 +238,8 @@ fn direct_shape_on_clipped_node_clips_to_own_mask() {
     // Read the host node's first shape's cascaded screen rect: it must be clamped
     // to (host_width - padding-fold), not span 400 px.
     let cascade = h.ui().cascade();
-    let host = cascade.locate(host_id).expect("host node recorded");
-    let host_ep = host.endpoint;
-    let host_rect = cascade.entry(host).rect;
+    let host_ep = cascade.endpoint(host_id).expect("host node recorded");
+    let host_rect = cascade.entry(host_ep).rect;
     let tree = h.ui().tree(Layer::Main);
     let shape_span = tree.records.shape_span()[host_ep.node.idx()];
     assert_eq!(shape_span.len, 1, "the fixture adds one shape to the host");
@@ -370,7 +370,7 @@ fn a_clip_that_rounds_damages_its_mask() {
                 host(ui, mode, "clip-host", &mut |ui| {
                     Block::new()
                         .id(WidgetId::from_hash("inner"))
-                        .size((Sizing::FILL, Sizing::FILL))
+                        .size(SizeSpec::FILL)
                         .chrome(Chrome::new(BLUE))
                         .show(ui);
                 });

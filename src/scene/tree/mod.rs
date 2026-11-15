@@ -13,6 +13,7 @@ pub(crate) mod node_id;
 pub(crate) mod node_record;
 pub(crate) mod paint_animations;
 pub(crate) mod recording_scratch;
+pub(crate) mod resolved_scrollbars_def;
 mod rollup_inputs;
 pub(crate) mod root_slot;
 pub(crate) mod subtree_end;
@@ -32,12 +33,12 @@ use crate::primitives::layout::track::Track;
 use crate::primitives::layout::visibility::Visibility;
 use crate::primitives::paint::border::Border;
 use crate::primitives::paint::chrome::Chrome;
+use crate::scene::layer::Layer;
 use crate::scene::node::bounds_extras::BoundsExtras;
 use crate::scene::node::inherited::Inherited;
 use crate::scene::node::node_cols::NodeCols;
 use crate::scene::node::node_flags::NodeFlags;
 use crate::scene::node::panel_extras::PanelExtras;
-use crate::scene::scrollbars_def::ResolvedScrollbarsDef;
 use crate::scene::tree::backdrop_entry::BackdropEntry;
 use crate::scene::tree::extras_idx::ExtrasIdx;
 use crate::scene::tree::iter::{Child, ChildIter, TreeItem, TreeItems};
@@ -45,6 +46,7 @@ use crate::scene::tree::node_id::NodeId;
 use crate::scene::tree::node_record::NodeRecord;
 use crate::scene::tree::paint_animations::PaintAnimations;
 use crate::scene::tree::recording_scratch::{OpenFrame, RecordingScratch};
+use crate::scene::tree::resolved_scrollbars_def::ResolvedScrollbarsDef;
 #[cfg(debug_assertions)]
 use crate::scene::tree::rollup_inputs::RollupCheck;
 use crate::scene::tree::rollup_inputs::{RecordedColumns, RollupInputs};
@@ -52,7 +54,6 @@ use crate::scene::tree::root_slot::RootSlot;
 use crate::scene::tree::subtree_end::SubtreeEnd;
 use crate::scene::tree::subtree_rollups::SubtreeRollups;
 use crate::scene::tree::tree_fingerprint::TreeFingerprint;
-use crate::shape::lower;
 use crate::shape::paint::chrome_row::ChromeRow;
 use crate::shape::paint::lowered_border::LoweredBorder;
 use crate::shape::record::ShapeRecord;
@@ -438,13 +439,14 @@ impl Tree {
         self.grid_defs.push(GridDef {
             rows: Span::try_from(row_start..col_start).unwrap(),
             cols: Span::try_from(col_start..self.grid_tracks.len()).unwrap(),
+            spans_rows: false,
+            spans_cols: false,
         });
         id
     }
 
     /// Push a node's columns under the open node (or as a new root if none is open)
-    /// and make it the tip. Roots stamp `scratch.pending_placement` onto the new
-    /// `RootSlot`.
+    /// and make it the tip. Roots stamp `scratch.pending` onto the new `RootSlot`.
     ///
     /// A node with no chrome and no ring downgrades `ClipMode::Rounded` to `Rect`. With
     /// chrome, `Rounded` keeps the row even if `Chrome::is_noop`, so the encoder can read
@@ -466,17 +468,17 @@ impl Tree {
         let parent_frame = scratch.open_frames.last().copied();
 
         if parent_frame.is_none() {
-            let pending = scratch.pending_placement.unwrap_or_default();
+            let pending = scratch.pending;
             self.roots.push(RootSlot {
                 first_node: new_id,
-                placement: pending,
-                layer: scratch.pending_layer,
+                placement: pending.map(|pending| pending.placement),
+                layer: pending.map_or(Layer::Main, |pending| pending.layer),
             });
-        }
-        // A root raised from a disabled scope is disabled, so the cascade disables the
-        // whole overlay.
-        if parent_frame.is_none() && scratch.owner_disabled {
-            cols.attrs.set_disabled(true);
+            // A root raised from a disabled scope is disabled, so the cascade disables the
+            // whole overlay.
+            if pending.is_some_and(|pending| pending.owner_disabled) {
+                cols.attrs.set_disabled(true);
+            }
         }
         // A rounded clip with no radius is a plain scissor. Applied to the recorded
         // flags: only here are the request and the chrome both visible.
@@ -501,11 +503,18 @@ impl Tree {
 
         let mut ex = ExtrasIdx::default();
         if !cols.bounds.is_default() {
-            ex.bounds = Some(NonMaxU32::index(self.bounds_table.len()));
+            ex.bounds = Some(NonMaxU32::from_idx(self.bounds_table.len()));
             self.bounds_table.push(cols.bounds);
+            // A spanning cell is never the default one, so a node of default bounds skips this.
+            if let Some(def) = parent_frame.and_then(|f| f.grid) {
+                let cell = cols.bounds.grid;
+                let def = &mut self.grid_defs[usize::from(def)];
+                def.spans_rows |= cell.row_span().get() > 1;
+                def.spans_cols |= cell.col_span().get() > 1;
+            }
         }
         if !cols.panel.is_default() {
-            ex.panel = Some(NonMaxU32::index(self.panel_table.len()));
+            ex.panel = Some(NonMaxU32::from_idx(self.panel_table.len()));
             self.panel_table.push(cols.panel);
         }
         if let Some(chrome) = chrome {
@@ -518,11 +527,11 @@ impl Tree {
                 || !ring.is_noop()
                 || matches!(cols.attrs.clip_mode(), ClipMode::Rounded);
             if needs_chrome_row {
-                let row = lower::chrome(store, chrome, ring);
+                let row = store.lower_chrome(chrome, ring);
                 if row.ring {
                     self.focus_ring = LoweredBorder::lower(ring);
                 }
-                ex.chrome = Some(NonMaxU32::index(self.chrome_table.len()));
+                ex.chrome = Some(NonMaxU32::from_idx(self.chrome_table.len()));
                 self.chrome_table.push(row);
             }
         }
@@ -547,6 +556,10 @@ impl Tree {
         }
         scratch.open_frames.push(OpenFrame {
             node: new_id,
+            grid: match mode {
+                LayoutMode::Grid(def) => Some(def),
+                _ => None,
+            },
             inherited,
             paint_rows: u32::from(ex.chrome.is_some()),
         });

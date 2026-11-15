@@ -9,7 +9,6 @@ use crate::gpu::atlas::atlas_textures::AtlasTextures;
 use crate::gpu::atlas::page_list::MAX_PAGES;
 use crate::gpu::atlas::page_slots::PageSlots;
 use crate::gpu::device::gpu::Gpu;
-use crate::gpu::resource::pipeline_recipe;
 use crate::gpu::resource::texture_binding::{self, Filtering, TextureBinding};
 
 /// The group the atlas binds at, past the frame group.
@@ -114,8 +113,7 @@ impl AtlasGroup {
         gpu: &Gpu,
         textures: &TextureBinding,
     ) -> wgpu::PipelineLayout {
-        pipeline_recipe::pipeline_layout(
-            gpu,
+        gpu.pipeline_layout(
             "palantir.main.pl",
             &[Some(textures.frame_layout()), Some(&self.layout)],
         )

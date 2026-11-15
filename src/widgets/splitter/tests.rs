@@ -5,6 +5,7 @@ use crate::host::harness::internals::Passes;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::pointer::PointerButton;
+use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::sizing::Sizing;
 use crate::scene::layer::Layer;
 use crate::theme::Theme;
@@ -71,7 +72,7 @@ fn divider_drag_maps_pointer_to_ratio_without_relayout() {
     );
     held.a()
         .assert_signals(false, false, "the binding did not move this frame");
-    let rect = h.arranged(split_id().with("first"));
+    let rect = h.layout_rect(split_id().with("first"));
     assert_eq!(
         rect.unwrap().size.w,
         350.0,
@@ -160,7 +161,7 @@ fn divider_drag_is_scale_invariant() {
 
         h.press(split_id().with("divider"), PointerButton::Left);
         // Drag targets along the splitter's x, read before the drag.
-        let layout = h.arranged(split_id());
+        let layout = h.layout_rect(split_id());
         let transform = h.transform(split_id());
         let target = |x: f32| transform.apply_point(layout.unwrap().min + Vec2::new(x, 50.0));
         h.hover(target(300.5));
@@ -174,7 +175,7 @@ fn divider_drag_is_scale_invariant() {
         h.hover(target(380.0));
         frame(&mut h, &mut ratio);
         assert_eq!(
-            h.arranged(split_id().with("first")).unwrap().size.w,
+            h.layout_rect(split_id().with("first")).unwrap().size.w,
             350.0,
             "50 px second-pane minimum at {scale}×",
         );
@@ -199,7 +200,7 @@ fn divider_and_pane_stop_together_when_content_is_rigid() {
         let mut h = Harness::mono(SURFACE);
         let mut ratio = 0.5;
         let frame = |h: &mut Harness, ratio: &mut f32| {
-            h.frame(|ui| {
+            h.frame_recorded(|ui| {
                 let splitter = if row {
                     Splitter::row(ratio)
                 } else {
@@ -281,7 +282,7 @@ fn divider_and_pane_stop_together_when_content_is_rigid() {
             180.0,
             "{rigid_half:?} pane stops at its rigid content floor"
         );
-        let rigid_rect = h.arranged(split_id().with("rigid"));
+        let rigid_rect = h.layout_rect(split_id().with("rigid"));
         assert_eq!(
             if row {
                 rigid_rect.unwrap().size.w
@@ -291,7 +292,7 @@ fn divider_and_pane_stop_together_when_content_is_rigid() {
             180.0,
             "rigid content remains laid out"
         );
-        let first_rect = h.arranged(split_id().with("first"));
+        let first_rect = h.layout_rect(split_id().with("first"));
         let divider_rect = h
             .rect(split_id().with("divider"))
             .expect("divider arranged");
@@ -412,7 +413,7 @@ fn divider_requests_the_resize_cursor() {
         frame(&mut h, &mut ratio);
         frame(&mut h, &mut ratio);
 
-        let first_rect = h.arranged(split_id().with("first"));
+        let first_rect = h.layout_rect(split_id().with("first"));
         let divider_rect = h
             .rect(split_id().with("divider"))
             .expect("divider arranged");
@@ -459,7 +460,10 @@ fn a_splitter_disabled_mid_drag_lets_go() {
     assert!(!fill(&h), "a disabled divider paints no drag fill");
     assert_eq!(h.ui().window_requests().levels.cursor, CursorIcon::Default);
     assert_eq!(ratio, 0.75, "the pointer no longer steers");
-    assert_eq!(h.arranged(split_id().with("first")).unwrap().size.w, 300.0);
+    assert_eq!(
+        h.layout_rect(split_id().with("first")).unwrap().size.w,
+        300.0
+    );
     assert_eq!(
         disabled.count_where(|e| e.changed || e.committed),
         0,
@@ -519,6 +523,9 @@ fn sanitize_ratio_clamps_and_pins_non_finite() {
     assert_eq!(sanitize_ratio(f32::INFINITY), 0.5);
 }
 
+/// A ratio at an end collapses one pane whole, on the axis the splitter lays them along: a
+/// 401 px square gives the first pane all 400 px past the 1 px rule, along X across and along Y
+/// down, the other axis full.
 #[test]
 fn endpoint_ratios_collapse_exactly_one_pane() {
     for (ratio, expected) in [(0.0, [0.0, 400.0]), (1.0, [400.0, 0.0])] {
@@ -538,6 +545,26 @@ fn endpoint_ratios_collapse_exactly_one_pane() {
             expected,
             "ratio {ratio}",
         );
+    }
+
+    for (axis, first_size, second_size) in [
+        (Axis::X, Vec2::new(400.0, 401.0), Vec2::new(0.0, 401.0)),
+        (Axis::Y, Vec2::new(401.0, 400.0), Vec2::new(401.0, 0.0)),
+    ] {
+        let mut h = Harness::mono(UVec2::new(500, 500));
+        let mut ratio = 1.0;
+        h.frame(|ui| {
+            Splitter::along(axis, &mut ratio)
+                .id(split_id())
+                .size((Sizing::fixed(401.0), Sizing::fixed(401.0)))
+                .show(ui, |_, _| {});
+        });
+        let first = h.node_for_widget_id(split_id().with("first"));
+        let second = h.node_for_widget_id(split_id().with("second"));
+        let rects = &h.ui().plane_layout(Layer::Main).rect;
+        let size = |idx: usize| Vec2::new(rects[idx].size.w, rects[idx].size.h);
+        assert_eq!(size(first.idx()), first_size, "{axis:?}: first");
+        assert_eq!(size(second.idx()), second_size, "{axis:?}: second");
     }
 }
 
@@ -566,7 +593,10 @@ fn a_focused_divider_moves_by_the_keys_within_the_floors() {
         h.key(key);
         let first = frame_with(&mut h, &mut ratio);
         let second = frame_with(&mut h, &mut ratio);
-        assert!(domain::approx_eq(ratio, want), "{key:?}: {ratio} != {want}");
+        assert!(
+            domain::is_approx_zero(ratio - want),
+            "{key:?}: {ratio} != {want}"
+        );
         let commits = [&first, &second]
             .iter()
             .map(|passes| passes.count_where(|edges| edges.committed))

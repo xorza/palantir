@@ -8,7 +8,7 @@
 //!
 //! Unrelated tiny corners stay distinct (huge excess); nearby clusters collapse gradually.
 
-use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::rect::{self, Rect};
 use crate::primitives::math::domain::EPS;
 use tinyvec::ArrayVec;
 
@@ -89,44 +89,17 @@ impl DamageRegion {
         self.rects.iter().any(|d| r.intersects(*d))
     }
 
-    /// The area the rects cover, each pixel once, as they are surface-clipped: their sum, less what
-    /// they share, in strips between the x edges where any two overlap. Bounded by the cap, and
-    /// with no overlap, as most frames have, one pass of the pairs.
+    /// The area the rects cover, each pixel once, as they are surface-clipped. Bounded by the cap,
+    /// so its scratch sits on the stack.
     fn total_area(&self) -> f32 {
         let rects = self.rects.as_slice();
-        let overlapped = rects
-            .iter()
-            .enumerate()
-            .any(|(i, a)| rects[i + 1..].iter().any(|b| a.intersects(*b)));
-        if !overlapped {
-            return rects.iter().map(|r| r.area()).sum();
-        }
-        let mut edges: ArrayVec<[f32; 2 * DAMAGE_RECT_CAP]> = ArrayVec::new();
-        for r in rects {
-            edges.push(r.min.x);
-            edges.push(r.max().x);
-        }
-        edges.sort_unstable_by(f32::total_cmp);
-        let mut area = 0.0;
-        for strip in edges.windows(2) {
-            let mut spans: ArrayVec<[(f32, f32); DAMAGE_RECT_CAP]> = rects
-                .iter()
-                .filter(|r| r.min.x <= strip[0] && r.max().x >= strip[1])
-                .map(|r| (r.min.y, r.max().y))
-                .collect();
-            spans.sort_unstable_by(|a, b| a.0.total_cmp(&b.0));
-            let mut covered = 0.0;
-            let mut end = f32::NEG_INFINITY;
-            for (from, to) in spans {
-                let from = from.max(end);
-                if to > from {
-                    covered += to - from;
-                    end = to;
-                }
-            }
-            area += covered * (strip[1] - strip[0]);
-        }
-        area
+        let mut edges = [0.0; 2 * DAMAGE_RECT_CAP];
+        let mut spans = [(0.0, 0.0); DAMAGE_RECT_CAP];
+        rect::union_area(
+            rects,
+            &mut edges[..2 * rects.len()],
+            &mut spans[..rects.len()],
+        )
     }
 
     /// Fold `r` into the region per the module policy, which is an argument because it describes this fold, not the result.

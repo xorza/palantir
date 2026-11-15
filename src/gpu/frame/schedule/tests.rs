@@ -1,6 +1,6 @@
 use crate::common::span::Span;
 use crate::display::Display;
-use crate::gpu::frame::frame_passes::ColorLoad;
+use crate::gpu::frame::schedule::ColorLoad;
 use crate::gpu::frame::schedule::{RenderStep, RunSpan, Schedule};
 use crate::primitives::geometry::urect::URect;
 use crate::renderer::render_buffer::RenderBuffer;

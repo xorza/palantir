@@ -3,13 +3,14 @@
 //! The field and both bars are exact per texel, so the Okhsv square keeps one brightness across the hue circle where HSV does not; switch the model under the panel to compare.
 
 use crate::appearance::Appearance;
+use crate::scaffold;
 use crate::scaffold::api;
+use crate::scaffold::kit::{Kit, Swatches};
+use crate::scaffold::section::Section;
 use crate::scaffold::tokens::M;
-use crate::support;
-use crate::support::{Kit, Section, Swatches};
 use palantir::{
-    Align, Button, ColorButton, ColorCoords, ColorField, ColorModel, ColorPicker, ColorStrip,
-    ColorSwatch, Configure, Panel, RgbaF32, Sizing, SwatchRow, Ui, VAlign, WidgetId,
+    Button, ColorButton, ColorCoords, ColorField, ColorModel, ColorPicker, ColorStrip, ColorSwatch,
+    Configure, Panel, RgbaF32, Sizing, SwatchRow, Ui, VAlign, WidgetId,
 };
 
 #[derive(Debug)]
@@ -39,10 +40,9 @@ const RECENT: usize = 12;
 
 pub(crate) fn build(ui: &mut Ui, k: Kit, look: &mut Appearance) {
     let state_id = WidgetId::from_hash("showcase::colors::state");
-    ui.with_state::<Option<State>, _>(state_id, |ui, state| {
-        let state = state.get_or_insert_with(|| State::new(k.swatch));
+    ui.with_state_or_insert_with(state_id, |_| State::new(k.swatch), |ui, state| {
         Section::new("Picker").apis(&[api!(ColorPicker::alpha), api!(ColorPicker::swatches)]).show(ui, k, |ui| {
-                support::note(ui, k,
+                scaffold::note(ui, k,
                     "The whole panel: field, hue and alpha bars, preview, channel values, the \
                      model switch, and a swatch row the picker keeps itself. The second panel \
                      shows an app-owned swatch row instead, filled by each commit of the first.",
@@ -67,7 +67,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit, look: &mut Appearance) {
                     });
                 });
                 // The first panel's color as the tour's accent seed, solved per scheme.
-                support::row(ui, |ui| {
+                scaffold::row(ui, |ui| {
                     if Button::new().label("Use as accent").show(ui).clicked() {
                         look.set_seed(Some(state.picked));
                     }
@@ -87,7 +87,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit, look: &mut Appearance) {
                 api!(ColorStrip::hue),
                 api!(ColorField::texel_size),
             ]).show(ui, k, |ui| {
-                support::note(ui, k,
+                scaffold::note(ui, k,
                     "The same widgets on their own, for a layout of your own. The field and the \
                      bar share one set of color coordinates, so the bar's hue is the field's. The lower \
                      field has a texel size of 16, for the difference it makes.",
@@ -117,11 +117,11 @@ pub(crate) fn build(ui: &mut Ui, k: Kit, look: &mut Appearance) {
             });
 
         Section::new("Chip").apis(&[api!(ColorButton::new)]).show(ui, k, |ui| {
-            support::note(ui, k,
+            scaffold::note(ui, k,
                 "A chip that opens the panel in a popup, beside a swatch that echoes what it \
                  holds. Click outside or press Escape to close it.",
             );
-            support::row(ui, |ui| {
+            scaffold::row(ui, |ui| {
                 ColorButton::new(ColorPicker::new(&mut state.port).alpha(true).swatches(SwatchRow::History))
                     .show(ui);
                 ColorSwatch::new(state.port).show(ui);
@@ -135,8 +135,8 @@ pub(crate) fn build(ui: &mut Ui, k: Kit, look: &mut Appearance) {
 fn panels(ui: &mut Ui, body: impl FnOnce(&mut Ui)) {
     Panel::hstack()
         .auto_id()
-        .gap(support::TILE_GAP)
-        .child_align(Align::v(VAlign::Top))
+        .gap(scaffold::TILE_GAP)
+        .child_align(VAlign::Top)
         .show(ui, body);
 }
 
@@ -150,6 +150,6 @@ fn panel(ui: &mut Ui, k: Kit, body: impl FnOnce(&mut Ui)) {
     Panel::vstack()
         .auto_id()
         .padding(padding)
-        .chrome(support::raised_chrome(k))
+        .chrome(scaffold::raised_chrome(k))
         .show(ui, body);
 }

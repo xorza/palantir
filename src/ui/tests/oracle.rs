@@ -3,11 +3,12 @@
 use crate::host::harness::Harness;
 use crate::image_registry::image_handle::ImageHandle;
 use crate::internals::oracle::Oracle;
+use crate::primitives::geometry::fit::Fit;
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::image::{Image, ImageFit};
+use crate::primitives::paint::image::Image;
 use crate::primitives::paint::stroke::Stroke;
 use crate::scene::layer::Layer;
 use crate::shape::Shape;
@@ -62,7 +63,7 @@ fn fill(c: RgbaF32) -> Chrome {
 fn scene(ui: &mut Ui, k: Knobs, picture: &ImageHandle) {
     Panel::vstack()
         .id(WidgetId::from_hash("root"))
-        .size((Sizing::FILL, Sizing::FILL))
+        .size(SizeSpec::FILL)
         .gap(4.0)
         .show(ui, |ui| {
             Block::new()
@@ -105,11 +106,7 @@ fn scene(ui: &mut Ui, k: Knobs, picture: &ImageHandle) {
                 .id(WidgetId::from_hash("picture"))
                 .size(40.0)
                 .show(ui, |ui| {
-                    let fit = if k.fit_none {
-                        ImageFit::Natural
-                    } else {
-                        ImageFit::Fill
-                    };
+                    let fit = if k.fit_none { Fit::Natural } else { Fit::Fill };
                     ui.add_shape(Shape::rect(), ImagePaint::new(picture.clone()).fit(fit));
                 });
             if k.extra {
@@ -145,7 +142,7 @@ fn scene(ui: &mut Ui, k: Knobs, picture: &ImageHandle) {
     }
     if k.dialog {
         ui.layer(Layer::Modal)
-            .fixed_at(Vec2::new(40.0, 200.0))
+            .at(Vec2::new(40.0, 200.0))
             .show(|ui| {
                 Block::new()
                     .id(WidgetId::from_hash("dialog"))
@@ -153,7 +150,7 @@ fn scene(ui: &mut Ui, k: Knobs, picture: &ImageHandle) {
                     .chrome(fill(RgbaF32::srgb(0.4, 0.4, 0.4)))
                     .show(ui);
                 ui.layer(Layer::Popup)
-                    .fixed_at(Vec2::new(60.0, 220.0))
+                    .at(Vec2::new(60.0, 220.0))
                     .show(|ui| {
                         Block::new()
                             .id(WidgetId::from_hash("dialog-popup"))
@@ -174,7 +171,7 @@ fn overlay(ui: &mut Ui, name: &'static str, shift: f32, body: impl FnOnce(&mut U
         RgbaF32::srgb(0.0, 0.5, 1.0)
     };
     ui.layer(Layer::Popup)
-        .fixed_at(Vec2::new(300.0 + shift, 40.0))
+        .at(Vec2::new(300.0 + shift, 40.0))
         .show(|ui| {
             Block::new()
                 .id(WidgetId::from_hash(name))
@@ -194,7 +191,7 @@ fn run(script: &[Knobs]) {
         .expect("a 100x100 image loads");
     let mut oracle = Oracle::default();
     for knobs in [Knobs::BASE, Knobs::BASE].iter().chain(script) {
-        let report = h.frame(|ui| scene(ui, *knobs, &picture));
+        let report = h.frame_recorded(|ui| scene(ui, *knobs, &picture));
         oracle.check_frame(&h, &report);
     }
 }
@@ -262,7 +259,7 @@ fn shape_becomes_animated() {
     ]);
 }
 
-/// A 100 px image in a 40 px node switches to `ImageFit::Natural` and back: damage covers the overflow both ways.
+/// A 100 px image in a 40 px node switches to `Fit::Natural` and back: damage covers the overflow both ways.
 #[test]
 fn image_fit_overflows_its_node() {
     run(&[
@@ -301,7 +298,7 @@ fn resize_between_frames() {
         SURFACE,
     ] {
         h.resize(surface);
-        let report = h.frame(|ui| scene(ui, Knobs::BASE, &picture));
+        let report = h.frame_recorded(|ui| scene(ui, Knobs::BASE, &picture));
         oracle.check_frame(&h, &report);
     }
 }

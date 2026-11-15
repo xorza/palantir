@@ -219,8 +219,10 @@ zbus = { workspace = true, optional = true }
 
 [features]
 default = ["winit"]
-internals = ["dep:criterion", "dep:image", "dep:strum"]
-golden = ["dep:image"]
+internals = ["dep:criterion", "dep:strum"]
+# Reading and writing an `Image` as a PNG, which the goldens and a screenshot runner need.
+png = ["dep:image"]
+golden = ["png"]
 gpu-debug-markers = []
 system-clipboard = ["dep:arboard"]
 winit = [

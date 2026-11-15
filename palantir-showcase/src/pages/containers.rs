@@ -1,14 +1,18 @@
 //! Container drivers: stacks, Canvas, wrap stacks and Grid with fixed, fill, hug and clamped tracks plus spanning.
 
+use crate::scaffold;
 use crate::scaffold::api;
+use crate::scaffold::demo_cell::DemoCell;
+use crate::scaffold::kit::Kit;
+use crate::scaffold::knob::Knob;
+use crate::scaffold::section::Section;
 use crate::scaffold::tokens::M;
-use crate::support;
-use crate::support::{DemoCell, Kit, Knob, Section};
 use palantir::{
     Align, Block, Border, Chrome, Configure, Corners, Grid, GridCell, Justify, Panel, RgbaF32,
-    Sizing, Text, Track, Ui, WidgetId,
+    SizeSpec, Sizing, Text, Track, Ui, WidgetId,
 };
 use std::hash::Hash;
+use std::num::NonZeroU16;
 
 pub(crate) fn build(ui: &mut Ui, k: Kit) {
     Section::new("Stacks")
@@ -19,7 +23,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
             api!(Panel::canvas),
         ])
         .show(ui, k, |ui| {
-            support::tiles(ui, |ui| {
+            scaffold::tiles(ui, |ui| {
                 DemoCell::new("HStack — left to right").show(ui, k, |ui| {
                     Panel::hstack().gap(6.0).show(ui, |ui| {
                         for key in ["h-a", "h-b", "h-c"] {
@@ -41,15 +45,13 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
                     });
                 });
                 DemoCell::new("Canvas — positioned children").show(ui, k, |ui| {
-                    Panel::canvas()
-                        .size((Sizing::FILL, Sizing::FILL))
-                        .show(ui, |ui| {
-                            positioned(8.0, 8.0, k.swatch.teal).id_salt("p1").show(ui);
-                            positioned(64.0, 40.0, k.swatch.orange)
-                                .id_salt("p2")
-                                .show(ui);
-                            positioned(30.0, 88.0, k.swatch.lime).id_salt("p3").show(ui);
-                        });
+                    Panel::canvas().size(SizeSpec::FILL).show(ui, |ui| {
+                        positioned(8.0, 8.0, k.swatch.teal).id_salt("p1").show(ui);
+                        positioned(64.0, 40.0, k.swatch.orange)
+                            .id_salt("p2")
+                            .show(ui);
+                        positioned(30.0, 88.0, k.swatch.lime).id_salt("p3").show(ui);
+                    });
                 });
             });
         });
@@ -57,7 +59,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
     Section::new("Wrapping flow")
         .apis(&[api!(Panel::wrap_hstack), api!(Panel::line_gap)])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "Children flow along the main axis and wrap when the next one would not fit. \
@@ -93,7 +95,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
                     .chrome(k.t.card())
                     .show(ui, |ui| {
                         Panel::wrap_hstack()
-                            .size((Sizing::FILL, Sizing::HUG))
+                            .size(SizeSpec::FILL_W)
                             .gap(w.gap)
                             .line_gap(w.line_gap)
                             .show(ui, |ui| {
@@ -108,18 +110,18 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
     Section::new("Wrap axis")
         .apis(&[api!(Panel::wrap_vstack)])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "A vertical wrap stack starts a new column. Justification applies to each \
                  line, not to the block of lines.",
             );
-            support::tiles(ui, |ui| {
+            scaffold::tiles(ui, |ui| {
                 DemoCell::new("WrapVStack — wraps into columns")
                     .size(200.0, 200.0)
                     .show(ui, k, |ui| {
                         Panel::wrap_vstack()
-                            .size((Sizing::HUG, Sizing::FILL))
+                            .size(SizeSpec::FILL_H)
                             .gap(6.0)
                             .line_gap(12.0)
                             .show(ui, |ui| {
@@ -132,7 +134,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
                     .size(200.0, 200.0)
                     .show(ui, k, |ui| {
                         Panel::wrap_hstack()
-                            .size((Sizing::FILL, Sizing::HUG))
+                            .size(SizeSpec::FILL_W)
                             .gap(10.0)
                             .line_gap(10.0)
                             .justify(Justify::Center)
@@ -148,13 +150,13 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
     Section::new("Grid")
         .apis(&[api!(type Track), api!(type GridCell)])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "Two-axis tracks — fixed, Fill, Hug and clamped — and cells that span. Resize \
                  the window to see the Fill tracks divide the room again.",
             );
-            support::tiles(ui, |ui| {
+            scaffold::tiles(ui, |ui| {
                 // Three-column shell: fixed sidebar, flexible content, hugging right rail; the header spans all three.
                 DemoCell::new("app shell — fixed | fill | hug, header spans")
                     .size(280.0, 200.0)
@@ -164,11 +166,12 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
                             .rows([Track::fixed(32.0), Track::FILL])
                             .line_gap(8.0)
                             .gap(8.0)
-                            .size((Sizing::FILL, Sizing::FILL))
+                            .size(SizeSpec::FILL)
                             .show(ui, |ui| {
                                 GridTile::new(
                                     "header",
-                                    GridCell::at(0, 0).with_span(1, 3),
+                                    GridCell::at(0, 0)
+                                        .with_span(NonZeroU16::MIN, NonZeroU16::new(3).unwrap()),
                                     k.swatch.orange,
                                 )
                                 .show(ui);
@@ -192,7 +195,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
                             .rows([Track::FILL])
                             .line_gap(8.0)
                             .gap(8.0)
-                            .size((Sizing::FILL, Sizing::FILL))
+                            .size(SizeSpec::FILL)
                             .show(ui, |ui| {
                                 GridTile::new("sidebar", GridCell::at(0, 0), k.swatch.teal)
                                     .show(ui);
@@ -245,7 +248,7 @@ const TAGS: &[&str] = &[
 ];
 
 fn sw(w: f32, h: f32, c: RgbaF32) -> Block {
-    support::swatch(c).size((Sizing::fixed(w), Sizing::fixed(h)))
+    scaffold::swatch(c).size((Sizing::fixed(w), Sizing::fixed(h)))
 }
 
 fn positioned(x: f32, y: f32, c: RgbaF32) -> Block {
@@ -270,7 +273,7 @@ fn chip<H: Hash>(ui: &mut Ui, k: Kit, key: H, label: &'static str) {
 }
 
 fn badge<H: Hash>(ui: &mut Ui, k: Kit, key: H, w: f32) {
-    support::swatch(k.swatch.teal)
+    scaffold::swatch(k.swatch.teal)
         .id_salt(("badge", &key))
         .size((Sizing::fixed(w), Sizing::fixed(24.0)))
         .show(ui);
@@ -308,13 +311,13 @@ impl GridTile {
             .auto_id()
             .padding(5.0)
             .grid_cell(self.cell)
-            .chrome(support::swatch_chrome(self.color));
+            .chrome(scaffold::swatch_chrome(self.color));
         if let Some(size) = self.size {
             tile = tile.size(size);
         }
         tile.show(ui, |ui| {
             Text::new(self.label)
-                .style(&support::on_swatch_style().with_font_size(11.0))
+                .style(&scaffold::on_swatch_style().with_font_size(11.0))
                 .show(ui);
         });
     }

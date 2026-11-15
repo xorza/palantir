@@ -1,27 +1,29 @@
 //! Stroked geometry: sub-pixel hairlines to wide widths, joins, caps, per-point / per-segment polyline colors, cubic and quadratic béziers, and circular arcs in solid and ramped colors. Every tile pushes raw `Shape`s through `ui.add_shape` onto the GPU curve pipeline, with no CPU tessellation.
 
+use crate::scaffold;
 use crate::scaffold::api;
-use crate::support;
-use crate::support::{DemoCell, Kit, Knob, Section};
-use palantir::LineCap;
-use palantir::LineJoin;
-use palantir::Stroke;
+use crate::scaffold::demo_cell::DemoCell;
+use crate::scaffold::kit::Kit;
+use crate::scaffold::knob::Knob;
+use crate::scaffold::section::Section;
 use palantir::glam::Vec2;
-use palantir::widget::{CubicBezier, QuadraticBezier, Shape};
-use palantir::{ColorRamp, ComboBox, Configure, Rect, RgbaF32, Sizing, Text, Ui, WidgetId};
+use palantir::{
+    ColorRamp, ComboBox, Configure, CubicBezier, LineCap, LineJoin, QuadraticBezier, Rect, RgbaF32,
+    Shape, Sizing, Stroke, Text, Ui, WidgetId,
+};
 
 pub(crate) fn build(ui: &mut Ui, k: Kit) {
     live(ui, k);
     Section::new("Width")
         .apis(&[api!(type Stroke)])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "A float, not an integer: widths under a pixel fade instead of \
                  snapping to 1 px.",
             );
-            support::tiles(ui, |ui| {
+            scaffold::tiles(ui, |ui| {
                 DemoCell::new("widths 1–8 px").show(ui, k, |ui| widths(ui, k));
                 DemoCell::new("hairlines 0.1–1 px").show(ui, k, |ui| hairlines(ui, k));
             });
@@ -30,13 +32,13 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
     Section::new("Joins and caps")
         .apis(&[api!(type LineJoin), api!(type LineCap)])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "How a stroke turns a corner, and how it ends. The thin rules mark \
                  the line ends.",
             );
-            support::tiles(ui, |ui| {
+            scaffold::tiles(ui, |ui| {
                 DemoCell::new("joins — Miter / Bevel / Round").show(ui, k, |ui| joins(ui, k));
                 DemoCell::new("line caps — Butt / Square / Round").show(ui, k, |ui| caps(ui, k));
                 DemoCell::new("curve caps — Butt / Square / Round")
@@ -47,8 +49,8 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
     Section::new("Color along a stroke")
         .apis(&[api!(type ColorRamp)])
         .show(ui, k, |ui| {
-            support::note(ui, k, "Per point, per segment, or a ramp along the curve.");
-            support::tiles(ui, |ui| {
+            scaffold::note(ui, k, "Per point, per segment, or a ramp along the curve.");
+            scaffold::tiles(ui, |ui| {
                 DemoCell::new("per-point colors").show(ui, k, |ui| per_point(ui, k));
                 DemoCell::new("per-segment colors").show(ui, k, |ui| per_segment(ui, k));
                 DemoCell::new("gradient along t").show(ui, k, |ui| gradient_cubic(ui, k));
@@ -63,7 +65,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
             api!(Shape::arc),
         ])
         .show(ui, k, |ui| {
-            support::tiles(ui, |ui| {
+            scaffold::tiles(ui, |ui| {
                 DemoCell::new("cubic bézier").show(ui, k, |ui| cubic(ui, k));
                 DemoCell::new("quadratic bézier").show(ui, k, |ui| quadratic(ui, k));
                 DemoCell::new("arcs & circles").show(ui, k, |ui| arcs(ui, k));
@@ -160,7 +162,7 @@ fn per_point(ui: &mut Ui, k: Kit) {
     ];
     let cols = [k.swatch.red, k.swatch.orange, k.swatch.lime, k.swatch.teal];
     ui.add_shape(
-        Shape::polyline(&pts).per_point(&cols),
+        Shape::polyline(&pts).point_colors(&cols),
         Stroke::new(RgbaF32::WHITE, 4.0),
     );
 }
@@ -184,7 +186,7 @@ fn per_segment(ui: &mut Ui, k: Kit) {
         RgbaF32::hex(0xff8fc8),
     ];
     ui.add_shape(
-        Shape::polyline(&pts).per_segment(&cols),
+        Shape::polyline(&pts).segment_colors(&cols),
         Stroke::new(RgbaF32::WHITE, 4.0),
     );
 }
@@ -302,16 +304,16 @@ static CAPS: [(&str, LineCap); 3] = [
 #[derive(Debug)]
 struct LiveStroke {
     width: f32,
-    join: &'static (&'static str, LineJoin),
-    cap: &'static (&'static str, LineCap),
+    join: (&'static str, LineJoin),
+    cap: (&'static str, LineCap),
 }
 
 impl Default for LiveStroke {
     fn default() -> Self {
         Self {
             width: 10.0,
-            join: &JOINS[0],
-            cap: &CAPS[2],
+            join: JOINS[0],
+            cap: CAPS[2],
         }
     }
 }
@@ -321,10 +323,10 @@ fn live(ui: &mut Ui, k: Kit) {
     Section::new("Live stroke")
         .apis(&[api!(type LineJoin), api!(type LineCap)])
         .show(ui, k, |ui| {
-            support::note(ui, k, "Set the width, the join and the cap of one zigzag.");
+            scaffold::note(ui, k, "Set the width, the join and the cap of one zigzag.");
             let id = WidgetId::from_hash("showcase::strokes::live");
             ui.with_state::<LiveStroke, _>(id, |ui, l| {
-                support::row(ui, |ui| {
+                scaffold::row(ui, |ui| {
                     Knob {
                         label: "width",
                         range: 0.5..=24.0,
@@ -333,12 +335,12 @@ fn live(ui: &mut Ui, k: Kit) {
                     }
                     .show(ui, k, &mut l.width);
                     Text::new("join").style(&k.t.caption()).show(ui);
-                    ComboBox::labeled(&mut l.join, &JOINS, |join| join.0)
+                    ComboBox::labeled(&mut l.join, JOINS, |join| join.0)
                         .id_salt("join")
                         .size((Sizing::fixed(100.0), Sizing::HUG))
                         .show(ui);
                     Text::new("cap").style(&k.t.caption()).show(ui);
-                    ComboBox::labeled(&mut l.cap, &CAPS, |cap| cap.0)
+                    ComboBox::labeled(&mut l.cap, CAPS, |cap| cap.0)
                         .id_salt("cap")
                         .size((Sizing::fixed(100.0), Sizing::HUG))
                         .show(ui);

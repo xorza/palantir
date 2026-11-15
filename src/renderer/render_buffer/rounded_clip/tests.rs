@@ -3,19 +3,20 @@
 use crate::gpu::pipeline::quad_pipeline::QuadPipeline;
 use crate::gpu::test_gpu::headless_test_gpu;
 use crate::host::harness::Harness;
-use crate::host::harness::harness_builder::Depth;
-use crate::icons::icon_set::IconSet;
+use crate::host::harness::harness_builder::HarnessDepth;
 use crate::icons::icon_table::IconTable;
 use crate::icons::internals::ONE_COLOR;
 use crate::image_registry::image_handle::ImageHandle;
 use crate::primitives::geometry::corners::Corners;
+use crate::primitives::geometry::fit::Fit;
 use crate::primitives::geometry::mesh::Mesh;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::icon_handle::IconHandle;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::image::{Image, ImageFit};
+use crate::primitives::paint::color::srgba_u8::SrgbaU8;
+use crate::primitives::paint::image::Image;
 use crate::primitives::paint::stroke::Stroke;
 use crate::renderer::render_buffer::rounded_clip::RoundedClip;
 use crate::shape::Shape;
@@ -25,7 +26,6 @@ use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};
-use std::rc::Rc;
 
 /// The surface every case paints on, black where nothing draws.
 const SURFACE: UVec2 = UVec2::new(48, 32);
@@ -66,7 +66,7 @@ impl Family {
             Self::Image => {
                 ui.add_shape(
                     Shape::rect().at(cover),
-                    ImagePaint::new(covers.white.clone()).fit(ImageFit::Fill),
+                    ImagePaint::new(covers.white.clone()).fit(Fit::Fill),
                 );
             }
             Self::Mesh => {
@@ -100,7 +100,7 @@ fn harness() -> Harness {
     let gpu = headless_test_gpu();
     let mut h = Harness::builder(SURFACE)
         .mono()
-        .depth(Depth::gpu(gpu.handles()))
+        .depth(HarnessDepth::gpu(gpu.handles()))
         .build();
     h.set_pixel_snap(false);
     h.ui_mut().theme_mut().panel_chrome = None;
@@ -123,20 +123,19 @@ fn clipped(ui: &mut Ui, salt: &str, rect: Rect, corners: Corners, body: impl FnO
 fn on_canvas(ui: &mut Ui, body: impl FnOnce(&mut Ui)) {
     Panel::canvas()
         .id_salt("canvas")
-        .size((Sizing::FILL, Sizing::FILL))
+        .size(SizeSpec::FILL)
         .show(ui, body);
 }
 
 /// White at linear coverage `c` over black, as the target stores it: sRGB bytes.
-fn gray(c: f32) -> [u8; 4] {
-    let s = RgbaF32::new(c, c, c, 1.0).to_srgba8();
-    [s.r, s.g, s.b, s.a]
+fn gray(c: f32) -> SrgbaU8 {
+    RgbaF32::new(c, c, c, 1.0).to_srgba8()
 }
 
 /// Whether `got` is `want` within one step a lane: the GPU's sRGB encode rounds within one step
 /// of the CPU's, as `effect::tests` holds its blends.
-fn near(got: [u8; 4], want: [u8; 4]) -> bool {
-    got.iter().zip(want).all(|(g, w)| g.abs_diff(w) <= 1)
+fn near(got: SrgbaU8, want: SrgbaU8) -> bool {
+    got.max_channel_diff(want) <= 1
 }
 
 /// Every family that draws under a rounded clip takes its coverage. Pixel centers on row 16 lie
@@ -151,18 +150,18 @@ fn every_family_takes_the_clips_coverage() {
         .ui()
         .load_image(&Image::from_srgba8(UVec2::splat(2), vec![255; 16]).unwrap())
         .unwrap();
-    let icons: IconSet = h.ui().load_icons(Rc::new(
-        IconTable::from_svgs([("rect", ONE_COLOR)]).unwrap(),
-    ));
+    let icons = h
+        .ui()
+        .load_icons(IconTable::from_svgs([("rect", ONE_COLOR)]).unwrap());
     let icon = icons.by_name("rect").unwrap();
     let mut mesh = Mesh::with_capacity(4, 6);
     let corner = |x: f32, y: f32| Vec2::new(x, y);
-    let a = mesh.vertex(corner(-20.0, -20.0), RgbaF32::WHITE);
-    let b = mesh.vertex(corner(60.0, -20.0), RgbaF32::WHITE);
-    let c = mesh.vertex(corner(60.0, 40.0), RgbaF32::WHITE);
-    let d = mesh.vertex(corner(-20.0, 40.0), RgbaF32::WHITE);
-    mesh.triangle(a, b, c);
-    mesh.triangle(a, c, d);
+    let a = mesh.add_vertex(corner(-20.0, -20.0), RgbaF32::WHITE);
+    let b = mesh.add_vertex(corner(60.0, -20.0), RgbaF32::WHITE);
+    let c = mesh.add_vertex(corner(60.0, 40.0), RgbaF32::WHITE);
+    let d = mesh.add_vertex(corner(-20.0, 40.0), RgbaF32::WHITE);
+    mesh.add_triangle(a, b, c);
+    mesh.add_triangle(a, c, d);
     let covers = Covers { white, mesh, icon };
     for family in Family::ALL {
         h.prime(2, |ui| {
@@ -173,7 +172,7 @@ fn every_family_takes_the_clips_coverage() {
             });
         });
         let image = h.read_back();
-        let at = |x: u32| image.get_pixel(x, 16).0;
+        let at = |x: u32| image.texel(UVec2::new(x, 16));
         for (x, coverage) in [(5, 0.0), (10, 0.75), (20, 1.0), (30, 0.25), (40, 0.0)] {
             assert!(
                 near(at(x), gray(coverage)),
@@ -217,7 +216,7 @@ fn nested_clips_multiply() {
         });
     });
     let image = h.read_back();
-    let got = image.get_pixel(10, 6).0;
+    let got = image.texel(UVec2::new(10, 6));
     assert!(near(got, gray(0.5625)), "got {got:?}");
 }
 

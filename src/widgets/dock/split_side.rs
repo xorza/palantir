@@ -1,18 +1,11 @@
 //! Which edge of a pane a new one lands on, and the split it implies.
 
+use crate::primitives::layout::axis::Axis;
+use crate::widgets::splitter::split_half::SplitHalf;
 use serde::{Deserialize, Serialize};
 
-/// How a split arranges its children.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub enum SplitDirection {
-    /// Side by side, divided by a vertical rule.
-    Row,
-    /// Stacked, divided by a horizontal rule.
-    Col,
-}
-
-/// Which edge of a pane a split lands on; `Left`/`Right` make a [`SplitDirection::Row`], `Top`/`Bottom` a [`SplitDirection::Col`].
+/// Which edge of a pane a split lands on; `Left`/`Right` split along [`Axis::X`], `Top`/`Bottom`
+/// along [`Axis::Y`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub enum SplitSide {
@@ -27,16 +20,19 @@ pub enum SplitSide {
 }
 
 impl SplitSide {
-    /// The split this side implies.
-    pub const fn direction(self) -> SplitDirection {
+    /// The axis the split this side implies lays its panes along.
+    pub const fn axis(self) -> Axis {
         match self {
-            Self::Left | Self::Right => SplitDirection::Row,
-            Self::Top | Self::Bottom => SplitDirection::Col,
+            Self::Left | Self::Right => Axis::X,
+            Self::Top | Self::Bottom => Axis::Y,
         }
     }
 
-    /// Whether the new pane is the split's first child (left or top).
-    pub(super) const fn new_pane_first(self) -> bool {
-        matches!(self, Self::Left | Self::Top)
+    /// The half the new pane takes: the first for left or top.
+    pub const fn half(self) -> SplitHalf {
+        match self {
+            Self::Left | Self::Top => SplitHalf::First,
+            Self::Right | Self::Bottom => SplitHalf::Second,
+        }
     }
 }

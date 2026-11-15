@@ -32,7 +32,7 @@ fn empty_ui_drives_a_frame_safely() {
             damage: Damage::Full,
         },
     );
-    let buffer = &frontend.buffer;
+    let buffer = frontend.buffer();
     assert!(buffer.quads.is_empty());
     assert!(buffer.texts.is_empty());
     assert!(buffer.runs.is_empty());
@@ -142,7 +142,7 @@ fn cold_start_routes_held_pointer_against_warmup_cascade() {
 #[test]
 fn cold_start_first_frame_damage_is_full() {
     let mut h = support::cold_ui();
-    let report = h.frame(|ui| {
+    let report = h.frame_recorded(|ui| {
         Block::new()
             .auto_id()
             .size(50.0)

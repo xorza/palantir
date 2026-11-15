@@ -2,14 +2,15 @@
 //! page carries no list to check by hand.
 
 use crate::appearance::Appearance;
+use crate::scaffold;
 use crate::scaffold::api;
+use crate::scaffold::kit::Kit;
+use crate::scaffold::section::Section;
 use crate::scaffold::tokens::M;
-use crate::support;
-use crate::support::{Kit, Section};
 use palantir::{
     Axis, Button, Checkbox, ColorButton, ColorPicker, ComboBox, Configure, DragValue, FocusPolicy,
-    FocusRingTheme, Grid, Modal, Panel, PopupTrigger, RadioGroup, Sizing, Slider, Switch, Text,
-    TextEdit, Track, Ui, WidgetId,
+    FocusRingTheme, Grid, Modal, Panel, PopupTrigger, RadioGroup, SizeSpec, Sizing, Slider, Switch,
+    Text, TextEdit, Track, Ui, WidgetId,
 };
 
 static PLANS: [&str; 3] = ["Free", "Pro", "Team"];
@@ -30,7 +31,7 @@ struct State {
     dark: bool,
     volume: f64,
     size: Size,
-    plan: &'static &'static str,
+    plan: &'static str,
     seats: i64,
     search: String,
     picked: usize,
@@ -52,7 +53,7 @@ impl Default for State {
             dark: false,
             volume: 0.4,
             size: Size::Medium,
-            plan: &PLANS[1],
+            plan: PLANS[1],
             seats: 3,
             search: String::new(),
             picked: 0,
@@ -109,26 +110,26 @@ fn tab_order(ui: &mut Ui, k: Kit, s: &mut State, seen: &mut Seen) {
     Section::new("Tab order")
         .apis(&[api!(Ui::focus), api!(Ui::is_focus_visible)])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "Tab and Shift+Tab visit every enabled control in record order, wrapping \
                  at the ends of the window. The ring shows only when focus came from the \
                  keyboard, as CSS's :focus-visible does.",
             );
-            support::well(ui, k, |ui| {
+            scaffold::well(ui, k, |ui| {
                 let focus = match (s.focused, ui.focus()) {
                     (Some(name), _) => name,
                     (None, Some(_)) => "a control outside this page's demos",
                     (None, None) => "nothing",
                 };
-                support::readout(ui, k, "focused", focus);
+                scaffold::readout(ui, k, "focused", focus);
                 let via = match (ui.focus(), ui.is_focus_visible()) {
                     (None, _) => "—",
                     (Some(_), true) => "keyboard — the ring shows",
                     (Some(_), false) => "pointer — no ring",
                 };
-                support::readout(ui, k, "came from", via);
+                scaffold::readout(ui, k, "came from", via);
             });
             form(ui, k, s, seen);
         });
@@ -151,7 +152,7 @@ fn form(ui: &mut Ui, k: Kit, s: &mut State, seen: &mut Seen) {
         .rows([Track::HUG; LABELS.len() + 1])
         .gap(M.space.lg)
         .line_gap(M.space.md)
-        .size((Sizing::FILL, Sizing::HUG))
+        .size(SizeSpec::FILL_W)
         .show(ui, |ui| {
             for (row, label) in LABELS.iter().enumerate() {
                 Text::new(*label)
@@ -163,13 +164,13 @@ fn form(ui: &mut Ui, k: Kit, s: &mut State, seen: &mut Seen) {
             let r = TextEdit::new(&mut s.name)
                 .placeholder("Ada Lovelace")
                 .grid_cell((0, 1))
-                .size((Sizing::FILL, Sizing::HUG))
+                .size(SizeSpec::FILL_W)
                 .show(ui);
             seen.note("Name", r.response.focused);
             let r = TextEdit::new(&mut s.email)
                 .placeholder("ada@example.com")
                 .grid_cell((1, 1))
-                .size((Sizing::FILL, Sizing::HUG))
+                .size(SizeSpec::FILL_W)
                 .show(ui);
             seen.note("Email", r.response.focused);
             let r = Checkbox::new(&mut s.subscribe)
@@ -200,7 +201,7 @@ fn form(ui: &mut Ui, k: Kit, s: &mut State, seen: &mut Seen) {
                         seen.note(label, r.response.focused);
                     }
                 });
-            let r = ComboBox::new(&mut s.plan, &PLANS)
+            let r = ComboBox::new(&mut s.plan, PLANS)
                 .grid_cell((6, 1))
                 .size((Sizing::fixed(160.0), Sizing::HUG))
                 .show(ui);
@@ -232,14 +233,14 @@ fn order_and_stops(ui: &mut Ui, k: Kit, seen: &mut Seen) {
             api!(Button::disabled),
         ])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "Tab visits stops in ascending tab_idx, record order breaking ties, over \
                  the whole window: −1 goes ahead of every unindexed control, 1 behind them. \
                  A control out of the Tab order still takes focus from a click.",
             );
-            support::row(ui, |ui| {
+            scaffold::row(ui, |ui| {
                 let r = Button::new().label("tab_idx −1").tab_idx(-1).show(ui);
                 seen.note("tab_idx −1", r.focused);
                 let r = Button::new().label("tab_idx 1").tab_idx(1).show(ui);
@@ -258,7 +259,7 @@ fn arrow_groups(ui: &mut Ui, k: Kit, s: &mut State, seen: &mut Seen) {
     Section::new("Arrow groups")
         .apis(&[api!(Panel::arrow_focus)])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "Inside a group the arrows along its axis move focus to the next or previous \
@@ -297,7 +298,7 @@ fn arrow_groups(ui: &mut Ui, k: Kit, s: &mut State, seen: &mut Seen) {
                         let r = Button::new()
                             .id_salt(i)
                             .label(*label)
-                            .size((Sizing::FILL, Sizing::HUG))
+                            .size(SizeSpec::FILL_W)
                             .show(ui);
                         if r.clicked() {
                             s.picked = i;
@@ -305,7 +306,7 @@ fn arrow_groups(ui: &mut Ui, k: Kit, s: &mut State, seen: &mut Seen) {
                         seen.note(label, r.focused);
                     }
                 });
-            support::readout(ui, k, "opened", LIST[s.picked]);
+            scaffold::readout(ui, k, "opened", LIST[s.picked]);
         });
 }
 
@@ -317,7 +318,7 @@ fn containment(ui: &mut Ui, k: Kit, s: &mut State, seen: &mut Seen) {
             api!(Ui::focus_first_within),
         ])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "An open dialog keeps Tab inside itself, and a popup does while it holds \
@@ -325,7 +326,7 @@ fn containment(ui: &mut Ui, k: Kit, s: &mut State, seen: &mut Seen) {
                  A popup opened from the keyboard takes focus; one opened by a click does \
                  not.",
             );
-            support::row(ui, |ui| {
+            scaffold::row(ui, |ui| {
                 let r = Button::new().label("Open dialog").show(ui);
                 seen.note("Open dialog", r.focused);
                 if r.clicked() {
@@ -364,9 +365,9 @@ fn dialog(ui: &mut Ui, k: Kit, s: &mut State) {
                 Text::new("Rename layer").style(&k.t.body()).show(ui);
                 TextEdit::new(&mut s.dialog_note)
                     .placeholder("new name")
-                    .size((Sizing::FILL, Sizing::HUG))
+                    .size(SizeSpec::FILL_W)
                     .show(ui);
-                support::row(ui, |ui| {
+                scaffold::row(ui, |ui| {
                     if Button::new().label("Cancel").show(ui).clicked() {
                         ui.close_overlay();
                     }
@@ -390,14 +391,14 @@ fn programmatic(ui: &mut Ui, k: Kit, s: &mut State, seen: &mut Seen) {
             api!(TextEdit::select_all_on_focus),
         ])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "set_focus keeps whether the ring shows from the last input, so a button \
                  clicked with the pointer moves focus without a ring, and one pressed with \
                  Space moves it with one.",
             );
-            support::row(ui, |ui| {
+            scaffold::row(ui, |ui| {
                 let field = TextEdit::new(&mut s.target)
                     .select_all_on_focus(true)
                     .size((Sizing::fixed(180.0), Sizing::HUG))
@@ -424,13 +425,13 @@ fn policy(ui: &mut Ui, k: Kit, s: &mut State) {
             api!(FocusPolicy::PreserveOnMiss),
         ])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "What a press on nothing focusable does to focus. The shell puts the default \
                  back on every other page, so the choice here stays on this page.",
             );
-            support::radio_row(ui, &mut s.policy, |ui, options| {
+            scaffold::radio_row(ui, &mut s.policy, |ui, options| {
                 for (value, label) in [
                     (FocusPolicy::ClearOnMiss, "ClearOnMiss — drop focus"),
                     (FocusPolicy::PreserveOnMiss, "PreserveOnMiss — keep it"),
@@ -447,7 +448,7 @@ fn ring(ui: &mut Ui, k: Kit, look: &mut Appearance) {
     Section::new("Ring theme")
         .apis(&[api!(Ui::theme), api!(type FocusRingTheme)])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "The framework draws the ring, not the widget, from one slot of the theme. \
@@ -459,7 +460,7 @@ fn ring(ui: &mut Ui, k: Kit, look: &mut Appearance) {
             let mut width = ring.width;
             let mut color = ring.color;
             let mut reset = false;
-            support::row(ui, |ui| {
+            scaffold::row(ui, |ui| {
                 Text::new("width").style(&k.t.caption()).show(ui);
                 Slider::new(&mut width, 0.0..=4.0)
                     .step(0.5)

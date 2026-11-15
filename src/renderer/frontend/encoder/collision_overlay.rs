@@ -5,7 +5,7 @@ use crate::primitives::paint::border::Border;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::frontend::FrameScene;
-use crate::renderer::frontend::paint_sink::PaintSink;
+use crate::renderer::frontend::paint_sink::{DrawAnimation, PaintSink};
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_closed_payload::DrawClosedPayload;
 use crate::renderer::frontend::payload::draw_closed_payload::closed_fill::ClosedFill;
@@ -21,20 +21,20 @@ pub(super) fn emit(scene: &FrameScene<'_>, out: &mut impl PaintSink) {
     for record in &scene.forest.collisions {
         for ep in [record.first, record.second] {
             let rect = scene.layout[ep.plane].rect[ep.node.idx()];
-            let entry = scene.cascade.entry(scene.cascade.location(ep));
+            let entry = scene.cascade.entry(ep);
             let screen = entry.transform.apply_rect(rect);
             out.draw(
-                DrawClosedPayload::new(
-                    PlacedClosed::Box(PlacedBox {
+                DrawClosedPayload {
+                    geometry: PlacedClosed::Box(PlacedBox {
                         rect: screen,
                         corners: Corners::ZERO,
                     }),
-                    ClosedFill::new(
+                    paint: ClosedFill::new(
                         BrushSource::Solid(RgbaF16::TRANSPARENT),
                         LoweredBorder::lower(BORDER),
                     ),
-                ),
-                1.0,
+                },
+                DrawAnimation::STILL,
             );
         }
     }

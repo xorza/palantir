@@ -5,8 +5,7 @@ use crate::allocator;
 use crate::harness;
 use crate::harness::Audit;
 use crate::harness::format;
-use palantir::widget::Mesh;
-use palantir::{Block, Configure, Panel, Spinner, Ui};
+use palantir::{Block, Configure, Mesh, Panel, Spinner, Ui};
 use std::hint::black_box;
 use std::panic::catch_unwind;
 

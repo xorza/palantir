@@ -21,7 +21,7 @@ use crate::display::system_scale::SystemScale;
 use crate::host::harness::Harness;
 use crate::internals::cache_fixture::{BroadChange, build_broad, build_broad_variant, build_deep};
 use crate::primitives::geometry::corners::Corners;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::primitives::layout::track::Track;
 use crate::primitives::paint::border::Border;
 use crate::primitives::paint::chrome::Chrome;
@@ -55,14 +55,14 @@ fn build_list(ui: &mut Ui) {
         .id_salt("heavy-root")
         .gap(6.0)
         .padding(12.0)
-        .size((Sizing::FILL, Sizing::HUG))
+        .size(SizeSpec::FILL_W)
         .show(ui, |ui| {
             for g in 0..LIST_GROUPS {
                 Panel::vstack()
                     .id_salt(("h-group", g))
                     .gap(4.0)
                     .padding(8.0)
-                    .size((Sizing::FILL, Sizing::HUG))
+                    .size(SizeSpec::FILL_W)
                     .chrome(group_chrome.clone())
                     .clip_rounded()
                     .show(ui, |ui| {
@@ -75,7 +75,7 @@ fn build_list(ui: &mut Ui) {
                                 .id_salt(("h-row", g, r))
                                 .gap(8.0)
                                 .padding(6.0)
-                                .size((Sizing::FILL, Sizing::HUG))
+                                .size(SizeSpec::FILL_W)
                                 .chrome(row_bg.clone())
                                 .clip_rounded()
                                 .show(ui, |ui| {
@@ -86,7 +86,7 @@ fn build_list(ui: &mut Ui) {
                                         .show(ui, |ui| {
                                             Block::new()
                                                 .id_salt(("h-avatar", g, r))
-                                                .size((Sizing::FILL, Sizing::FILL))
+                                                .size(SizeSpec::FILL)
                                                 .chrome(avatar_chrome.clone())
                                                 .show(ui);
                                         });
@@ -133,7 +133,7 @@ fn build_grid_intrinsics(ui: &mut Ui) {
         .id_salt("grid-intrinsic-root")
         .cols([Track::HUG, Track::HUG])
         .rows([Track::HUG; GRID_ROWS])
-        .size((Sizing::FILL, Sizing::HUG))
+        .size(SizeSpec::FILL_W)
         .show(ui, |ui| {
             for row in 0..GRID_ROWS {
                 Text::new("unbreakable_identifier")
@@ -223,7 +223,7 @@ const SCROLL_ROWS: usize = 96;
 fn build_scroll_window(ui: &mut Ui, first: usize) {
     Panel::vstack()
         .id_salt("scroll-root")
-        .size((Sizing::FILL, Sizing::FILL))
+        .size(SizeSpec::FILL)
         .show(ui, |ui| {
             for row in first..first + SCROLL_ROWS {
                 Panel::hstack()

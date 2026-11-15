@@ -37,6 +37,9 @@ pub(crate) struct GpuViewTargets {
     /// One entry per view a live render stream still records: inserted on first paint, replaced on resize, removed by per-submit eviction or [`Self::retire_owner`].
     targets: FxHashMap<TextureId, ViewTarget>,
     binding: TextureBinding,
+    /// The submitting window's retention roster: every view it recorded, painted or not, so an
+    /// undamaged view keeps its texture. Kept across submits.
+    live: Vec<TextureId>,
 }
 
 impl GpuViewTargets {
@@ -44,11 +47,14 @@ impl GpuViewTargets {
         Self {
             targets: FxHashMap::default(),
             binding,
+            live: Vec::new(),
         }
     }
 
     pub(crate) fn bind_group(&self, id: TextureId) -> Option<&wgpu::BindGroup> {
-        self.targets.get(&id).map(|target| &target.bind_group)
+        self.targets
+            .get(&id)
+            .map(|target| &target.texture.bind_group)
     }
 
     /// Paint each of `views`' draws whose stamp changed, through its owner's callback in
@@ -64,14 +70,14 @@ impl GpuViewTargets {
         let ViewSubmitter { owner, now, text } = submitter;
         let FrameViews {
             draws,
-            live,
             display_scale,
         } = views;
-        // `live` arrives sorted; see `GpuViews::collect_live_targets`.
+        callbacks.collect_live_targets(&mut self.live);
+        // `live` is sorted; see `GpuViews::collect_live_targets`.
         debug_assert!(
             draws
                 .iter()
-                .all(|draw| live.binary_search(&draw.id).is_ok()),
+                .all(|draw| self.live.binary_search(&draw.id).is_ok()),
             "a painted GpuView target is missing from the frame's live roster",
         );
         for draw in draws {
@@ -81,7 +87,7 @@ impl GpuViewTargets {
             if target.painted == Some(stamp) {
                 continue;
             }
-            let mut paint = callbacks.view(draw.owner).paint.0.borrow_mut();
+            let mut paint = callbacks.view(draw.owner).paint.borrow_mut();
             if !target.initialized {
                 tracy::zone!("GpuView::init");
                 debug_marker::push(ctx.encoder, "palantir.gpu_view.init");
@@ -101,7 +107,7 @@ impl GpuViewTargets {
             paint.paint(&mut GpuFrameCtx {
                 gpu: ctx.gpu,
                 encoder: ctx.encoder,
-                target: &target.view,
+                target: &target.texture.view,
                 physical_size: draw.used,
                 physical_full_size: draw.full,
                 physical_offset: draw.offset,
@@ -113,12 +119,14 @@ impl GpuViewTargets {
             target.last_paint = Some(now);
             target.painted = Some(stamp);
         }
-        self.targets.retain(|id, target| {
-            view_target::keep_target(target.owner, owner, live.binary_search(id).is_ok())
-        });
+        // Keep an entry unless the submitting owner stopped recording it (`live` means still
+        // recorded, not painted this frame). Another owner's entries survive, so a closed owner's
+        // go through `retire_owner`, as it never has a submit to be absent from.
+        let Self { targets, live, .. } = self;
+        targets.retain(|id, target| target.owner != owner || live.binary_search(id).is_ok());
     }
 
-    /// Drop every target of a render stream that will never submit again, freeing textures and bind groups. [`keep_target`](crate::gpu::resource::gpu_view_targets::view_target::keep_target) preserves foreign owners' entries each submit, so a closed window's targets would otherwise outlive it.
+    /// Drop every target of a render stream that will never submit again, freeing textures and bind groups. A submit keeps every other owner's entries, so a closed window's targets would otherwise outlive it.
     #[cfg_attr(
         all(not(feature = "winit"), not(test)),
         expect(
@@ -142,28 +150,20 @@ impl GpuViewTargets {
             Entry::Occupied(entry) => {
                 let target = entry.into_mut();
                 target.owner = owner;
-                if target.size != size {
-                    let allocated = AllocatedTarget::new(gpu, &self.binding, size);
-                    target.view = allocated.view;
-                    target.bind_group = allocated.bind_group;
-                    target.size = size;
+                if target.texture.size != size {
+                    target.texture = AllocatedTarget::new(gpu, &self.binding, size);
                     // A new texture holds no paint, whatever stamp the last one was painted at.
                     target.painted = None;
                 }
                 target
             }
-            Entry::Vacant(entry) => {
-                let allocated = AllocatedTarget::new(gpu, &self.binding, size);
-                entry.insert(ViewTarget {
-                    view: allocated.view,
-                    bind_group: allocated.bind_group,
-                    size,
-                    owner,
-                    initialized: false,
-                    last_paint: None,
-                    painted: None,
-                })
-            }
+            Entry::Vacant(entry) => entry.insert(ViewTarget {
+                texture: AllocatedTarget::new(gpu, &self.binding, size),
+                owner,
+                initialized: false,
+                last_paint: None,
+                painted: None,
+            }),
         }
     }
 }

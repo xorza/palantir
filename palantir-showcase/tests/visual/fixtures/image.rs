@@ -5,65 +5,49 @@
     reason = "test fixtures cast non-negative sizes, coordinates, indices and color channels"
 )]
 
-use image::RgbaImage;
 use palantir::glam::{UVec2, Vec2};
-use palantir::widget::Shape;
 use palantir::{
-    Configure, Image, ImageDownsample, ImageFilter, ImageFit, ImageHandle, Panel, Rect, RgbaF32,
-    Sizing, SrgbaU8, Ui,
+    Fit, Image, ImageDownsample, ImageFilter, ImageHandle, ImagePaint, Rect, RgbaF32, SrgbaU8,
 };
 
 use crate::fixtures;
 use crate::visual_rig::VisualRig;
-use palantir::widget::ImagePaint;
 
-const RED: [u8; 4] = [230, 60, 60, 255];
-const BLUE: [u8; 4] = [60, 120, 230, 255];
-const GREEN: [u8; 4] = [60, 200, 90, 255];
+const RED: SrgbaU8 = SrgbaU8::rgb(230, 60, 60);
+const BLUE: SrgbaU8 = SrgbaU8::rgb(60, 120, 230);
+const GREEN: SrgbaU8 = SrgbaU8::rgb(60, 200, 90);
 
 /// Source: one lit texel per three, on black; white and black are linear 1.0 and 0.0, so expectations are plain fractions.
-const STAR: [u8; 4] = [255, 255, 255, 255];
-const SKY: [u8; 4] = [0, 0, 0, 255];
+const STAR: SrgbaU8 = SrgbaU8::rgb(255, 255, 255);
+const SKY: SrgbaU8 = SrgbaU8::rgb(0, 0, 0);
+
+/// An image of `size` holding `texels`, row by row.
+fn image_of(size: UVec2, texels: &[SrgbaU8]) -> Image {
+    let mut image = Image::blank(size);
+    image.texels_mut().copy_from_slice(texels);
+    image
+}
 
 /// `texels` as one row, loaded into `h`'s host.
-fn load(h: &VisualRig, texels: &[[u8; 4]]) -> ImageHandle {
-    let image = Image::from_srgba8(UVec2::new(texels.len() as u32, 1), texels.concat()).unwrap();
+fn load(h: &VisualRig, texels: &[SrgbaU8]) -> ImageHandle {
+    let image = image_of(UVec2::new(texels.len() as u32, 1), texels);
     h.host
         .ui()
         .load_image(&image)
         .expect("fixture image fits every supported GPU")
 }
 
-/// One frame on black, with `scene` on a full-surface canvas.
-fn render(h: &mut VisualRig, size: UVec2, mut scene: impl FnMut(&mut Ui)) -> RgbaImage {
-    h.size(size)
-        .clear(RgbaF32::BLACK)
-        .frame(|ui| fixtures::canvas(ui, &mut scene))
-        .image
-}
-
-/// `image` in a cell over `at`.
-fn cell(ui: &mut Ui, at: Rect, image: ImagePaint) {
-    Panel::zstack()
-        .id_salt(("cell", at.min.x as i32))
-        .at(at.min)
-        .size((Sizing::fixed(at.size.w), Sizing::fixed(at.size.h)))
-        .show(ui, |ui| {
-            ui.add_shape(Shape::rect(), image);
-        });
-}
-
 /// `handle` stretched over its cell.
 fn filled(handle: &ImageHandle) -> ImagePaint {
-    ImagePaint::new(handle.clone()).fit(ImageFit::Fill)
+    ImagePaint::new(handle.clone()).fit(Fit::Fill)
 }
 
 /// Each `(x, color, what)` probe on row `y` reads its color.
 #[track_caller]
-fn assert_probes(img: &RgbaImage, y: u32, probes: &[(u32, [u8; 4], &str)]) {
+fn assert_probes(img: &Image, y: u32, probes: &[(u32, SrgbaU8, &str)]) {
     for &(x, want, what) in probes {
         fixtures::assert_px(
-            img.get_pixel(x, y).0,
+            img.texel(UVec2::new(x, y)),
             want,
             format_args!("{what} at ({x}, {y})"),
         );
@@ -71,21 +55,23 @@ fn assert_probes(img: &RgbaImage, y: u32, probes: &[(u32, [u8; 4], &str)]) {
 }
 
 #[track_caller]
-fn assert_blend(pixel: [u8; 4], label: &str) {
-    for c in [0, 2] {
-        let (lo, hi) = (RED[c].min(BLUE[c]), RED[c].max(BLUE[c]));
+fn assert_blend(pixel: SrgbaU8, label: &str) {
+    for (name, got, red, blue) in [
+        ("red", pixel.r, RED.r, BLUE.r),
+        ("blue", pixel.b, RED.b, BLUE.b),
+    ] {
+        let (lo, hi) = (red.min(blue), red.max(blue));
         assert!(
-            pixel[c] > lo + 20 && pixel[c] < hi - 20,
-            "{label} channel {c} = {} must ramp between {lo} and {hi}",
-            pixel[c],
+            got > lo + 20 && got < hi - 20,
+            "{label} {name} = {got} must ramp between {lo} and {hi}",
         );
     }
 }
 
 #[test]
 fn image_updates_copy_pixels_and_repaint_every_clone() {
-    let mut h = VisualRig::new();
-    let mut image = Image::from_srgba8(UVec2::new(2, 2), [RED, BLUE, BLUE, RED].concat()).unwrap();
+    let mut h = VisualRig::new(UVec2::new(4, 2));
+    let mut image = image_of(UVec2::new(2, 2), &[RED, BLUE, BLUE, RED]);
     let handle = h.host.ui().load_image(&image).unwrap();
     let clone = handle.clone();
     drop(handle);
@@ -96,14 +82,14 @@ fn image_updates_copy_pixels_and_repaint_every_clone() {
         .min_filter(ImageFilter::Nearest)
         .mag_filter(ImageFilter::Nearest);
     for expected in [[RED, BLUE, BLUE, RED], [BLUE, BLUE, RED, RED]] {
-        let out = render(&mut h, UVec2::new(4, 2), |ui| {
+        let out = fixtures::render(h.clear(RgbaF32::BLACK), |ui| {
             for x in [0.0, 2.0] {
-                cell(ui, Rect::new(x, 0.0, 2.0, 2.0), nearest.clone());
+                fixtures::cell(ui, Rect::new(x, 0.0, 2.0, 2.0), nearest.clone());
             }
         });
-        for (x, y, pixel) in out.enumerate_pixels() {
+        for (UVec2 { x, y }, pixel) in out.enumerate_texels() {
             fixtures::assert_px(
-                pixel.0,
+                pixel,
                 expected[(y * 2 + x % 2) as usize],
                 format_args!("pixel ({x}, {y})"),
             );
@@ -125,16 +111,16 @@ fn image_updates_copy_pixels_and_repaint_every_clone() {
 #[test]
 fn minification_and_magnification_filters_are_independent() {
     use ImageFilter::{Linear, Nearest};
-    let mut h = VisualRig::new();
+    let mut h = VisualRig::new(UVec2::new(256, 64));
     let two = load(&h, &[RED, BLUE]);
-    let magnified = render(&mut h, UVec2::new(256, 64), |ui| {
+    let magnified = fixtures::render(h.clear(RgbaF32::BLACK), |ui| {
         let size = Vec2::new(128.0, 64.0);
-        cell(
+        fixtures::cell(
             ui,
             Rect::new(0.0, 0.0, size.x, size.y),
             filled(&two).min_filter(Nearest).mag_filter(Linear),
         );
-        cell(
+        fixtures::cell(
             ui,
             Rect::new(128.0, 0.0, size.x, size.y),
             filled(&two).min_filter(Linear).mag_filter(Nearest),
@@ -152,17 +138,20 @@ fn minification_and_magnification_filters_are_independent() {
             (128 + 64, BLUE, "nearest seam-right"),
         ],
     );
-    assert_blend(magnified.get_pixel(64, 32).0, "linear magnification seam");
+    assert_blend(
+        magnified.texel(UVec2::new(64, 32)),
+        "linear magnification seam",
+    );
 
     let four = load(&h, &[RED, BLUE, RED, BLUE]);
-    let minified = render(&mut h, UVec2::new(4, 16), |ui| {
+    let minified = fixtures::render(h.size(UVec2::new(4, 16)).clear(RgbaF32::BLACK), |ui| {
         let size = Vec2::new(2.0, 16.0);
-        cell(
+        fixtures::cell(
             ui,
             Rect::new(0.0, 0.0, size.x, size.y),
             filled(&four).min_filter(Nearest).mag_filter(Linear),
         );
-        cell(
+        fixtures::cell(
             ui,
             Rect::new(2.0, 0.0, size.x, size.y),
             filled(&four).min_filter(Linear).mag_filter(Nearest),
@@ -178,7 +167,7 @@ fn minification_and_magnification_filters_are_independent() {
     );
     for x in 2..4 {
         assert_blend(
-            minified.get_pixel(x, 8).0,
+            minified.texel(UVec2::new(x, 8)),
             &format!("linear minification pixel {x}"),
         );
     }
@@ -196,16 +185,16 @@ fn minification_and_magnification_filters_are_independent() {
 #[test]
 fn bilinear_both_nearest_and_tiled_sampling_paths_are_pinned() {
     use ImageFilter::{Linear, Nearest};
-    let mut h = VisualRig::new();
+    let mut h = VisualRig::new(UVec2::new(200, 32));
     let three = load(&h, &[RED, BLUE, RED]);
-    let strips = render(&mut h, UVec2::new(200, 32), |ui| {
+    let strips = fixtures::render(h.clear(RgbaF32::BLACK), |ui| {
         let size = Vec2::new(100.0, 32.0);
-        cell(
+        fixtures::cell(
             ui,
             Rect::new(0.0, 0.0, size.x, size.y),
             filled(&three).min_filter(Linear).mag_filter(Linear),
         );
-        cell(
+        fixtures::cell(
             ui,
             Rect::new(100.0, 0.0, size.x, size.y),
             filled(&three).min_filter(Nearest).mag_filter(Nearest),
@@ -223,33 +212,29 @@ fn bilinear_both_nearest_and_tiled_sampling_paths_are_pinned() {
             (100 + 67, RED, "both-nearest second seam-right"),
         ],
     );
-    assert_blend(strips.get_pixel(32, 16).0, "bilinear seam");
+    assert_blend(strips.texel(UVec2::new(32, 16)), "bilinear seam");
 
     let two = load(&h, &[RED, BLUE]);
-    let tile = ImageFit::Tile {
-        offset: Vec2::ZERO,
-        scale: Vec2::new(2.5, 1.0),
-    };
-    let tiled = render(&mut h, UVec2::new(200, 16), |ui| {
+    let tiled = fixtures::render(h.size(UVec2::new(200, 16)).clear(RgbaF32::BLACK), |ui| {
         let size = Vec2::new(100.0, 16.0);
-        cell(
+        fixtures::cell(
             ui,
             Rect::new(0.0, 0.0, size.x, size.y),
             ImagePaint::new(two.clone())
-                .fit(tile)
+                .tile(Vec2::ZERO, Vec2::new(2.5, 1.0))
                 .min_filter(Linear)
                 .mag_filter(Linear),
         );
-        cell(
+        fixtures::cell(
             ui,
             Rect::new(100.0, 0.0, size.x, size.y),
             ImagePaint::new(two.clone())
-                .fit(tile)
+                .tile(Vec2::ZERO, Vec2::new(2.5, 1.0))
                 .min_filter(Nearest)
                 .mag_filter(Nearest),
         );
     });
-    let tpx = |x: u32| tiled.get_pixel(x, 8).0;
+    let tpx = |x: u32| tiled.texel(UVec2::new(x, 8));
     // Bilinear over a repeat blends across every seam, edges included: at 20 px per texel, x = 0 and x = 39 read a blend, not the pure texel a clamp would give.
     assert_probes(
         &tiled,
@@ -257,12 +242,12 @@ fn bilinear_both_nearest_and_tiled_sampling_paths_are_pinned() {
         &[
             (
                 0,
-                [176, 94, 170, 255],
+                SrgbaU8::rgb(176, 94, 170),
                 "tiled bilinear opens on the seam blend",
             ),
             (
                 39,
-                [170, 97, 176, 255],
+                SrgbaU8::rgb(170, 97, 176),
                 "tiled bilinear closes on the seam blend",
             ),
             (40, tpx(0), "the next repeat opens the same way"),
@@ -297,31 +282,31 @@ fn downsample_modes_recover_a_texel_the_single_tap_misses() {
         (ImageDownsample::Peak, 225, "Peak"),
     ];
 
-    let mut h = VisualRig::new();
+    let mut h = VisualRig::new(UVec2::new(24, 16));
     let source = load(&h, &[[STAR, SKY, SKY]; 8].concat());
-    let out = render(&mut h, UVec2::new(24, 16), |ui| {
+    let out = fixtures::render(h.clear(RgbaF32::BLACK), |ui| {
         for (i, (mode, _, _)) in cases.iter().enumerate() {
             let image = ImagePaint::new(source.clone())
-                .fit(ImageFit::Fill)
+                .fit(Fit::Fill)
                 .downsample(*mode);
-            cell(ui, Rect::new(i as f32 * CELL.x, 0.0, CELL.x, CELL.y), image);
+            fixtures::cell(ui, Rect::new(i as f32 * CELL.x, 0.0, CELL.x, CELL.y), image);
         }
     });
 
     let mut measured = Vec::with_capacity(cases.len());
     for (i, (_, expected, label)) in cases.iter().enumerate() {
-        let pixel = out.get_pixel(i as u32 * CELL.x as u32 + 4, 8).0;
+        let pixel = out.texel(UVec2::new(i as u32 * CELL.x as u32 + 4, 8));
         fixtures::assert_px(
             pixel,
-            [*expected, *expected, *expected, 255],
+            SrgbaU8::rgb(*expected, *expected, *expected),
             format_args!("{label} must read {expected} gray, got {pixel:?}"),
         );
         assert_eq!(
-            [pixel[0], pixel[1], pixel[2]],
-            [pixel[0]; 3],
+            [pixel.g, pixel.b],
+            [pixel.r; 2],
             "{label} must stay neutral — a white star cannot gain a hue",
         );
-        measured.push(pixel[0]);
+        measured.push(pixel.r);
     }
 
     assert!(
@@ -338,10 +323,10 @@ fn downsample_modes_recover_a_texel_the_single_tap_misses() {
 #[test]
 fn downsample_combines_taps_in_premultiplied_space() {
     const CELL: Vec2 = Vec2::new(8.0, 16.0);
-    const CLEAR: [u8; 4] = [0, 0, 0, 0];
-    const DIM_WHITE: [u8; 4] = [255, 255, 255, 128];
-    const FAINT_WHITE: [u8; 4] = [255, 255, 255, 26];
-    const SOLID_GRAY: [u8; 4] = [128, 128, 128, 255];
+    const CLEAR: SrgbaU8 = SrgbaU8::new(0, 0, 0, 0);
+    const DIM_WHITE: SrgbaU8 = SrgbaU8::new(255, 255, 255, 128);
+    const FAINT_WHITE: SrgbaU8 = SrgbaU8::new(255, 255, 255, 26);
+    const SOLID_GRAY: SrgbaU8 = SrgbaU8::rgb(128, 128, 128);
 
     let cases = [
         (
@@ -358,22 +343,22 @@ fn downsample_combines_taps_in_premultiplied_space() {
         ),
     ];
 
-    let mut h = VisualRig::new();
+    let mut h = VisualRig::new(UVec2::new(16, 16));
     let sources = cases.map(|(triple, _, _, _)| load(&h, &[triple; 8].concat()));
-    let out = render(&mut h, UVec2::new(16, 16), |ui| {
+    let out = fixtures::render(h.clear(RgbaF32::BLACK), |ui| {
         for (i, (_, mode, _, _)) in cases.iter().enumerate() {
             let image = ImagePaint::new(sources[i].clone())
-                .fit(ImageFit::Fill)
+                .fit(Fit::Fill)
                 .downsample(*mode);
-            cell(ui, Rect::new(i as f32 * CELL.x, 0.0, CELL.x, CELL.y), image);
+            fixtures::cell(ui, Rect::new(i as f32 * CELL.x, 0.0, CELL.x, CELL.y), image);
         }
     });
 
     for (i, (_, _, expected, label)) in cases.iter().enumerate() {
-        let pixel = out.get_pixel(i as u32 * CELL.x as u32 + 4, 8).0;
+        let pixel = out.texel(UVec2::new(i as u32 * CELL.x as u32 + 4, 8));
         fixtures::assert_px(
             pixel,
-            [*expected, *expected, *expected, 255],
+            SrgbaU8::rgb(*expected, *expected, *expected),
             format_args!("{label} must read {expected} gray, got {pixel:?}"),
         );
     }
@@ -384,23 +369,23 @@ fn downsample_combines_taps_in_premultiplied_space() {
 /// `RED CLEAR` across 16 px; pixel 7 samples uv `7.5/16 = 0.46875`, `t = 0.4375` between centers 0.25 and 0.75: `0.5625` red at `0.5625` coverage, `0.5625` linear over black, **199** sRGB. Straight color multiplies twice: 153.
 #[test]
 fn a_magnified_transparent_edge_keeps_its_color() {
-    const CLEAR: [u8; 4] = [0, 0, 0, 0];
-    const PURE_RED: [u8; 4] = [255, 0, 0, 255];
+    const CLEAR: SrgbaU8 = SrgbaU8::new(0, 0, 0, 0);
+    const PURE_RED: SrgbaU8 = SrgbaU8::rgb(255, 0, 0);
 
-    let mut h = VisualRig::new();
+    let mut h = VisualRig::new(UVec2::new(16, 16));
     let source = load(&h, &[PURE_RED, CLEAR]);
-    let out = render(&mut h, UVec2::new(16, 16), |ui| {
-        cell(
+    let out = fixtures::render(h.size(UVec2::new(16, 16)).clear(RgbaF32::BLACK), |ui| {
+        fixtures::cell(
             ui,
             Rect::new(0.0, 0.0, 16.0, 16.0),
-            ImagePaint::new(source.clone()).fit(ImageFit::Fill),
+            ImagePaint::new(source.clone()).fit(Fit::Fill),
         );
     });
 
-    let pixel = out.get_pixel(7, 8).0;
+    let pixel = out.texel(UVec2::new(7, 8));
     fixtures::assert_px(
         pixel,
-        [199, 0, 0, 255],
+        SrgbaU8::rgb(199, 0, 0),
         format_args!("half-covered red must stay red at half coverage, got {pixel:?}"),
     );
 }
@@ -414,23 +399,20 @@ fn a_magnified_transparent_edge_keeps_its_color() {
 /// - Clamped: `STAR STAR SKY SKY`, mean `0.5`, 188; 51 steps apart.
 #[test]
 fn downsample_taps_wrap_with_the_tile_instead_of_clamping() {
-    let mut h = VisualRig::new();
+    let mut h = VisualRig::new(UVec2::new(8, 16));
     let source = load(&h, &[STAR, SKY, SKY, SKY]);
-    let out = render(&mut h, UVec2::new(8, 16), |ui| {
+    let out = fixtures::render(h.clear(RgbaF32::BLACK), |ui| {
         let image = ImagePaint::new(source.clone())
-            .fit(ImageFit::Tile {
-                offset: Vec2::ZERO,
-                scale: Vec2::new(24.0, 1.0),
-            })
+            .tile(Vec2::ZERO, Vec2::new(24.0, 1.0))
             .downsample(ImageDownsample::Mean);
-        cell(ui, Rect::new(0.0, 0.0, 8.0, 16.0), image);
+        fixtures::cell(ui, Rect::new(0.0, 0.0, 8.0, 16.0), image);
     });
 
     for x in 0..8 {
-        let pixel = out.get_pixel(x, 8).0;
+        let pixel = out.texel(UVec2::new(x, 8));
         fixtures::assert_px(
             pixel,
-            [137, 137, 137, 255],
+            SrgbaU8::rgb(137, 137, 137),
             format_args!("tiled tap column {x} must read 137 gray, got {pixel:?}"),
         );
     }
@@ -446,17 +428,17 @@ fn downsample_taps_wrap_with_the_tile_instead_of_clamping() {
 #[test]
 fn adjacent_same_texture_runs_composite_identically_to_per_draw() {
     const PATTERN: [usize; 6] = [0, 0, 1, 0, 2, 2];
-    const SOURCES: [[u8; 4]; 3] = [RED, BLUE, GREEN];
+    const SOURCES: [SrgbaU8; 3] = [RED, BLUE, GREEN];
     const CELL: f32 = 32.0;
 
-    let mut h = VisualRig::new();
+    let mut h = VisualRig::new(UVec2::new(192, 32));
     let handles = SOURCES.map(|texel| load(&h, &[texel]));
-    let out = render(&mut h, UVec2::new(192, 32), |ui| {
+    let out = fixtures::render(h.clear(RgbaF32::BLACK), |ui| {
         for (cell_idx, &source) in PATTERN.iter().enumerate() {
             let image = filled(&handles[source])
                 .min_filter(ImageFilter::Linear)
                 .mag_filter(ImageFilter::Linear);
-            cell(
+            fixtures::cell(
                 ui,
                 Rect::new(cell_idx as f32 * CELL, 0.0, CELL, CELL),
                 image,
@@ -467,7 +449,7 @@ fn adjacent_same_texture_runs_composite_identically_to_per_draw() {
     for (cell, &source) in PATTERN.iter().enumerate() {
         let expected = SOURCES[source];
         let x = cell as u32 * CELL as u32 + CELL as u32 / 2;
-        let pixel = out.get_pixel(x, 16).0;
+        let pixel = out.texel(UVec2::new(x, 16));
         fixtures::assert_px(
             pixel,
             expected,

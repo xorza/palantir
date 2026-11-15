@@ -7,12 +7,10 @@
 pub(crate) mod gradient;
 
 use crate::primitives::math::animatable::Animatable;
-use crate::primitives::math::domain::{self, vec2};
+use crate::primitives::math::domain;
 use crate::primitives::math::lerp::Lerp;
 use crate::primitives::math::nan::NanCheck;
-use crate::primitives::paint::brush::gradient::conic_geometry::{ConicGeometry, ConicGradient};
-use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
-use crate::primitives::paint::brush::gradient::radial_geometry::{RadialGeometry, RadialGradient};
+use crate::primitives::paint::brush::gradient::Gradient;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 
@@ -24,12 +22,8 @@ use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 pub enum Brush {
     /// One color.
     Solid(RgbaF32),
-    /// Linear gradient.
-    Linear(LinearGradient),
-    /// Radial gradient.
-    Radial(RadialGradient),
-    /// Conic gradient.
-    Conic(ConicGradient),
+    /// A gradient of any kind.
+    Gradient(Gradient),
 }
 
 impl Brush {
@@ -38,24 +32,12 @@ impl Brush {
     pub(crate) const fn is_valid(&self) -> bool {
         match self {
             Self::Solid(c) => domain::is_color(*c),
-            Self::Linear(g) => domain::is_angle(g.geometry.angle),
-            Self::Radial(g) => {
-                let RadialGeometry { center, radius } = g.geometry;
-                domain::are_lanes([center.x, center.y])
-                    & domain::are_length_lanes([radius.x, radius.y])
-            }
-            Self::Conic(g) => {
-                let ConicGeometry {
-                    center,
-                    start_angle,
-                } = g.geometry;
-                domain::are_lanes([center.x, center.y]) & domain::is_angle(start_angle)
-            }
+            Self::Gradient(g) => g.geometry.is_valid(),
         }
     }
 
-    /// Panics unless the color or gradient geometry holds its kinds ([`domain`]); stops are checked when made.
-    /// A gradient's center and radius pack into f16 lanes, so each is a [lane](domain::lane) too.
+    /// Panics unless the color or gradient geometry holds its kinds ([`domain`]); stops are
+    /// checked when made.
     #[inline]
     #[track_caller]
     pub(crate) const fn validate(&self) {
@@ -63,17 +45,7 @@ impl Brush {
             Self::Solid(c) => {
                 let _ = domain::color(*c);
             }
-            Self::Linear(g) => {
-                domain::angle(g.geometry.angle);
-            }
-            Self::Radial(g) => {
-                vec2::lane(vec2::offset(g.geometry.center));
-                vec2::lane(vec2::length(g.geometry.radius));
-            }
-            Self::Conic(g) => {
-                vec2::lane(vec2::offset(g.geometry.center));
-                domain::angle(g.geometry.start_angle);
-            }
+            Self::Gradient(g) => g.geometry.validate(),
         }
     }
 
@@ -85,9 +57,7 @@ impl Brush {
     pub const fn is_noop(&self) -> bool {
         match self {
             Self::Solid(c) => c.is_noop(),
-            Self::Linear(g) => g.is_noop(),
-            Self::Radial(g) => g.is_noop(),
-            Self::Conic(g) => g.is_noop(),
+            Self::Gradient(g) => g.is_noop(),
         }
     }
 
@@ -96,7 +66,7 @@ impl Brush {
     pub const fn as_solid(&self) -> Option<RgbaF32> {
         match self {
             Self::Solid(c) => Some(*c),
-            Self::Linear(_) | Self::Radial(_) | Self::Conic(_) => None,
+            Self::Gradient(_) => None,
         }
     }
 }
@@ -122,24 +92,10 @@ impl From<SrgbaU8> for Brush {
     }
 }
 
-impl From<LinearGradient> for Brush {
+impl From<Gradient> for Brush {
     #[inline]
-    fn from(gradient: LinearGradient) -> Self {
-        Self::Linear(gradient)
-    }
-}
-
-impl From<RadialGradient> for Brush {
-    #[inline]
-    fn from(gradient: RadialGradient) -> Self {
-        Self::Radial(gradient)
-    }
-}
-
-impl From<ConicGradient> for Brush {
-    #[inline]
-    fn from(gradient: ConicGradient) -> Self {
-        Self::Conic(gradient)
+    fn from(gradient: Gradient) -> Self {
+        Self::Gradient(gradient)
     }
 }
 
@@ -181,7 +137,7 @@ impl Animatable for Brush {
     fn scale(&self, k: f32) -> Self {
         match self {
             Self::Solid(c) => Self::Solid(c.scale(k)),
-            Self::Linear(_) | Self::Radial(_) | Self::Conic(_) => Self::zero(),
+            Self::Gradient(_) => Self::zero(),
         }
     }
 
@@ -189,7 +145,7 @@ impl Animatable for Brush {
     fn magnitude_squared(&self) -> f32 {
         match self {
             Self::Solid(c) => c.magnitude_squared(),
-            Self::Linear(_) | Self::Radial(_) | Self::Conic(_) => 0.0,
+            Self::Gradient(_) => 0.0,
         }
     }
 
@@ -197,7 +153,7 @@ impl Animatable for Brush {
     fn settle_distance_squared(&self) -> f32 {
         match self {
             Self::Solid(c) => c.settle_distance_squared(),
-            Self::Linear(_) | Self::Radial(_) | Self::Conic(_) => 0.0,
+            Self::Gradient(_) => 0.0,
         }
     }
 
@@ -210,7 +166,7 @@ impl Animatable for Brush {
     fn to_motion(&self) -> Self {
         match self {
             Self::Solid(c) => Self::Solid(c.to_motion()),
-            gradient @ (Self::Linear(_) | Self::Radial(_) | Self::Conic(_)) => gradient.clone(),
+            gradient @ Self::Gradient(_) => gradient.clone(),
         }
     }
 
@@ -218,7 +174,7 @@ impl Animatable for Brush {
     fn from_motion(motion: Self) -> Self {
         match motion {
             Self::Solid(c) => Self::Solid(RgbaF32::from_motion(c)),
-            gradient @ (Self::Linear(_) | Self::Radial(_) | Self::Conic(_)) => gradient,
+            gradient @ Self::Gradient(_) => gradient,
         }
     }
 
@@ -238,9 +194,7 @@ impl NanCheck for Brush {
     fn has_nan(&self) -> bool {
         match self {
             Self::Solid(color) => color.has_nan(),
-            Self::Linear(gradient) => gradient.has_nan(),
-            Self::Radial(gradient) => gradient.has_nan(),
-            Self::Conic(gradient) => gradient.has_nan(),
+            Self::Gradient(gradient) => gradient.has_nan(),
         }
     }
 }

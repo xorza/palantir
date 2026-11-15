@@ -2,12 +2,13 @@
 //!
 //! Buffers live in one [`Page`] row lent by `Ui::with_state`, so they survive page switches.
 
+use crate::scaffold;
 use crate::scaffold::api;
-use crate::support;
-use crate::support::{Kit, Section};
+use crate::scaffold::kit::Kit;
+use crate::scaffold::section::Section;
 use palantir::{
-    Align, Button, ComboBox, Configure, DragValue, EditEnd, EditableLabel, HAlign, Sizing, Span,
-    Switch, Text, TextEdit, TextEditResponse, Ui, VAlign, WidgetId, fmt,
+    Align, Button, ComboBox, Configure, DragValue, EditEnd, EditableLabel, HAlign, SizeSpec,
+    Sizing, Span, Switch, Text, TextEdit, TextEditResponse, Ui, VAlign, WidgetId, fmt,
 };
 
 #[derive(Debug)]
@@ -117,26 +118,26 @@ fn page(ui: &mut Ui, k: Kit, s: &mut Page) {
     Section::new("Single line")
         .apis(&[api!(TextEdit::new), api!(Ui::clipboard)])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "Two fields over two Strings, and the app's clipboard between them: copy the \
                  first, paste into the second.",
             );
-            support::well(ui, k, |ui| {
-                support::row(ui, |ui| {
+            scaffold::well(ui, k, |ui| {
+                scaffold::row(ui, |ui| {
                     for (buf, hint) in [(&mut s.a, "first field"), (&mut s.b, "second field")] {
                         TextEdit::new(buf)
                             .id_salt(hint)
                             .placeholder(hint)
-                            .size((Sizing::FILL, Sizing::HUG))
+                            .size(SizeSpec::FILL_W)
                             .max_size((320.0, f32::INFINITY))
                             .show(ui);
                     }
                 });
-                support::row(ui, |ui| {
+                scaffold::row(ui, |ui| {
                     if Button::new().label("Copy the first").show(ui).clicked() {
-                        ui.clipboard().set_text(&s.a).ok();
+                        ui.clipboard().set_text(&s.a);
                     }
                     if Button::new()
                         .label("Paste into the second")
@@ -148,23 +149,23 @@ fn page(ui: &mut Ui, k: Kit, s: &mut Page) {
                     }
                 });
                 let a = fmt!(ui, "{:?} ({} bytes)", s.a, s.a.len());
-                support::readout(ui, k, "first", a);
+                scaffold::readout(ui, k, "first", a);
                 let b = fmt!(ui, "{:?} ({} bytes)", s.b, s.b.len());
-                support::readout(ui, k, "second", b);
+                scaffold::readout(ui, k, "second", b);
             });
         });
 
     Section::new("Rename in place")
         .apis(&[api!(type EditableLabel), api!(EditableLabel::start_editing)])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "A label that turns into a field: double-click it, or press Rename. Enter keeps \
                  the new name, Escape the old one.",
             );
-            support::well(ui, k, |ui| {
-                support::row(ui, |ui| {
+            scaffold::well(ui, k, |ui| {
+                scaffold::row(ui, |ui| {
                     let label = WidgetId::from_hash("showcase::text_input::rename");
                     let renamed = EditableLabel::new(s.layer.as_str())
                         .id(label)
@@ -184,19 +185,19 @@ fn page(ui: &mut Ui, k: Kit, s: &mut Page) {
     Section::new("Edit events")
         .apis(&[api!(TextEdit::show)])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "The edges one focus session reports. Enter submits and commits, Escape \
                  cancels and blurs without a commit, and a blur after an edit commits.",
             );
-            support::row(ui, |ui| {
+            scaffold::row(ui, |ui| {
                 let r = TextEdit::new(&mut s.events_field)
                     .size((Sizing::fixed(240.0), Sizing::HUG))
                     .show(ui);
                 s.events.record(&r);
             });
-            support::well(ui, k, |ui| {
+            scaffold::well(ui, k, |ui| {
                 let mut any = false;
                 for (seq, edge) in s.events.iter() {
                     any = true;
@@ -217,7 +218,7 @@ fn page(ui: &mut Ui, k: Kit, s: &mut Page) {
     Section::new("Multi-line")
         .apis(&[api!(TextEdit::multiline)])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "Enter inserts a newline, ↑ and ↓ move by visual line, and a selection spans \
@@ -231,16 +232,18 @@ fn page(ui: &mut Ui, k: Kit, s: &mut Page) {
         });
 
     Section::new("Alignment")
-        .apis(&[api!(TextEdit::text_align)])
+        .apis(&[api!(
+            TextEdit::text_align as fn(TextEdit<'static>, Align) -> TextEdit<'static>
+        )])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "The text, and the caret with it, sit where text_align puts them in an editor \
                  taller and wider than its line.",
             );
-            support::well(ui, k, |ui| {
-                support::row(ui, |ui| {
+            scaffold::well(ui, k, |ui| {
+                scaffold::row(ui, |ui| {
                     for (i, (buf, h)) in s
                         .aligned
                         .iter_mut()
@@ -249,7 +252,7 @@ fn page(ui: &mut Ui, k: Kit, s: &mut Page) {
                     {
                         TextEdit::new(buf)
                             .id_salt(i)
-                            .text_align(Align::new(h, VAlign::Center))
+                            .text_align((h, VAlign::Center))
                             .size((Sizing::fill(1.0), Sizing::fixed(56.0)))
                             .show(ui);
                     }
@@ -273,7 +276,7 @@ struct LiveField {
     text: String,
     max_chars: i64,
     multiline: bool,
-    align: &'static (&'static str, HAlign),
+    align: (&'static str, HAlign),
     select_all: bool,
 }
 
@@ -283,7 +286,7 @@ impl Default for LiveField {
             text: String::from("Edit me"),
             max_chars: 40,
             multiline: false,
-            align: &ALIGNS[0],
+            align: ALIGNS[0],
             select_all: false,
         }
     }
@@ -299,25 +302,25 @@ fn live(ui: &mut Ui, k: Kit, l: &mut LiveField) {
             api!(TextEdit::select_all_on_focus),
         ])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "Cap the length, let Enter break lines, align the text, and pick what a click into \
                  the field selects; the field takes each setting on the next frame.",
             );
-            support::well(ui, k, |ui| {
-                support::row(ui, |ui| {
+            scaffold::well(ui, k, |ui| {
+                scaffold::row(ui, |ui| {
                     Text::new("max chars").style(&k.t.caption()).show(ui);
                     DragValue::new(&mut l.max_chars)
                         .range(1.0..=80.0)
                         .size((Sizing::fixed(64.0), Sizing::HUG))
                         .show(ui);
                     Text::new("align").style(&k.t.caption()).show(ui);
-                    ComboBox::labeled(&mut l.align, &ALIGNS, |align| align.0)
+                    ComboBox::labeled(&mut l.align, ALIGNS, |align| align.0)
                         .size((Sizing::fixed(100.0), Sizing::HUG))
                         .show(ui);
                 });
-                support::row(ui, |ui| {
+                scaffold::row(ui, |ui| {
                     Switch::new(&mut l.multiline).label("Multi-line").show(ui);
                     Switch::new(&mut l.select_all)
                         .label("Select all on focus")
@@ -333,13 +336,13 @@ fn live(ui: &mut Ui, k: Kit, l: &mut LiveField) {
                 TextEdit::new(&mut l.text)
                     .max_chars(max)
                     .multiline(l.multiline)
-                    .text_align(Align::new(align, VAlign::Top))
+                    .text_align((align, VAlign::Top))
                     .select_all_on_focus(l.select_all)
                     .size((Sizing::FILL, height))
                     .max_size((420.0, f32::INFINITY))
                     .show(ui);
                 let count = fmt!(ui, "{} of {max}", l.text.chars().count());
-                support::readout(ui, k, "characters", count);
+                scaffold::readout(ui, k, "characters", count);
             });
         });
 }
@@ -348,7 +351,7 @@ fn ime(ui: &mut Ui, k: Kit, s: &mut Page) {
     Section::new("IME composition")
         .apis(&[api!(Ui::request_ime_area), api!(Ui::ime_preedit)])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "An input method composes in place: the text so far is drawn underlined at \
@@ -359,7 +362,7 @@ fn ime(ui: &mut Ui, k: Kit, s: &mut Page) {
             );
             TextEdit::new(&mut s.ime)
                 .placeholder("type with an input method")
-                .size((Sizing::FILL, Sizing::HUG))
+                .size(SizeSpec::FILL_W)
                 .max_size((420.0, f32::INFINITY))
                 .show(ui);
             s.preedit.clear();
@@ -368,31 +371,31 @@ fn ime(ui: &mut Ui, k: Kit, s: &mut Page) {
                 s.preedit.push_str(p.text);
                 s.preedit_cursor = p.cursor;
             }
-            support::well(ui, k, |ui| {
+            scaffold::well(ui, k, |ui| {
                 let preedit = if s.preedit.is_empty() {
                     ui.intern("none")
                 } else {
                     fmt!(ui, "{:?}", s.preedit)
                 };
-                support::readout(ui, k, "preedit", preedit);
+                scaffold::readout(ui, k, "preedit", preedit);
                 let cursor = match s.preedit_cursor {
                     Some(cursor) => fmt!(ui, "bytes {:?}", cursor.range()),
                     None => ui.intern("none"),
                 };
-                support::readout(ui, k, "cursor", cursor);
+                scaffold::readout(ui, k, "cursor", cursor);
                 let bound = fmt!(ui, "{:?}", s.ime);
-                support::readout(ui, k, "bound value", bound);
+                scaffold::readout(ui, k, "bound value", bound);
             });
         });
 
     Section::new("Plain keys with an input method on").show(ui, k, |ui| {
-        support::note(
+        scaffold::note(
             ui,
             k,
             "On Windows and X11 an input method can pass a plain key through as a \
                  commit and as a key press both. Each key must type one character.",
         );
-        support::row(ui, |ui| {
+        scaffold::row(ui, |ui| {
             let r = TextEdit::new(&mut s.plain)
                 .placeholder("type abc")
                 .size((Sizing::fixed(240.0), Sizing::HUG))
@@ -407,12 +410,12 @@ fn ime(ui: &mut Ui, k: Kit, s: &mut Page) {
             s.plain.chars().count(),
             s.plain_edits
         );
-        support::readout(ui, k, "typed", count);
+        scaffold::readout(ui, k, "typed", count);
     });
 
     // An input method's composition and its candidate window need a real one, which no harness
     // drives.
-    support::checklist(
+    scaffold::checklist(
         ui,
         &[
             "While composing, the preedit shows underlined at the caret",

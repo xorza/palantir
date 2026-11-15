@@ -1,16 +1,11 @@
 //! Backdrops over the showcase's first page add no allocation to a steady frame.
 
-use palantir::bench::scene::{BENCH_DPR, BENCH_SURFACE};
-use palantir::widget::Shape;
-use palantir::{App, Depth, Harness};
 use palantir::{
-    Configure, FramePaint, Lens, Material, MaterialPaint, Panel, Rect, RgbaF32, Sizing, Ui,
+    App, Configure, Lens, Material, MaterialPaint, Paint, Panel, Rect, RgbaF32, Shape, SizeSpec, Ui,
 };
 use palantir_showcase::{MAIN_WINDOW, Shell};
 
-use crate::gates::{MEASURE_FRAMES, WARMUP_FRAMES};
-use crate::harness::Audit;
-use palantir::Paint;
+use crate::gates::audit_compose_frames;
 
 /// The look of the backdrops.
 #[derive(Clone, Copy, Debug)]
@@ -25,12 +20,12 @@ enum Look {
 fn backdrops(ui: &mut Ui, shell: &mut Shell, look: Look, under: RgbaF32) {
     Panel::zstack()
         .id_salt("alloc-backdrop")
-        .size((Sizing::FILL, Sizing::FILL))
+        .size(SizeSpec::FILL)
         .show(ui, |ui| {
             shell.record(MAIN_WINDOW, ui);
             Panel::canvas()
                 .id_salt("alloc-backdrops")
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| {
                     ui.add_shape(Shape::rect().at(Rect::new(300.0, 20.0, 12.0, 12.0)), under);
                     for rect in [
@@ -60,26 +55,16 @@ fn backdrop_cpu_frames_alloc_free() {
     for look in [Look::Plain, Look::Frosted, Look::Glass] {
         for flips in [false, true] {
             let mut shell = Shell::open(0);
-            let mut frontend = Harness::builder(BENCH_SURFACE)
-                .system_scale(BENCH_DPR)
-                .depth(Depth::Compose)
-                .build();
             let mut odd = false;
-            Audit::new()
-                .warmup(WARMUP_FRAMES)
-                .frames(MEASURE_FRAMES)
-                .run_frames(|| {
-                    odd = flips && !odd;
-                    let under = if odd {
-                        RgbaF32::srgb(1.0, 0.3, 0.1)
-                    } else {
-                        RgbaF32::srgb(0.1, 0.3, 1.0)
-                    };
-                    let report = frontend.frame(|ui| backdrops(ui, &mut shell, look, under));
-                    if report.paint() == FramePaint::Skip {
-                        frontend.paint_full();
-                    }
-                });
+            audit_compose_frames(|frontend| {
+                odd = flips && !odd;
+                let under = if odd {
+                    RgbaF32::srgb(1.0, 0.3, 0.1)
+                } else {
+                    RgbaF32::srgb(0.1, 0.3, 1.0)
+                };
+                frontend.frame(|ui| backdrops(ui, &mut shell, look, under))
+            });
         }
     }
 }

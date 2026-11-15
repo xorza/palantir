@@ -264,30 +264,39 @@ pub(super) mod internals {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-    use std::thread;
-    use std::time::{Duration, Instant};
+    use std::sync::mpsc::{self, Sender, TryRecvError};
+    use std::time::Duration;
 
     use crate::host::winit::platform::MemoryPressureWatch;
 
+    /// Sends once dropped, so a test waits on its drop rather than polling for it.
+    #[derive(Debug)]
+    struct SignalsDrop(Sender<()>);
+
+    impl Drop for SignalsDrop {
+        fn drop(&mut self) {
+            self.0.send(()).ok();
+        }
+    }
+
     /// A watch makes its source and, dropped, cancels it: the cancel handler frees the context, so
-    /// the closure's share of what it holds goes back, within a second of libdispatch's queue.
+    /// what the closure holds drops, within a second of libdispatch's queue.
     #[test]
     fn a_dropped_watch_frees_its_handler() {
-        let held = Arc::new(());
-        let shared = Arc::clone(&held);
+        let (dropped, freed) = mpsc::channel();
+        let held = SignalsDrop(dropped);
         let watch = MemoryPressureWatch::follow(move || {
-            let _ = &shared;
+            let _ = &held;
         });
-        assert_eq!(Arc::strong_count(&held), 2);
-        drop(watch);
-        let deadline = Instant::now() + Duration::from_secs(1);
-        while Arc::strong_count(&held) > 1 && Instant::now() < deadline {
-            thread::sleep(Duration::from_millis(1));
-        }
         assert_eq!(
-            Arc::strong_count(&held),
-            1,
+            freed.try_recv(),
+            Err(TryRecvError::Empty),
+            "the watch holds it"
+        );
+        drop(watch);
+        assert_eq!(
+            freed.recv_timeout(Duration::from_secs(1)),
+            Ok(()),
             "the cancel handler freed the context"
         );
     }

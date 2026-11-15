@@ -20,7 +20,7 @@ impl fmt::Debug for AuthoredGaps {
 }
 
 impl AuthoredGaps {
-    /// The bit pattern no lane otherwise holds: an f16 quiet NaN. A gap is finite and non-negative ([`domain::is_gap`]), so NaN can carry "untouched" without widening the pair.
+    /// The bit pattern no lane otherwise holds: an f16 quiet NaN. A gap is finite and non-negative ([`domain::is_length_lane`]), so NaN can carry "untouched" without widening the pair.
     const UNSET: u16 = 0x7E00;
 
     /// A pair with neither lane set; every `Node` starts here.
@@ -51,7 +51,7 @@ impl AuthoredGaps {
     #[inline]
     #[track_caller]
     pub(crate) fn set_gap(&mut self, v: f32) {
-        self.0[0] = f16::from_f32(domain::gap(v)).to_bits();
+        self.0[0] = f16::from_f32(domain::length_lane(v)).to_bits();
     }
 
     /// # Panics
@@ -60,7 +60,7 @@ impl AuthoredGaps {
     #[inline]
     #[track_caller]
     pub(crate) fn set_line_gap(&mut self, v: f32) {
-        self.0[1] = f16::from_f32(domain::gap(v)).to_bits();
+        self.0[1] = f16::from_f32(domain::length_lane(v)).to_bits();
     }
 
     /// Through `to_f32_const`, the same conversion `to_f32` falls back to without F16C.

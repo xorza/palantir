@@ -9,7 +9,7 @@ use crate::primitives::input::keyboard::modifiers::Modifiers;
 use crate::primitives::input::sense::Sense;
 use crate::primitives::input::shortcut::Shortcut;
 use crate::primitives::layout::anchor::Anchor;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::scene::layer::Layer;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
@@ -20,7 +20,7 @@ use crate::widgets::menu::menu_separator::MenuSeparator;
 use crate::widgets::menu::tests::support::{SURFACE, menu_body, menu_rows, trigger_id};
 use crate::widgets::panel::Panel;
 use crate::widgets::popup::Popup;
-use crate::widgets::popup::trigger_state::TriggerState;
+use crate::widgets::popup::trigger_state::TriggerRow;
 use glam::UVec2;
 use glam::Vec2;
 
@@ -30,7 +30,7 @@ fn close_before_open_does_not_create_state() {
     Menu::close(h.ui_mut(), trigger_id());
     assert!(
         h.ui()
-            .state::<TriggerState<Menu<'static>>>(trigger_id())
+            .state::<TriggerRow<Menu<'static>>>(trigger_id())
             .is_none()
     );
 }
@@ -76,7 +76,7 @@ fn item_click_dismisses_and_reports_clicked() {
     h.frame(|ui| {
         build(ui);
     });
-    Menu::open(h.ui_mut(), trigger_id(), Vec2::new(60.0, 60.0));
+    Menu::open_at(h.ui_mut(), trigger_id(), Vec2::new(60.0, 60.0));
     h.frame(|ui| {
         build(ui);
     });
@@ -99,7 +99,7 @@ fn shortcut_press_fires_item_and_dismisses_unless_only_hinted() {
         h.frame(|ui| {
             build_copy(ui, hint);
         });
-        Menu::open(h.ui_mut(), trigger_id(), Vec2::new(60.0, 60.0));
+        Menu::open_at(h.ui_mut(), trigger_id(), Vec2::new(60.0, 60.0));
         let row = h.frame_value(|ui| build_copy(ui, hint));
         assert!(menu_open(h.ui()));
         assert!(
@@ -123,7 +123,7 @@ fn escape_dismisses_menu() {
     h.frame(|ui| {
         build(ui);
     });
-    Menu::open(h.ui_mut(), trigger_id(), Vec2::new(60.0, 60.0));
+    Menu::open_at(h.ui_mut(), trigger_id(), Vec2::new(60.0, 60.0));
     h.frame(|ui| {
         build(ui);
     });
@@ -144,7 +144,7 @@ fn menu_body_width_does_not_span_surface() {
     h.frame(|ui| {
         build(ui);
     });
-    Menu::open(h.ui_mut(), trigger_id(), Vec2::new(60.0, 60.0));
+    Menu::open_at(h.ui_mut(), trigger_id(), Vec2::new(60.0, 60.0));
     h.frame(|ui| {
         build(ui);
     });
@@ -153,8 +153,8 @@ fn menu_body_width_does_not_span_surface() {
     let rect = h
         .ui()
         .cascade()
-        .locate(body_id)
-        .map(|l| h.ui().cascade().entry(l).rect)
+        .endpoint(body_id)
+        .map(|at| h.ui().cascade().entry(at).rect)
         .expect("menu body recorded");
     // The rows are narrower than the theme's floor, so the body sits at
     // it: hugging, not spanning the 400 px surface.
@@ -182,7 +182,7 @@ fn build_copy(ui: &mut Ui, hint: bool) -> CopyRow {
     };
     Panel::vstack()
         .id(WidgetId::from_hash("root"))
-        .size((Sizing::FILL, Sizing::FILL))
+        .size(SizeSpec::FILL)
         .sense(Sense::CLICK)
         .show(ui, |ui| {
             let trigger = Button::new()
@@ -225,7 +225,7 @@ fn menu_open(ui: &Ui) -> bool {
 fn a_menu_raised_inside_a_popup_lands_above_it() {
     let mut h = Harness::mono(SURFACE);
     h.frame(nested);
-    Menu::open(h.ui_mut(), trigger_id(), Vec2::new(60.0, 60.0));
+    Menu::open_at(h.ui_mut(), trigger_id(), Vec2::new(60.0, 60.0));
     h.frame(nested);
 
     assert!(menu_open(h.ui()), "the menu did not open inside the popup");
@@ -242,7 +242,7 @@ fn a_menu_raised_inside_a_popup_lands_above_it() {
 fn nested(ui: &mut Ui) {
     Panel::vstack()
         .id(WidgetId::from_hash("root"))
-        .size((Sizing::FILL, Sizing::FILL))
+        .size(SizeSpec::FILL)
         .show(ui, |ui| {
             Popup::new()
                 .anchor(Anchor::below(Rect::new(10.0, 10.0, 100.0, 20.0)))
@@ -293,7 +293,7 @@ fn a_keyboard_open_focuses_the_first_row_and_a_disabled_trigger_closes() {
         "premise: Tab focuses the trigger"
     );
 
-    Menu::open(h.ui_mut(), trigger_id(), Vec2::new(60.0, 60.0));
+    Menu::open_at(h.ui_mut(), trigger_id(), Vec2::new(60.0, 60.0));
     assert!(h.frame_value(|ui| scene(ui, false)));
     assert_eq!(
         h.ui().focus(),
@@ -314,7 +314,7 @@ fn a_keyboard_open_focuses_the_first_row_and_a_disabled_trigger_closes() {
         "closing gives focus back"
     );
 
-    Menu::open(h.ui_mut(), trigger_id(), Vec2::new(60.0, 60.0));
+    Menu::open_at(h.ui_mut(), trigger_id(), Vec2::new(60.0, 60.0));
     assert!(
         !h.frame_value(|ui| scene(ui, true)),
         "the body does not run under a disabled trigger"
@@ -332,7 +332,7 @@ fn below_scene(top: f32) -> impl FnMut(&mut Ui) -> bool {
         let mut open = false;
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .padding(Spacing::new(20.0, top, 0.0, 0.0))
             .show(ui, |ui| {
                 let trigger = Button::new()
@@ -397,7 +397,7 @@ fn a_menu_at_a_point_shows_while_its_caller_keeps_it_open() {
             let resp = Menu::at(Vec2::new(60.0, 70.0)).id(id).show(ui, |ui| {
                 MenuItem::new("Copy").id(row).show(ui);
             });
-            *open = !resp.is_some_and(|resp| resp.closed());
+            *open = !resp.closed();
         }
     };
     let mut h = Harness::mono(SURFACE);

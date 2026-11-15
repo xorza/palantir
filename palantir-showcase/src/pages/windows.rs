@@ -6,12 +6,14 @@
 use crate::app_state::AppState;
 use crate::appearance::Appearance;
 use crate::job::Job;
+use crate::scaffold;
 use crate::scaffold::api;
+use crate::scaffold::dialog::Dialog;
+use crate::scaffold::kit::Kit;
+use crate::scaffold::section::Section;
 use crate::shell;
-use crate::support;
-use crate::support::{Dialog, Kit, Section};
 use palantir::{
-    Align, App, Button, Checkbox, ColorButton, ColorPicker, Configure, ProgressBar, Sizing, Text,
+    Align, App, Button, Checkbox, ColorButton, ColorPicker, Configure, ProgressBar, SizeSpec, Text,
     TextEdit, Ui, Waker, WidgetId, fmt,
 };
 
@@ -30,19 +32,19 @@ pub(crate) fn build(ui: &mut Ui, k: Kit, app: &mut AppState) {
     Section::new("Shared state")
         .apis(&[api!(type App)])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "The app owns these values and passes &mut AppState into the record call beside \
                  &mut Ui, so any depth of widgets can read and write them without a global.",
             );
-            support::well(ui, k, |ui| shared(ui, k, app));
+            scaffold::well(ui, k, |ui| shared(ui, k, app));
         });
 
     Section::new("Second window")
         .apis(&[api!(Ui::open_window), api!(Ui::is_window_open)])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "The inspector records its own tree from this same &mut AppState: change a \
@@ -50,7 +52,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit, app: &mut AppState) {
                  truth for whether it is open, so closing it from its title bar needs no bool \
                  kept in step. F8 toggles it too.",
             );
-            support::well(ui, k, |ui| {
+            scaffold::well(ui, k, |ui| {
                 let open = ui.is_window_open(shell::INSPECTOR_WINDOW);
                 let label = if open {
                     "Close inspector window"
@@ -66,19 +68,19 @@ pub(crate) fn build(ui: &mut Ui, k: Kit, app: &mut AppState) {
     Section::new("Background job")
         .apis(&[api!(Ui::waker), api!(Waker::wake)])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "A worker thread counts through its steps and wakes the window after each: the \
                  bar moves with no frame spent polling, and an idle window draws nothing.",
             );
-            support::well(ui, k, |ui| {
+            scaffold::well(ui, k, |ui| {
                 if let Some(job) = &mut app.job {
                     job.reap();
                 }
                 let running = app.job.as_ref().is_some_and(Job::is_running);
                 let done = app.job.as_ref().map_or(0, Job::done);
-                support::row(ui, |ui| {
+                scaffold::row(ui, |ui| {
                     if Button::new()
                         .label("Start job")
                         .disabled(running)
@@ -92,7 +94,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit, app: &mut AppState) {
                         Some(_) if running => fmt!(ui, "step {done} of {}", Job::STEPS),
                         Some(_) => ui.intern("done"),
                     };
-                    support::readout(ui, k, "worker", line);
+                    scaffold::readout(ui, k, "worker", line);
                 });
                 ProgressBar::new(f32::from(done) / f32::from(Job::STEPS)).show(ui);
             });
@@ -101,20 +103,20 @@ pub(crate) fn build(ui: &mut Ui, k: Kit, app: &mut AppState) {
     Section::new("Close interception")
         .apis(&[api!(Ui::close_requested), api!(Ui::keep_open)])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "Turn on the unsaved changes, then close the window: the app vetoes the OS \
                  request and asks first.",
             );
-            support::well(ui, k, |ui| {
+            scaffold::well(ui, k, |ui| {
                 ui.with_state::<ExitState, _>(exit_state_id(), |ui, exit| {
                     Checkbox::new(&mut exit.pretend_dirty)
                         .label("simulate unsaved changes")
                         .show(ui);
                 });
                 // The OS close button needs a real window, which no harness drives.
-                support::checklist(
+                scaffold::checklist(
                     ui,
                     &[
                         "With no unsaved changes, closing the window closes it",
@@ -170,9 +172,9 @@ pub(crate) fn intercept(ui: &mut Ui, k: Kit, look: &Appearance) {
 /// The shared values, recorded by this page and the inspector window.
 pub(crate) fn shared(ui: &mut Ui, k: Kit, app: &mut AppState) {
     counter(ui, k, app);
-    support::row(ui, |ui| {
+    scaffold::row(ui, |ui| {
         TextEdit::new(&mut app.note)
-            .size((Sizing::FILL, Sizing::HUG))
+            .size(SizeSpec::FILL_W)
             .max_size((320.0, f32::INFINITY))
             .show(ui);
         ColorButton::new(ColorPicker::new(&mut app.color)).show(ui);
@@ -180,7 +182,7 @@ pub(crate) fn shared(ui: &mut Ui, k: Kit, app: &mut AppState) {
 }
 
 fn counter(ui: &mut Ui, k: Kit, app: &mut AppState) {
-    support::row(ui, |ui| {
+    scaffold::row(ui, |ui| {
         if Button::new()
             .label("−")
             .min_size((44.0, 0.0))

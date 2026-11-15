@@ -1,28 +1,19 @@
 //! [`Deck`]: the reel's one window, every slide a live subtree on one pan-zoom canvas.
-#![expect(
-    clippy::disallowed_methods,
-    reason = "a demo of the crate, whose frames owe no two systems the same bits"
-)]
-
-use palantir::Paint;
-use std::rc::Rc;
-use std::time::Duration;
-
-use palantir::Rect;
-use palantir::Stroke;
 use palantir::glam::Vec2;
-use palantir::widget::Shape;
 use palantir::{
     Align, App, Block, Border, Button, Checkbox, Chrome, ClipMode, ColorScheme, ComboBox,
-    Configure, Corners, DockOperation, DockState, DockView, FontFamily, GpuView, Justify, Layer,
-    Lens, LinearGradient, Material, Metrics, Palette, Panel, Preference, RgbaF32, Scroll,
-    ScrollbarTheme, Shadow, Sizing, Slider, Switch, Text, TextEdit, TextSteps, Theme, Ui,
-    UiPreferences, WidgetId, WindowToken, ZoomConfig, fmt,
+    Configure, Corners, DockOperation, DockState, DockView, FontFamily, GpuView, Gradient, Justify,
+    Layer, Lens, Material, Metrics, Paint, Palette, Panel, Preference, Rect, RgbaF32, Scroll,
+    ScrollbarTheme, Shadow, Shape, SizeSpec, Sizing, Slider, Stroke, Switch, Text, TextEdit,
+    TextSteps, Theme, Ui, UiPreferences, WidgetId, WindowToken, ZoomConfig, fmt,
 };
+use std::rc::Rc;
+use std::time::Duration;
 
 use crate::cube::{Cube, CubeHandle};
 use crate::dock::{self, Panes, Tab};
 use crate::motion::{self, Point, View};
+use crate::script::Click;
 use crate::{code, cursor};
 
 /// The logical size of a slide and of the window: 1280 × 720. The preview renders it at scale 1
@@ -124,12 +115,12 @@ pub(crate) struct Deck {
     pub(crate) slide_start: Duration,
     /// Where the cursor is, in window px, and the last click.
     pub(crate) cursor: Vec2,
-    pub(crate) click: Option<(Duration, Vec2)>,
+    pub(crate) click: Option<Click>,
     counter: u32,
     flash: Option<Duration>,
     switch: bool,
     slider: f64,
-    combo: &'static &'static str,
+    combo: &'static str,
     name: String,
     check: bool,
     dock: DockState<Tab>,
@@ -148,7 +139,7 @@ impl Deck {
             flash: None,
             switch: false,
             slider: 0.25,
-            combo: &BLENDS[0],
+            combo: BLENDS[0],
             name: String::new(),
             check: true,
             dock: dock::state(),
@@ -171,7 +162,7 @@ impl App for Deck {
             .id(canvas_id())
             .style(&bars)
             .zoom_config(ZoomConfig::new(0.05..=8.0, 1.1))
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 Panel::canvas().id_salt("reel.board").show(ui, |ui| {
                     for k in 0..SLIDES {
@@ -224,7 +215,7 @@ impl Deck {
         let color = ink(ui);
         Panel::vstack()
             .id(id(k, "page"))
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .padding(56.0)
             .gap(28.0)
             .justify(Justify::Center)
@@ -242,7 +233,7 @@ impl Deck {
         let (ink, muted) = (ink(ui), muted(ui));
         Panel::vstack()
             .id(id(0, "title"))
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .gap(18.0)
             .child_align(Align::CENTER)
             .justify(Justify::Center)
@@ -337,15 +328,15 @@ impl Deck {
                         .show(ui);
                     Slider::new(slider, 0.0..=1.0)
                         .id(id(3, "slider"))
-                        .size((Sizing::FILL, Sizing::HUG))
+                        .size(SizeSpec::FILL_W)
                         .show(ui);
-                    ComboBox::new(combo, &BLENDS)
+                    ComboBox::new(combo, BLENDS)
                         .id(id(3, "combo"))
                         .size((Sizing::fixed(220.0), Sizing::HUG))
                         .show(ui);
                     TextEdit::new(name)
                         .id(id(3, "edit"))
-                        .size((Sizing::FILL, Sizing::HUG))
+                        .size(SizeSpec::FILL_W)
                         .show(ui);
                 });
         });
@@ -400,7 +391,7 @@ impl Deck {
             |ui| {
                 Panel::canvas()
                     .id(id(5, "stage"))
-                    .size((Sizing::FILL, Sizing::FILL))
+                    .size(SizeSpec::FILL)
                     .show(ui, |ui| {
                         for (i, hex) in [0xf97316_u32, 0xec4899, 0x3b82f6, 0x22c55e, 0xfacc15]
                             .into_iter()
@@ -450,7 +441,7 @@ impl Deck {
                 .id(inner)
                 .zoom_config(ZoomConfig::new(1.0..=8.0, 1.1))
                 .style(&bars)
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| {
                     Panel::canvas().id(id(6, "art")).show(ui, |ui| {
                         Block::new()
@@ -460,7 +451,7 @@ impl Deck {
                             .chrome(Chrome {
                                 corners: Corners::all(28.0),
                                 paint: Paint {
-                                    fill: LinearGradient::new(
+                                    fill: Gradient::linear(
                                         0.6,
                                         [RgbaF32::hex(0x6d8cff), RgbaF32::hex(0xec4899)],
                                     )
@@ -495,7 +486,7 @@ impl Deck {
         Self::page(ui, 7, "Dock and windows", |ui| {
             Panel::vstack()
                 .id(id(7, "host"))
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| {
                     operations.clear();
                     let dock_id = id(7, "dock");
@@ -503,7 +494,7 @@ impl Deck {
                     for operation in operations.drain(..) {
                         dock.apply(operation);
                     }
-                    DockView::new(dock_id, dock, operations)
+                    DockView::emitting(dock_id, dock, operations)
                         .min_pane(160.0)
                         .show(ui, &mut Panes);
                     for operation in operations.drain(..) {
@@ -526,7 +517,7 @@ impl Deck {
                 .show(ui, |ui| {
                     GpuView::new(&cube)
                         .id(id(8, "view"))
-                        .size((Sizing::FILL, Sizing::FILL))
+                        .size(SizeSpec::FILL)
                         .show(ui);
                     Panel::vstack()
                         .id(id(8, "label"))
@@ -611,7 +602,7 @@ impl Deck {
         let (ink, muted) = (ink(ui), muted(ui));
         Panel::vstack()
             .id(id(12, "outro"))
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .gap(22.0)
             .child_align(Align::CENTER)
             .justify(Justify::Center)
@@ -636,14 +627,19 @@ impl Deck {
     /// The cursor and a click's ring, over everything and taking no input.
     fn pointer(&self, ui: &mut Ui) {
         let at = self.cursor;
-        let ring = self.click.and_then(|(when, place)| {
-            let t = self.now.checked_sub(when)?.as_secs_f64() / RING.as_secs_f64();
-            (t < 1.0).then_some((place, t as f32))
-        });
+        let ring = self.click.and_then(
+            |Click {
+                 at: when,
+                 pos: place,
+             }| {
+                let t = self.now.checked_sub(when)?.as_secs_f64() / RING.as_secs_f64();
+                (t < 1.0).then_some((place, t as f32))
+            },
+        );
         ui.layer(Layer::Pointer).show(|ui| {
             Panel::canvas()
                 .id_salt("reel.pointer")
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| {
                     if let Some((place, t)) = ring {
                         let grown = motion::min_jerk(f64::from(t)) as f32;
@@ -709,6 +705,6 @@ pub(crate) fn dress(ui: &mut Ui) {
         scheme: Preference::Fixed(ColorScheme::Dark),
         ..ui.preferences()
     });
-    ui.set_theme(ColorScheme::Dark, Theme::stock(ColorScheme::Dark))
+    ui.set_scheme_theme(ColorScheme::Dark, Theme::stock(ColorScheme::Dark))
         .unwrap();
 }

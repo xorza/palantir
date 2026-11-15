@@ -81,7 +81,7 @@ impl<'a> Text<'a> {
     ///
     /// # Panics
     ///
-    /// Panics unless `color` is a [color](crate::widget::domain::color).
+    /// Panics unless `color` is a [color](crate::widget::domain::is_color).
     #[track_caller]
     pub const fn color(mut self, color: RgbaF32) -> Self {
         self.overrides.color = Some(domain::color(color));
@@ -93,7 +93,7 @@ impl<'a> Text<'a> {
     ///
     /// # Panics
     ///
-    /// Panics unless `px` is a [length](crate::widget::domain::length).
+    /// Panics unless `px` is a [length](crate::widget::domain::is_length).
     #[track_caller]
     pub const fn font_size(mut self, px: f32) -> Self {
         self.overrides.font_size = Some(domain::length(px));
@@ -105,7 +105,7 @@ impl<'a> Text<'a> {
     ///
     /// # Panics
     ///
-    /// Panics unless `factor` is [positive](crate::widget::domain::positive).
+    /// Panics unless `factor` is [positive](crate::widget::domain::is_positive).
     #[track_caller]
     pub const fn line_height_factor(mut self, factor: f32) -> Self {
         self.overrides.line_height_factor = Some(domain::positive(factor));
@@ -153,8 +153,8 @@ impl<'a> Text<'a> {
     /// Position of the glyph bbox inside this widget's arranged rect, distinct from
     /// [`Configure::align`], which positions the *widget*. Meaningful only when the
     /// widget is Fixed larger than the text.
-    pub const fn text_align(mut self, a: Align) -> Self {
-        self.align = a;
+    pub fn text_align(mut self, a: impl Into<Align>) -> Self {
+        self.align = a.into();
         self
     }
 
@@ -165,13 +165,14 @@ impl<'a> Text<'a> {
         let style = self.overrides.apply(self.style.unwrap_or(&ui.theme().text));
         let color = style.color;
         let font = style.font();
-        // No metrics guard: `TextShape::is_noop` rejects a non-finite size or
-        // leading at `add_shape`.
+        // No metrics guard: the record drops a run of a non-finite size or leading at
+        // `add_shape`.
         self.widget
             .show(ui, None, |ui| {
-                let text = ui.intern(self.text);
                 ui.add_shape(
-                    Shape::text(text, font).wrap(self.wrap).align(self.align),
+                    Shape::text(self.text, font)
+                        .wrap(self.wrap)
+                        .align(self.align),
                     color,
                 );
             })

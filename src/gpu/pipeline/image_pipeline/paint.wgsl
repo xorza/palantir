@@ -156,7 +156,7 @@ fn image_paint(uv_in: vec2<f32>, uv_rect: vec4<f32>, flags: u32, tint: vec4<f32>
     let uv_dx = dpdx(uv_in);
     let uv_dy = dpdy(uv_in);
 
-    // `ImageFit::Tile` ships UVs spanning [0, repeats]; `tap` wraps into
+    // `ImagePaint::tile` ships UVs spanning [0, repeats]; `tap` wraps into
     // the [0,1) tile per fetched texel, so each repeat samples the full
     // tile and a seam blends across it. Other fits keep UVs in [0,1] and
     // sample directly — a wrap would take a Cover crop's far edge round

@@ -86,14 +86,12 @@ fn bucket(px: u32) -> u32 {
     if px <= mid { mid } else { ceil }
 }
 
-/// The frame's two views of its `GpuView`s: [`Self::draws`] were composited, and the backend
-/// repaints each whose stamp changed; [`Self::live`] still exists. Retention follows the second.
+/// The `GpuView`s a frame composited, which the backend repaints each of whose stamp changed;
+/// retention follows the window's recorded views, which the backend reads off its `GpuViews`.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct FrameViews<'a> {
     /// The views composited this frame, each repainted only when its stamp changed.
     pub(crate) draws: &'a [RenderTargetDraw],
-    /// Every view recorded, painted or not: the retention roster.
-    pub(crate) live: &'a [TextureId],
     /// The display scale every draw is painted at.
     pub(crate) display_scale: f32,
 }

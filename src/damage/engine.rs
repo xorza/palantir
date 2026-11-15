@@ -25,17 +25,16 @@ use std::time::Duration;
 #[derive(Debug, Default)]
 pub(crate) struct DamageEngine {
     /// Last frame's snapshot, **only for widgets with paint rows** (see the module doc). `WidgetId` is unique across planes (`SeenIds::resolve`), so the bare key is safe.
-    pub(super) prev: WidgetIdMap<NodeSnapshot>,
-    pub(super) paints: PaintBlocks,
+    prev: WidgetIdMap<NodeSnapshot>,
+    paints: PaintBlocks,
     /// What the last presented frame was painted under, or `None`: the frame-wide half of the baseline [`Self::prev`] holds per widget. See [`FrameBaseline`], [`Self::note_presented`].
     presented: Option<FrameBaseline>,
     matcher: RowMatcher,
     /// Pass-1 scratch: every damage source appends here unmerged; pass 2 collapses it via `DamageRegion::collapse_from`.
-    pub(super) raw_rects: Vec<Rect>,
+    raw_rects: Vec<Rect>,
 
-    /// Scratch for [`build_row_extents`](crate::damage::plane_walk::PlaneWalk::build_row_extents), fed to [`emit_inverted_overlaps`](crate::damage::plane_walk::PlaneWalk::emit_inverted_overlaps); filled only when a node's row order inverted.
-    order_extents: Vec<Rect>,
-
+    /// The order-inversion scratch every order diff shares: a node's rows in the plane walk, a
+    /// plane's roots in [`RootOrder::diff`].
     inversions: InvertedOverlaps,
 
     root_order: RootOrder,
@@ -44,7 +43,7 @@ pub(crate) struct DamageEngine {
     /// backdrops it left stale.
     backdrops: BackdropWalk,
 
-    pub(super) counters: DamageCounters,
+    counters: DamageCounters,
 }
 
 /// Per-frame inputs shared by [`DamageEngine::compute`] and [`DamageEngine::compute_paint_only`]; `time.prev` is `None` on the first frame, when both skip predamage.
@@ -115,7 +114,6 @@ impl DamageEngine {
                 raw_rects: &mut self.raw_rects,
                 backdrops: &mut self.backdrops,
                 ord,
-                order_extents: &mut self.order_extents,
                 inversions: &mut self.inversions,
                 counters: &mut self.counters,
                 surface,
@@ -129,7 +127,8 @@ impl DamageEngine {
                 // A root's move reaches the whole plane.
                 self.backdrops
                     .mark(self.raw_rects.len(), BackdropWalk::position(ord, 0));
-                self.root_order.diff(frame, &mut self.raw_rects);
+                self.root_order
+                    .diff(frame, &mut self.inversions, &mut self.raw_rects);
             }
         }
 
@@ -142,7 +141,8 @@ impl DamageEngine {
         self.extend_predamaged(&input);
 
         // Removed-widget eviction tail: every remaining `prev` entry painted last frame. Pushed decomposed (chrome plus per-shape) so a multi-shape owner doesn't push the gaps. Its rows have no place this frame, so they stand before every backdrop.
-        self.backdrops.mark(self.raw_rects.len(), 0);
+        self.backdrops
+            .mark(self.raw_rects.len(), BackdropWalk::BEFORE_EVERY);
         #[expect(
             clippy::iter_over_hash_type,
             reason = "a fixed hasher, so the eviction rects repeat from run to run"
@@ -238,48 +238,55 @@ impl DamageEngine {
 }
 
 #[cfg(feature = "internals")]
-impl DamageEngine {
-    /// This frame's damage rects before they collapse, for the frame harness.
-    pub(crate) fn raw_rects(&self) -> &[Rect] {
-        &self.raw_rects
-    }
-
-    /// Mark backdrop `key` stale in this frame, as damage under it would.
-    #[expect(
-        clippy::absolute_paths,
-        reason = "a gated impl, whose type a gated import could not name"
-    )]
-    pub(crate) fn force_stale_backdrop(
-        &mut self,
-        key: crate::primitives::identity::backdrop_key::BackdropKey,
-    ) {
-        self.backdrops.force_stale(key);
-    }
-}
-
-#[cfg(test)]
 pub(crate) mod internals {
-    use crate::cascade::paint::Paint;
-    use crate::cascade::paint::PaintRows as _;
+    use crate::cascade::paint::PaintBlocks;
     use crate::damage::counters::DamageCounters;
     use crate::damage::engine::DamageEngine;
-    use crate::damage::node_snapshot::NodeSnapshot;
-    use crate::internals::scratch_report;
     use crate::primitives::geometry::rect::Rect;
-    use crate::primitives::identity::widget_id::{WidgetId, WidgetIdMap};
+    use crate::primitives::identity::backdrop_key::BackdropKey;
+    #[cfg(test)]
+    use crate::{
+        cascade::paint::{Paint, PaintRows as _},
+        damage::node_snapshot::NodeSnapshot,
+        internals::scratch_report,
+        primitives::identity::widget_id::{WidgetId, WidgetIdMap},
+    };
 
     impl DamageEngine {
+        /// This frame's damage rects before they collapse, for the frame harness.
+        pub(crate) fn raw_rects(&self) -> &[Rect] {
+            &self.raw_rects
+        }
+
+        /// Mark backdrop `key` stale in this frame, as damage under it would.
+        pub(crate) fn force_stale_backdrop(&mut self, key: BackdropKey) {
+            self.backdrops.force_stale(key);
+        }
+
         /// What the last pass counted.
         pub(crate) const fn counters(&self) -> &DamageCounters {
             &self.counters
         }
 
+        /// The paint rows each widget's snapshot keeps, the arena the next frame diffs against.
+        pub(crate) const fn paints(&self) -> &PaintBlocks {
+            &self.paints
+        }
+
         /// Last frame's snapshot of each painting widget.
+        #[cfg(test)]
         pub(crate) const fn prev(&self) -> &WidgetIdMap<NodeSnapshot> {
             &self.prev
         }
 
+        /// Last frame's snapshots, for a test that forges one.
+        #[cfg(test)]
+        pub(crate) const fn prev_mut(&mut self) -> &mut WidgetIdMap<NodeSnapshot> {
+            &mut self.prev
+        }
+
         /// The buffers no frame reads from an earlier one; `prev` and `paints` are the baseline, and `root_order` holds both kinds.
+        #[cfg(test)]
         pub(crate) fn scratch_bytes(&self) -> usize {
             let Self {
                 prev: _,
@@ -287,7 +294,6 @@ pub(crate) mod internals {
                 presented: _,
                 matcher,
                 raw_rects,
-                order_extents,
                 inversions,
                 root_order,
                 backdrops,
@@ -296,18 +302,19 @@ pub(crate) mod internals {
             matcher.scratch_bytes()
                 + backdrops.scratch_bytes()
                 + scratch_report::vec_bytes(raw_rects)
-                + scratch_report::vec_bytes(order_extents)
                 + inversions.scratch_bytes()
                 + root_order.scratch_bytes()
         }
 
         /// Union of the paint screens retained for `widget_id` last frame; `None` if it didn't paint, [`Rect::ZERO`] if its rows painted nothing.
+        #[cfg(test)]
         pub(crate) fn prev_paint_rect(&self, widget_id: WidgetId) -> Option<Rect> {
             let snap = self.prev.get(&widget_id)?;
             Some(self.paints.slots[snap.paint_span.range()].union_screens())
         }
 
         /// The paint rows retained for `widget_id` last frame, in row order: chrome first, then direct shapes.
+        #[cfg(test)]
         pub(crate) fn prev_paint_rows(&self, widget_id: WidgetId) -> &[Paint] {
             let snap = self
                 .prev

@@ -8,7 +8,6 @@ use crate::primitives::math::domain::is_invisible;
 use crate::primitives::math::num::F32Px;
 use crate::primitives::packed::half_simd::F16x4;
 use crate::renderer::frontend::composer::lowering::{Lowering, ScaledRect};
-use crate::renderer::frontend::payload::draw_shadow_payload::DrawShadowPayload;
 use crate::renderer::frontend::payload::spin::Spin;
 use crate::renderer::render_buffer::clip_chain::ClipChain;
 use crate::renderer::render_buffer::shape_header::ShapeHeader;
@@ -55,29 +54,20 @@ impl TemplateShape {
         }
     }
 
-    /// The box `p` casts its shadow from, packed as a fill's box is: a drop shadow's moved by its
-    /// offset and grown by its halo, of `geometry`, its lanes in physical px, and not snapped
-    /// again, so the source inside it lies on the same pixels as the fill. A shadow draws through
-    /// the blurred-box family, not the template, which reads the rect and the corners alone.
-    pub(super) fn shadow(
-        p: &DrawShadowPayload,
-        geometry: ShadowGeometry,
-        lowering: &Lowering<'_>,
-    ) -> Self {
-        let source = Self::of(PlacedClosed::Box(p.source), p.spin, lowering);
-        if p.shadow.inset() {
-            return source.turned(p.spin, lowering);
-        }
+    /// The box a drop shadow of `geometry` covers, cast from this unturned box: moved by its offset
+    /// and grown by its halo, its lanes in physical px, and not snapped again, so the source inside
+    /// it lies on the same pixels as the fill. A shadow draws through the blurred-box family, not
+    /// the template, which reads the rect and the corners alone.
+    pub(super) fn drop_shadow(self, geometry: ShadowGeometry, lowering: &Lowering<'_>) -> Self {
         let grown = Rect {
-            min: source.rect.physical.min + geometry.offset,
-            size: source.rect.physical.size,
+            min: self.rect.physical.min + geometry.offset,
+            size: self.rect.physical.size,
         }
         .inflated(geometry.halo());
         Self::of_box(
             ScaledRect::from_physical(grown, lowering.display.physical),
-            source.corners,
+            self.corners,
         )
-        .turned(p.spin, lowering)
     }
 
     /// The rect a halo reaching `reach` physical px past this unturned shape covers, turned as

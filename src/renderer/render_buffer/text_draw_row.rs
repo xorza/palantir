@@ -10,7 +10,7 @@ use glam::Vec2;
 /// One shaped text run in physical-px space. The backend resolves
 /// [`ShapedTextRef`] when the encoded glyph cache misses.
 ///
-/// Not `TextRun`: that is the authoring type [`crate::widget::TextRun`].
+/// Not `TextRun`: that is the authoring type [`crate::TextRun`].
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct TextDrawRow {
     pub(crate) text: ShapedTextRef,

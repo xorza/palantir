@@ -7,7 +7,7 @@
 //!   clock, on a device that does not.
 //!
 //! A step a tracer cannot take does nothing, and what it cannot measure publishes as absent.
-//! A frame publishes late: the query tracer's two frames after it, the wall clock's once the
+//! A frame publishes late: the query tracer's three frames after it, the wall clock's once the
 //! queue said it is done. Both ask the queue to call back once a frame's work is done, which
 //! wgpu boxes, an allocation per frame a frame pays only while it collects GPU statistics.
 //!
@@ -85,11 +85,15 @@ pub(crate) enum Mark {
     },
 }
 
-/// A render owner's GPU timings: the calls a frame records, the same on every device, through the
-/// tracer the device takes. The query tracer is boxed, as it holds its query sets and staging slots
-/// inline; one box per render owner, made with it.
+/// A render owner's GPU timings: the calls a frame records, the same on every device and with
+/// timing off, through the tracer the device takes. Held by value, so no call site asks whether
+/// timing is on: a step a tracer cannot take, or an untimed frame, does nothing. The query tracer
+/// is boxed, as it holds its query sets and staging slots inline; one box per render owner, made
+/// with it.
 #[derive(Debug)]
 pub(crate) enum GpuTimings {
+    /// The host did not opt into timing, or no device is attached.
+    Off,
     Queries(Box<QueryTracer>),
     WallClock(WallClockTracer),
 }
@@ -123,48 +127,43 @@ impl GpuTimings {
     ) -> Option<wgpu::RenderPassTimestampWrites<'_>> {
         match self {
             Self::Queries(t) => t.pass_writes(segment),
-            Self::WallClock(t) => t.pass_writes(segment),
+            Self::Off | Self::WallClock(_) => None,
         }
     }
 
     /// Open the timing of the main pass's `segment` inside it. Call right after
     /// `begin_render_pass`.
     pub(crate) fn segment_begin(&mut self, pass: &mut wgpu::RenderPass<'_>, segment: MainSegment) {
-        match self {
-            Self::Queries(t) => t.segment_begin(pass, segment),
-            Self::WallClock(t) => t.segment_begin(pass, segment),
+        if let Self::Queries(t) = self {
+            t.segment_begin(pass, segment);
         }
     }
 
     /// Mark the start of a `kind` of batch inside the main pass.
     pub(crate) fn mark(&mut self, rec: &mut PassRecorder<'_>, kind: BatchKind) {
-        let pass = rec.untracked();
-        match self {
-            Self::Queries(t) => t.mark(pass, kind),
-            Self::WallClock(t) => t.mark(pass, kind),
+        if let Self::Queries(t) = self {
+            t.mark(rec.untracked(), kind);
         }
     }
 
     /// Close the timing of the main pass's `segment` inside it.
     pub(crate) fn segment_end(&mut self, rec: &mut PassRecorder<'_>, segment: MainSegment) {
-        let pass = rec.untracked();
-        match self {
-            Self::Queries(t) => t.segment_end(pass, segment),
-            Self::WallClock(t) => t.segment_end(pass, segment),
+        if let Self::Queries(t) = self {
+            t.segment_end(rec.untracked(), segment);
         }
     }
 
     /// Timestamp `mark` between passes.
     pub(crate) fn encoder_mark(&mut self, encoder: &mut wgpu::CommandEncoder, mark: Mark) {
-        match self {
-            Self::Queries(t) => t.encoder_mark(encoder, mark),
-            Self::WallClock(t) => t.encoder_mark(encoder, mark),
+        if let Self::Queries(t) = self {
+            t.encoder_mark(encoder, mark);
         }
     }
 
     /// Close the frame `encoder` recorded, just before `encoder.finish()`.
     pub(crate) fn finish(&mut self, encoder: &mut wgpu::CommandEncoder) {
         match self {
+            Self::Off => {}
             Self::Queries(t) => t.finish(encoder),
             Self::WallClock(t) => t.finish(encoder),
         }
@@ -174,6 +173,7 @@ impl GpuTimings {
     /// earlier frame that landed.
     pub(crate) fn after_submit(&mut self, gpu: &Gpu, sink: &mut GpuPassStats) {
         match self {
+            Self::Off => {}
             Self::Queries(t) => t.after_submit(gpu, sink),
             Self::WallClock(t) => t.after_submit(gpu, sink),
         }
@@ -204,9 +204,8 @@ pub(crate) mod internals {
         /// Record the resolve of every frame the queue said is done into `encoder`, closing no
         /// frame: a run's readback, which no later frame resolves.
         pub(crate) fn resolve_done(&mut self, encoder: &mut wgpu::CommandEncoder) {
-            match self {
-                Self::Queries(t) => t.resolve_done(encoder),
-                Self::WallClock(t) => t.resolve_done(encoder),
+            if let Self::Queries(t) = self {
+                t.resolve_done(encoder);
             }
         }
     }

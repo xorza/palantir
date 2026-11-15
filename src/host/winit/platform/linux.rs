@@ -1,8 +1,7 @@
 //! The windowed host on Linux and the BSDs, under Wayland or X11.
 
 use std::collections::HashMap;
-use std::mem;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
@@ -14,9 +13,11 @@ use zbus::blocking::{Connection, Proxy};
 use zbus::proxy::CacheProperties;
 use zbus::zvariant::OwnedValue;
 
-use crate::common::sync::MutexExt as _;
 use crate::host::winit::input::wheel_steps::WheelSteps;
+use crate::host::winit::platform::handoff::Handoff;
 use crate::primitives::reduction::Reduction;
+
+mod handoff;
 
 /// Nothing to configure.
 pub(super) const fn configure_event_loop<T: 'static>(_builder: &mut EventLoopBuilder<T>) {}
@@ -109,15 +110,7 @@ impl MemoryPressureWatch {
 /// as the signals it reads come off that connection.
 #[derive(Debug)]
 struct PortalThread {
-    connection: Arc<Mutex<WatchedBus>>,
-}
-
-/// The thread's session-bus connection, as the thread opens it and the drop closes it.
-#[derive(Debug)]
-enum WatchedBus {
-    Opening,
-    Open(Connection),
-    Closed,
+    connection: Arc<Handoff<Connection>>,
 }
 
 impl PortalThread {
@@ -127,7 +120,7 @@ impl PortalThread {
         name: &str,
         follow: impl FnOnce(&Connection) -> zbus::Result<()> + Send + 'static,
     ) -> Self {
-        let connection = Arc::new(Mutex::new(WatchedBus::Opening));
+        let connection = Arc::new(Handoff::new());
         let held = Arc::clone(&connection);
         let spawned = thread::Builder::new().name(name.to_owned()).spawn(move || {
             let result = open_bus(&held).and_then(|opened| opened.map_or(Ok(()), |c| follow(&c)));
@@ -144,22 +137,16 @@ impl PortalThread {
 
 impl Drop for PortalThread {
     fn drop(&mut self) {
-        let held = mem::replace(&mut *self.connection.lock_unpoisoned(), WatchedBus::Closed);
-        if let WatchedBus::Open(connection) = held {
+        if let Some(connection) = self.connection.close() {
             connection.close().ok();
         }
     }
 }
 
 /// A session-bus connection filed in `held`, `None` where the thread's owner closed it first.
-fn open_bus(held: &Mutex<WatchedBus>) -> zbus::Result<Option<Connection>> {
+fn open_bus(held: &Handoff<Connection>) -> zbus::Result<Option<Connection>> {
     let connection = Connection::session()?;
-    let mut held = held.lock_unpoisoned();
-    if matches!(*held, WatchedBus::Closed) {
-        return Ok(None);
-    }
-    *held = WatchedBus::Open(connection.clone());
-    Ok(Some(connection))
+    Ok(held.file(connection.clone()).is_ok().then_some(connection))
 }
 
 /// A proxy of the portal's `interface` over `connection`, reading no property from a cache.
@@ -285,7 +272,7 @@ mod tests {
                 POWER_PROFILE_MONITOR,
                 changed(OwnedValue::from(false)),
                 &[][..],
-                PortalChange::Value(Reduction::Full),
+                PortalChange::Value(Reduction::Unreduced),
             ),
             (
                 POWER_PROFILE_MONITOR,

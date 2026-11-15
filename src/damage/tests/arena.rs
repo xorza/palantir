@@ -5,6 +5,7 @@
 //! [`PaintBlocks`](crate::cascade::paint::PaintBlocks)'s granule is one, so a block is exactly its
 //! span's length and each row count is its own size class.
 
+use crate::cascade::paint::Paint;
 use crate::common::counters::CounterSet;
 use crate::common::span::Span;
 use crate::damage::tests::support::{BLUE, DISPLAY, RED, frame, one_frame};
@@ -41,15 +42,19 @@ fn canvas(ui: &mut Ui, id: &'static str, shapes: u32) {
 }
 
 fn arena_len(h: &Harness) -> usize {
-    h.frames().damage().paints.slots.len()
+    h.frames().damage().paints().slots.len()
 }
 
 fn free_classes(h: &Harness) -> usize {
-    h.frames().damage().paints.classes_with_free_blocks()
+    h.frames().damage().paints().classes_with_free_blocks()
 }
 
 fn span_of(h: &Harness, id: &'static str) -> Span {
-    h.frames().damage().prev[&WidgetId::from_hash(id)].paint_span
+    h.frames().damage().prev()[&WidgetId::from_hash(id)].paint_span
+}
+
+fn rows_of<'h>(h: &'h Harness, id: &'static str) -> &'h [Paint] {
+    h.frames().damage().prev_paint_rows(WidgetId::from_hash(id))
 }
 
 /// A node whose paint-row count changes every frame reaches a steady state
@@ -76,7 +81,7 @@ fn a_toggling_shape_count_trades_two_blocks_forever() {
     assert_eq!(settled, 10);
     assert_eq!(free_classes(&h), 1, "the 4-row block is parked");
 
-    let before = h.frames().damage().paints.counters.counts();
+    let before = h.frames().damage().paints().counters.counts();
     for f in 0..FRAMES {
         frame(&mut h, build(3 + f % 2));
         assert_eq!(
@@ -92,7 +97,7 @@ fn a_toggling_shape_count_trades_two_blocks_forever() {
         assert_eq!(free_classes(&h), 1, "exactly one block sits idle");
     }
 
-    let delta = h.frames().damage().paints.counters.counts() - before;
+    let delta = h.frames().damage().paints().counters.counts() - before;
     assert_eq!(
         (delta.allocs, delta.reuses),
         (0, FRAMES),
@@ -147,7 +152,7 @@ fn a_quiet_node_keeps_its_span_while_a_neighbor_churns() {
     frame(&mut h, build(4));
     frame(&mut h, build(4));
     let quiet_span = span_of(&h, "quiet");
-    let quiet_rows: Vec<_> = h.frames().damage().paints.slots[quiet_span.range()].to_vec();
+    let quiet_rows = rows_of(&h, "quiet").to_vec();
     assert_eq!(quiet_span.len, 4, "chrome plus three shapes");
 
     // Walk the churner across four size classes several times.
@@ -160,8 +165,8 @@ fn a_quiet_node_keeps_its_span_while_a_neighbor_churns() {
         );
     }
     assert_eq!(
-        h.frames().damage().paints.slots[quiet_span.range()],
-        quiet_rows[..],
+        rows_of(&h, "quiet"),
+        quiet_rows,
         "and its rows are byte-identical, not merely at the same index",
     );
 }
@@ -199,7 +204,7 @@ fn swapping_one_widget_for_another_settles_at_a_single_spare_block() {
         assert!(
             !h.frames()
                 .damage()
-                .prev
+                .prev()
                 .contains_key(&WidgetId::from_hash(departing)),
             "round {round}: {departing} must be out of the snapshot map",
         );
@@ -230,7 +235,7 @@ fn a_forced_full_frame_resets_the_arena_without_stale_free_heads() {
     assert_eq!(free_classes(&h), 0, "the free lists went with the storage");
     assert_eq!(
         arena_len(&h),
-        h.frames().damage().prev.len(),
+        h.frames().damage().prev().len(),
         "every snapshot in the rebuilt map holds one single-row block and \
          nothing else is allocated",
     );
@@ -238,8 +243,5 @@ fn a_forced_full_frame_resets_the_arena_without_stale_free_heads() {
     // The rebuilt snapshot addresses its own rows.
     let span = span_of(&h, "a");
     assert_eq!(span.len, 1, "the 50x50 frame contributes its chrome row");
-    assert_eq!(
-        h.frames().damage().paints.slots[span.range()][0].screen,
-        Rect::new(0.0, 0.0, 50.0, 50.0),
-    );
+    assert_eq!(rows_of(&h, "a")[0].screen, Rect::new(0.0, 0.0, 50.0, 50.0),);
 }

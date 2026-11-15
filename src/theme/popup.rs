@@ -2,8 +2,10 @@
 
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::paint::chrome::Chrome;
+use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
-use crate::theme::metrics::Metrics;
+use crate::theme::menu::menu_item::MenuItemTheme;
+use crate::theme::metrics::{FloatMaterial, MaterialRefusal, Metrics};
 use crate::theme::palette::Palette;
 
 /// Visuals for a [`crate::Popup`] or [`crate::PopupTrigger`] whose caller sets no chrome or
@@ -31,7 +33,7 @@ pub struct PopupTheme {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub material: Option<Material>,
     /// Padding inside the panel, applied when the caller leaves it unset.
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::padding")]
+    #[serde(deserialize_with = "crate::primitives::file::padding")]
     pub padding: Spacing,
 }
 
@@ -40,12 +42,29 @@ impl PopupTheme {
     /// [`Metrics::float_material`] held for the muted ink, which a menu row's shortcut and the
     /// picker's channel names read in, as an app fills a bare popup with rows like a menu's.
     pub fn from_parts(p: &Palette, m: &Metrics) -> Self {
-        let mut theme = Self {
+        let mut theme = Self::undressed(p, m);
+        if let Some(float) = &m.float_material {
+            let ink = MenuItemTheme::from_parts(p, m).shortcut;
+            theme.try_dress(float, ink).ok();
+        }
+        theme
+    }
+
+    /// [`Self::from_parts`] before its material, for a surface held for another ink.
+    pub(super) fn undressed(p: &Palette, m: &Metrics) -> Self {
+        Self {
             panel: p.popup_panel(m),
             material: None,
             padding: Spacing::all(m.space.sm),
-        };
-        m.dress_float(&mut theme.panel, &mut theme.material, p.text_muted);
-        theme
+        }
+    }
+
+    /// Dress the panel in `float`, held for `ink`, the dimmest the body paints.
+    pub(super) fn try_dress(
+        &mut self,
+        float: &FloatMaterial,
+        ink: RgbaF32,
+    ) -> Result<(), MaterialRefusal> {
+        float.try_dress(&mut self.panel, &mut self.material, ink)
     }
 }

@@ -1,30 +1,32 @@
 //! Materials: palantir's stock materials over a page that keeps moving under them, and the same
 //! material under a popup's and a context menu's panel.
 
+use crate::scaffold;
 use crate::scaffold::api;
-use crate::support;
-use crate::support::{DemoCell, Kit, Knob, Section};
-use palantir::Paint;
+use crate::scaffold::demo_cell::DemoCell;
+use crate::scaffold::kit::Kit;
+use crate::scaffold::knob::Knob;
+use crate::scaffold::section::Section;
 use palantir::glam::Vec2;
-use palantir::widget::{EffectPaint, GlyphFont, MotionRole, PaintAnimation, PaintRepeat, Shape};
 use palantir::{
-    Align, BackdropEffect, Border, Button, Chrome, Configure, Corners, EffectName, Lens,
-    LinearGradient, Material, MaterialFallback, Menu, MenuItem, MenuTheme, Panel, PopupTheme,
-    PopupTrigger, Rect, RgbaF32, Sizing, Switch, Text, Theme, Ui, WidgetId, fmt,
+    Align, BackdropEffect, BackdropFallback, Border, Button, Chrome, Configure, Corners,
+    EffectName, EffectPaint, GlyphFont, Gradient, Lens, Material, Menu, MenuItem, MenuTheme,
+    MotionRole, Paint, PaintAnimation, PaintRepeat, Panel, PopupTheme, PopupTrigger, Rect, RgbaF32,
+    Shape, SizeSpec, Sizing, Switch, Text, Theme, Ui, WidgetId, fmt,
 };
 use std::time::Duration;
 
 /// The size of a look's cell.
 const CELL: f32 = 220.0;
 /// The id of the button that opens the frosted popup.
-pub fn popup_button() -> WidgetId {
+pub(crate) fn popup_button() -> WidgetId {
     WidgetId::from_hash("materials-popup-button")
 }
 
 /// The backdrop inside a look's cell.
 const LIVE_BOX: Rect = Rect::new(30.0, 50.0, 160.0, 100.0);
 
-pub fn build(ui: &mut Ui, k: Kit) {
+pub(crate) fn build(ui: &mut Ui, k: Kit) {
     Section::new("Looks")
         .apis(&[
             api!(Material::blur),
@@ -32,7 +34,7 @@ pub fn build(ui: &mut Ui, k: Kit) {
             api!(Material::glass),
         ])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "Each box wears a stock material, a backdrop effect that shows the pixels \
@@ -40,7 +42,7 @@ pub fn build(ui: &mut Ui, k: Kit) {
                  each box blurs again every frame; a box over a still page costs nothing. With \
                  transparency reduced, each paints the theme's fallback instead.",
             );
-            support::tiles(ui, |ui| {
+            scaffold::tiles(ui, |ui| {
                 look(
                     ui,
                     k,
@@ -75,7 +77,7 @@ pub fn build(ui: &mut Ui, k: Kit) {
     Section::new("Reduced transparency")
         .apis(&[
             api!(Material::with_fallback as fn(Material, RgbaF32) -> Material),
-            api!(type MaterialFallback),
+            api!(type BackdropFallback),
             api!(
                 EffectPaint::fallback
                     as fn(
@@ -85,7 +87,7 @@ pub fn build(ui: &mut Ui, k: Kit) {
             ),
         ])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "Pick Less on the rail's Transparency row: no capture, blur or effect runs, and \
@@ -97,8 +99,8 @@ pub fn build(ui: &mut Ui, k: Kit) {
             let frosted = Material::frosted(16.0);
             let fill = RgbaF32::new(1.0, 1.0, 1.0, 0.48);
             let tint = |color: RgbaF32| color.with_alpha(0.85);
-            let own = LinearGradient::new(0.125, [tint(k.t.accent), tint(k.t.raised)]);
-            support::tiles(ui, |ui| {
+            let own = Gradient::linear(0.125, [tint(k.t.accent), tint(k.t.raised)]);
+            scaffold::tiles(ui, |ui| {
                 look(
                     ui,
                     k,
@@ -126,7 +128,7 @@ pub fn build(ui: &mut Ui, k: Kit) {
     Section::new("On floats")
         .apis(&[api!(Theme::dress_floats), api!(PopupTrigger::on)])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "A popup and a context menu whose theme slot wears a frosted material under its \
@@ -164,7 +166,7 @@ fn live(ui: &mut Ui, k: Kit) {
     Section::new("Live material")
         .apis(&[api!(Material::with_min_luminance_for)])
         .show(ui, k, |ui| {
-            support::note(
+            scaffold::note(
                 ui,
                 k,
                 "Blur and fill one frosted box. The floor its dark ink and light fill call for \
@@ -189,7 +191,7 @@ fn live(ui: &mut Ui, k: Kit) {
                 .show(ui, k, &mut l.fill);
                 let ink = RgbaF32::hex(0x14161a);
                 let fill = RgbaF32::WHITE.with_alpha(l.fill);
-                support::row(ui, |ui| {
+                scaffold::row(ui, |ui| {
                     Switch::new(&mut l.hold).label("Hold the ink").show(ui);
                 });
                 let frosted = Material::frosted(l.blur);
@@ -202,27 +204,24 @@ fn live(ui: &mut Ui, k: Kit) {
                     Some(floor) => fmt!(ui, "the backdrop shows at luminance {floor:.3} or more"),
                     None => ui.intern("no floor: a dark stripe behind the label shows as dark"),
                 };
-                support::readout(ui, k, "floor", floor);
+                scaffold::readout(ui, k, "floor", floor);
                 DemoCell::new("the knobs' backdrop")
                     .size(CELL, CELL)
                     .show(ui, k, |ui| {
-                        Panel::canvas()
-                            .size((Sizing::FILL, Sizing::FILL))
-                            .show(ui, |ui| {
-                                page(ui, k, Vec2::splat(CELL));
-                                ui.add_shape(
-                                    Shape::rect().at(LIVE_BOX).corners(Corners::all(14.0)),
-                                    Paint::from(fill).with_material(material),
-                                );
-                                let label = ui.intern("readable");
-                                ui.add_shape(
-                                    Shape::text(label, GlyphFont::new(18.0)).at_origin(Vec2::new(
-                                        LIVE_BOX.min.x + 16.0,
-                                        LIVE_BOX.min.y + 36.0,
-                                    )),
-                                    ink,
-                                );
-                            });
+                        Panel::canvas().size(SizeSpec::FILL).show(ui, |ui| {
+                            page(ui, k, Vec2::splat(CELL));
+                            ui.add_shape(
+                                Shape::rect().at(LIVE_BOX).corners(Corners::all(14.0)),
+                                Paint::from(fill).with_material(material),
+                            );
+                            ui.add_shape(
+                                Shape::text("readable", GlyphFont::new(18.0)).at_origin(Vec2::new(
+                                    LIVE_BOX.min.x + 16.0,
+                                    LIVE_BOX.min.y + 36.0,
+                                )),
+                                ink,
+                            );
+                        });
                     });
             });
         });
@@ -233,7 +232,7 @@ fn look(ui: &mut Ui, k: Kit, label: &'static str, material: Material, fill: Rgba
     DemoCell::new(label).size(CELL, CELL).show(ui, k, |ui| {
         Panel::canvas()
             .id_salt(label)
-            .size((Sizing::FILL, Sizing::FILL))
+            .size(SizeSpec::FILL)
             .show(ui, |ui| {
                 page(ui, k, Vec2::splat(CELL));
                 let corners = if material.effect.name() == EffectName::GLASS.name() {
@@ -296,7 +295,7 @@ fn chrome_demo(ui: &mut Ui, k: Kit) {
         .child_align(Align::CENTER)
         .show(ui, |ui| {
             Panel::canvas()
-                .size((Sizing::FILL, Sizing::FILL))
+                .size(SizeSpec::FILL)
                 .show(ui, |ui| page(ui, k, size));
             let trigger = Button::new()
                 .id(popup_button())

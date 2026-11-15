@@ -17,11 +17,10 @@
 //!   has, which no effect has an equal of.
 
 pub(crate) mod contract;
+pub(crate) mod effect_module;
 pub(crate) mod effect_registry;
 pub(crate) mod effect_source;
-pub(crate) mod effect_store;
 pub(crate) mod error;
-pub(crate) mod press_input;
 pub(crate) mod stock;
 
 /// The most bytes an instance's parameters hold, so one storage buffer row serves any effect.

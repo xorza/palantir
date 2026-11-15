@@ -1,4 +1,5 @@
-//! One frame's plain-data report from [`WindowFrames::frame`](crate::ui::window_frames::WindowFrames::frame).
+//! [`FrameReport`]: what one frame tells its host, and [`RecordedFrame`], the crate's own record
+//! of the frame it is read from.
 
 use crate::damage::Damage;
 use crate::renderer::render_plan::RenderPlan;
@@ -39,7 +40,7 @@ pub enum FramePaint {
 
 /// What one frame did, and what the host owes
 /// the next one.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct FrameReport {
     /// Whether another frame is owed after this one: an animation still moving, a widget or the app that asked ([`Ui::request_repaint`](crate::Ui::request_repaint)), a screenshot that landed or input held for the next frame. A host requests a redraw after present.
     pub repaint_requested: bool,
@@ -51,24 +52,41 @@ pub struct FrameReport {
     /// a vsync. A host on a real clock may start the frame up to half a refresh period sooner, or
     /// 1/240 s where the rate is unknown, so it presents at the vsync of that time.
     pub earliest_repaint_at: Option<Duration>,
+    /// How much of the output this frame repainted.
+    pub paint: FramePaint,
+}
+
+/// One frame as the crate's hosts see it: the [`FrameReport`]'s facts, with the render plan and
+/// the passes behind them. The report is derived at the boundary, as a painting host may still
+/// widen the plan after the record.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct RecordedFrame {
+    pub(crate) repaint_requested: bool,
+    pub(crate) repaint_at: Option<Duration>,
+    pub(crate) earliest_repaint_at: Option<Duration>,
+    /// What the frame paints; `None` paints nothing.
     pub(crate) plan: Option<RenderPlan>,
-    /// Which passes ran, see [`FrameProcessing`]; `WindowFrames::frame` asserts it against the paint outcome and tests read it.
     pub(crate) processing: FrameProcessing,
 }
 
-impl FrameReport {
-    /// Classify this frame without exposing renderer-only damage data.
-    pub const fn paint(&self) -> FramePaint {
-        match self.plan {
-            None => FramePaint::Skip,
-            Some(RenderPlan {
-                damage: Damage::Full,
-                ..
-            }) => FramePaint::Full,
-            Some(RenderPlan {
-                damage: Damage::Partial(..),
-                ..
-            }) => FramePaint::Partial,
+impl RecordedFrame {
+    /// The frame as its host reports it, without renderer-only damage data.
+    pub(crate) const fn report(&self) -> FrameReport {
+        FrameReport {
+            repaint_requested: self.repaint_requested,
+            repaint_at: self.repaint_at,
+            earliest_repaint_at: self.earliest_repaint_at,
+            paint: match self.plan {
+                None => FramePaint::Skip,
+                Some(RenderPlan {
+                    damage: Damage::Full,
+                    ..
+                }) => FramePaint::Full,
+                Some(RenderPlan {
+                    damage: Damage::Partial(..),
+                    ..
+                }) => FramePaint::Partial,
+            },
         }
     }
 }
@@ -80,10 +98,10 @@ mod tests {
     use crate::primitives::geometry::rect::Rect;
     use crate::primitives::paint::color::RgbaF32;
     use crate::renderer::render_plan::RenderPlan;
-    use crate::ui::frame_report::{FramePaint, FrameProcessing, FrameReport};
+    use crate::ui::frame_report::{FramePaint, FrameProcessing, RecordedFrame};
 
     #[test]
-    fn paint_classifies_every_render_plan_shape() {
+    fn the_report_classifies_every_render_plan_shape() {
         let cases = [
             (None, FramePaint::Skip),
             (
@@ -105,14 +123,14 @@ mod tests {
         ];
 
         for (plan, expected) in cases {
-            let report = FrameReport {
+            let frame = RecordedFrame {
                 repaint_requested: false,
                 repaint_at: None,
                 earliest_repaint_at: None,
                 plan,
                 processing: FrameProcessing::SingleLayout,
             };
-            assert_eq!(report.paint(), expected);
+            assert_eq!(frame.report().paint, expected);
         }
     }
 }

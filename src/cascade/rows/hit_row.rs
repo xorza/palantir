@@ -25,7 +25,7 @@ pub(crate) struct HitRow {
     /// `false` in a disabled or invisible subtree.
     pub(crate) focusable: bool,
     /// Disabled (this widget or any ancestor), as [`EntryRow::disabled`](crate::cascade::rows::entry_row::EntryRow::disabled). The
-    /// pointer walks ignore it, since `ResponseState::merge_disabled` empties
+    /// pointer walks ignore it, since `Response::merge_disabled` empties
     /// what a disabled row reads. Focus reads it:
     /// [`Cascade::hit_test_press`](crate::cascade::Cascade::hit_test_press) ends its walk
     /// here, so a press this row absorbed focuses nothing beneath it.

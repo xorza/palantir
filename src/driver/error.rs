@@ -3,14 +3,17 @@
 
 use crate::driver::locator::Found;
 use crate::input::capture::DRAG_THRESHOLD;
+use crate::window::error::ScreenshotRefusal;
 use glam::Vec2;
 use std::error;
 use std::fmt::{self, Display, Formatter};
 use std::time::Duration;
 
 /// Why a [`Locator`](crate::Locator) found no one place in the last frame. Each case says what
-/// corrects the locator, as an agent or a script reads it.
+/// corrects the locator, as an agent or a script reads it. Non-exhaustive, as a locator may learn
+/// a new way to miss.
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub enum LocateError {
     /// Nothing matches; `nearest` lists the visible texts that contain the one asked for, or the
     /// first ones when none does.
@@ -20,11 +23,12 @@ pub enum LocateError {
         /// Texts to try instead.
         nearest: Vec<String>,
     },
-    /// Several match; `matches` lists each with its index for [`Locator::Nth`](crate::Locator::Nth).
+    /// Several match and none is picked; `matches` lists each with its index for
+    /// [`Locator::nth`](crate::Locator::nth).
     Ambiguous {
         /// The locator, as its `Debug` writes it.
         locator: String,
-        /// Each match, in the order [`Locator::Nth`](crate::Locator::Nth) counts them.
+        /// Each match, in the order [`Locator::nth`](crate::Locator::nth) counts them.
         matches: Vec<Found>,
     },
     /// It matches only what the ancestors' clips hide, so no pointer reaches it.
@@ -44,12 +48,11 @@ pub enum LocateError {
         /// The locator, as its `Debug` writes it.
         locator: String,
     },
-    /// [`Locator::Nth`](crate::Locator::Nth) around a locator that names one place, or past the
-    /// matches there are.
+    /// [`Locator::nth`](crate::Locator::nth) picks past the matches there are.
     NoNth {
         /// The locator, as its `Debug` writes it.
         locator: String,
-        /// The matches the inner locator has.
+        /// The matches the target has.
         count: usize,
     },
 }
@@ -68,7 +71,7 @@ impl Display for LocateError {
             Self::Ambiguous { locator, matches } => {
                 write!(
                     f,
-                    "{locator} matches {} places; pick one with Nth:",
+                    "{locator} matches {} places; pick one with nth:",
                     matches.len()
                 )?;
                 for (n, found) in matches.iter().enumerate() {
@@ -93,7 +96,7 @@ impl Display for LocateError {
                 write!(f, "{locator} is disabled; a press there does nothing")
             }
             Self::NoNth { locator, count } => {
-                write!(f, "{locator} picks past the {count} matches there are")
+                write!(f, "{locator} picks past its last match; it has {count}")
             }
         }
     }
@@ -102,19 +105,27 @@ impl Display for LocateError {
 impl error::Error for LocateError {}
 
 /// Why a player could not play a step, settle the window or take its picture. Each case says
-/// what corrects the call, as an agent or a script reads it.
+/// what corrects the call, as an agent or a script reads it. Non-exhaustive, as a host may learn
+/// a new way to fail.
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub enum PlayError {
     /// A locator names no one place.
     Locate(LocateError),
-    /// The window still asked for frames after `frames` of them: an animation that never ends,
+    /// The window still asked for frames when the wait ran out: an animation that never ends,
     /// or an app that asks a repaint every frame. The step that failed is the caller's to name, as
     /// a [`StepError`] does by its index.
     Unsettled {
-        /// What the wait ran to: on a harness its bound in frames,
-        /// [`settle_frames`](crate::HarnessBuilder::settle_frames), and on a remote, whose bound
-        /// is real time, the frames the window recorded within it.
-        frames: u32,
+        /// The frames the window recorded while it was waited on, on every host: a harness waits
+        /// [`settle_frames`](crate::HarnessBuilder::settle_frames) frames that ask for another,
+        /// a remote its real-time wait.
+        frames_recorded: u32,
+    },
+    /// A [`Type`](crate::Action::Type) step's text holds `found`, a control character other than
+    /// a newline or a tab, which types no key.
+    Untypable {
+        /// The character no key types.
+        found: char,
     },
     /// A drag that moves `travel` logical pixels, under the threshold a drag starts at, so the
     /// window would read it as a click.
@@ -124,9 +135,15 @@ pub enum PlayError {
     },
     /// A picture of a region that holds no pixel of the window.
     EmptyRegion,
+    /// A picture of a window that owes as many as it holds at once
+    /// ([`ScreenshotRefusal::Full`]).
+    ScreenshotsFull,
     /// A picture of a window that paints no pixels: a harness below
-    /// [`Depth::Gpu`](crate::Depth::Gpu).
+    /// [`HarnessDepth::Gpu`](crate::HarnessDepth::Gpu).
     NoPixels,
+    /// A device asked of a window that paints with none, as losing one is: a harness below
+    /// [`HarnessDepth::Gpu`](crate::HarnessDepth::Gpu).
+    NoDevice,
     /// The device was lost before the window's pixels came back.
     DeviceLost,
     /// The device did not finish the frame whose pixels a player waits for within its bound, and
@@ -165,10 +182,15 @@ impl Display for PlayError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::Locate(error) => error.fmt(f),
-            Self::Unsettled { frames } => write!(
+            Self::Unsettled { frames_recorded } => write!(
                 f,
-                "the window still asks for frames after {frames} frames; an animation runs on, \
-                 or the app asks a repaint each frame"
+                "the window still asks for frames after {frames_recorded} frames; an animation \
+                 runs on, or the app asks a repaint each frame"
+            ),
+            Self::Untypable { found } => write!(
+                f,
+                "{found:?} is a control character no key types; type a newline or a tab, or name \
+                 the key in a key step"
             ),
             Self::ShortDrag { travel } => write!(
                 f,
@@ -176,7 +198,11 @@ impl Display for PlayError {
                  would play as a click; drag farther"
             ),
             Self::EmptyRegion => f.write_str("the region holds no pixel of the window"),
+            Self::ScreenshotsFull => {
+                f.write_str("the window owes as many screenshots as it holds; try a frame later")
+            }
             Self::NoPixels => f.write_str("the window paints no pixels; build it with a GPU"),
+            Self::NoDevice => f.write_str("the window paints with no device; build it with a GPU"),
             Self::DeviceLost => f.write_str("the device was lost before the pixels came back"),
             Self::GpuTimedOut => {
                 f.write_str("the device did not finish the frame in time, and hangs unreset")
@@ -225,13 +251,22 @@ impl From<LocateError> for PlayError {
     }
 }
 
+impl From<ScreenshotRefusal> for PlayError {
+    fn from(refusal: ScreenshotRefusal) -> Self {
+        match refusal {
+            ScreenshotRefusal::EmptyRegion => Self::EmptyRegion,
+            ScreenshotRefusal::Full => Self::ScreenshotsFull,
+        }
+    }
+}
+
 /// Why a list of [`Action`](crate::Action)s stopped: the step that failed, and why.
 #[derive(Clone, Debug, PartialEq)]
 pub struct StepError {
     /// The index of the step that failed, which is also the count of steps played before it.
     pub step: usize,
     /// Why it failed.
-    pub error: PlayError,
+    pub source: PlayError,
 }
 
 impl Display for StepError {
@@ -242,7 +277,7 @@ impl Display for StepError {
 
 impl error::Error for StepError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        Some(&self.error)
+        Some(&self.source)
     }
 }
 
@@ -265,7 +300,7 @@ mod tests {
 
         let failed = StepError {
             step: 3,
-            error: play.clone(),
+            source: play.clone(),
         };
         assert_eq!(failed.to_string(), "step 3 failed");
         assert_eq!(

@@ -39,7 +39,7 @@ pub(crate) struct RenderStream {
     cutouts: CutoutPlan,
     /// The owner's timestamp queries, where the backend times frames: a frame publishes late, so
     /// one set shared by every owner would publish a frame of another.
-    timings: Option<GpuTimings>,
+    timings: GpuTimings,
 }
 
 /// What a frame's passes paint through, read, beside the timings they write, borrowed at once
@@ -49,11 +49,11 @@ pub(super) struct StreamPasses<'a> {
     pub(super) backbuffer: Option<&'a Backbuffer>,
     /// The canvas [`RenderStream::ensure_canvas`] made ready last.
     pub(super) canvas: Option<&'a DamageCanvas>,
-    pub(super) timings: Option<&'a mut GpuTimings>,
+    pub(super) timings: &'a mut GpuTimings,
 }
 
 impl RenderStream {
-    pub(super) const fn new(owner: RenderOwnerId, timings: Option<GpuTimings>) -> Self {
+    pub(super) const fn new(owner: RenderOwnerId, timings: GpuTimings) -> Self {
         Self {
             owner,
             backbuffer: None,
@@ -68,7 +68,7 @@ impl RenderStream {
     /// A stream for `owner` with no device behind it, untimed: a window's until a device
     /// attaches, and a CPU-only test's.
     pub(crate) const fn detached(owner: RenderOwnerId) -> Self {
-        Self::new(owner, None)
+        Self::new(owner, GpuTimings::Off)
     }
 
     pub(crate) const fn owner(&self) -> RenderOwnerId {
@@ -115,7 +115,7 @@ impl RenderStream {
         StreamPasses {
             backbuffer: self.backbuffer.as_ref(),
             canvas: self.canvases[0].as_ref(),
-            timings: self.timings.as_mut(),
+            timings: &mut self.timings,
         }
     }
 

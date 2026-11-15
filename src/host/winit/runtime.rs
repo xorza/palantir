@@ -11,11 +11,12 @@ use crate::gpu::error::SurfaceStartError;
 use crate::gpu::surface::surface_manager::{FirstWindow, SurfaceManager, SurfaceStartup};
 use crate::host::host_core::HostCore;
 use crate::host::winit::error::WinitHostError;
-use crate::host::winit::handle::{HostHandle, UserEvent};
+use crate::host::winit::handle::HostHandle;
 use crate::host::winit::platform::MemoryPressureWatch;
 use crate::host::winit::recovery_backoff::RecoveryBackoff;
-use crate::host::winit::remote::{LoseTask, QueryTask, ReadTask};
 use crate::host::winit::system_preferences::{self, SystemFollow, SystemReport};
+use crate::host::winit::user_event::UserEvent;
+use crate::host::winit::user_event::{LoseTask, QueryTask, ReadTask};
 use crate::host::winit::wake_latch::WakeLatch;
 use crate::host::winit::window::{OpenedWindow, Window};
 use crate::host::winit::window_set::{WindowSet, WindowSlot};
@@ -31,7 +32,6 @@ use crate::window::window_config::WindowConfig;
 use crate::window::window_token::WindowToken;
 use std::fmt;
 use std::mem;
-use std::num::NonZeroU32;
 
 pub(super) struct WinitRuntime<T: 'static> {
     /// The caller's app, created once the first window's `Ui` existed.
@@ -263,11 +263,7 @@ impl<T: App + 'static> WinitRuntime<T> {
             // frame, which no wake of its own replaces.
             self.wake_for_recovery();
         } else if win.surface.is_lost() {
-            renew_surface(
-                &self.surfaces,
-                win,
-                self.core.device.gpu().max_texture_dim(),
-            );
+            renew_surface(&self.surfaces, win);
         }
         if single_window {
             tracy::mark_main_frame();
@@ -327,9 +323,8 @@ impl<T: App + 'static> WinitRuntime<T> {
             &mut self.core.cpu,
             self.windows.iter_mut().map(|win| &mut win.frames),
         );
-        let max_texture_dim = self.core.device.gpu().max_texture_dim();
         for win in self.windows.iter_mut().skip(1) {
-            renew_surface(&self.surfaces, win, max_texture_dim);
+            renew_surface(&self.surfaces, win);
         }
         Ok(())
     }
@@ -395,17 +390,11 @@ impl<T: App + 'static> WinitRuntime<T> {
             tracing::warn!(?token, "open_window: token already in use, ignoring");
             return Ok(());
         }
-        let decorations = self.core.cpu.resources.color_scheme();
+        let decorations = self.core.cpu.resources.settings().resolve().scheme;
         let window = native::create_window(event_loop, token, config, decorations)?;
         let surface = self
             .surfaces
-            .make_surface(
-                &window,
-                SurfaceManager::clamp_extent(
-                    self.core.device.gpu().max_texture_dim(),
-                    native::physical_size(&window),
-                ),
-            )
+            .make_surface(&window, native::physical_size(&window))
             .map_err(|source| WinitHostError::Surface { token, source })?;
         let frames = Self::open_frames(&mut self.core, &self.handle, token);
         self.windows.push(Window::new(OpenedWindow {
@@ -448,8 +437,8 @@ impl<T: App + 'static> WinitRuntime<T> {
 
 /// Make `win` a new surface. On a failure the window keeps a lost one, and its next frame tries
 /// again after a pause.
-fn renew_surface(surfaces: &SurfaceManager, win: &mut Window, max_texture_dim: NonZeroU32) {
-    if let Err(error) = surfaces.renew(&win.window, &mut win.surface, max_texture_dim) {
+fn renew_surface(surfaces: &SurfaceManager, win: &mut Window) {
+    if let Err(error) = surfaces.renew(&win.window, &mut win.surface) {
         tracing::error!(token = ?win.frames.token(), %error, "window surface not made again");
     }
 }

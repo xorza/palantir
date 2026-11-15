@@ -7,7 +7,7 @@ pub(crate) mod remote_end;
 use std::fmt::{self, Debug};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{self, Receiver, RecvTimeoutError, SyncSender};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -18,10 +18,10 @@ use crate::driver::agent_window::AgentWindow;
 use crate::driver::error::{PlayError, StepError};
 use crate::driver::locator::{Locate, Locator, Reach};
 use crate::driver::play::{self, BUSY_SETTLE_WAITS, Stage};
-use crate::gpu::device::gpu::Gpu;
-use crate::host::winit::frame_summary::FrameSummary;
-use crate::host::winit::handle::{HostHandle, UserEvent};
+use crate::host::winit::frame_log::LoggedFrame;
+use crate::host::winit::handle::HostHandle;
 use crate::host::winit::owned_input_event::OwnedInputEvent;
+use crate::host::winit::user_event::{Asked, LoseTask, QueryTask, ReadTask, ShotAsk, UserEvent};
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::input::input_event::InputEvent;
 use crate::ui::Ui;
@@ -36,25 +36,6 @@ const WAIT: Duration = Duration::from_secs(30);
 /// that end it at once.
 const TICK: Duration = Duration::from_millis(50);
 
-/// A closure the event loop runs between two frames of one window, with `&mut` the app and the
-/// window's `Ui`.
-pub(crate) type QueryTask<T> = Box<dyn FnOnce(&mut T, &mut Ui) + Send>;
-
-/// A closure the event loop runs between two frames of one window, with the app and the window's
-/// `Ui`, which asks no frame.
-pub(crate) type ReadTask<T> = Box<dyn FnOnce(&T, &Ui) + Send>;
-
-/// A closure the event loop runs between two frames of one window, with the device the host paints
-/// with.
-pub(crate) type LoseTask = Box<dyn FnOnce(&Gpu) + Send>;
-
-/// A screenshot a remote asked of a window, and where its image goes.
-#[derive(Debug)]
-pub(crate) struct ShotAsk {
-    pub(super) region: Option<Rect>,
-    pub(super) reply: SyncSender<Result<Screenshot, PlayError>>,
-}
-
 /// One window of a running [`WinitHost`](crate::WinitHost), driven from another thread: reads and
 /// queries run between two of its frames with the app and its `Ui`, input goes in as the window's
 /// OS input does, and every wait is bounded in real time. Made by [`HostHandle::remote`].
@@ -68,7 +49,10 @@ pub struct Remote<T: 'static> {
     /// Boxed, as a type parameter for the caller's probe would reach every signature of a remote.
     blocked: Option<Box<dyn Fn() -> bool + Send>>,
     /// The events sent, inputs, queries and device losses, which a frame that saw them all counts.
+    /// A count of the window's [`opening`](Self::opening): one opened again counts from zero.
     sent: u64,
+    /// The opening of the window `sent` counts against; `None` before the remote saw it open.
+    opening: Option<u64>,
     /// The last press's real time, which the next press waits out the double-click interval from.
     last_press: Option<Instant>,
     /// The longest real time a wait for the window lasts: [`WAIT`] unless [`Self::with_wait`]
@@ -83,6 +67,7 @@ impl<T: 'static> Debug for Remote<T> {
         f.debug_struct("Remote")
             .field("window", &self.window)
             .field("sent", &self.sent)
+            .field("opening", &self.opening)
             .finish_non_exhaustive()
     }
 }
@@ -100,7 +85,7 @@ impl<T: 'static> AgentWindow<T> for Remote<T> {
     /// [`PlayError::Hidden`] at once when it cannot, and [`PlayError::Disconnected`] when it is
     /// not open. A window that opened and has run no frame yet owes one, which a settle waits for.
     fn settle(&mut self) -> Result<u32, PlayError> {
-        let first = self.record_frame_id();
+        let first = self.record_frame_idx();
         self.wait_frame(Until::Settled)?;
         Ok(self.frames_since(first))
     }
@@ -113,7 +98,7 @@ impl<T: 'static> AgentWindow<T> for Remote<T> {
     ///
     /// [`StepError`], naming the step it stopped at.
     fn play<X: Locate<T>>(&mut self, actions: &[Action<X>]) -> Result<u32, StepError> {
-        let first = self.record_frame_id();
+        let first = self.record_frame_idx();
         play::play_all(&mut RemoteStage { remote: self }, actions)?;
         Ok(self.frames_since(first))
     }
@@ -122,17 +107,16 @@ impl<T: 'static> AgentWindow<T> for Remote<T> {
     ///
     /// # Errors
     ///
-    /// [`PlayError::EmptyRegion`] for a region outside the window, [`PlayError::Disconnected`]
+    /// [`PlayError::EmptyRegion`] for a region outside the window, [`PlayError::ScreenshotsFull`]
+    /// while the window owes as many as it holds, [`PlayError::Disconnected`]
     /// when the window is not open, [`PlayError::Blocked`] and [`PlayError::Hidden`] at once when no
     /// frame can run, and [`PlayError::NoFrame`] when no picture landed within the
     /// [wait](Self::with_wait).
     fn shot(&mut self, region: Option<Rect>) -> Result<Screenshot, PlayError> {
-        self.check_waiting(Instant::now(), Answer::InFrame)?;
-        let (reply, answer) = mpsc::sync_channel(1);
-        self.handle
-            .send(UserEvent::Shot(self.window, ShotAsk { region, reply }))
-            .map_err(|_| PlayError::Disconnected)?;
-        self.receive(&answer, Answer::InFrame)?
+        let window = self.window;
+        self.ask(Answer::InFrame, move |asked| {
+            UserEvent::Shot(window, ShotAsk { region, asked })
+        })?
     }
 
     /// Run `f` between two frames of the window, with the app and the window's `Ui`, which holds
@@ -148,7 +132,7 @@ impl<T: 'static> AgentWindow<T> for Remote<T> {
         f: impl FnOnce(&T, &Ui) -> R + Send + 'static,
     ) -> Result<R, PlayError> {
         let window = self.window;
-        self.ask(move |asked| {
+        self.ask(Answer::BetweenFrames, move |asked| {
             let task: ReadTask<T> = Box::new(move |app, ui| asked.answer(|| f(app, ui)));
             UserEvent::Read(window, task)
         })
@@ -172,7 +156,7 @@ impl<T: 'static> AgentWindow<T> for Remote<T> {
         f: impl FnOnce(&mut T, &mut Ui) -> R + Send + 'static,
     ) -> Result<R, PlayError> {
         let window = self.window;
-        self.ask(move |asked| {
+        self.ask(Answer::BetweenFrames, move |asked| {
             let task: QueryTask<T> = Box::new(move |app, ui| asked.answer(|| f(app, ui)));
             UserEvent::Query(window, task)
         })
@@ -187,7 +171,7 @@ impl<T: 'static> AgentWindow<T> for Remote<T> {
     /// As [`Self::query`].
     fn lose_device(&mut self) -> Result<(), PlayError> {
         let window = self.window;
-        self.ask(move |asked| {
+        self.ask(Answer::BetweenFrames, move |asked| {
             let task: LoseTask = Box::new(move |gpu| asked.answer(|| gpu.lose()));
             UserEvent::LoseDevice(window, task)
         })
@@ -196,14 +180,13 @@ impl<T: 'static> AgentWindow<T> for Remote<T> {
 
 impl<T: 'static> Remote<T> {
     pub(crate) fn new(handle: HostHandle<T>, window: WindowToken) -> Self {
-        let sent = handle
-            .last_frame(window)
-            .map_or(0, |summary| summary.sent_events);
+        let last = handle.last_frame(window);
         Self {
             handle,
             window,
             blocked: None,
-            sent,
+            sent: last.map_or(0, |last| last.summary.sent_events),
+            opening: last.map(|last| last.opening),
             last_press: None,
             wait: WAIT,
             tick: TICK,
@@ -227,11 +210,15 @@ impl<T: 'static> Remote<T> {
         self
     }
 
-    /// Send the event `event` builds and wait for its answer. A query and a device loss count as a
-    /// sent event, as the window counts each when it runs.
-    fn ask<R>(&mut self, event: impl FnOnce(Asked<R>) -> UserEvent<T>) -> Result<R, PlayError> {
+    /// Send the event `event` builds and wait for its answer, which `comes` as it says. A query and
+    /// a device loss count as a sent event, as the window counts each when it runs.
+    fn ask<R>(
+        &mut self,
+        comes: Answer,
+        event: impl FnOnce(Asked<R>) -> UserEvent<T>,
+    ) -> Result<R, PlayError> {
         // Before sending, so a held thread gives up at once and the task never runs.
-        self.check_waiting(Instant::now(), Answer::BetweenFrames)?;
+        self.check_waiting(Instant::now(), comes)?;
         let (reply, answer) = mpsc::sync_channel(1);
         let given_up = Arc::new(AtomicBool::new(false));
         let event = event(Asked {
@@ -242,11 +229,11 @@ impl<T: 'static> Remote<T> {
             event,
             UserEvent::Query(..) | UserEvent::LoseDevice(..)
         ));
+        self.count_sent(counted);
         self.handle
             .send(event)
             .map_err(|_| PlayError::Disconnected)?;
-        self.sent += counted;
-        let answered = self.receive(&answer, Answer::BetweenFrames);
+        let answered = self.receive(&answer, comes);
         if answered.is_err() {
             given_up.store(true, Ordering::Release);
         }
@@ -282,21 +269,34 @@ impl<T: 'static> Remote<T> {
         Ok(())
     }
 
-    fn last_frame(&self) -> Result<FrameSummary, PlayError> {
+    /// Count `counted` events about to go to the window as it is open now, before they are sent,
+    /// as a window that ran them already counts them in its summary. A window closed and opened
+    /// again under the token counts from its own start, so the count restarts at that opening's.
+    fn count_sent(&mut self, counted: u64) {
+        if let Some(last) = self.handle.last_frame(self.window)
+            && self.opening != Some(last.opening)
+        {
+            self.opening = Some(last.opening);
+            self.sent = last.summary.sent_events;
+        }
+        self.sent += counted;
+    }
+
+    fn last_frame(&self) -> Result<LoggedFrame, PlayError> {
         self.handle
             .last_frame(self.window)
             .ok_or(PlayError::Disconnected)
     }
 
-    fn record_frame_id(&self) -> u64 {
+    fn record_frame_idx(&self) -> u64 {
         self.handle
             .last_frame(self.window)
-            .map_or(0, |summary| summary.record_frame_id)
+            .map_or(0, |last| last.summary.record_frame_idx)
     }
 
     /// The frames recorded since `first`.
     fn frames_since(&self, first: u64) -> u32 {
-        play::frames_recorded(first, self.record_frame_id())
+        play::frames_recorded(first, self.record_frame_idx())
     }
 
     /// Wait for a frame `until` names. A busy app's wait for its next frame starts again at each,
@@ -304,20 +304,22 @@ impl<T: 'static> Remote<T> {
     fn wait_frame(&self, until: Until) -> Result<(), PlayError> {
         let settled = until == Until::Settled;
         let start = Instant::now();
-        let first = self.record_frame_id();
+        let first = self.record_frame_idx();
         let mut seen = first;
         let mut progressed = start;
         loop {
-            let last = self.last_frame()?;
-            let saw_events = last.sent_events >= self.sent;
+            let logged = self.last_frame()?;
+            let last = logged.summary;
+            // A window opened again since the last send holds none of the events sent before.
+            let saw_events = self.opening != Some(logged.opening) || last.sent_events >= self.sent;
             let unsettled = settled && (last.repaint_requested || last.busy);
             if saw_events && !unsettled {
                 return Ok(());
             }
             // A frame from before an event says nothing of the app after it.
             let working = settled && saw_events && last.busy && !last.repaint_requested;
-            if last.record_frame_id != seen {
-                seen = last.record_frame_id;
+            if last.record_frame_idx != seen {
+                seen = last.record_frame_idx;
                 progressed = Instant::now();
             }
             let since = if working { progressed } else { start };
@@ -330,33 +332,15 @@ impl<T: 'static> Remote<T> {
                 let frames = self.frames_since(first);
                 return Err(match error {
                     PlayError::NoFrame { waited } if working => PlayError::Busy { waited },
-                    PlayError::NoFrame { .. } if settled && frames > 0 => {
-                        PlayError::Unsettled { frames }
-                    }
+                    PlayError::NoFrame { .. } if settled && frames > 0 => PlayError::Unsettled {
+                        frames_recorded: frames,
+                    },
                     error => error,
                 });
             }
             self.handle
                 .frame_log
-                .wait_changed(self.window, last, self.tick);
-        }
-    }
-}
-
-/// An answer a task owes the remote that sent it, unless that remote gave up waiting.
-#[derive(Debug)]
-struct Asked<R> {
-    reply: SyncSender<R>,
-    /// Read before `f` runs: a channel tells its sender the receiver left only through a send,
-    /// which comes after `f`.
-    given_up: Arc<AtomicBool>,
-}
-
-impl<R> Asked<R> {
-    /// Answer with what `f` returns; a task given up on runs nothing.
-    fn answer(self, f: impl FnOnce() -> R) {
-        if !self.given_up.load(Ordering::Acquire) {
-            self.reply.send(f()).ok();
+                .wait_changed(self.window, logged, self.tick);
         }
     }
 }
@@ -393,10 +377,10 @@ impl<T: 'static, X: Locate<T>> Stage<X> for RemoteStage<'_, T> {
     }
 
     fn input(&mut self, event: InputEvent<'_>) {
+        self.remote.count_sent(1);
         self.remote
             .handle
             .send_input(self.remote.window, OwnedInputEvent::from(event));
-        self.remote.sent += 1;
     }
 
     fn frame(&mut self) -> Result<(), PlayError> {

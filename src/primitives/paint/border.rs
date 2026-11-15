@@ -19,7 +19,7 @@ pub struct Border {
     /// Ink color.
     pub color: RgbaF32,
     /// Width in logical pixels.
-    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
+    #[serde(deserialize_with = "crate::primitives::file::length")]
     #[animate(settle_eps = PX_SETTLE_EPS)]
     pub width: f32,
 }

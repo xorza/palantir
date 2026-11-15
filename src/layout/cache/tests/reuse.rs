@@ -3,12 +3,12 @@
 
 use crate::common::span::Span;
 use crate::host::harness::Harness;
-use crate::layout::cache::measure_snapshot::ArenaSnapshot;
+use crate::layout::cache::measure_snapshot::SubtreeDesc;
 use crate::layout::counters::ReplayCounts;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
@@ -37,7 +37,7 @@ fn run_frame_at(h: &mut Harness, size: UVec2, mut record: impl FnMut(&mut Ui)) {
 
 #[derive(Debug)]
 struct SnapView<'a> {
-    snap: ArenaSnapshot,
+    snap: SubtreeDesc,
     desired: &'a [Size],
     avail: Size,
 }
@@ -255,7 +255,7 @@ fn removed_widget_is_absent_from_next_snapshot() {
             .layout()
             .cache
             .prev
-            .snapshots
+            .desc_by_id
             .contains_key(&WidgetId::from_hash("gone"))
     );
 
@@ -273,7 +273,7 @@ fn removed_widget_is_absent_from_next_snapshot() {
             .layout()
             .cache
             .prev
-            .snapshots
+            .desc_by_id
             .contains_key(&WidgetId::from_hash("gone"))
     );
     assert!(
@@ -281,7 +281,7 @@ fn removed_widget_is_absent_from_next_snapshot() {
             .layout()
             .cache
             .prev
-            .snapshots
+            .desc_by_id
             .contains_key(&WidgetId::from_hash("kept"))
     );
     assert_snapshot_is_linear(&h);
@@ -327,14 +327,14 @@ fn changing_available_remeasures_wrapping_text() {
     let build = |ui: &mut Ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("inner"))
-            .size((Sizing::FILL, Sizing::HUG))
+            .size(SizeSpec::FILL_W)
             .show(ui, |ui| {
                 Text::new(
                     "the quick brown fox jumps over the lazy dog \
                      pack my box with five dozen liquor jugs",
                 )
                 .id(WidgetId::from_hash("fill"))
-                .size((Sizing::FILL, Sizing::HUG))
+                .size(SizeSpec::FILL_W)
                 .font_size(16.0)
                 .text_wrap(TextWrap::WrapWithOverflow)
                 .show(ui);
@@ -360,12 +360,12 @@ fn solver_order_text_runs_form_contiguous_subtree_snapshots() {
         nodes.clear();
         Panel::hstack()
             .id(WidgetId::from_hash("solver-order"))
-            .size((Sizing::FILL, Sizing::HUG))
+            .size(SizeSpec::FILL_W)
             .show(ui, |ui| {
                 nodes.push(
                     Text::new("fill measured second")
                         .id(WidgetId::from_hash("fill-text"))
-                        .size((Sizing::FILL, Sizing::HUG))
+                        .size(SizeSpec::FILL_W)
                         .show(ui)
                         .node(ui),
                 );
@@ -505,8 +505,8 @@ fn oscillating_tree_size_reuses_both_snapshot_buffers() {
     ];
     node_capacities.sort_unstable();
     let mut desc_capacities = [
-        h.frames().layout().cache.prev.snapshots.capacity(),
-        h.frames().layout().cache.cur.snapshots.capacity(),
+        h.frames().layout().cache.prev.desc_by_id.capacity(),
+        h.frames().layout().cache.cur.desc_by_id.capacity(),
     ];
     desc_capacities.sort_unstable();
 
@@ -534,8 +534,8 @@ fn oscillating_tree_size_reuses_both_snapshot_buffers() {
         ];
         cur_node_capacities.sort_unstable();
         let mut cur_desc_capacities = [
-            h.frames().layout().cache.prev.snapshots.capacity(),
-            h.frames().layout().cache.cur.snapshots.capacity(),
+            h.frames().layout().cache.prev.desc_by_id.capacity(),
+            h.frames().layout().cache.cur.desc_by_id.capacity(),
         ];
         cur_desc_capacities.sort_unstable();
         assert_eq!(
@@ -573,7 +573,7 @@ fn oscillating_tree_size_reuses_both_snapshot_buffers() {
             .layout()
             .cache
             .prev
-            .snapshots
+            .desc_by_id
             .contains_key(&WidgetId::from_hash("re-keyed")),
         "the rebuilt map must resolve the id that busted it",
     );
@@ -583,7 +583,7 @@ fn oscillating_tree_size_reuses_both_snapshot_buffers() {
 /// the unmeasured sentinel matches only itself, though it is NaN.
 #[test]
 fn offers_match_bit_for_bit() {
-    use crate::layout::cache::{UNMEASURED, same_offer};
+    use crate::layout::measure_columns::{UNMEASURED, same_offer};
 
     let inf = f32::INFINITY;
     let offer = Size::new(1000.667, inf);
@@ -614,7 +614,7 @@ fn a_run_keeps_the_last_output_only_while_its_inputs_hold() {
                 fill: color,
             }
             .show(ui);
-            ui.layer(Layer::Popup).fixed_at(popup_at).show(|ui| {
+            ui.layer(Layer::Popup).at(popup_at).show(|ui| {
                 Block::new()
                     .id(WidgetId::from_hash("popup"))
                     .size((Sizing::fixed(30.0), Sizing::fixed(10.0)))

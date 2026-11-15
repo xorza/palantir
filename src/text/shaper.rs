@@ -282,8 +282,8 @@ impl TextShaper {
     }
 
     /// Lay glyphs out and rasterize them directly: the exclusive render-side lease,
-    /// in [`PlacedGlyph`](crate::widget::PlacedGlyph) and
-    /// [`RasterImage`](crate::widget::RasterImage) terms. Real glyphs under mono too.
+    /// in [`PlacedGlyph`](crate::PlacedGlyph) and
+    /// [`RasterImage`](crate::RasterImage) terms. Real glyphs under mono too.
     ///
     /// Palantir's text backend and a caller drawing its own text (a
     /// [`GpuView`](crate::GpuView) labeling a 3D scene) take this one lease. Holding
@@ -363,7 +363,7 @@ pub(crate) mod internals {
                 text,
                 font: shape.font,
                 wrap: TextWrap::Wrap,
-                align: Align::h(shape.halign),
+                align: Align::from(shape.halign),
                 max_width: shape.max_width,
             }))
         }

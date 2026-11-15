@@ -4,7 +4,7 @@ use crate::primitives::text::interned_str::InternedStr;
 use std::borrow::Cow;
 
 /// Transient text accepted by widget builders. Borrowed and owned inputs are copied into the active [`crate::Ui`] text arena at `show`; an [`InternedStr`] passes through if it belongs to the showing pass.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum TextInput<'a> {
     /// A `&str`, copied into the arena at `show`.
     Borrowed(&'a str),

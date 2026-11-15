@@ -39,6 +39,7 @@
 //!   no scissor. A partial frame keeps every draw under a capturing backdrop's footprint, so a
 //!   barrier of 0 there means nothing lies under it.
 
+use crate::cascade::blur_plan::BlurPlan;
 use crate::cascade::plane_backdrop::PlaneBackdrop;
 use crate::damage::Damage;
 use crate::damage::dirty_backdrops::DirtyBackdrops;
@@ -48,7 +49,6 @@ use crate::primitives::identity::backdrop_key::BackdropKey;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::backdrop_row::BackdropCapture;
 use crate::renderer::render_plan::RenderPlan;
-use crate::shape::paint::blur_plan::BlurPlan;
 use glam::UVec2;
 use rustc_hash::FxHashMap;
 
@@ -74,8 +74,23 @@ impl Held {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct BackdropTicket {
     pub(crate) capture: BackdropCapture,
-    /// Whether the backdrop takes a new result this frame, from a capture or the clear.
-    pub(crate) captures: bool,
+    pub(crate) result: TicketResult,
+}
+
+/// Where a backdrop's result comes from this frame.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum TicketResult {
+    /// The result it holds serves it.
+    Held,
+    /// A new result, from a capture or the clear.
+    New,
+}
+
+impl BackdropTicket {
+    /// Whether the backdrop takes a new result this frame.
+    pub(crate) const fn is_new(self) -> bool {
+        matches!(self.result, TicketResult::New)
+    }
 }
 
 /// What a frame's damage left of its backdrops' captures.
@@ -160,7 +175,11 @@ impl BackdropCaptures {
                         plan: backdrop.plan,
                         region: held.map_or(region, |held| held.region),
                     },
-                    captures: held.is_none(),
+                    result: if held.is_some() {
+                        TicketResult::Held
+                    } else {
+                        TicketResult::New
+                    },
                 }
             });
             self.tickets.push(ticket);
@@ -197,7 +216,7 @@ impl BackdropCaptures {
         self.tickets
             .iter()
             .flatten()
-            .filter(|ticket| ticket.captures)
+            .filter(|ticket| ticket.is_new())
     }
 
     /// Record what the frame `buffer` holds, built from the last tickets, took: each backdrop that
@@ -211,7 +230,7 @@ impl BackdropCaptures {
             .tickets
             .iter()
             .flatten()
-            .filter(|ticket| ticket.captures)
+            .filter(|ticket| ticket.is_new())
         {
             self.held.remove(&ticket.capture.key);
         }

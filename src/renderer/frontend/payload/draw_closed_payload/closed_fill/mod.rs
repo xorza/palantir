@@ -1,13 +1,14 @@
 //! [`ClosedFill`]: a box's or a triangle's fill and border.
 
 use crate::primitives::packed::fill_axis::FillAxis;
-use crate::primitives::packed::fill_kind::FillKind;
+use crate::primitives::paint::fill_kind::FillKind;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_closed_payload::{
     ClosedPaintPayload, DrawClosedPayload,
 };
-use crate::renderer::frontend::payload::gpu_fill::GpuFill;
+use crate::renderer::frontend::payload::spin::Spin;
+use crate::renderer::render_buffer::gpu_fill::GpuFill;
 use crate::shape::geometry::closed_geometry::PlacedClosed;
 use crate::shape::paint::lowered_border::LoweredBorder;
 
@@ -65,8 +66,8 @@ impl ClosedPaintPayload for ClosedFill {
         empty || (self.fill.is_noop() && self.border.is_noop())
     }
 
-    fn paint(draw: DrawClosedPayload<Self>, sink: &mut impl PaintSink) {
-        sink.fill(draw);
+    fn paint(draw: DrawClosedPayload<Self>, spin: Option<Spin>, sink: &mut impl PaintSink) {
+        sink.fill(draw, spin);
     }
 }
 

@@ -11,7 +11,7 @@ fn warm_constructors_run_one_pass_and_cold_runs_two() {
     let mut passes = PassCounter::default();
 
     let mut warm = Harness::mono(SURFACE);
-    let report = warm.frame(|ui| {
+    let report = warm.frame_recorded(|ui| {
         passes.0 += 1;
         support::button(ui);
     });
@@ -47,7 +47,7 @@ fn warm_constructors_run_one_pass_and_cold_runs_two() {
 
 #[test]
 fn frame_value_returns_pass_a_not_the_drained_second_pass() {
-    // Rules 4 and 5. A click double-records; pass B runs after `drain_per_frame_queues` and sees `clicked() == false`, so reading the last pass loses the edge.
+    // Rules 4 and 5. A click double-records; pass B runs after `Input::clear_edges` and sees `clicked() == false`, so reading the last pass loses the edge.
     let mut harness = Harness::mono(SURFACE);
     harness.prime(2, support::button);
     harness.click(INSIDE);
@@ -56,7 +56,7 @@ fn frame_value_returns_pass_a_not_the_drained_second_pass() {
 
     // The raw `frame` closure runs on every pass; this is what `let mut x = …; frame(|ui| x = …)` reads.
     let mut per_pass = Vec::new();
-    let report = harness.frame(|ui| {
+    let report = harness.frame_recorded(|ui| {
         support::button(ui);
         per_pass.push(ui.response_for(support::target()).left.clicked());
     });
@@ -102,10 +102,13 @@ fn frame_without_baseline_forces_a_full_repaint() {
     harness.prime(2, support::button);
 
     // A steady frame with no input has nothing to repaint.
-    assert_eq!(harness.frame(support::button).paint(), FramePaint::Skip);
+    assert_eq!(harness.frame(support::button).paint, FramePaint::Skip);
     // Dropping the baseline forces the whole surface.
     assert_eq!(
-        harness.frame_without_baseline(support::button).paint(),
+        harness
+            .frame_without_baseline(support::button)
+            .report()
+            .paint,
         FramePaint::Full
     );
 }

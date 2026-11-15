@@ -16,6 +16,7 @@ use crate::widget_core::configure::Configure;
 use crate::widgets::switch::{Switch, SwitchTrack};
 
 use glam::UVec2;
+use std::num::NonZeroU32;
 use std::time;
 
 /// The aspect the stock switch ships; expected numbers derive from it.
@@ -87,7 +88,7 @@ fn knob_rests_inset_from_the_end_it_sits_against() {
     let mut h = Harness::builder(UVec2::new(400, 400))
         .mono()
         .frame_dt(time::Duration::from_millis(16))
-        .settle_frames(120)
+        .settle_frames(NonZeroU32::new(120).unwrap())
         .build();
     let id = WidgetId::from_hash("wifi");
     let mut on = false;
@@ -96,8 +97,8 @@ fn knob_rests_inset_from_the_end_it_sits_against() {
     };
     // `[left, top, right, bottom]`, the knob's margins in the track.
     let margins = |h: &Harness| {
-        let track = h.arranged(id.with("box"));
-        let knob = h.arranged(id.with("knob"));
+        let track = h.layout_rect(id.with("box"));
+        let knob = h.layout_rect(id.with("knob"));
         [
             knob.unwrap().min.x - track.unwrap().min.x,
             knob.unwrap().min.y - track.unwrap().min.y,
@@ -127,7 +128,7 @@ fn the_knob_wears_the_ink_of_its_state() {
     let mut h = Harness::builder(UVec2::new(400, 400))
         .mono()
         .frame_dt(time::Duration::from_millis(16))
-        .settle_frames(120)
+        .settle_frames(NonZeroU32::new(120).unwrap())
         .build();
     let id = WidgetId::from_hash("wifi");
     let mut on = false;
@@ -177,8 +178,8 @@ fn one_share_places_the_knob_and_blends_its_ink() {
     h.advance(time::Duration::from_millis(16));
     h.frame(&mut record);
 
-    let track = h.arranged(id.with("box"));
-    let knob = h.arranged(id.with("knob"));
+    let track = h.layout_rect(id.with("box"));
+    let knob = h.layout_rect(id.with("knob"));
     // The look moves the track's border on the check too, here 1.00015625 px, which the layout's
     // f16 padding stores as 1: the knob keeps its 3 px inset from the edge it sits against.
     assert_eq!(knob.unwrap().min.y - track.unwrap().min.y, 3.0);

@@ -1,7 +1,7 @@
 //! The rows a wheel turn reaches, one for each axis.
 
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::primitives::input::interaction::scroll_delta::ScrollDelta;
+use crate::primitives::input::interaction::wheel_delta::WheelDelta;
 use glam::Vec2;
 
 /// The topmost row under the pointer that senses each wheel axis ([`Sense::SCROLL_X`], [`Sense::SCROLL_Y`]): one row, two, or none.
@@ -17,18 +17,17 @@ pub(crate) struct ScrollTargets {
 }
 
 /// `f` of each lane of `delta`.
-fn each_lane(delta: ScrollDelta, f: impl Fn(Vec2) -> Vec2) -> ScrollDelta {
-    ScrollDelta {
+fn each_lane(delta: WheelDelta, f: impl Fn(Vec2) -> Vec2) -> WheelDelta {
+    WheelDelta {
         pixels: f(delta.pixels),
         lines: f(delta.lines),
         notches: f(delta.notches),
         pages: f(delta.pages),
-        ..delta
     }
 }
 
 /// Whether `axis` of any lane of `delta` moves.
-fn any_lane(delta: ScrollDelta, axis: impl Fn(Vec2) -> f32) -> bool {
+fn any_lane(delta: WheelDelta, axis: impl Fn(Vec2) -> f32) -> bool {
     [delta.pixels, delta.lines, delta.notches, delta.pages]
         .into_iter()
         .any(|lane| axis(lane) != 0.0)
@@ -38,7 +37,7 @@ fn any_lane(delta: ScrollDelta, axis: impl Fn(Vec2) -> f32) -> bool {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct WheelDelivery {
     pub(crate) target: WidgetId,
-    pub(crate) delta: ScrollDelta,
+    pub(crate) delta: WheelDelta,
 }
 
 impl ScrollTargets {
@@ -48,7 +47,7 @@ impl ScrollTargets {
     }
 
     /// Split one wheel event between the rows: at most one delivery per axis, none for an axis the event doesn't move. A purely vertical event with no vertical row goes to the horizontal row on its x lanes (a mouse wheel only turns vertically); a diagonal touchpad swipe keeps its axes apart.
-    pub(crate) fn route(self, delta: ScrollDelta) -> [Option<WheelDelivery>; 2] {
+    pub(crate) fn route(self, delta: WheelDelta) -> [Option<WheelDelivery>; 2] {
         let moves_x = any_lane(delta, |lane| lane.x);
         let moves_y = any_lane(delta, |lane| lane.y);
         if !moves_x && moves_y && self.y.is_none() {

@@ -9,13 +9,12 @@ use crate::clipboard::Clipboard;
 use crate::effect::effect_registry::EffectRegistry;
 use crate::icons::icon_registry::IconRegistry;
 use crate::image_registry::ImageRegistry;
-use crate::image_registry::error::ImageTooLarge;
+use crate::image_registry::error::ImageSizeError;
 use crate::image_registry::image_handle::ImageHandle;
 use crate::image_registry::texture_limit::TextureLimit;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::image::Image;
 use crate::text::shaper::TextShaper;
-use crate::theme::color_scheme::ColorScheme;
 use crate::ui::resources::app_settings::AppSettings;
 use crate::ui::resources::shared_device::SharedDevice;
 use crate::window::window_directory::WindowDirectory;
@@ -100,11 +99,6 @@ impl UiResources {
         &self.0.settings
     }
 
-    /// The scheme every window shows now: the preference resolved against the system's.
-    pub(crate) fn color_scheme(&self) -> ColorScheme {
-        self.0.settings.color_scheme()
-    }
-
     pub(crate) fn windows(&self) -> &WindowDirectory {
         &self.0.windows
     }
@@ -114,7 +108,7 @@ impl UiResources {
         self.0.device.texture_limit().max_dimension()
     }
 
-    pub(super) fn load_image(&self, image: &Image) -> Result<ImageHandle, ImageTooLarge> {
+    pub(super) fn load_image(&self, image: &Image) -> Result<ImageHandle, ImageSizeError> {
         self.0.device.texture_limit().accepts(image.size)?;
         Ok(ImageHandle::new(
             TextureId::reserve(),

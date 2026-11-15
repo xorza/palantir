@@ -1,5 +1,5 @@
 use crate::image_registry::ImageRegistry;
-use crate::image_registry::error::ImageTooLarge;
+use crate::image_registry::error::ImageSizeError;
 use crate::image_registry::image_handle::ImageHandle;
 use crate::image_registry::image_store::ImageStore;
 use crate::primitives::identity::texture_id::TextureId;
@@ -21,7 +21,7 @@ struct CallLog {
 }
 
 impl ImageStore for CallLog {
-    fn write(&self, id: TextureId, _: &Image) -> Result<(), ImageTooLarge> {
+    fn write(&self, id: TextureId, _: &Image) -> Result<(), ImageSizeError> {
         self.calls.borrow_mut().push(Call::Write(id));
         Ok(())
     }

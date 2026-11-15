@@ -1,7 +1,7 @@
 //! The editable text leaf and the machinery one edit costs: buffer, selection and undo
 //! ([`editor`], [`edit_state`], [`history`]), keys and gestures ([`action`], [`input_pass`]),
 //! the input method's composition ([`composition`]),
-//! placement and caret mapping ([`text_layout`], [`text_geometry`], [`shape_ctx`],
+//! placement and caret mapping ([`text_layout`], [`text_geometry`],
 //! [`paint_input`]), retained scroll and focus ([`view_state`]), and
 //! grapheme/word walks ([`unicode`]).
 
@@ -15,7 +15,6 @@ mod editor;
 mod history;
 mod input_pass;
 mod paint_input;
-mod shape_ctx;
 mod text_geometry;
 pub(crate) mod text_layout;
 mod unicode;
@@ -210,7 +209,7 @@ impl<'a> TextEdit<'a> {
     ///
     /// # Panics
     ///
-    /// Panics unless `color` is a [color](crate::widget::domain::color).
+    /// Panics unless `color` is a [color](crate::widget::domain::is_color).
     #[track_caller]
     pub const fn color(mut self, color: RgbaF32) -> Self {
         self.field.overrides.color = Some(domain::color(color));
@@ -224,7 +223,7 @@ impl<'a> TextEdit<'a> {
     ///
     /// # Panics
     ///
-    /// Panics unless `px` is a [length](crate::widget::domain::length).
+    /// Panics unless `px` is a [length](crate::widget::domain::is_length).
     #[track_caller]
     pub const fn font_size(mut self, px: f32) -> Self {
         self.field.overrides.font_size = Some(domain::length(px));
@@ -237,7 +236,7 @@ impl<'a> TextEdit<'a> {
     ///
     /// # Panics
     ///
-    /// Panics unless `factor` is [positive](crate::widget::domain::positive).
+    /// Panics unless `factor` is [positive](crate::widget::domain::is_positive).
     #[track_caller]
     pub const fn line_height_factor(mut self, factor: f32) -> Self {
         self.field.overrides.line_height_factor = Some(domain::positive(factor));
@@ -259,6 +258,13 @@ impl<'a> TextEdit<'a> {
     /// Upright or italic, overriding the resolved look's.
     pub const fn slant(mut self, slant: FontSlant) -> Self {
         self.field.overrides.slant = Some(slant);
+        self
+    }
+
+    /// Every text axis at once, in place of what the setters above set: for a wrapper handing on
+    /// the overrides its own setters checked.
+    pub(crate) const fn overrides(mut self, overrides: TextStyleOverrides) -> Self {
+        self.field.overrides = overrides;
         self
     }
 
@@ -301,8 +307,8 @@ impl<'a> TextEdit<'a> {
     /// Position of the text inside the inner rect. Defaults: `Align::LEFT`
     /// single-line, `Align::TOP_LEFT` multi-line. Distinct from [`Configure::align`],
     /// which positions the widget in its parent's slot.
-    pub const fn text_align(mut self, a: Align) -> Self {
-        self.field.text_align = Some(a);
+    pub fn text_align(mut self, a: impl Into<Align>) -> Self {
+        self.field.text_align = Some(a.into());
         self
     }
 
@@ -351,7 +357,7 @@ impl EditField<'_> {
             TextInput::Owned(text) => text,
             TextInput::Interned(text) => ui.text(*text),
         });
-        if !state.view.was_focused(ui.record_frame_id()) && draft != shown {
+        if !state.view.was_focused(ui.record_frame_idx()) && draft != shown {
             draft.clone_from(&shown);
         }
         let mut outcome = self.pass(ui, state, id, &mut draft);
@@ -381,7 +387,7 @@ impl EditField<'_> {
         if is_focused && response.disabled {
             ui.clear_focus();
             is_focused = false;
-            response.state.focused = false;
+            response.focused = false;
         }
         // A focused editor takes the classes it edits with, so an app-level Ctrl+Z undoes
         // this buffer. `ACCEL` stays out (see `KeyFilter::TEXT_FIELD`) so Ctrl+S still
@@ -403,10 +409,10 @@ impl EditField<'_> {
         let mut look = self.widget.wear(ui, plan);
         // After the look animates, so a per-axis override outranks the theme in every state.
         look.text = self.overrides.apply(&look.text);
-        // A face the shaper cannot be asked for shapes nothing (as `TextShape::is_noop`); caret and
-        // selection derive from the face, so the layout below must not run.
+        // A face the shaper cannot be asked for shapes nothing, as a text shape's record drops it;
+        // caret and selection derive from the face, so the layout below must not run.
         if !look.text.metrics_valid() {
-            let focus = state.view.roll_focus(is_focused, ui.record_frame_id());
+            let focus = state.view.roll_focus(is_focused, ui.record_frame_idx());
             let committed = state.roll_commit(CommitPass {
                 focus,
                 changed: false,
@@ -445,7 +451,6 @@ impl EditField<'_> {
             text_align: self.text_align,
             prev_block_offset,
         });
-        let ctx = layout.ctx;
         let rules = EditRules {
             multiline: self.multiline,
             max_chars: self.max_chars,
@@ -471,9 +476,9 @@ impl EditField<'_> {
         if ended == Some(EditEnd::Canceled) {
             ui.clear_focus();
             is_focused = false;
-            response.state.focused = false;
+            response.focused = false;
         }
-        let focus = state.view.roll_focus(is_focused, ui.record_frame_id());
+        let focus = state.view.roll_focus(is_focused, ui.record_frame_idx());
 
         // One editing session for the whole menu pass, so one session reconciles undo
         // history once. A disabled editor offers no menu; not recording it closes any open
@@ -513,10 +518,10 @@ impl EditField<'_> {
             Vec2::ZERO
         } else {
             response.scroll.pan(
-                ctx.font.line_height,
+                layout.font.line_height,
                 response
                     .layout_rect
-                    .map_or(Size::ZERO, |rect| rect.deflated_by(ctx.padding).size),
+                    .map_or(Size::ZERO, |rect| rect.deflated_by(layout.padding).size),
             )
         };
 
@@ -553,7 +558,7 @@ impl EditField<'_> {
             &mut state.selection_rects,
         );
         let now = ui.now();
-        let caret_animation = state.view.update(ViewUpdateInput {
+        let view = state.view.update(ViewUpdateInput {
             geometry,
             wheel,
             caret_byte,
@@ -576,7 +581,7 @@ impl EditField<'_> {
                 .scroll
                 .transform(Vec2::ZERO, ui.display())
                 .apply_rect(local);
-            let [left, top, _, _] = ctx.padding.to_array();
+            let [left, top, _, _] = layout.padding.to_array();
             let origin = layout_rect.min + Vec2::new(left, top) + geometry.block_offset;
             ui.request_ime_area(response.transform.apply_rect(Rect {
                 min: scrolled.min + origin,
@@ -587,7 +592,7 @@ impl EditField<'_> {
         let sense = self.widget.authored().sense();
         self.widget
             .configure()
-            .sense(sense.difference(Sense::SCROLL.difference(state.view.wheel_axes)));
+            .sense(sense.difference(Sense::SCROLL.difference(view.wheel_axes)));
         let text_color = look.text.color;
         PaintInput {
             chrome: look.chrome,
@@ -605,7 +610,7 @@ impl EditField<'_> {
                 pos: geometry.caret_pos,
                 width: caret_width,
                 color: caret_color,
-                animation: caret_animation,
+                animation: view.caret_animation,
             }),
         }
         .record(ui, self.widget);
@@ -636,10 +641,10 @@ pub struct TextEditResponse {
     pub response: Response,
     /// The buffer was edited this frame.
     pub changed: bool,
-    /// The edit finished this frame and the buffer holds its result, as
-    /// [`ValueResponse::committed`](crate::ValueResponse::committed): on Enter in a
-    /// single-line editor or on the blur ending a focus session, never on Escape or a
-    /// blur because the editor turned disabled. A session commits once.
+    /// The edit finished this frame and the buffer holds its result: on Enter in a single-line
+    /// editor or on the blur ending a focus session, never on Escape or a blur because the
+    /// editor turned disabled. A session commits once, changed or not, where
+    /// [`ValueResponse::committed`](crate::ValueResponse::committed) commits a change alone.
     pub committed: bool,
     /// A [buffered](TextEdit::buffered) field's draft, on the frame it commits a text that
     /// differs from the field's current value; `None` on every other frame, and always for a

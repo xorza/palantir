@@ -4,7 +4,8 @@
 use super::*;
 use crate::common::expiry_window::EXPIRY_FRAMES;
 use crate::gpu::atlas::PoolConfig;
-use crate::gpu::atlas::page_list::{MoveBudget, PageListConfig};
+use crate::gpu::atlas::page_list::PageListConfig;
+use crate::gpu::atlas::page_list::move_budget::MoveBudget;
 use crate::gpu::atlas::tenant::Tenant;
 use crate::gpu::test_gpu::{TestGpu, headless_test_gpu};
 use crate::renderer::row_table::RowTableConfig;
@@ -46,14 +47,9 @@ fn budget_pool(
     })
 }
 
-/// Commit `pool` into `textures` on an encoder of its own, submitted and waited for.
+/// Commit `pool` into `textures` in a frame of its own, submitted and waited for.
 fn commit(gpu: &TestGpu, textures: &mut AtlasTextures, pool: &mut AtlasPool) {
-    let mut encoder = gpu
-        .device
-        .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-    textures.commit(gpu, &mut encoder, pool);
-    gpu.queue.submit([encoder.finish()]);
-    gpu.wait();
+    gpu.frame(|ctx| textures.commit(ctx, pool));
 }
 
 /// Write `texels`, one byte each, over the whole of `texture`, an `R8Unorm` of `edge`².
@@ -79,7 +75,7 @@ fn a_grown_page_keeps_its_texels() {
     let gpu = headless_test_gpu();
     let mut pool = pool();
     let mut textures = AtlasTextures::new(&gpu);
-    pool.allocate(AtlasFormat::R8, Tenant::Glyphs, UVec2::splat(16))
+    pool.allocate(AtlasFormat::R8, Tenant::Glyphs.owner(), UVec2::splat(16))
         .unwrap();
     commit(&gpu, &mut textures, &mut pool);
     assert_eq!(textures.generation(AtlasFormat::R8), 1);
@@ -92,7 +88,7 @@ fn a_grown_page_keeps_its_texels() {
         &pattern,
     );
 
-    pool.allocate(AtlasFormat::R8, Tenant::Glyphs, UVec2::splat(32))
+    pool.allocate(AtlasFormat::R8, Tenant::Glyphs.owner(), UVec2::splat(32))
         .unwrap();
     assert_eq!(pool.list(AtlasFormat::R8).page(0).unwrap().edge(), 64);
     commit(&gpu, &mut textures, &mut pool);
@@ -136,7 +132,7 @@ fn moves_land(gpu: &TestGpu, traffic: PassTraffic) {
     let mut pool = moving_pool(32, 32, 1 << 20, traffic);
     let mut textures = AtlasTextures::with_traffic(gpu, traffic);
     let insert = |pool: &mut AtlasPool, format| {
-        pool.allocate(format, Tenant::Glyphs, UVec2::splat(16))
+        pool.allocate(format, Tenant::Glyphs.owner(), UVec2::splat(16))
             .unwrap()
             .handle
     };
@@ -225,7 +221,7 @@ fn a_commit_lands_its_moves_in_the_order_they_were_made() {
         let mut pool = budget_pool(32, 32, 1 << 20, one);
         let mut textures = AtlasTextures::with_traffic(&gpu, traffic);
         let insert = |pool: &mut AtlasPool| {
-            pool.allocate(AtlasFormat::R8, Tenant::Glyphs, UVec2::splat(8))
+            pool.allocate(AtlasFormat::R8, Tenant::Glyphs.owner(), UVec2::splat(8))
                 .unwrap()
                 .handle
         };
@@ -304,7 +300,7 @@ fn a_drain_lands_on_two_pages() {
         let mut textures = AtlasTextures::with_traffic(&gpu, traffic);
         let items: Vec<_> = (0..34)
             .map(|_| {
-                pool.allocate(AtlasFormat::R8, Tenant::Glyphs, UVec2::splat(16))
+                pool.allocate(AtlasFormat::R8, Tenant::Glyphs.owner(), UVec2::splat(16))
                     .unwrap()
                     .handle
             })
@@ -375,7 +371,7 @@ fn a_move_reads_its_page_though_its_slot_opened_again() {
         let mut textures = AtlasTextures::with_traffic(&gpu, traffic);
         let items: Vec<_> = (0..5)
             .map(|_| {
-                pool.allocate(AtlasFormat::R8, Tenant::Glyphs, UVec2::splat(16))
+                pool.allocate(AtlasFormat::R8, Tenant::Glyphs.owner(), UVec2::splat(16))
                     .unwrap()
                     .handle
             })
@@ -397,7 +393,7 @@ fn a_move_reads_its_page_though_its_slot_opened_again() {
         pool.end_submit();
         assert!(pool.list(AtlasFormat::R8).page(1).is_none(), "closed");
         let wide = pool
-            .allocate(AtlasFormat::R8, Tenant::Glyphs, UVec2::splat(32))
+            .allocate(AtlasFormat::R8, Tenant::Glyphs.owner(), UVec2::splat(32))
             .unwrap()
             .handle;
         assert_eq!(pool.placement(wide).unwrap().page, 1, "opened again");
@@ -432,10 +428,10 @@ fn a_page_opened_again_in_its_slot_starts_empty() {
     let mut pool = pool();
     let mut textures = AtlasTextures::new(&gpu);
     let side = UVec2::splat(64);
-    pool.allocate(AtlasFormat::R8, Tenant::Glyphs, UVec2::splat(40))
+    pool.allocate(AtlasFormat::R8, Tenant::Glyphs.owner(), UVec2::splat(40))
         .unwrap();
     let wide = pool
-        .allocate(AtlasFormat::R8, Tenant::Glyphs, side)
+        .allocate(AtlasFormat::R8, Tenant::Glyphs.owner(), side)
         .unwrap()
         .handle;
     assert_eq!(pool.placement(wide).unwrap().page, 1);
@@ -461,7 +457,7 @@ fn a_page_opened_again_in_its_slot_starts_empty() {
     assert!(ptr::eq(views[1], absent), "a closed one the stand-in");
 
     let again = pool
-        .allocate(AtlasFormat::R8, Tenant::Glyphs, side)
+        .allocate(AtlasFormat::R8, Tenant::Glyphs.owner(), side)
         .unwrap()
         .handle;
     assert_eq!(pool.placement(again).unwrap().page, 1);
@@ -482,7 +478,11 @@ fn a_scratch_texture_follows_its_slot() {
     let mut pool = pool();
     let mut textures = AtlasTextures::new(&gpu);
     let id = pool
-        .acquire_scratch(AtlasFormat::R8, Tenant::Backdrops, UVec2::splat(100))
+        .acquire_scratch(
+            AtlasFormat::R8,
+            Tenant::Backdrops.owner(),
+            UVec2::splat(100),
+        )
         .unwrap();
     commit(&gpu, &mut textures, &mut pool);
     assert!(textures.scratch_view(id).is_some());
@@ -510,9 +510,9 @@ fn new_textures_take_every_open_page_at_the_first_commit() {
     let gpu = headless_test_gpu();
     let mut pool = pool();
     for format in AtlasFormat::ALL {
-        pool.allocate(format, Tenant::Glyphs, UVec2::splat(40))
+        pool.allocate(format, Tenant::Glyphs.owner(), UVec2::splat(40))
             .unwrap();
-        pool.allocate(format, Tenant::Glyphs, UVec2::splat(64))
+        pool.allocate(format, Tenant::Glyphs.owner(), UVec2::splat(64))
             .unwrap();
     }
     let mut textures = AtlasTextures::new(&gpu);

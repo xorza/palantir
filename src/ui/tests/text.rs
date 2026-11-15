@@ -1,5 +1,6 @@
 //! What a frame reshapes, what it reuses, and what the shared caches keep.
 
+use crate::animation::paint_curve::PaintCurve;
 use crate::clipboard::Clipboard;
 use crate::effect::effect_registry::EffectRegistry;
 use crate::host::harness::Harness;
@@ -17,7 +18,6 @@ use crate::scene::plane::Plane;
 use crate::shape::Shape;
 use crate::shape::paint_animation::PaintAnimation;
 use crate::shape::paint_animation::PaintRepeat;
-use crate::shape::paint_animation::curves;
 use crate::shape::record::ShapeRecord;
 use crate::text::RENDERED_RUN_KEEP_FRAMES;
 use crate::text::font_family::FontFamily;
@@ -38,6 +38,7 @@ use crate::widget_core::widget::Widget;
 use crate::widgets::grid::Grid;
 use crate::widgets::{panel::Panel, text::Text};
 use glam::UVec2;
+use std::num::NonZeroU32;
 use std::time::Duration;
 
 /// An unchanged Text hits the per-`WidgetId` reuse cache and skips shaping
@@ -170,8 +171,10 @@ fn a_widget_recording_fewer_runs_loses_the_rows_above_its_count() {
             Panel::vstack().auto_id().show(ui, |ui| {
                 Widget::leaf().id(widget_id).record(ui, None, |ui| {
                     for i in 0..runs {
-                        let text = ui.intern(format!("run {i}"));
-                        ui.add_shape(Shape::text(text, GlyphFont::new(14.0)), RgbaF32::WHITE);
+                        ui.add_shape(
+                            Shape::text(format!("run {i}"), GlyphFont::new(14.0)),
+                            RgbaF32::WHITE,
+                        );
                     }
                 });
             });
@@ -286,9 +289,9 @@ fn blinking_text(ui: &mut Ui, text: &str) {
                 PaintAnimation::alpha(0.0, 1.0)
                     .with_started_at(HALF)
                     .with_period(HALF * 2)
-                    .with_steps(2)
+                    .with_steps(NonZeroU32::new(2).unwrap())
                     .with_repeat(PaintRepeat::Settle(Duration::MAX))
-                    .with_curve(curves::square),
+                    .with_curve(PaintCurve::SQUARE),
             );
         }
     });
@@ -316,7 +319,7 @@ fn paint_only_frames_advance_the_shared_text_clock() {
     for step in 1..=3u32 {
         let report = ui
             .at(at)
-            .frame(|_| panic!("PaintOnly must not re-record the tree"));
+            .frame_recorded(|_| panic!("PaintOnly must not re-record the tree"));
         assert_eq!(
             report.processing,
             FrameProcessing::PaintOnly,
@@ -336,7 +339,7 @@ fn paint_only_frames_advance_the_shared_text_clock() {
     for step in 0..=RENDERED_RUN_KEEP_FRAMES {
         let report = ui
             .at(at)
-            .frame(|_| panic!("PaintOnly must not re-record the tree"));
+            .frame_recorded(|_| panic!("PaintOnly must not re-record the tree"));
         assert_eq!(
             report.processing,
             FrameProcessing::PaintOnly,
@@ -381,7 +384,7 @@ fn shared_cache_eviction_preserves_idle_windows_paint_only_text_source() {
 
     let idle_paint = idle
         .at(HALF)
-        .frame(|_| panic!("PaintOnly must retain the idle window's prior tree"));
+        .frame_recorded(|_| panic!("PaintOnly must retain the idle window's prior tree"));
     assert_eq!(idle_paint.processing, FrameProcessing::PaintOnly);
     let plan = idle_paint
         .plan
@@ -391,7 +394,7 @@ fn shared_cache_eviction_preserves_idle_windows_paint_only_text_source() {
     let mut frontend = Frontend::for_test();
     frontend.build_alone(idle.frames().ui().frame_scene(), plan);
     let run = frontend
-        .buffer
+        .buffer()
         .texts
         .iter()
         .find(|run| run.text.key == idle_key)
@@ -690,7 +693,7 @@ fn a_load_reaches_the_cascade_and_the_screen() {
     h.prime(2, record);
     let fallback = h.rect(id).expect("the label arranged");
     assert_eq!(
-        h.arranged(id),
+        h.layout_rect(id),
         Some(fallback),
         "premise: a warm frame's two rects describe one arrangement",
     );
@@ -708,13 +711,13 @@ fn a_load_reaches_the_cascade_and_the_screen() {
         resolved.size.w,
     );
     assert_eq!(
-        h.arranged(id),
+        h.layout_rect(id),
         Some(resolved),
         "the cascade skipped a load that moved an arranged rect, so the \
          response geometry and the layout disagree",
     );
     assert_eq!(
-        report.paint(),
+        report.paint,
         FramePaint::Full,
         "a load repaints every glyph it may have changed",
     );
@@ -788,9 +791,31 @@ fn a_transparent_label_measures_as_an_opaque_one() {
         h.frame(|ui| {
             Text::new("fade").id(id).color(color).show(ui);
         });
-        h.arranged(id).unwrap().size
+        h.layout_rect(id).unwrap().size
     };
     let opaque = measure(RgbaF32::WHITE);
     assert!(opaque.w > 0.0 && opaque.h > 0.0, "{opaque:?}");
     assert_eq!(measure(RgbaF32::TRANSPARENT), opaque);
+}
+
+/// A node's recorded text is the bytes of its own runs and its descendants': a panel holding
+/// "ab" and "cde" holds 5, the run "cde" alone 3, and an id no node carries none.
+#[test]
+fn a_nodes_recorded_text_counts_its_subtrees_bytes() {
+    let outer = WidgetId::from_hash("outer");
+    let inner = WidgetId::from_hash("inner");
+    let mut h = Harness::new(SURFACE);
+    let _ = h.frame(|ui| {
+        Panel::vstack().id(outer).show(ui, |ui| {
+            Text::new("ab").show(ui);
+            Text::new("cde").id(inner).show(ui);
+        });
+    });
+    let forest = h.ui().forest();
+    assert_eq!(forest.text_len_of(Plane::MAIN, outer), 5);
+    assert_eq!(forest.text_len_of(Plane::MAIN, inner), 3);
+    assert_eq!(
+        forest.text_len_of(Plane::MAIN, WidgetId::from_hash("absent")),
+        0
+    );
 }
