@@ -61,6 +61,11 @@ declaration, good-looking and fast. I made it.
 
 ## See it
 
+<img width="1712" height="1144" alt="Screenshot 2026-11-15 at 20 37 09" src="https://github.com/user-attachments/assets/1ce393d7-233b-47e2-805f-b000c01f863c" />
+<img width="1712" height="1144" alt="Screenshot 2026-11-15 at 20 37 02" src="https://github.com/user-attachments/assets/3b9b4312-8a30-4699-a121-0802d41dbb4e" />
+<img width="677" height="527" alt="Screenshot 2026-11-15 at 20 38 03" src="https://github.com/user-attachments/assets/3a5017fe-39e8-4bbd-9ab9-3e371059126f" />
+<img width="712" height="734" alt="Screenshot 2026-11-15 at 20 37 27" src="https://github.com/user-attachments/assets/54245ac8-7178-4942-856a-20111a8e3c5b" />
+
 A short screen recording of the
 [showcase](https://github.com/xorza/palantir/tree/master/palantir-showcase), a tour of every
 widget:
