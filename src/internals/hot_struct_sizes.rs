@@ -182,7 +182,7 @@ const PINS: &[Pin] = &[
     pin::<MaterialPaint>("primitives::MaterialPaint", 264, 4),
     pin::<EffectName<(), BackdropEffect>>("primitives::EffectName", 24, 1),
     pin::<MaterialEffect>("primitives::MaterialEffect", 60, 4),
-    pin::<Stroke>("primitives::Stroke", 64, 4),
+    pin::<Stroke>("primitives::Stroke", 76, 4),
     pin::<ImagePaint>("shape::ImagePaint", 48, 8),
     pin::<IconPaint>("shape::IconPaint", 36, 4),
     // What `add_shape` hands the record store, matched once a shape.
@@ -257,7 +257,7 @@ const PINS: &[Pin] = &[
     pin::<DrawClosedPayload<ClosedFill>>("payload::DrawClosedPayload<ClosedFill>", 68, 4),
     pin::<DrawShadowPayload>("payload::DrawShadowPayload", 44, 4),
     pin::<DrawTextPayload>("payload::DrawTextPayload", 64, 8),
-    pin::<DrawStrokePayload>("payload::DrawStrokePayload", 88, 4),
+    pin::<DrawStrokePayload>("payload::DrawStrokePayload", 100, 4),
     pin::<DrawMeshPayload>("payload::DrawMeshPayload", 64, 4),
     pin::<DrawClosedPayload<ClosedImage>>("payload::DrawClosedPayload<ClosedImage>", 104, 8),
     pin::<DrawIconPayload>("payload::DrawIconPayload", 32, 4),

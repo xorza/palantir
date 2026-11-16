@@ -157,12 +157,13 @@ impl sealed::DrawWith<Stroke> for PolylineShape<'_> {
 
     /// # Panics
     ///
-    /// Unless the stroke holds its kinds and draws no ramp, and each vertex color times the
-    /// stroke's color is a color.
+    /// Unless the stroke holds its kinds and draws no ramp and no dash, and each vertex color
+    /// times the stroke's color is a color.
     #[track_caller]
     fn check(&self, stroke: &Stroke) {
         stroke.validate();
         assert!(stroke.ramp.is_none(), "a polyline draws no ramp");
+        assert!(stroke.dash.is_none(), "a polyline draws no dash");
         match self.colors {
             PolylineColors::Single => {}
             PolylineColors::PerPoint(colors) | PolylineColors::PerSegment(colors) => {

@@ -317,6 +317,7 @@ impl QuadCase {
                         },
                         width: 2.0,
                         cap: LineCap::Butt,
+                        dash: None,
                     },
                     DrawAnimation::STILL,
                 );

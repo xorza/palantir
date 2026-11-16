@@ -5,7 +5,7 @@ use crate::primitives::geometry::cubic_bezier::CubicBezier;
 use crate::primitives::geometry::fit::Fit;
 use crate::primitives::paint::border::Border;
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::line_style::{LineCap, LineJoin};
+use crate::primitives::paint::line_style::{Dash, LineCap, LineJoin};
 use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::paint::shadow::ShadowKind;
 use crate::primitives::paint::stroke::Stroke;
@@ -285,6 +285,13 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
             "ramp present",
             LoweredStroke {
                 ramp: interned(0, 1),
+                ..line
+            },
+        ),
+        (
+            "dash present",
+            LoweredStroke {
+                dash: Some(Dash::new(6.0, 4.0)),
                 ..line
             },
         ),

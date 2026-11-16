@@ -5,6 +5,7 @@ use crate::primitives::geometry::circular_arc::CircularArc;
 use crate::primitives::geometry::cubic_bezier::CubicBezier;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::line_style::{Dash, LineCap};
 use crate::renderer::frontend::paint_sink::{DrawAnimation, PaintSink};
 use crate::renderer::frontend::payload::draw_stroke_payload::{DrawStrokePayload, StrokePath};
 use crate::renderer::frontend::payload::spin::Spin;
@@ -20,6 +21,8 @@ pub(super) struct CurveBuilder {
     basis: CurveBasis,
     fill: GpuFill,
     width: f32,
+    cap: LineCap,
+    dash: Option<Dash>,
     angle: Option<f32>,
     origin: Vec2,
 }
@@ -42,6 +45,8 @@ impl CurveBuilder {
                 ..GpuFill::default()
             },
             width: 2.0,
+            cap: LineCap::default(),
+            dash: None,
             angle: None,
             origin: Vec2::ZERO,
         }
@@ -54,6 +59,16 @@ impl CurveBuilder {
 
     pub(super) const fn width(mut self, width: f32) -> Self {
         self.width = width;
+        self
+    }
+
+    pub(super) const fn cap(mut self, cap: LineCap) -> Self {
+        self.cap = cap;
+        self
+    }
+
+    pub(super) const fn dash(mut self, dash: Dash) -> Self {
+        self.dash = Some(dash);
         self
     }
 
@@ -80,7 +95,8 @@ impl CurveBuilder {
                 path: StrokePath::Curve(self.basis),
                 fill: self.fill,
                 width: self.width,
-                ..DrawStrokePayload::fixture()
+                cap: self.cap,
+                dash: self.dash,
             },
             DrawAnimation { alpha: 1.0, spin },
         );

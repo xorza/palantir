@@ -240,6 +240,7 @@ impl PlaneCtx<'_, '_> {
             fill: GpuFill::curve(stroke.color, ramp_row),
             width: stroke.width,
             cap: stroke.cap,
+            dash: stroke.dash,
         };
         let place = match geometry {
             StrokeGeometry::Polyline(PolylineGeometry {

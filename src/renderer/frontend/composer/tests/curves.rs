@@ -10,7 +10,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
-use crate::primitives::paint::line_style::{LineCap, LineJoin};
+use crate::primitives::paint::line_style::{Dash, LineCap, LineJoin};
 use crate::primitives::paint::lut_row::LutRow;
 use crate::renderer::frontend::composer::tests::curve_builder::CurveBuilder;
 use crate::renderer::frontend::composer::tests::support::{
@@ -581,6 +581,131 @@ fn compose_flat_cubic_emits_single_instance_curved_emits_many() {
         curved_buf.curves.len() > 10,
         "curved cubic keeps adaptive density, got {}",
         curved_buf.curves.len(),
+    );
+}
+
+/// A dashed curve is one run of instances for each dash, each over the range of the parameter
+/// its arc length covers and capped at both ends, as a stroke of its own. On a straight 100 px
+/// line, whose parameter is its length over 100, a pattern of 20 on and 60 off is the dashes
+/// 0..20 and 80..100; on a 90 px line the second is cut at the line's end, 80..90. On an arc of
+/// radius 180/π over a half turn, 180 px long, 20 on and 40 off is 0..20, 60..80 and 120..140,
+/// as thirds and ninths of the sweep. A pattern of more dashes than the bound stretches to the
+/// bound. A cubic's ends are found on f32 sums of 64 chords, so they are held to 1e-5 of the
+/// parameter.
+#[test]
+fn a_dashed_curve_is_a_run_for_each_dash_by_arc_length() {
+    use crate::renderer::render_buffer::RenderBuffer;
+    use crate::renderer::render_buffer::curve_caps::{CapEnds, CurveCaps};
+    use std::f32::consts::PI;
+
+    #[track_caller]
+    fn ranges(buf: &RenderBuffer, expected: &[[f32; 2]]) {
+        let got: Vec<[f32; 2]> = buf.curves.iter().map(|ci| [ci.t0, ci.t1]).collect();
+        assert_eq!(got.len(), expected.len(), "{got:?}");
+        for (got, want) in got.iter().zip(expected) {
+            for end in 0..2 {
+                assert!(
+                    (got[end] - want[end]).abs() <= 1.0e-5,
+                    "{got:?} against {want:?}"
+                );
+            }
+        }
+    }
+    let line_at = |scale: f32, length: f32, dash: Dash, cap: LineCap| {
+        run(
+            |b, _| {
+                CurveBuilder::cubic(
+                    Rect::new(0.0, 0.0, length, 10.0),
+                    [0.0, 1.0, 2.0, 3.0].map(|third| Vec2::new(length * third / 3.0, 5.0)),
+                )
+                .cap(cap)
+                .dash(dash)
+                .draw(b);
+            },
+            &params(scale, UVec2::new(2000, 100)),
+        )
+    };
+    let line = |length, dash, cap| line_at(1.0, length, dash, cap);
+
+    let pattern = Dash::new(20.0, 60.0);
+    let whole = line(100.0, pattern, LineCap::Round);
+    ranges(&whole, &[[0.0, 0.2], [0.8, 1.0]]);
+    for ci in &whole.curves {
+        assert_eq!(
+            ci.caps,
+            CurveCaps::new(LineCap::Round, CapEnds::Both),
+            "each dash ends in the stroke's cap at both ends"
+        );
+    }
+    assert_eq!(
+        whole.curves[1].t1, 1.0,
+        "the last dash ends on the curve's end"
+    );
+    ranges(
+        &line(90.0, pattern, LineCap::Butt),
+        &[[0.0, 20.0 / 90.0], [80.0 / 90.0, 1.0]],
+    );
+    // At a scale of 2 the pattern is twice as long in physical px, as the width is: the same
+    // ranges of the parameter. 10 on and 40 off of a 100 px line is 0..10 and 50..60.
+    ranges(
+        &line_at(2.0, 100.0, Dash::new(10.0, 40.0), LineCap::Butt),
+        &[[0.0, 0.1], [0.5, 0.6]],
+    );
+    // A dash of no length is a dot, a stroke of no length its round cap draws: 0 on and 50 off
+    // of a 100 px line is a dot at 0 and one at 50, one instance each.
+    let dots = line(100.0, Dash::new(0.0, 50.0), LineCap::Round);
+    ranges(&dots, &[[0.0, 0.0], [0.5, 0.5]]);
+    assert!(
+        dots.curves
+            .iter()
+            .all(|ci| ci.caps == CurveCaps::new(LineCap::Round, CapEnds::Both))
+    );
+
+    let arc = run(
+        |b, _| {
+            CurveBuilder::arc(
+                Rect::new(0.0, 0.0, 200.0, 200.0),
+                CircularArc {
+                    center: Vec2::new(100.0, 100.0),
+                    radius: 180.0 / PI,
+                    start_angle: 0.0,
+                    sweep: PI,
+                },
+            )
+            .dash(Dash::new(20.0, 40.0))
+            .draw(b);
+        },
+        &params(1.0, UVec2::new(400, 400)),
+    );
+    ranges(
+        &arc,
+        &[
+            [0.0, 1.0 / 9.0],
+            [1.0 / 3.0, 4.0 / 9.0],
+            [2.0 / 3.0, 7.0 / 9.0],
+        ],
+    );
+
+    // A dash long enough to need them is several sub-instances, the first starting the dash and
+    // the last ending it: 600 px is ⌈⌈600 / 1.5⌉ / 16⌉ = 25, and the 100 px one after it 5.
+    let long = line(800.0, Dash::new(600.0, 100.0), LineCap::Square);
+    assert_eq!(long.curves.len(), 25 + 5);
+    let caps = |ends| CurveCaps::new(LineCap::Square, ends);
+    assert_eq!(long.curves[0].caps, caps(CapEnds::Start));
+    assert_eq!(long.curves[24].caps, caps(CapEnds::End));
+    assert!(
+        long.curves[1..24]
+            .iter()
+            .all(|ci| ci.caps == caps(CapEnds::Neither))
+    );
+    assert_eq!(long.curves[25].caps, caps(CapEnds::Start));
+
+    assert_eq!(
+        line(800.0, Dash::new(0.05, 0.05), LineCap::Butt)
+            .curves
+            .len(),
+        4096,
+        "8000 dashes stretch to the bound"
     );
 }
 

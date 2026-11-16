@@ -9,7 +9,9 @@ use crate::primitives::math::domain;
 use crate::primitives::packed::serde::LaneCodec;
 use crate::primitives::paint::border::Border;
 use crate::primitives::paint::brush::gradient::Gradient;
+use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::line_style::Dash;
 use crate::primitives::paint::material::Material;
 use crate::primitives::paint::paint::Paint;
 use crate::primitives::paint::shadow::Shadow;
@@ -254,6 +256,17 @@ fn builders_refuse_what_they_check() {
             Shape::polyline(&two).segment_colors(&[RgbaF32::new(256.0, 1.0, 1.0, 1.0)]),
             bright,
         ));
+    });
+    // A line takes a ramp and a dash; a polyline draws neither and refuses each.
+    let ramped = thin().with_ramp(ColorRamp::from([RgbaF32::TRANSPARENT, white]));
+    let dashed = thin().with_dash(Dash::new(6.0, 4.0));
+    check(&(Shape::line(Vec2::ZERO, Vec2::X), ramped));
+    check(&(Shape::line(Vec2::ZERO, Vec2::X), dashed));
+    panic_probe::assert_panics_with("a polyline draws no ramp", || {
+        check(&(Shape::polyline(&two), ramped));
+    });
+    panic_probe::assert_panics_with("a polyline draws no dash", || {
+        check(&(Shape::polyline(&two), dashed));
     });
     check(&(
         Shape::rect().at(Rect::new(0.0, 0.0, -4.0, 8.0)),

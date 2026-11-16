@@ -39,10 +39,10 @@
 //
 // Caps. `caps` holds the stroke's one cap in its `CAP_MASK` bits, and
 // `CAP_AT_START` / `CAP_AT_END` name the ends of this instance that are
-// the stroke's ends (`CurveCaps`). The leading sub-instance
-// (`t_range.x ≈ 0`) and trailing sub-instance (`t_range.y ≈ 1`) shift
-// their outermost vertices by `half_w` along the tangent for non-Butt
-// caps; interior sub-instances don't extend. `cap_t` (signed
+// a stroke's ends (`CurveCaps`): the whole curve's, or a dash's, which
+// is a stroke of its own. An instance shifts the outermost vertices of
+// each such end by `half_w` along the tangent for non-Butt caps;
+// interior sub-instances don't extend. `cap_t` (signed
 // tangential distance past the endpoint) rides as a varying —
 // fragment uses it for the round-cap SDF; butt throws away samples
 // with `cap_t > 0` (none, since no extension); square keeps full
@@ -95,13 +95,6 @@ const FLAG_CLIP: u32 = 4u;
 const FLAG_JOIN: u32 = 8u;
 const FLAG_JOIN_BEVEL: u32 = 16u;
 const FLAG_JOIN_MITER: u32 = 32u;
-
-// Epsilon for the "is this the curve's leading / trailing endpoint?"
-// test against `t_range`. Sub-instance boundaries are exactly
-// `i / n`, so the only true matches come out as 0.0 and 1.0 exactly;
-// keep a small slack against float drift through the composer's
-// `1.0 / n` math.
-const T_END_EPS: f32 = 1.0e-4;
 
 struct VsIn {
     @location(0) p0: vec2<f32>,
@@ -292,8 +285,8 @@ fn vs(in: VsIn, @builtin(vertex_index) vid: u32) -> VsOut {
             flags |= FLAG_ROUND_CAP;
         }
         let extended = cap != CAP_BUTT;
-        let has_start_cap = extended && (in.caps & CAP_AT_START) != 0u && in.t_range.x < T_END_EPS;
-        let has_end_cap = extended && (in.caps & CAP_AT_END) != 0u && in.t_range.y > 1.0 - T_END_EPS;
+        let has_start_cap = extended && (in.caps & CAP_AT_START) != 0u;
+        let has_end_cap = extended && (in.caps & CAP_AT_END) != 0u;
         var cap_shift: f32 = 0.0;
         // `cap_t` must lerp to zero exactly at the endpoint cross-
         // section, so a cap segment's body edge carries -chord: the

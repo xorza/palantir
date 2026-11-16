@@ -358,7 +358,7 @@ pub use primitives::paint::content_type::ContentType;
 pub use primitives::paint::image::Image;
 pub use primitives::paint::image::error::ImageDataError;
 pub use primitives::paint::image::image_filter::{ImageDownsample, ImageFilter};
-pub use primitives::paint::line_style::{LineCap, LineJoin};
+pub use primitives::paint::line_style::{Dash, LineCap, LineJoin};
 pub use primitives::paint::material::Material;
 pub use primitives::paint::material::backdrop_fallback::BackdropFallback;
 pub use primitives::paint::material::backdrop_reach::BackdropReach;

@@ -16,6 +16,12 @@ the top `AGENTS.md`, "A shape is geometry, a paint what covers it"; how the GPU 
 - **An animation goes on the added shape**: `add_shape` returns the `AddedShape`, or `None` where
   the pair paints nothing. Refused: `add_shape_animated`, a second signature of one call; a
   `Result`, as painting nothing is no failure.
+- **A stroke breaks into dashes by its `Dash`**, two lengths along the path, as SVG's
+  `stroke-dasharray` and Skia's dash path effect; each dash ends in the stroke's cap, as SVG
+  draws them. A line, a Bézier, an arc and a circle draw it, cut by arc length where the curve
+  is lowered (`renderer/frontend/composer/curve_run.rs`); a polyline draws none, as it draws no
+  ramp. Refused: a pattern of more than two lengths and a phase, with no caller; dashes a
+  caller cuts itself, a shape for each dash each frame.
 - **A shape lays out in a rect**: the owner's arranged rect or `.at(rect)`, as WPF's `Rectangle`
   and SwiftUI's shapes take the rect they are offered; a circle is the largest one centered in
   it. Refused: a center and a radius, which no layout moves.

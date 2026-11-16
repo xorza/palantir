@@ -366,6 +366,7 @@ impl<'a> TestPolyline<'a> {
                 },
                 width,
                 cap,
+                dash: None,
             },
             DrawAnimation { alpha: 1.0, spin },
         );

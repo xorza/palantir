@@ -514,6 +514,12 @@ CurveShape
         pub const fn at(self, rect: Rect) -> Self
         pub const fn fit(self, fit: Fit) -> Self
 
+Dash
+    struct Dash: Clone, Copy, Debug, Deserialize<'de>, PartialEq, Serialize
+        pub on: f32
+        pub off: f32
+        pub const fn new(on: f32, off: f32) -> Self
+
 DebugOverlayConfig
     struct DebugOverlayConfig: Clone, Copy, Debug, Default, Eq, PartialEq
         pub damage_rect: bool
@@ -2715,10 +2721,12 @@ Stroke
         pub ramp: Option<ColorRamp>
         pub cap: LineCap
         pub join: LineJoin
+        pub dash: Option<Dash>
         pub const fn new(color: RgbaF32, width: f32) -> Self
         pub const fn with_ramp(self, ramp: ColorRamp) -> Self
         pub const fn with_cap(self, cap: LineCap) -> Self
         pub const fn with_join(self, join: LineJoin) -> Self
+        pub const fn with_dash(self, dash: Dash) -> Self
         pub const fn is_noop(&self) -> bool
         impl PaintedBy<Stroke> for ArcShape
         impl PaintedBy<Stroke> for CircleShape

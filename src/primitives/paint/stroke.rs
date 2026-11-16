@@ -4,17 +4,18 @@ use crate::primitives::math::domain;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::line_style::{LineCap, LineJoin};
+use crate::primitives::paint::line_style::{Dash, LineCap, LineJoin};
 
 /// A line's paint: its color, multiplied along the path by a ramp where it has one; its width,
-/// centered on the path; how it ends; and how a polyline turns, as SVG's `stroke` and Skia's
-/// stroke paint hold them. A line, a curve, an arc, a circle and a polyline take it
-/// ([`Ui::add_shape`](crate::Ui::add_shape)); a box's edge is a [`Border`](crate::Border).
+/// centered on the path; how it ends; how a polyline turns; and the dashes it breaks into, as
+/// SVG's `stroke` and Skia's stroke paint hold them. A line, a curve, an arc, a circle and a
+/// polyline take it ([`Ui::add_shape`](crate::Ui::add_shape)); a box's edge is a
+/// [`Border`](crate::Border).
 ///
 /// Plain data, checked where it enters a shape: the width a
 /// [length](crate::widget::domain::is_length) and the color a [color](crate::widget::domain::is_color).
 /// A polyline's colors per point or per segment are its vertices', set on the geometry, and it
-/// draws no ramp.
+/// draws no ramp and no dash.
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 #[must_use]
@@ -34,10 +35,13 @@ pub struct Stroke {
     /// How a polyline turns at each interior point; a curve has no joint.
     #[serde(default)]
     pub join: LineJoin,
+    /// The dash pattern the line breaks into; `None` for a whole line. A polyline draws none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dash: Option<Dash>,
 }
 
 impl Stroke {
-    /// A stroke of `color` and `width`, butt-capped and mitered, with no ramp.
+    /// A stroke of `color` and `width`, butt-capped and mitered, with no ramp and no dash.
     pub const fn new(color: RgbaF32, width: f32) -> Self {
         Self {
             color,
@@ -45,6 +49,7 @@ impl Stroke {
             ramp: None,
             cap: LineCap::Butt,
             join: LineJoin::Miter,
+            dash: None,
         }
     }
 
@@ -66,6 +71,12 @@ impl Stroke {
         self
     }
 
+    /// This stroke broken into `dash`.
+    pub const fn with_dash(mut self, dash: Dash) -> Self {
+        self.dash = Some(dash);
+        self
+    }
+
     /// True when this stroke paints nothing: an invisible width or color, or a ramp of nothing.
     pub const fn is_noop(&self) -> bool {
         domain::is_invisible(self.width)
@@ -76,18 +87,21 @@ impl Stroke {
             }
     }
 
-    /// Panics unless the width is a [length](domain::length) and the color a
-    /// [color](domain::color).
+    /// Panics unless the width is a [length](domain::length), the color a
+    /// [color](domain::color), and a dash's two lengths lengths.
     #[inline]
     #[track_caller]
     pub(crate) const fn validate(&self) {
         domain::length(self.width);
         let _ = domain::color(self.color);
+        if let Some(dash) = self.dash {
+            dash.validate();
+        }
     }
 }
 
 impl NanCheck for Stroke {
     fn has_nan(&self) -> bool {
-        self.width.is_nan() || self.color.has_nan()
+        self.width.is_nan() || self.color.has_nan() || self.dash.has_nan()
     }
 }

@@ -4,7 +4,7 @@ use crate::common::span::Span;
 use crate::primitives::geometry::fit::FitMap;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::math::domain::is_invisible;
-use crate::primitives::paint::line_style::{LineCap, LineJoin};
+use crate::primitives::paint::line_style::{Dash, LineCap, LineJoin};
 use crate::renderer::frontend::paint_sink::{PaintPayload, PaintSink};
 use crate::renderer::frontend::payload::spin::Spin;
 use crate::renderer::render_buffer::gpu_fill::GpuFill;
@@ -25,6 +25,9 @@ pub(crate) struct DrawStrokePayload {
     pub(crate) fill: GpuFill,
     pub(crate) width: f32,
     pub(crate) cap: LineCap,
+    /// The dash pattern in logical px, which a curve breaks into; never a solid one, which the
+    /// stroke's lowering drops, and never on a polyline, which draws none.
+    pub(crate) dash: Option<Dash>,
 }
 
 /// What a stroke traces, owner-local.
@@ -116,6 +119,7 @@ pub(crate) mod internals {
                 fill: GpuFill::default(),
                 width: 0.0,
                 cap: LineCap::default(),
+                dash: None,
             }
         }
     }

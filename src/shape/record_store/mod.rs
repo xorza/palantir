@@ -282,6 +282,7 @@ impl RecordStore {
         }
         // The shape's pair check refused both.
         debug_assert!(stroke.ramp.is_none(), "a polyline draws no ramp");
+        debug_assert!(stroke.dash.is_none(), "a polyline draws no dash");
         debug_assert!(colors.matches(points.len()));
         let staged = self.stage_polyline(points, colors);
 
