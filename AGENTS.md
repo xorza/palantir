@@ -9,8 +9,8 @@ rendering**.
 - **Rewrite freely, except the public API.** No deprecation shims, compat aliases or migration
   helpers; the public API waits for a go-ahead (**Public API**).
 - **Per-frame allocation is a regression.** After warmup a frame allocates nothing.
-- **Micro-optimize freely**; a structural change with no workload that needs it waits, with a
-  note.
+- **Micro-optimize freely**; a structural change for speed with no workload that needs it waits,
+  with a note.
 - **One behavior in every build and on every platform**, unless the difference is speed alone or
   the system decides it: a person's settings, what a device can hold. Refused: a diagnostic on in
   debug alone.
@@ -163,8 +163,8 @@ Every public input meets two questions, as WPF asks them: *validation* of the va
 1. **Coercion is total, silent and documented**: a list shrinks, a min above its max raises the
    max, as in CSS and WPF.
 2. **Validation follows the source**: per-frame authoring takes a release `assert!` with
-   `#[track_caller]`, an exception to `debug_assert!` on hot paths, as a wrong value never draws
-   quietly; cold configuration a release `assert!`; data from outside the program an `Option` for
+   `#[track_caller]`, as a wrong value never draws quietly; cold configuration a release
+   `assert!`; data from outside the program an `Option` for
    one rule, a `Result` with an error enum for several. A rule a type can hold needs no assert:
    a count of at least one is a `NonZeroU16` or `NonZeroU32`, and a rate that may be unknown an
    `Option<NonZeroU32>`, so zero cannot be passed
@@ -193,12 +193,12 @@ that fails before it leaves `gate-doc` to finish and print alone. Refused: a dri
 the lanes, a program in each repository for one parallel lane; each lane in a directory of its own,
 which competes for the cores it saves and builds the dependencies once more each.
 
-**Run it before a turn that changed code ends, and before each push**: master takes direct
+**Run it once the work asked for is done, and before each push**: master takes direct
 pushes, and CI runs the same lanes on three OSes. A filtered `cargo gate-test <name>` is the
 cheapest check of an edit. Run the aliases, not cargo with flags of your own, which builds
 another copy of the crates.
 
-- **A public API change** runs `cargo drive surface` and commits what it writes.
+- **A public API change** runs `cargo drive surface`; what it writes goes in the change's commit.
 - **A rendering change** runs `cargo visual [filter]`. Goldens are local to an adapter: run the
   unchanged tree first and rewrite stale ones with `UPDATE_GOLDEN=1`; a failure leaves its images
   in `palantir-showcase/tests/visual/output/<name>/`.
