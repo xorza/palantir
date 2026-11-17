@@ -1,6 +1,8 @@
 //! The windowed host on Linux and the BSDs, under Wayland or X11.
 
 use std::collections::HashMap;
+use std::future;
+use std::pin::{Pin, pin};
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
@@ -8,16 +10,16 @@ use std::time::Duration;
 use winit::event_loop::EventLoopBuilder;
 use winit::platform::wayland::WindowAttributesExtWayland as _;
 use winit::window::WindowAttributes;
-use zbus::blocking::proxy::Builder;
-use zbus::blocking::{Connection, Proxy};
-use zbus::proxy::CacheProperties;
+use zbus::export::futures_core::Stream;
+use zbus::proxy::{Builder, CacheProperties};
 use zbus::zvariant::OwnedValue;
+use zbus::{Connection, Proxy};
 
 use crate::host::winit::input::wheel_steps::WheelSteps;
-use crate::host::winit::platform::handoff::Handoff;
+use crate::host::winit::platform::stop::Stop;
 use crate::primitives::reduction::Reduction;
 
-mod handoff;
+mod stop;
 
 /// Nothing to configure.
 pub(super) const fn configure_event_loop<T: 'static>(_builder: &mut EventLoopBuilder<T>) {}
@@ -69,8 +71,8 @@ impl PowerSaverWatch {
     /// then with each change.
     pub(super) fn follow(on_change: impl Fn(Reduction) + Send + Sync + 'static) -> Self {
         Self {
-            _thread: PortalThread::spawn("palantir-power-saver", move |connection| {
-                follow_power_profile(connection, &on_change)
+            _thread: PortalThread::spawn("palantir-power-saver", async move |connection| {
+                follow_power_profile(connection, &on_change).await
             }),
         }
     }
@@ -94,10 +96,13 @@ impl MemoryPressureWatch {
     /// Follow the pressure: `on_warning` runs on the watch's thread at each warning.
     pub(super) fn follow(on_warning: impl Fn() + Send + Sync + 'static) -> Self {
         Self {
-            _thread: PortalThread::spawn("palantir-memory-pressure", move |connection| {
-                for _ in
-                    portal_proxy(connection, MEMORY_MONITOR)?.receive_signal(LOW_MEMORY_WARNING)?
-                {
+            _thread: PortalThread::spawn("palantir-memory-pressure", async move |connection| {
+                let warnings = portal_proxy(connection, MEMORY_MONITOR)
+                    .await?
+                    .receive_signal(LOW_MEMORY_WARNING)
+                    .await?;
+                let mut warnings = pin!(warnings);
+                while next(warnings.as_mut()).await.is_some() {
                     on_warning();
                 }
                 Ok(())
@@ -106,51 +111,49 @@ impl MemoryPressureWatch {
     }
 }
 
-/// A thread over a session-bus connection of its own, which the drop closes, ending the thread
-/// as the signals it reads come off that connection.
+/// A thread that follows a portal over a session-bus connection of its own until its owner's drop
+/// raises a [`Stop`]. The stop drops the follow unfinished while the connection is still open:
+/// each signal stream's drop queues its `RemoveMatch` on the connection, which stays open until
+/// that is sent. Refused: closing the connection under the thread, which ends a stream but sends
+/// its `RemoveMatch` to the closed socket, a warning per subscription.
 #[derive(Debug)]
 struct PortalThread {
-    connection: Arc<Handoff<Connection>>,
+    stop: Arc<Stop>,
 }
 
 impl PortalThread {
-    /// Run `follow` over a new session-bus connection on a thread named `name`; a failure to open
-    /// the bus or in `follow` ends the thread with a note.
+    /// Run `follow` over a new session-bus connection on a thread named `name`, until the drop;
+    /// a failure to open the bus or in `follow` ends the thread with a note.
     fn spawn(
         name: &str,
-        follow: impl FnOnce(&Connection) -> zbus::Result<()> + Send + 'static,
+        follow: impl AsyncFnOnce(&Connection) -> zbus::Result<()> + Send + 'static,
     ) -> Self {
-        let connection = Arc::new(Handoff::new());
-        let held = Arc::clone(&connection);
+        let stop = Arc::new(Stop::default());
+        let held = Arc::clone(&stop);
         let spawned = thread::Builder::new().name(name.to_owned()).spawn(move || {
-            let result = open_bus(&held).and_then(|opened| opened.map_or(Ok(()), |c| follow(&c)));
-            if let Err(error) = result {
+            let work = async {
+                let connection = Connection::session().await?;
+                follow(&connection).await
+            };
+            if let Some(Err(error)) = pollster::block_on(held.until(work)) {
                 tracing::debug!(%error, "a portal is not followed");
             }
         });
         if let Err(error) = spawned {
             tracing::warn!(%error, name, "no thread follows a portal");
         }
-        Self { connection }
+        Self { stop }
     }
 }
 
 impl Drop for PortalThread {
     fn drop(&mut self) {
-        if let Some(connection) = self.connection.close() {
-            connection.close().ok();
-        }
+        self.stop.raise();
     }
 }
 
-/// A session-bus connection filed in `held`, `None` where the thread's owner closed it first.
-fn open_bus(held: &Handoff<Connection>) -> zbus::Result<Option<Connection>> {
-    let connection = Connection::session()?;
-    Ok(held.file(connection.clone()).is_ok().then_some(connection))
-}
-
 /// A proxy of the portal's `interface` over `connection`, reading no property from a cache.
-fn portal_proxy<'c>(
+async fn portal_proxy<'c>(
     connection: &'c Connection,
     interface: &'static str,
 ) -> zbus::Result<Proxy<'c>> {
@@ -160,21 +163,35 @@ fn portal_proxy<'c>(
         .interface(interface)?
         .cache_properties(CacheProperties::No)
         .build()
+        .await
 }
 
-/// Report the profile and each change until the connection closes. Subscribed to
-/// `PropertiesChanged` before the first read, so no change falls between the two. The signals come
-/// off the connection itself, which its close ends. Refused: zbus's property stream, which waits
-/// on the proxy's cache and outlives a close.
-fn follow_power_profile(
+/// The next item of `stream`, `None` once it ends.
+async fn next<S: Stream>(mut stream: Pin<&mut S>) -> Option<S::Item> {
+    future::poll_fn(|cx| stream.as_mut().poll_next(cx)).await
+}
+
+/// Report the profile and each change until the bus closes the connection or the owner stops the
+/// thread. Subscribed to `PropertiesChanged` before the first read, so no change falls between the
+/// two. Refused: zbus's property stream, which reads through the proxy's property cache.
+async fn follow_power_profile(
     connection: &Connection,
     on_change: &impl Fn(Reduction),
 ) -> zbus::Result<()> {
-    let monitor = portal_proxy(connection, POWER_PROFILE_MONITOR)?;
-    let changes = portal_proxy(connection, PROPERTIES)?.receive_signal("PropertiesChanged")?;
-    let read = || monitor.get_property(POWER_SAVER_ENABLED).map(Reduction::of);
-    on_change(read()?);
-    for message in changes {
+    let monitor = portal_proxy(connection, POWER_PROFILE_MONITOR).await?;
+    let changes = portal_proxy(connection, PROPERTIES)
+        .await?
+        .receive_signal("PropertiesChanged")
+        .await?;
+    let mut changes = pin!(changes);
+    let read = async || {
+        monitor
+            .get_property(POWER_SAVER_ENABLED)
+            .await
+            .map(Reduction::of)
+    };
+    on_change(read().await?);
+    while let Some(message) = next(changes.as_mut()).await {
         let change = message.body().deserialize::<PropertiesChanged>().and_then(
             |(interface, changed, invalidated)| portal_change(&interface, &changed, &invalidated),
         );
@@ -182,7 +199,7 @@ fn follow_power_profile(
         // of the wrong type, and the next change reports again.
         let power = match change {
             Ok(PortalChange::Value(power)) => Ok(power),
-            Ok(PortalChange::Invalidated) => read(),
+            Ok(PortalChange::Invalidated) => read().await,
             Ok(PortalChange::Unrelated) => continue,
             Err(error) => Err(error),
         };
