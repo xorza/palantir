@@ -705,6 +705,7 @@ DragValue
         pub const fn decimals(self, n: usize) -> Self
         pub fn suffix(self, text: impl Into<TextInput<'a>>) -> Self
         pub const fn editable(self, editable: bool) -> Self
+        pub const fn range_fill(self, range_fill: bool) -> Self
         pub fn style(self, s: impl Into<Option<&'a DragValueTheme>>) -> Self
         pub fn show(self, ui: &mut Ui) -> ValueResponse
         pub fn start_editing(ui: &mut Ui, id: WidgetId)
@@ -719,6 +720,8 @@ DragValueTheme
         pub caret_width: f32
         pub selection: RgbaF32
         pub placeholder: RgbaF32
+        pub range_fill: RgbaF32
+        pub range_fill_disabled: RgbaF32
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
         pub fn editor(&self) -> TextEditTheme
 
@@ -1667,7 +1670,7 @@ MenuItemTheme
     struct MenuItemTheme: Clone, Debug, Deserialize<'de>, Lerp, PartialEq, Serialize, ThemeSlot
         pub unselected: StatefulLook
         pub selected: StatefulLook
-        pub shortcut: RgbaF32
+        pub shortcut: TextStyleOverrides
         pub gap: f32
         pub defaults: SlotDefaults
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self

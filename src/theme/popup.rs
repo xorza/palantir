@@ -7,6 +7,7 @@ use crate::primitives::paint::material::Material;
 use crate::theme::menu::menu_item::MenuItemTheme;
 use crate::theme::metrics::{FloatMaterial, MaterialRefusal, Metrics};
 use crate::theme::palette::Palette;
+use crate::theme::text_style::TextStyle;
 
 /// Visuals for a [`crate::Popup`] or [`crate::PopupTrigger`] whose caller sets no chrome or
 /// padding, unless its `style` names another; the menus wear [`crate::MenuTheme`], and the color
@@ -44,7 +45,7 @@ impl PopupTheme {
     pub fn from_parts(p: &Palette, m: &Metrics) -> Self {
         let mut theme = Self::undressed(p, m);
         if let Some(float) = &m.float_material {
-            let ink = MenuItemTheme::from_parts(p, m).shortcut;
+            let ink = MenuItemTheme::from_parts(p, m).shortcut_ink(&TextStyle::from_parts(p, m));
             theme.try_dress(float, ink).ok();
         }
         theme

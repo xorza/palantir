@@ -9,6 +9,7 @@ use crate::primitives::text::text_input::TextInput;
 use crate::theme::look::theme_slot::ThemeSlot;
 use crate::theme::menu::menu_item::MenuItemTheme;
 use crate::theme::selection::Selection;
+use crate::theme::text_style_overrides::TextStyleOverrides;
 use crate::ui::Ui;
 use crate::widget_core::activation::Activation;
 use crate::widget_core::configurator::Configurator;
@@ -89,7 +90,7 @@ impl<'a> MenuItem<'a> {
         // The look plan comes off one borrow of the theme that ends before `wear` reborrows `ui`; a menu row picks and animates like a Button.
         let theme = ui.theme();
         let item = self.style.unwrap_or(&theme.menu.item);
-        let shortcut_color = item.shortcut;
+        let shortcut_text = item.shortcut;
         let gap = item.gap;
         let plan = item.plan(&response, self.selection, theme.text);
         let look = self.widget.wear(ui, plan);
@@ -128,13 +129,18 @@ impl<'a> MenuItem<'a> {
             if let Some(s) = shortcut_label {
                 // A disabled row's hint dims with its label: in the hint's own ink it would be
                 // the brightest text on a row that does nothing.
-                let hint = Text::new(s).id(id.with("shortcut")).style(&text_style);
-                if disabled || lit {
-                    hint
+                let overrides = if disabled || lit {
+                    TextStyleOverrides {
+                        color: None,
+                        ..shortcut_text
+                    }
                 } else {
-                    hint.color(shortcut_color)
-                }
-                .show(ui);
+                    shortcut_text
+                };
+                Text::new(s)
+                    .id(id.with("shortcut"))
+                    .style(&overrides.apply(&text_style))
+                    .show(ui);
             }
         };
         self.widget.record(ui, Some(&look.chrome), body);

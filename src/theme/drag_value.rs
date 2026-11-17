@@ -1,5 +1,5 @@
 //! What a drag value wears: one set of looks for the scrub chip and the text field it becomes
-//! while typed into, and the field's caret, selection and placeholder.
+//! while typed into, the field's caret, selection and placeholder, and the chip's range fill.
 
 use crate::primitives::input::interaction::response::Response;
 use crate::primitives::paint::color::RgbaF32;
@@ -15,7 +15,7 @@ use crate::theme::text_edit::TextEditTheme;
 
 /// Theme for [`crate::DragValue`]: one set of `looks` the scrub chip wears and the inline editor
 /// under [`crate::DragValue::editable`] wears too, so editing neither resizes nor restyles the
-/// field; the editor's caret, selection and placeholder beside them. The chip's `active` look is
+/// field; the editor's caret, selection and placeholder beside them, and the range fill. The chip's `active` look is
 /// pressed; the editor wears `hovered` while it is focused, as the pointer that clicked it is
 /// already over it ([`Self::editor`]).
 #[derive(
@@ -42,6 +42,12 @@ pub struct DragValueTheme {
     pub selection: RgbaF32,
     /// Ink for the placeholder an empty editor shows.
     pub placeholder: RgbaF32,
+    /// The [range fill](crate::DragValue::range_fill) of a chip that takes input, under its
+    /// figures.
+    pub range_fill: RgbaF32,
+    /// The range fill of a disabled chip, itself or by an ancestor, so no accent marks a field
+    /// that takes no input, as a disabled slider's fill.
+    pub range_fill_disabled: RgbaF32,
 }
 
 impl DragValueTheme {
@@ -57,6 +63,8 @@ impl DragValueTheme {
             caret_width: field.caret_width,
             selection: field.selection,
             placeholder: field.placeholder,
+            range_fill: p.accent.with_alpha8(RANGE_FILL_ALPHA),
+            range_fill_disabled: p.text_disabled.with_alpha8(RANGE_FILL_ALPHA),
         }
     }
 
@@ -78,6 +86,10 @@ impl DragValueTheme {
         }
     }
 }
+
+/// The share of the accent a range fill takes over the chip, 89 / 255 ≈ 0.35 on the byte grid a
+/// theme file writes, translucent so the figures it lies under keep their ink.
+const RANGE_FILL_ALPHA: u8 = 89;
 
 impl ThemeSlot for DragValueTheme {
     type Pick = ();

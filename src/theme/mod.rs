@@ -491,9 +491,9 @@ impl Theme {
             panel_clip: _,
         } = self;
         // A bare popup holds a menu row's shortcut ink, as an app fills it with rows like a menu's.
-        let shortcut = menu.item.shortcut;
+        let shortcut = menu.item.shortcut_ink(text);
         for dressed in [
-            menu.try_dress(material),
+            menu.try_dress(material, text),
             color_picker.try_dress(material, text),
             popup.try_dress(material, shortcut),
             tooltip.try_dress(material, text),

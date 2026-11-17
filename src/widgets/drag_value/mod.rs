@@ -2,15 +2,24 @@
 
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
+use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::key_class::{KeyClass, KeyFilter};
 use crate::primitives::input::keyboard::key::Key;
 use crate::primitives::input::sense::Sense;
 use crate::primitives::input::watch::KeyboardWake;
 use crate::primitives::layout::align::Align;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::clip_mode::ClipMode;
+use crate::primitives::layout::grid_cell::GridCell;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
+use crate::primitives::layout::visibility::Visibility;
 use crate::primitives::math::domain;
+use crate::primitives::paint::border::Border;
+use crate::primitives::paint::chrome::Chrome;
+use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::text::text_input::TextInput;
+use crate::scene::node::Node;
 use crate::shape::Shape;
 use crate::text::wrap::TextWrap;
 use crate::theme::drag_value::DragValueTheme;
@@ -25,6 +34,7 @@ use crate::widgets::bound_num::{BoundNum, MAX_DECIMALS, Num, StoreRule, TravelRu
 use crate::widgets::text_edit::TextEdit;
 use crate::widgets::text_edit::edit_end::EditEnd;
 use crate::widgets::text_edit::text_layout;
+use glam::Vec2;
 use std::mem;
 use std::ops::RangeInclusive;
 
@@ -100,6 +110,7 @@ pub struct DragValue<'a> {
     decimals: usize,
     suffix: TextInput<'a>,
     editable: bool,
+    range_fill: bool,
     text_align: Align,
     style: Option<&'a DragValueTheme>,
 }
@@ -122,6 +133,7 @@ impl<'a> DragValue<'a> {
             decimals: 2,
             suffix: TextInput::Borrowed(""),
             editable: true,
+            range_fill: false,
             text_align: Align::CENTER,
             style: None,
         }
@@ -188,6 +200,17 @@ impl<'a> DragValue<'a> {
     /// Enables keyboard entry: a click that latches no drag, Enter on the focused chip, or a typed character swaps in an inline `TextEdit`. Enter and click-away commit, Escape reverts. Default on, as `EditableLabel::editable`.
     pub const fn editable(mut self, editable: bool) -> Self {
         self.editable = editable;
+        self
+    }
+
+    /// Shows how far along its [range](Self::range) the value sits, as a fill from the chip's left
+    /// edge under its figures and its border, in [`DragValueTheme::range_fill`]: the number
+    /// slider Blender draws for a property shown as a slider
+    /// ([`UILayout.prop`](https://docs.blender.org/api/current/bpy.types.UILayout.html#bpy.types.UILayout.prop)'s
+    /// `slider`), scrubbed and typed into as any drag value. Inert while either end of the range
+    /// is infinite, and while the editor is open. Default off.
+    pub const fn range_fill(mut self, range_fill: bool) -> Self {
+        self.range_fill = range_fill;
         self
     }
 
@@ -327,6 +350,11 @@ impl<'a> DragValue<'a> {
         let style = self.style.unwrap_or(&theme.drag_value);
         let plan = style.plan(&response, (), theme.text);
         let caret_width = style.caret_width;
+        let fill_color = if response.disabled {
+            style.range_fill_disabled
+        } else {
+            style.range_fill
+        };
         let look = self.widget.wear(ui, plan);
         if self.editable {
             let padding = text_layout::label_padding(
@@ -337,14 +365,28 @@ impl<'a> DragValue<'a> {
             self.widget.configure().padding(padding);
         }
 
-        self.widget.record(ui, Some(&look.chrome), |ui| {
+        let text_align = self.text_align;
+        let figures = |ui: &mut Ui| {
             ui.add_shape(
                 Shape::text(text, look.text.font())
                     .wrap(TextWrap::Truncate)
-                    .align(self.text_align),
+                    .align(text_align),
                 look.text.color,
             );
-        });
+        };
+        match self.range_fraction() {
+            Some(fraction) => {
+                let fill = RangeFill {
+                    fraction,
+                    color: fill_color,
+                    chrome: &look.chrome,
+                };
+                self.record_range_fill(ui, fill, figures);
+            }
+            None => {
+                self.widget.record(ui, Some(&look.chrome), figures);
+            }
+        }
         ValueResponse {
             response,
             changed,
@@ -427,6 +469,148 @@ impl DragValue<'_> {
     /// How every write of this drag value stores the number.
     const fn rule(&self) -> StoreRule {
         StoreRule::new(self.min, self.max, self.decimals).step(self.step)
+    }
+
+    /// The share of the range from `min` the value covers, in `[0, 1]`, when
+    /// [`Self::range_fill`] is on and both ends are finite. A range whose ends meet covers none.
+    fn range_fraction(&self) -> Option<f32> {
+        if !self.range_fill || !self.min.is_finite() || !self.max.is_finite() {
+            return None;
+        }
+        let share = (self.value.read().widen() - self.min) / (self.max - self.min);
+        // A share in [0, 1], which an f32 holds to well under a pixel of any field.
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "a share in [0, 1] of the chip's width"
+        )]
+        let share = if share.is_finite() {
+            share.clamp(0.0, 1.0) as f32
+        } else {
+            0.0
+        };
+        Some(share)
+    }
+
+    /// Record the chip over its range `fill`, as two nodes, the way [`Scroll`](crate::Scroll)
+    /// splits: a layered box takes the chip's placement and wears its chrome's fill and shadow;
+    /// a row of two weighted leaves lays the fill out over that box, clipped to its corners,
+    /// `id.with("fill")` beside `id.with("rest")` as a [`Slider`](crate::Slider)'s are, so the
+    /// fill tracks the resolved width; and the chip fills the box over them, wearing the border,
+    /// which so draws over the fill's edge, with its `figures`, its id, input and padding
+    /// unchanged. Cost: an inset shadow lies under the fill, not over it.
+    fn record_range_fill(
+        mut self,
+        ui: &mut Ui,
+        fill: RangeFill<'_>,
+        figures: impl FnOnce(&mut Ui),
+    ) {
+        let id = self.widget.resolve(ui);
+        let chrome = fill.chrome;
+        let RangeWrappers { outer, chip } = RangeWrappers::split(&self.widget, id);
+        let field = chrome.clone().with_border(Border::NONE);
+        let edge =
+            Chrome::rounded(RgbaF32::TRANSPARENT, chrome.corners).with_border(chrome.paint.border);
+        let track = Chrome::rounded(RgbaF32::TRANSPARENT, chrome.corners);
+        let filled_chrome = Chrome::new(fill.color);
+        let [filled, rest] = Sizing::split(fill.fraction);
+        outer.record(ui, Some(&field), |ui| {
+            Widget::hstack()
+                .id(id.with("track"))
+                .size(SizeSpec::FILL)
+                .clip(ClipMode::Rounded)
+                .record(ui, Some(&track), |ui| {
+                    Widget::leaf()
+                        .id(id.with("fill"))
+                        .size((filled, Sizing::FILL))
+                        .record(ui, Some(&filled_chrome), |_| {});
+                    Widget::leaf()
+                        .id(id.with("rest"))
+                        .size((rest, Sizing::FILL))
+                        .record(ui, None, |_| {});
+                });
+            chip.record(ui, Some(&edge), figures);
+        });
+    }
+}
+
+/// A chip's range fill: how far along its range the value sits, the color that shows it, and the
+/// chip's chrome, which the box under the fill and the border over it share.
+#[derive(Clone, Copy, Debug)]
+struct RangeFill<'c> {
+    fraction: f32,
+    color: RgbaF32,
+    chrome: &'c Chrome,
+}
+
+/// The two `Widget`s a drag value with a range fill records: an outer `ZStack` (sizing,
+/// placement, visibility, transform, the chip's fill) and the chip filling it (identity, input,
+/// padding, border, text).
+#[derive(Debug)]
+struct RangeWrappers {
+    outer: Widget,
+    chip: Widget,
+}
+
+impl RangeWrappers {
+    /// Split the chip `widget` of id `id` into the two. The destructure is exhaustive, so a new
+    /// `Node` field must be given a side.
+    fn split(widget: &Widget, id: WidgetId) -> Self {
+        let Widget { ident, node } = *widget;
+        let Node {
+            mode,
+            size,
+            min_size,
+            max_size,
+            padding,
+            margin,
+            clip,
+            gaps,
+            justify,
+            align,
+            child_align,
+            pos,
+            grid,
+            flags,
+            visibility,
+            transform,
+            tab_idx,
+        } = node;
+        let mut outer = Widget::zstack().id(id.with("range"));
+        outer.node = Node {
+            size,
+            min_size,
+            max_size,
+            margin,
+            align,
+            pos,
+            grid,
+            visibility,
+            transform,
+            ..outer.node
+        };
+        let chip = Widget {
+            ident,
+            node: Node {
+                mode,
+                size: Some(SizeSpec::FILL),
+                min_size: None,
+                max_size: None,
+                padding,
+                margin: Some(Spacing::ZERO),
+                clip,
+                gaps,
+                justify,
+                align: Align::default(),
+                child_align,
+                pos: Vec2::ZERO,
+                grid: GridCell::default(),
+                flags,
+                visibility: Visibility::Visible,
+                transform: TranslateScale::IDENTITY,
+                tab_idx,
+            },
+        };
+        Self { outer, chip }
     }
 }
 

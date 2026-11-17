@@ -13,6 +13,7 @@ use crate::theme::look::theme_slot::ThemeSlot;
 use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
 use crate::theme::selection::Selection;
+use crate::theme::text_style::TextStyle;
 use crate::theme::text_style_overrides::TextStyleOverrides;
 
 /// Four-state row looks for [`crate::MenuItem`] (`active` = pressed), one pack for a row that is
@@ -33,9 +34,11 @@ pub struct MenuItemTheme {
     pub unselected: StatefulLook,
     /// The four per-state looks of the row that is the pick (`[menu.item.selected.normal]`).
     pub selected: StatefulLook,
-    /// Shortcut hint color on a resting live row; a hovered, pressed or disabled row's hint takes
-    /// its label's ink.
-    pub shortcut: RgbaF32,
+    /// Text axes the shortcut hint sets over its row's text: its face, size and, on a resting
+    /// live row, its ink; a hovered, pressed or disabled row's hint takes its label's ink, as
+    /// [`TooltipTheme::text`](crate::TooltipTheme) and the color picker's labels set theirs.
+    #[serde(default, skip_serializing_if = "TextStyleOverrides::is_empty")]
+    pub shortcut: TextStyleOverrides,
     /// Minimum gutter between the label and its shortcut hint (the row is `SpaceBetween`).
     #[serde(deserialize_with = "crate::primitives::file::length")]
     pub gap: f32,
@@ -76,7 +79,7 @@ impl MenuItemTheme {
         Self {
             unselected,
             selected,
-            shortcut: p.text_muted,
+            shortcut: TextStyleOverrides::NONE.with_color(p.text_muted),
             gap: m.space.xl,
             defaults: SlotDefaults {
                 padding: m.row_padding(),
@@ -85,6 +88,13 @@ impl MenuItemTheme {
                 press: None,
             },
         }
+    }
+
+    /// The ink a resting live row's shortcut hint paints over `ambient`, the dimmest a menu
+    /// paints, which a frosted panel holds its contrast for.
+    pub(crate) fn shortcut_ink(&self, ambient: &TextStyle) -> RgbaF32 {
+        let row = self.unselected.normal.text.apply(ambient);
+        self.shortcut.apply(&row).color
     }
 }
 

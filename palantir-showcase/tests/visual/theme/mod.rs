@@ -453,6 +453,8 @@ fn theme(scheme: &FixtureScheme) -> Theme {
             caret_width: 1.5,
             selection: alpha(p.accent, 0x3d),
             placeholder: p.text_muted,
+            range_fill: alpha(p.accent, 0x59),
+            range_fill_disabled: alpha(p.text_disabled, 0x59),
         },
         menu: MenuTheme {
             material: None,
@@ -496,7 +498,7 @@ fn theme(scheme: &FixtureScheme) -> Theme {
                         },
                     },
                 },
-                shortcut: p.text_muted,
+                shortcut: TextStyleOverrides::NONE.with_color(p.text_muted),
                 gap: 24.0,
                 defaults: SlotDefaults {
                     padding: Spacing::xy(12.0, 8.0),
@@ -678,6 +680,8 @@ fn theme(scheme: &FixtureScheme) -> Theme {
                 caret_width: 1.5,
                 selection: alpha(p.accent, 0x3d),
                 placeholder: p.text_muted,
+                range_fill: alpha(p.accent, 0x59),
+                range_fill_disabled: alpha(p.text_disabled, 0x59),
             },
             hex: TextEditTheme {
                 looks: StatefulLook {

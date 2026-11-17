@@ -2,6 +2,7 @@
 
 mod edit;
 mod layout;
+mod range_fill;
 mod scrub;
 mod spin;
 mod support;

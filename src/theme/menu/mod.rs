@@ -9,6 +9,7 @@ use crate::theme::menu::menu_item::MenuItemTheme;
 use crate::theme::metrics::{FloatMaterial, MaterialRefusal, Metrics};
 use crate::theme::palette::Palette;
 use crate::theme::separator::SeparatorTheme;
+use crate::theme::text_style::TextStyle;
 
 /// A menu's width floor, so the menus of one bar open one width and a short menu does not read as
 /// a pill: a short label and a three-key shortcut hint fit inside it. "Save As…" (66 px) and
@@ -71,13 +72,19 @@ impl MenuTheme {
             separator: SeparatorTheme::menu(p, m),
         };
         if let Some(float) = &m.float_material {
-            theme.try_dress(float).ok();
+            theme.try_dress(float, &TextStyle::from_parts(p, m)).ok();
         }
         theme
     }
 
-    /// Dress the panel in `float`, held for the rows' shortcut ink, the dimmest a menu paints.
-    pub(super) fn try_dress(&mut self, float: &FloatMaterial) -> Result<(), MaterialRefusal> {
-        float.try_dress(&mut self.panel, &mut self.material, self.item.shortcut)
+    /// Dress the panel in `float`, held for the rows' shortcut ink over `ambient`, the dimmest a
+    /// menu paints.
+    pub(super) fn try_dress(
+        &mut self,
+        float: &FloatMaterial,
+        ambient: &TextStyle,
+    ) -> Result<(), MaterialRefusal> {
+        let ink = self.item.shortcut_ink(ambient);
+        float.try_dress(&mut self.panel, &mut self.material, ink)
     }
 }

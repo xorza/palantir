@@ -12,12 +12,14 @@ use crate::scene::layer::Layer;
 use crate::shape::paint::closed_paint::ClosedPaint;
 use crate::shape::paint::lowered_brush::LoweredBrush;
 use crate::shape::record::ShapeRecord;
+use crate::text::font_family::FontFamily;
 use crate::theme::Theme;
 use crate::theme::color_scheme::ColorScheme;
 use crate::theme::look::slot_defaults::SlotDefaults;
 use crate::theme::menu::MenuTheme;
 use crate::theme::menu::menu_item::MenuItemTheme;
 use crate::theme::separator::SeparatorTheme;
+use crate::theme::text_style_overrides::TextStyleOverrides;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::menu::Menu;
@@ -171,7 +173,8 @@ fn menu_separator_theme_drives_rule_geometry_and_color() {
 }
 
 /// A live row's hint takes the theme's shortcut ink; a disabled row's dims with its label, and a
-/// hovered row's lights with its label.
+/// hovered row's lights with its label. The shortcut's face holds in every state, apart from the
+/// label's.
 #[test]
 fn a_disabled_rows_hint_dims_with_its_label() {
     let rows = [WidgetId::from_hash("live"), WidgetId::from_hash("dead")];
@@ -188,7 +191,9 @@ fn a_disabled_rows_hint_dims_with_its_label() {
     };
     let mut h = Harness::mono(SURFACE);
     let theme = h.ui_mut().theme_mut();
-    theme.menu.item.shortcut = RgbaF32::hex(0x00ff00);
+    theme.menu.item.shortcut = TextStyleOverrides::NONE
+        .with_color(RgbaF32::hex(0x00ff00))
+        .with_family(FontFamily::MONO);
     theme.menu.item.unselected.disabled.text = theme
         .menu
         .item
@@ -206,20 +211,30 @@ fn a_disabled_rows_hint_dims_with_its_label() {
     Menu::open_at(h.ui_mut(), trigger_id(), Vec2::new(20.0, 20.0));
     h.frame(menu);
     h.frame(menu);
-    let hint_color = |h: &Harness, id: WidgetId| {
-        let node = h
-            .ui()
-            .forest()
-            .node_for_widget_id(Layer::Menu, id.with("shortcut"));
+    let text_of = |h: &Harness, id: WidgetId| {
+        let node = h.ui().forest().node_for_widget_id(Layer::Menu, id);
         h.ui()
             .tree(Layer::Menu)
             .shapes_of(node)
             .find_map(|shape| match shape {
-                ShapeRecord::Text { color, .. } => Some(*color),
+                ShapeRecord::Text { color, font, .. } => Some((*color, font.family)),
                 _ => None,
             })
-            .expect("the hint records one text shape")
+            .expect("one text shape")
     };
+    let hint_color = |h: &Harness, id: WidgetId| text_of(h, id.with("shortcut")).0;
+    for row in rows {
+        let (hint, label) = (
+            text_of(&h, row.with("shortcut")),
+            text_of(&h, row.with("label")),
+        );
+        assert_ne!(hint.1, label.1, "the hint's own face");
+    }
+    assert_eq!(
+        text_of(&h, rows[0].with("shortcut")).1,
+        text_of(&h, rows[1].with("shortcut")).1,
+        "one face, live or disabled"
+    );
     assert_eq!(
         hint_color(&h, rows[0]),
         RgbaF32::hex(0x00ff00).to_f16(),

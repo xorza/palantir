@@ -14,6 +14,7 @@ use crate::theme::metrics::{FloatMaterial, Metrics};
 use crate::theme::palette::Palette;
 use crate::theme::text_edit::TextEditTheme;
 use crate::theme::text_style::TextStyle;
+use crate::theme::text_style_overrides::TextStyleOverrides;
 
 /// WCAG 1.4.3: text against what it sits on
 /// (<https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum>).
@@ -294,7 +295,7 @@ fn dress_floats_dresses_each_floating_surface_and_nothing_else() {
     // gets the full ink's ceiling, which the muted one's is not.
     let mut theme = Theme::stock(ColorScheme::Dark);
     let ink = Palette::DARK.text;
-    theme.menu.item.shortcut = ink;
+    theme.menu.item.shortcut = TextStyleOverrides::NONE.with_color(ink);
     let solid = theme.menu.panel.paint.fill.as_solid().expect("solid");
     let fill = solid.with_alpha(0.6);
     theme.dress_floats(&FROSTED);
