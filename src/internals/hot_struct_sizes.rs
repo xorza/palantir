@@ -220,7 +220,7 @@ const PINS: &[Pin] = &[
         >,
     >("widgets::ComboBox", 184, 8),
     pin::<DragValue<'static>>("widgets::DragValue", 232, 8),
-    pin::<RadioGroup<'static, u8>>("widgets::RadioGroup<u8>", 152, 8),
+    pin::<RadioGroup<'static, u8>>("widgets::RadioGroup<u8>", 160, 8),
     pin::<TextEdit<'static>>("widgets::TextEdit", 320, 8),
     pin::<Text<'static>>("widgets::Text", 272, 8),
     pin::<Slider<'static>>("widgets::Slider", 192, 8),

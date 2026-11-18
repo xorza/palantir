@@ -2209,6 +2209,7 @@ RadioOption
     struct RadioOption<'o, 'g, T>: Configure, ConfigureDefaults (blanket)
         impl<'o, T: PartialEq> RadioOption<'o, '_, T>
             pub fn label(self, label: impl Into<TextInput<'o>>) -> Self
+            pub const fn icon(self, icon: IconHandle) -> Self
             pub fn show(self, ui: &mut Ui) -> ValueResponse
         impl<'o, 'g, T: Debug> Debug for RadioOption<'o, 'g, T>
 
@@ -2416,6 +2417,9 @@ SegmentedTheme
     struct SegmentedTheme: Clone, Debug, Deserialize<'de>, Lerp, PartialEq, Serialize
         pub track: Chrome
         pub track_padding: Spacing
+        pub pill: Chrome
+        pub slide: AnimationSpec
+        pub gap: f32
         pub segment: ButtonTheme
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
 

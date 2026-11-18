@@ -5,9 +5,9 @@
 
 use palantir::{
     Align, Axis, Button, ButtonTheme, Chrome, ColorScheme, Configure, Corners, FontWeight, Grid,
-    GridCell, Panel, Preference, RadioGroup, RadioLook, Reduction, Scroll, SegmentedTheme,
-    SizeSpec, Sizing, SlotDefaults, Spacing, StatefulLook, Text, TextStyleOverrides, Theme,
-    Tooltip, Track, Ui, UiPreferences, VAlign, WidgetId, WidgetLook,
+    GridCell, IconHandle, IconSet, IconTable, Panel, Preference, RadioGroup, RadioLook, Reduction,
+    Scroll, SegmentedTheme, SizeSpec, Sizing, SlotDefaults, Spacing, StatefulLook, Text,
+    TextStyleOverrides, Theme, Tooltip, Track, Ui, UiPreferences, VAlign, WidgetId, WidgetLook,
 };
 
 use crate::scaffold::tokens::M;
@@ -15,9 +15,10 @@ use crate::scaffold::tokens::Tokens;
 
 /// The rail's width: room for a preference row's name beside its [`Segmented`] track, as the
 /// longest name, "Transparency", takes 78 px at the caption size. The track takes the rest,
-/// 256 − 3 × [`INSET`] − 78 − [`NAME_GAP`] = 134 px: three segments of 43.3 px inside its
-/// 2 px padding, which leave the widest choice, "Light" at 32 px, 5.7 px each side.
-pub(crate) const WIDTH: f32 = 256.0;
+/// 312 − 3 × [`INSET`] − 78 − [`NAME_GAP`] = 190 px: three segments of 62 px inside its
+/// 2 px padding, which leave the widest choice, the Theme row's "Light" at 32 px after its
+/// 14.4 px icon and the 4 px gap, 5.8 px each side.
+pub(crate) const WIDTH: f32 = 312.0;
 /// The inset of the rail's blocks from its edges, and of an item's text from its pill.
 pub(crate) const INSET: f32 = M.space.md;
 /// An item's height: macOS's medium sidebar row.
@@ -153,6 +154,7 @@ pub(crate) fn preferences(ui: &mut Ui, t: Tokens) {
 
 /// The rows of [`preferences`], each set from the segment pressed this frame.
 fn preference_rows(ui: &mut Ui, track: &Segmented) {
+    let icons = SchemeIcons::load(ui);
     let held = ui.preferences();
     let follows_scheme = match ui.system_color_scheme() {
         Some(ColorScheme::Light) => "Follows the system, light now",
@@ -169,6 +171,7 @@ fn preference_rows(ui: &mut Ui, track: &Segmented) {
                 (Preference::Fixed(ColorScheme::Light), "Light"),
                 (Preference::Fixed(ColorScheme::Dark), "Dark"),
             ],
+            icons: Some([icons.auto, icons.light, icons.dark]),
             current: held.scheme,
             follows: follows_scheme,
         },
@@ -179,6 +182,7 @@ fn preference_rows(ui: &mut Ui, track: &Segmented) {
             row: 1,
             label: "Motion",
             choices: REDUCE,
+            icons: None,
             current: held.motion,
             follows: if ui.reductions().power.is_reduced() {
                 "Follows the system, transitions snap under reduced power"
@@ -193,6 +197,7 @@ fn preference_rows(ui: &mut Ui, track: &Segmented) {
             row: 2,
             label: "Transparency",
             choices: REDUCE,
+            icons: None,
             current: held.transparency,
             follows: if ui.reductions().power.is_reduced() {
                 "Follows the system, less now under reduced power"
@@ -207,6 +212,7 @@ fn preference_rows(ui: &mut Ui, track: &Segmented) {
             row: 3,
             label: "Power",
             choices: REDUCE,
+            icons: None,
             current: held.power,
             follows: follows_reduction(ui.system_reductions().power.is_reduced()),
         },
@@ -217,6 +223,7 @@ fn preference_rows(ui: &mut Ui, track: &Segmented) {
             row: 4,
             label: "Frame rate",
             choices: REDUCE,
+            icons: None,
             current: held.frame_rate,
             follows: if ui.reductions().power.is_reduced() {
                 "Follows the power, 30 Hz now"
@@ -257,12 +264,14 @@ const NAME_GAP: f32 = M.space.sm;
 const SEGMENT: f32 = 20.0;
 
 /// One preference's row on the rail's track: its grid row and label, the three choices with the
-/// text of each, the one held now, and the tooltip on the first, which follows the system.
+/// text of each and an icon before it where the row has them, the one held now, and the tooltip
+/// on the first, which follows the system.
 #[derive(Clone, Copy, Debug)]
 struct PreferenceRow<T> {
     row: u16,
     label: &'static str,
     choices: [(T, &'static str); 3],
+    icons: Option<[IconHandle; 3]>,
     current: T,
     follows: &'static str,
 }
@@ -297,6 +306,7 @@ impl Segmented {
             row,
             label,
             choices,
+            icons,
             current,
             follows,
         } = spec;
@@ -316,9 +326,11 @@ impl Segmented {
             .size(SizeSpec::FILL_W)
             .show(ui, |ui, options| {
                 for (idx, (choice, text)) in choices.into_iter().enumerate() {
-                    let segment = options
-                        .option(choice)
-                        .label(text)
+                    let mut option = options.option(choice).label(text);
+                    if let Some(icons) = icons {
+                        option = option.icon(icons[idx]);
+                    }
+                    let segment = option
                         .size((Sizing::FILL, Sizing::fixed(SEGMENT)))
                         .show(ui)
                         .response;
@@ -330,3 +342,60 @@ impl Segmented {
         next
     }
 }
+
+/// The Theme row's icons, a monitor for the system's scheme, a sun for light and a moon for
+/// dark, as most theme switchers mark the three: single-color outlines, so each takes its
+/// label's ink.
+#[derive(Clone, Debug)]
+struct SchemeIcons {
+    #[expect(dead_code, reason = "held so its icons stay loaded")]
+    set: IconSet,
+    auto: IconHandle,
+    light: IconHandle,
+    dark: IconHandle,
+}
+
+impl SchemeIcons {
+    /// The set, parked in a state row across frames, as an `IconSet` dropped each frame would
+    /// unload and re-rasterize its icons each frame.
+    fn load(ui: &mut Ui) -> Self {
+        ui.with_state_or_insert_with(
+            WidgetId::from_hash("showcase::rail::scheme_icons"),
+            |ui| {
+                let set = ui.load_icons(
+                    IconTable::from_svgs([
+                        ("auto", MONITOR_SVG),
+                        ("light", SUN_SVG),
+                        ("dark", MOON_SVG),
+                    ])
+                    .expect("the bundled icons are readable SVGs with distinct names"),
+                );
+                let handle = |name| set.by_name(name).expect("bundled icon");
+                Self {
+                    auto: handle("auto"),
+                    light: handle("light"),
+                    dark: handle("dark"),
+                    set,
+                }
+            },
+            |_, held: &mut Self| held.clone(),
+        )
+    }
+}
+
+/// A screen on a stand.
+const MONITOR_SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+<rect x="3" y="4" width="18" height="12" rx="2" fill="none" stroke="#fff" stroke-width="2"/>
+<path d="M8 20h8M12 16v4" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+</svg>"##;
+
+/// A disc with eight rays.
+const SUN_SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+<circle cx="12" cy="12" r="4" fill="none" stroke="#fff" stroke-width="2"/>
+<path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+</svg>"##;
+
+/// A crescent.
+const MOON_SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round"/>
+</svg>"##;

@@ -365,7 +365,7 @@ fn a_shot_compares_with_an_earlier_run() {
     let first = Scratch::new("first");
     let second = Scratch::new("second");
     let script =
-        |page: &str| Script::parse(&format!("size 320x200\npage \"{page}\"\nshot view\n")).unwrap();
+        |page: &str| Script::parse(&format!("size 480x200\npage \"{page}\"\nshot view\n")).unwrap();
     shot::play(
         gpu.handles(),
         &script("controls"),
@@ -406,7 +406,7 @@ fn a_shot_compares_with_an_earlier_run() {
     let other = Script::parse("size 160x100\nshot view\n").unwrap();
     shot::play(gpu.handles(), &other, against(&second, &first), &mut report).unwrap();
     let report = String::from_utf8(report).unwrap();
-    assert!(report.contains(": 320x200, another size"), "{report}");
+    assert!(report.contains(": 480x200, another size"), "{report}");
     let mut report = Vec::new();
     let unseen = Script::parse("size 160x100\nshot unseen\n").unwrap();
     shot::play(
@@ -499,30 +499,30 @@ fn every_page_draws_in_dark() {
 #[rustfmt::skip]
 const CENSUS: [(&str, [u32; 7]); 24] = [
     //                    draws  pipes  groups  scissors  viewports  vertex  index
-    ("Controls",         [    5,     3,      2,        3,         1,      3,     2]),
-    ("Colors",           [    8,     4,      8,        1,         3,      4,     2]),
-    ("Tabs",             [    3,     3,      2,        1,         1,      3,     2]),
-    ("Dock",             [    3,     3,      2,        1,         1,      3,     2]),
-    ("Custom widget",    [    3,     3,      2,        1,         1,      3,     2]),
-    ("Overlays",         [    8,     6,      6,        4,         3,      6,     3]),
-    ("Text input",       [    4,     2,      2,        3,         1,      2,     1]),
-    ("Focus & keyboard", [    3,     3,      2,        1,         1,      3,     2]),
-    ("Sizing & spacing", [    5,     3,      2,        3,         1,      3,     2]),
-    ("Containers",       [    4,     2,      2,        3,         1,      2,     1]),
-    ("Text",             [    4,     2,      2,        3,         1,      2,     1]),
-    ("Clip & transform", [    8,     3,      2,        6,         1,      3,     2]),
-    ("Scroll & zoom",    [    7,     2,      2,        6,         1,      2,     1]),
-    ("Shapes",           [    5,     4,      2,        3,         1,      2,     1]),
-    ("Strokes",          [    5,     3,      2,        3,         1,      3,     2]),
-    ("Gradients",        [    3,     3,      2,        1,         1,      2,     1]),
-    ("Shadows",          [   14,    13,      2,        3,         1,      6,     1]),
-    ("Materials",        [   17,    17,     26,        8,        13,     17,     7]),
-    ("Effects",          [    6,     4,      3,        4,         2,      3,     1]),
+    ("Controls",         [    6,     3,      2,        3,         1,      4,     2]),
+    ("Colors",           [    9,     5,      8,        1,         3,      5,     2]),
+    ("Tabs",             [    4,     3,      2,        1,         1,      4,     2]),
+    ("Dock",             [    4,     3,      2,        1,         1,      4,     2]),
+    ("Custom widget",    [    4,     3,      2,        1,         1,      4,     2]),
+    ("Overlays",         [    9,     6,      6,        4,         3,      7,     3]),
+    ("Text input",       [    5,     2,      2,        3,         1,      3,     1]),
+    ("Focus & keyboard", [    4,     3,      2,        1,         1,      4,     2]),
+    ("Sizing & spacing", [    6,     3,      2,        3,         1,      4,     2]),
+    ("Containers",       [    5,     2,      2,        3,         1,      3,     1]),
+    ("Text",             [    3,     2,      2,        1,         1,      3,     1]),
+    ("Clip & transform", [    9,     3,      2,        6,         1,      4,     2]),
+    ("Scroll & zoom",    [    8,     2,      2,        6,         1,      3,     1]),
+    ("Shapes",           [    6,     4,      2,        3,         1,      3,     1]),
+    ("Strokes",          [    6,     3,      2,        3,         1,      4,     2]),
+    ("Gradients",        [    4,     3,      2,        1,         1,      3,     1]),
+    ("Shadows",          [   15,    13,      2,        3,         1,      7,     1]),
+    ("Materials",        [   18,    17,     26,        8,        13,     18,     7]),
+    ("Effects",          [    7,     4,      3,        4,         2,      4,     1]),
     ("Icons",            [    3,     2,      2,        1,         1,      3,     1]),
-    ("Images",           [    5,     4,      5,        1,         3,      4,     2]),
-    ("Motion",           [   11,     8,      2,        5,         1,      8,     7]),
-    ("GPU view",         [    3,     3,      3,        1,         2,      3,     1]),
-    ("App & windows",    [    4,     2,      2,        3,         1,      2,     1]),
+    ("Images",           [    6,     5,      5,        1,         3,      5,     2]),
+    ("Motion",           [   12,     9,      2,        5,         1,      9,     7]),
+    ("GPU view",         [    4,     4,      4,        1,         3,      4,     1]),
+    ("App & windows",    [    5,     2,      2,        3,         1,      3,     1]),
 ];
 
 /// The census: the calls each page's main pass records, at the bench window's logical size,

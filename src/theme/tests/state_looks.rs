@@ -440,3 +440,47 @@ fn the_accent_button_fills_with_the_accent_and_moves_away_from_its_ink() {
         assert_eq!(accent.defaults, stock.defaults);
     }
 }
+
+/// The stock segment track in either scheme: an accent pill on an `element_mid` track, the checked
+/// label in `on_accent` over a clear chrome so the pill shows through, and a spring that slides it.
+#[test]
+fn the_stock_segment_pill_is_the_accent() {
+    for scheme in ColorScheme::ALL {
+        let p = Palette::for_scheme(scheme);
+        let theme = Theme::stock(scheme).segmented;
+        assert_eq!(
+            theme.pill.paint.fill.as_solid(),
+            Some(p.accent),
+            "{scheme:?}"
+        );
+        assert_eq!(
+            theme.track.paint.fill.as_solid(),
+            Some(p.element_mid),
+            "{scheme:?}"
+        );
+        for look in [
+            &theme.segment.selected.normal,
+            &theme.segment.selected.hovered,
+            &theme.segment.selected.active,
+        ] {
+            assert_eq!(
+                look.chrome.paint.fill.as_solid(),
+                Some(RgbaF32::TRANSPARENT)
+            );
+            assert_eq!(look.text.color, Some(p.on_accent), "{scheme:?}");
+        }
+        assert_eq!(
+            theme.segment.unselected.normal.text.color,
+            Some(p.text_muted)
+        );
+        // Disabled and checked, a veil of half the track dims the pill under halved ink.
+        let disabled = &theme.segment.selected.disabled;
+        assert_eq!(
+            disabled.chrome.paint.fill.as_solid(),
+            Some(p.element_mid.with_alpha8(128)),
+            "{scheme:?}"
+        );
+        assert_eq!(disabled.text.color, Some(p.on_accent.with_alpha8(128)));
+        assert!(!theme.slide.is_instant(), "{scheme:?}: the pill slides");
+    }
+}

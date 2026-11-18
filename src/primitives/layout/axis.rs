@@ -78,6 +78,13 @@ impl Axis {
     pub(crate) fn spacing(self, s: Spacing) -> f32 {
         self.main(s.sums())
     }
+    /// Build a `SizeSpec` from main- and cross-axis sizings; the [`Axis::compose_size`] of a sizing.
+    pub(crate) const fn compose_sizing(self, main: Sizing, cross: Sizing) -> SizeSpec {
+        match self {
+            Self::X => SizeSpec::new(main, cross),
+            Self::Y => SizeSpec::new(cross, main),
+        }
+    }
     /// Build a `Size` from main- and cross-axis lengths.
     pub(crate) const fn compose_size(self, main: f32, cross: f32) -> Size {
         match self {
@@ -125,21 +132,5 @@ pub(crate) struct AxisExtent {
 impl AxisExtent {
     pub(crate) const fn new(start: f32, len: f32) -> Self {
         Self { start, len }
-    }
-}
-
-#[cfg(test)]
-pub(crate) mod internals {
-    use crate::primitives::layout::axis::Axis;
-    use crate::primitives::layout::sizing::{SizeSpec, Sizing};
-
-    impl Axis {
-        /// Build a `SizeSpec` from main- and cross-axis sizings; the [`Axis::compose_size`] of a sizing.
-        pub(crate) const fn compose_sizing(self, main: Sizing, cross: Sizing) -> SizeSpec {
-            match self {
-                Self::X => SizeSpec::new(main, cross),
-                Self::Y => SizeSpec::new(cross, main),
-            }
-        }
     }
 }

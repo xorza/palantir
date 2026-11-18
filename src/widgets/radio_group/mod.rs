@@ -1,13 +1,17 @@
 //! [`RadioGroup`]: one pick from a set, over the shared value its options write through, as
 //! WAI-ARIA's radio group pattern works it from the keyboard.
 
+mod segment_option;
+mod segment_track;
+
 use crate::primitives::geometry::rect::Rect;
+use crate::primitives::identity::icon_handle::IconHandle;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::key_class::KeyFilter;
 use crate::primitives::input::keyboard::key::Key;
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::layout_mode::LayoutMode;
-use crate::primitives::layout::sizing::SizeSpec;
+use crate::primitives::layout::track::Track;
 use crate::primitives::math::domain;
 use crate::primitives::text::text_input::TextInput;
 use crate::scene::node::node_mode::NodeMode;
@@ -16,12 +20,12 @@ use crate::theme::Theme;
 use crate::theme::segmented::SegmentedTheme;
 use crate::theme::toggle::ToggleTheme;
 use crate::ui::Ui;
-use crate::widget_core::activation::Activation;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::value_response::ValueResponse;
 use crate::widget_core::widget::Widget;
-use crate::widgets::button::Button;
+use crate::widgets::radio_group::segment_option::SegmentOption;
+use crate::widgets::radio_group::segment_track::SegmentTrack;
 use crate::widgets::toggle_row::{Settled, ToggleBox, ToggleFace, ToggleRow};
 use std::rc::Rc;
 
@@ -34,9 +38,10 @@ use std::rc::Rc;
 pub enum RadioLook<'a> {
     /// A round pip beside each label, in [`Theme::radio`](crate::Theme::radio) unless overridden.
     Pip(Option<&'a ToggleTheme>),
-    /// The labels as segments of one track, the checked one on a pill, in
+    /// The labels as equal segments of one track, a pill sliding under the checked one, in
     /// [`Theme::segmented`](crate::Theme::segmented) unless overridden, as Ark UI's segment group
-    /// and Mantine's segmented control are radio groups.
+    /// and Mantine's segmented control are radio groups. The options record straight into the
+    /// track, each an equal share of it along [`RadioGroup::axis`], which is what places the pill.
     Segment(Option<&'a SegmentedTheme>),
 }
 
@@ -59,6 +64,7 @@ pub enum RadioLook<'a> {
 #[must_use = "a widget records nothing until `show`"]
 pub struct RadioGroup<'a, T> {
     widget: Widget,
+    axis: Axis,
     selected: &'a mut T,
     look: RadioLook<'a>,
 }
@@ -69,6 +75,7 @@ impl<'a, T> RadioGroup<'a, T> {
     pub fn new(selected: &'a mut T) -> Self {
         Self {
             widget: Widget::vstack().input_scope(KeyFilter::CARET),
+            axis: Axis::Y,
             selected,
             look: RadioLook::Pip(None),
         }
@@ -76,7 +83,7 @@ impl<'a, T> RadioGroup<'a, T> {
 
     /// The axis the options stack along. Default [`Axis::Y`].
     pub const fn axis(mut self, axis: Axis) -> Self {
-        self.widget.node.mode = NodeMode::Resolved(LayoutMode::Stack(axis));
+        self.axis = axis;
         self
     }
 
@@ -99,54 +106,100 @@ impl<T: PartialEq> RadioGroup<'_, T> {
         let id = response.id;
         // An `Rc` bump, so the slots outlive the `&mut Ui` the record takes.
         let theme = Rc::clone(ui.theme());
-        let (look, chrome) = match self.look {
-            RadioLook::Pip(slot) => (OptionLook::Pip(slot.unwrap_or(&theme.radio)), None),
+        let Self {
+            mut widget,
+            axis,
+            selected,
+            look,
+        } = self;
+        let changed = ui.with_state::<GroupMemory, _>(id, |ui, memory| match look {
+            RadioLook::Pip(slot) => {
+                widget.node.mode = NodeMode::Resolved(LayoutMode::Stack(axis));
+                let run = OptionsRun {
+                    group: id,
+                    group_disabled: response.disabled,
+                    selected,
+                    look: OptionLook::Pip(slot.unwrap_or(&theme.radio)),
+                };
+                widget.record(ui, None, |ui| run.record(ui, memory, body))
+            }
             RadioLook::Segment(slot) => {
                 let slot = slot.unwrap_or(&theme.segmented);
-                self.widget
-                    .configure()
-                    .default_gap(0.0)
-                    .default_padding(slot.track_padding);
-                (OptionLook::Segment(slot), Some(&slot.track))
+                SegmentTrack { id, slot, axis }.record(ui, widget, memory, |ui, memory, pill_at| {
+                    OptionsRun {
+                        group: id,
+                        group_disabled: response.disabled,
+                        selected,
+                        look: OptionLook::Segment {
+                            slot,
+                            pill_at,
+                            axis,
+                        },
+                    }
+                    .record(ui, memory, body)
+                })
             }
-        };
-        let selected = self.selected;
-        let changed = ui.with_state::<GroupMemory, _>(id, |ui, memory| {
-            self.widget.record(ui, chrome, |ui| {
-                let target = if response.disabled || !ui.is_focus_within(id) {
-                    None
-                } else {
-                    arrow_target(ui, id, memory)
-                };
-                let entry = match memory.checked {
-                    Some(checked) if !memory.disabled[checked as usize] => None,
-                    _ => memory.first_enabled(),
-                };
-                memory.disabled.clear();
-                let mut options = RadioOptions {
-                    selected,
-                    group: id,
-                    look,
-                    target,
-                    entry,
-                    checked: None,
-                    changed: false,
-                    disabled: &mut memory.disabled,
-                };
-                body(ui, &mut options);
-                let RadioOptions {
-                    checked, changed, ..
-                } = options;
-                if let Some(target) = target
-                    && checked == Some(target)
-                {
-                    ui.set_focus(option_id(id, target));
-                }
-                memory.checked = checked;
-                changed
-            })
         });
         ValueResponse::pick(response, changed)
+    }
+}
+
+/// One record of a group's options: the group, whether it is disabled, the value its options
+/// write and the look they take.
+#[derive(Debug)]
+struct OptionsRun<'r, T> {
+    group: WidgetId,
+    group_disabled: bool,
+    selected: &'r mut T,
+    look: OptionLook<'r>,
+}
+
+impl<T: PartialEq> OptionsRun<'_, T> {
+    /// Records the options `body` records against last frame's `memory`, refills it with this
+    /// frame's, and returns whether a pick changed the value.
+    fn record(
+        self,
+        ui: &mut Ui,
+        memory: &mut GroupMemory,
+        body: impl FnOnce(&mut Ui, &mut RadioOptions<'_, T>),
+    ) -> bool {
+        let Self {
+            group,
+            group_disabled,
+            selected,
+            look,
+        } = self;
+        let target = if group_disabled || !ui.is_focus_within(group) {
+            None
+        } else {
+            arrow_target(ui, group, memory)
+        };
+        let entry = match memory.checked {
+            Some(checked) if !memory.disabled[checked as usize] => None,
+            _ => memory.first_enabled(),
+        };
+        memory.disabled.clear();
+        let mut options = RadioOptions {
+            selected,
+            group,
+            look,
+            target,
+            entry,
+            checked: None,
+            changed: false,
+            disabled: &mut memory.disabled,
+        };
+        body(ui, &mut options);
+        let RadioOptions {
+            checked, changed, ..
+        } = options;
+        if let Some(target) = target
+            && checked == Some(target)
+        {
+            ui.set_focus(option_id(group, target));
+        }
+        memory.checked = checked;
+        changed
     }
 }
 
@@ -186,11 +239,23 @@ pub(crate) fn option_id(group: WidgetId, idx: u32) -> WidgetId {
 /// What a group keeps from its last frame: which of the options its body recorded were disabled,
 /// in record order, and the one that showed checked. An arrow steps among last frame's options,
 /// and while no enabled one is checked the first enabled one is the Tab stop. The mask is cleared and
-/// filled each frame, so it allocates only when the group grows.
+/// filled each frame, so it allocates only when the group grows. A segment track keeps its pill's
+/// and its grid's too.
 #[derive(Debug, Default)]
 struct GroupMemory {
     disabled: Vec<bool>,
     checked: Option<u32>,
+    pill: PillMemory,
+    /// A segment track's grid tracks, one per option, refilled each frame.
+    tracks: Vec<Track>,
+}
+
+/// What a segment track's pill keeps between frames: the segment it last headed for, and how many
+/// times it has moved, which its fade while motion is reduced heads for.
+#[derive(Debug, Default)]
+struct PillMemory {
+    at: Option<u32>,
+    moves: u32,
 }
 
 impl GroupMemory {
@@ -203,11 +268,18 @@ impl GroupMemory {
     }
 }
 
-/// A group's slot, resolved once for every option.
+/// A group's slot, resolved once for every option, and for a segment track where its pill is.
 #[derive(Clone, Copy, Debug)]
 enum OptionLook<'s> {
     Pip(&'s ToggleTheme),
-    Segment(&'s SegmentedTheme),
+    Segment {
+        slot: &'s SegmentedTheme,
+        /// The pill's place along the track this frame, in segments from the first; `None` while
+        /// it draws none.
+        pill_at: Option<f32>,
+        /// The axis the track runs along.
+        axis: Axis,
+    },
 }
 
 /// The options of a [`RadioGroup`], as its body records them through [`Self::option`].
@@ -235,15 +307,13 @@ impl<'g, T: PartialEq> RadioOptions<'g, T> {
             OptionLook::Pip(slot) => {
                 let mut row = ToggleRow::new();
                 row.style = Some(slot);
-                OptionWidget::Pip(row)
+                OptionWidget::Pip(row, None)
             }
-            OptionLook::Segment(slot) => {
-                let mut button = Button::new()
-                    .activation(Activation::Toggle)
-                    .style(&slot.segment);
-                button.configure().default_size(SizeSpec::FILL_W);
-                OptionWidget::Segment(button)
-            }
+            OptionLook::Segment {
+                slot,
+                pill_at,
+                axis,
+            } => OptionWidget::Segment(SegmentOption::new(slot, pill_at, axis)),
         };
         RadioOption {
             options: self,
@@ -266,20 +336,34 @@ pub struct RadioOption<'o, 'g, T> {
 /// An option's widget in its group's look.
 #[derive(Debug)]
 enum OptionWidget<'o> {
-    Pip(ToggleRow<'o>),
-    Segment(Button<'o>),
+    /// The row, and the icon it shows between its box and its label.
+    Pip(ToggleRow<'o>, Option<IconHandle>),
+    Segment(SegmentOption<'o>),
 }
 
 impl<'o, T: PartialEq> RadioOption<'o, '_, T> {
     /// Label text.
     pub fn label(mut self, label: impl Into<TextInput<'o>>) -> Self {
         self.widget = match self.widget {
-            OptionWidget::Pip(mut row) => {
+            OptionWidget::Pip(mut row, icon) => {
                 row.label = label.into();
-                OptionWidget::Pip(row)
+                OptionWidget::Pip(row, icon)
             }
-            OptionWidget::Segment(button) => OptionWidget::Segment(button.label(label)),
+            OptionWidget::Segment(mut segment) => {
+                segment.label = label.into();
+                OptionWidget::Segment(segment)
+            }
         };
+        self
+    }
+
+    /// An icon before the label, tinted in the label's ink and a text line tall: the pip's
+    /// between its box and its label, the segment's centered with its label.
+    pub const fn icon(mut self, icon: IconHandle) -> Self {
+        match &mut self.widget {
+            OptionWidget::Pip(_, shown) => *shown = Some(icon),
+            OptionWidget::Segment(segment) => segment.icon = Some(icon),
+        }
         self
     }
 
@@ -310,14 +394,13 @@ impl<'o, T: PartialEq> RadioOption<'o, '_, T> {
         let checked = pick.shows_checked();
         let tab_stop = (checked && !disabled) || options.entry == Some(idx);
         let shown = match widget {
-            OptionWidget::Pip(mut row) => {
+            OptionWidget::Pip(mut row, icon) => {
                 row.widget.configure().id(id).tab_stop(tab_stop);
-                row.show(ui, pick)
+                row.show(ui, pick, icon)
             }
-            OptionWidget::Segment(button) => {
-                let response = button.id(id).tab_stop(tab_stop).selected(checked).show(ui);
-                let Settled { changed, .. } = pick.settle(response.clicked());
-                ValueResponse::pick(response, changed)
+            OptionWidget::Segment(mut segment) => {
+                segment.widget.configure().id(id).tab_stop(tab_stop);
+                segment.show(ui, idx, pick)
             }
         };
         if checked || shown.changed {
@@ -332,8 +415,8 @@ impl<T> Configure for RadioOption<'_, '_, T> {
     #[inline]
     fn configure(&mut self) -> Configurator<'_> {
         match &mut self.widget {
-            OptionWidget::Pip(row) => row.widget.configure(),
-            OptionWidget::Segment(button) => button.configure(),
+            OptionWidget::Pip(row, _) => row.widget.configure(),
+            OptionWidget::Segment(segment) => segment.widget.configure(),
         }
     }
 }

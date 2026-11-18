@@ -25,6 +25,7 @@ pub(crate) mod editable_label;
 pub(crate) mod expander;
 pub(crate) mod gpu_view;
 pub(crate) mod grid;
+pub(crate) mod label_icon;
 pub(crate) mod menu;
 pub(crate) mod menu_bar;
 pub(crate) mod modal;

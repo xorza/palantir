@@ -1,4 +1,8 @@
+use crate::animation::animation_spec::AnimationSpec;
+use crate::animation::easing::Easing;
 use crate::host::harness::Harness;
+use crate::icons::icon_table::IconTable;
+use crate::icons::internals::ONE_COLOR;
 use crate::internals::panic_probe;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::spacing::Spacing;
@@ -6,12 +10,18 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::keyboard::key::Key;
 use crate::primitives::input::keyboard::modifiers::Modifiers;
 use crate::primitives::layout::axis::Axis;
+use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::paint::brush::Brush;
+use crate::theme::segmented::SegmentedTheme;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
 use crate::widgets::panel::Panel;
-use crate::widgets::radio_group::{RadioGroup, RadioLook, option_id};
+use crate::widgets::radio_group::segment_option::coverage;
+use crate::widgets::radio_group::segment_track::SegmentTrack;
+use crate::widgets::radio_group::{PillMemory, RadioGroup, RadioLook, option_id};
 use glam::UVec2;
+use std::time::Duration;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Pick {
@@ -344,4 +354,236 @@ fn each_look_reads_its_own_slot_over_the_themes() {
     assert_eq!(measure(&mut h, RadioLook::Pip(Some(&pip))), 17.0);
     assert_eq!(measure(&mut h, RadioLook::Segment(None)), 3.0);
     assert_eq!(measure(&mut h, RadioLook::Segment(Some(&segment))), 11.0);
+}
+
+/// A segment track of the three picks along `axis` in `slot`, its labels of three lengths, a Hug
+/// group so the shares are the layout's to make equal.
+fn track(ui: &mut Ui, slot: &SegmentedTheme, axis: Axis, cur: &mut Option<Pick>) {
+    RadioGroup::new(cur)
+        .id(group())
+        .axis(axis)
+        .look(RadioLook::Segment(Some(slot)))
+        .show(ui, |ui, options| {
+            for (pick, label) in PICKS.into_iter().zip(["A", "A much longer label", "C"]) {
+                options.option(Some(pick)).label(label).show(ui);
+            }
+        });
+}
+
+fn pill() -> WidgetId {
+    group().with("pill")
+}
+
+/// The segments take equal shares of the track whatever their labels, along either axis, and the
+/// pill lies exactly on the checked one.
+#[test]
+fn the_pill_lies_on_the_checked_segment_of_equal_shares() {
+    for axis in [Axis::X, Axis::Y] {
+        let mut h = Harness::mono(UVec2::new(600, 300));
+        let slot = h.ui().theme().segmented.clone();
+        let mut cur = Some(Pick::B);
+        for _ in 0..2 {
+            h.frame(|ui| track(ui, &slot, axis, &mut cur));
+        }
+        let rects = [0, 1, 2].map(|idx| h.rect(option(idx)).expect("segment arranged"));
+        let extent = |r: Rect| match axis {
+            Axis::X => r.size.w,
+            Axis::Y => r.size.h,
+        };
+        assert_eq!(extent(rects[0]), extent(rects[1]), "{axis:?}");
+        assert_eq!(extent(rects[1]), extent(rects[2]), "{axis:?}");
+        assert_eq!(h.rect(pill()), Some(rects[1]), "{axis:?}");
+    }
+}
+
+/// A pick slides the pill along the track under the slot's spec, here 100 ms linear: half way
+/// after 50 ms, on the new segment after 100.
+#[test]
+fn a_pick_slides_the_pill_to_the_new_segment() {
+    let mut h = Harness::mono(UVec2::new(600, 200));
+    let mut slot = h.ui().theme().segmented.clone();
+    slot.slide = AnimationSpec::duration(Duration::from_millis(100), Easing::Linear);
+    let mut cur = Some(Pick::A);
+    for _ in 0..2 {
+        h.frame(|ui| track(ui, &slot, Axis::X, &mut cur));
+    }
+    let [a, c] = [0, 2].map(|idx| h.rect(option(idx)).expect("segment arranged"));
+    assert_eq!(h.rect(pill()), Some(a), "premise: the pill rests on A");
+
+    h.click(c.center());
+    h.frame(|ui| track(ui, &slot, Axis::X, &mut cur));
+    assert_eq!(cur, Some(Pick::C));
+    assert_eq!(
+        h.rect(pill()).map(|r| r.min.x),
+        Some(a.min.x),
+        "it starts from A"
+    );
+    h.advance(Duration::from_millis(50));
+    h.frame(|ui| track(ui, &slot, Axis::X, &mut cur));
+    let half = h.rect(pill()).expect("pill arranged").min.x;
+    // Two shares of travel at half way: one share past A, where B starts.
+    let b = h.rect(option(1)).expect("segment arranged");
+    assert!((half - b.min.x).abs() < 1e-3, "{half} against {}", b.min.x);
+    h.advance(Duration::from_millis(60));
+    h.frame(|ui| track(ui, &slot, Axis::X, &mut cur));
+    assert_eq!(h.rect(pill()), Some(c), "it lands on C");
+}
+
+/// A group that appears with a checked option draws its pill on that first frame, as the frame
+/// records again once the options have reported, and draws none while nothing is checked.
+#[test]
+fn a_track_draws_its_pill_on_its_first_frame() {
+    let mut h = Harness::mono(UVec2::new(600, 200));
+    let slot = h.ui().theme().segmented.clone();
+    h.frame(|ui| {
+        Block::new().id(WidgetId::from_hash("before")).show(ui);
+    });
+    let mut cur = Some(Pick::C);
+    h.frame(|ui| track(ui, &slot, Axis::X, &mut cur));
+    assert_eq!(h.rect(pill()), h.rect(option(2)));
+    let mut none = None;
+    h.frame(|ui| track(ui, &slot, Axis::X, &mut none));
+    h.frame(|ui| track(ui, &slot, Axis::X, &mut none));
+    assert_eq!(h.rect(pill()), None, "no option is checked");
+}
+
+/// An option added under a checked one moves the pill onto the new shares in the frame the count
+/// changes, as the frame records again once the options report three where the pill drew for two.
+#[test]
+fn a_track_that_gains_an_option_moves_its_pill_that_frame() {
+    let mut h = Harness::mono(UVec2::new(600, 200));
+    let slot = h.ui().theme().segmented.clone();
+    let mut cur = Some(Pick::B);
+    let record = |h: &mut Harness, count: usize, cur: &mut Option<Pick>| {
+        h.frame(|ui| {
+            RadioGroup::new(cur)
+                .id(group())
+                .axis(Axis::X)
+                .look(RadioLook::Segment(Some(&slot)))
+                .size((Sizing::fixed(300.0), Sizing::HUG))
+                .show(ui, |ui, options| {
+                    for pick in PICKS.into_iter().take(count) {
+                        options
+                            .option(Some(pick))
+                            .label(format!("{pick:?}"))
+                            .show(ui);
+                    }
+                });
+        });
+    };
+    for _ in 0..2 {
+        record(&mut h, 2, &mut cur);
+    }
+    let two = h.rect(option(1)).expect("segment arranged");
+    assert_eq!(h.rect(pill()), Some(two), "premise: on B of two");
+    record(&mut h, 3, &mut cur);
+    let three = h.rect(option(1)).expect("segment arranged");
+    assert_ne!(three, two, "a third option narrows the shares");
+    assert_eq!(h.rect(pill()), Some(three), "and the pill follows them");
+}
+
+/// A label lights by the share of its segment the pill covers: a pill a quarter past B covers
+/// three quarters of B and a quarter of C, nothing of A; one past the ends clamps; with no pill
+/// the checked segment is whole.
+#[test]
+fn a_label_lights_by_the_share_the_pill_covers() {
+    let lit = |at: f32| [0, 1, 2].map(|idx| coverage(Some(at), idx, false));
+    assert_eq!(lit(1.25), [0.0, 0.75, 0.25]);
+    assert_eq!(lit(0.5), [0.5, 0.5, 0.0]);
+    assert_eq!(lit(2.0), [0.0, 0.0, 1.0]);
+    assert_eq!(lit(-0.25), [0.75, 0.0, 0.0]);
+    assert_eq!(coverage(None, 1, true), 1.0);
+    assert_eq!(coverage(None, 1, false), 0.0);
+}
+
+/// While motion is reduced a pick moves the pill at once and fades it in there under the slide's
+/// spec, here 100 ms linear: clear on the frame of the pick, half after 50 ms, whole after 100;
+/// unreduced it stays whole as it slides.
+#[test]
+fn reduced_motion_fades_the_pill_in_at_the_new_segment() {
+    for reduced in [true, false] {
+        let mut h = Harness::mono(UVec2::new(600, 200));
+        h.set_system_motion_reduced(reduced);
+        let mut slot = h.ui().theme().segmented.clone();
+        slot.slide = AnimationSpec::duration(Duration::from_millis(100), Easing::Linear);
+        let mut memory = PillMemory::default();
+        let shown = |h: &mut Harness, target: u32, memory: &mut PillMemory| {
+            h.frame_value(|ui| {
+                let pill = SegmentTrack {
+                    id: group(),
+                    slot: &slot,
+                    axis: Axis::X,
+                }
+                .pill(ui, memory, target, 3);
+                let Brush::Solid(fill) = pill.chrome.paint.fill else {
+                    panic!("the stock pill is solid");
+                };
+                (pill.at, fill.a)
+            })
+        };
+        for _ in 0..2 {
+            shown(&mut h, 0, &mut memory);
+        }
+        let accent = slot.pill.paint.fill.clone();
+        let Brush::Solid(accent) = accent else {
+            panic!("the stock pill is solid");
+        };
+        let picked = shown(&mut h, 2, &mut memory);
+        h.advance(Duration::from_millis(50));
+        let half = shown(&mut h, 2, &mut memory);
+        h.advance(Duration::from_millis(60));
+        let done = shown(&mut h, 2, &mut memory);
+        if reduced {
+            assert_eq!(picked, (2.0, 0.0));
+            assert_eq!(half.0, 2.0);
+            assert!((half.1 - 0.5 * accent.a).abs() < 1e-4, "{half:?}");
+        } else {
+            assert_eq!(picked, (0.0, accent.a));
+            assert!((half.0 - 1.0).abs() < 1e-4, "{half:?}");
+        }
+        assert_eq!(done, (2.0, accent.a), "reduced {reduced}");
+    }
+}
+
+/// An option's icon sits before its label, a text line square and a gap apart: the slot's gap in
+/// a segment, the radio slot's in a pip row, after the box.
+#[test]
+fn an_option_shows_its_icon_before_its_label() {
+    for look in LOOKS {
+        let mut h = Harness::mono(UVec2::new(600, 200));
+        let icons = h
+            .ui()
+            .load_icons(IconTable::from_svgs([("mark", ONE_COLOR)]).expect("the svg parses"));
+        let mark = icons.by_name("mark").expect("registered");
+        let mut cur = Some(Pick::A);
+        for _ in 0..2 {
+            h.frame(|ui| {
+                RadioGroup::new(&mut cur)
+                    .id(group())
+                    .axis(Axis::X)
+                    .look(look)
+                    .show(ui, |ui, options| {
+                        options
+                            .option(Some(Pick::A))
+                            .icon(mark)
+                            .label("Auto")
+                            .show(ui);
+                    });
+            });
+        }
+        let icon = h.rect(option(0).with("icon")).expect("icon arranged");
+        let label = h.rect(option(0).with("label")).expect("label arranged");
+        let theme = h.ui().theme();
+        let line = theme.text.line_height();
+        let gap = match look {
+            RadioLook::Pip(_) => theme.radio.gap,
+            RadioLook::Segment(_) => theme.segmented.gap,
+        };
+        assert_eq!((icon.size.w, icon.size.h), (line, line), "{look:?}");
+        assert_eq!(label.min.x - icon.max().x, gap, "{look:?}");
+        if let RadioLook::Pip(_) = look {
+            let pip = h.rect(option(0).with("box")).expect("box arranged");
+            assert_eq!(icon.min.x - pip.max().x, gap, "after the box");
+        }
+    }
 }

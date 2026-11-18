@@ -247,6 +247,9 @@ fn theme(scheme: &FixtureScheme) -> Theme {
         segmented: SegmentedTheme {
             track: Chrome::rounded(p.element_mid, Corners::all(4.0)),
             track_padding: Spacing::all(2.0),
+            pill: Chrome::rounded(p.accent, Corners::all(2.0)),
+            slide: AnimationSpec::SNAP,
+            gap: 4.0,
             segment: ButtonTheme {
                 unselected: StatefulLook {
                     normal: WidgetLook {
@@ -280,34 +283,30 @@ fn theme(scheme: &FixtureScheme) -> Theme {
                 },
                 selected: StatefulLook {
                     normal: WidgetLook {
-                        chrome: Chrome::rounded(p.window_bg, Corners::all(2.0))
-                            .with_border(Border::new(alpha(p.text_muted, 0x2e), 1.0)),
+                        chrome: Chrome::rounded(RgbaF32::hexa(0x00000000), Corners::all(2.0)),
                         text: TextStyleOverrides {
-                            color: Some(p.text),
+                            color: Some(p.on_accent),
                             ..TextStyleOverrides::NONE
                         },
                     },
                     hovered: WidgetLook {
-                        chrome: Chrome::rounded(p.window_bg, Corners::all(2.0))
-                            .with_border(Border::new(alpha(p.text_muted, 0x2e), 1.0)),
+                        chrome: Chrome::rounded(RgbaF32::hexa(0x00000000), Corners::all(2.0)),
                         text: TextStyleOverrides {
-                            color: Some(p.text),
+                            color: Some(p.on_accent),
                             ..TextStyleOverrides::NONE
                         },
                     },
                     active: WidgetLook {
-                        chrome: Chrome::rounded(p.window_bg, Corners::all(2.0))
-                            .with_border(Border::new(alpha(p.text_muted, 0x2e), 1.0)),
+                        chrome: Chrome::rounded(RgbaF32::hexa(0x00000000), Corners::all(2.0)),
                         text: TextStyleOverrides {
-                            color: Some(p.text),
+                            color: Some(p.on_accent),
                             ..TextStyleOverrides::NONE
                         },
                     },
                     disabled: WidgetLook {
-                        chrome: Chrome::rounded(p.window_bg, Corners::all(2.0))
-                            .with_border(Border::new(alpha(p.text_muted, 0x2e), 1.0)),
+                        chrome: Chrome::rounded(RgbaF32::hexa(0x00000000), Corners::all(2.0)),
                         text: TextStyleOverrides {
-                            color: Some(p.text_disabled),
+                            color: Some(alpha(p.on_accent, 0x80)),
                             ..TextStyleOverrides::NONE
                         },
                     },

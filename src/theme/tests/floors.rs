@@ -65,7 +65,7 @@ fn pairs(p: &Palette) -> Vec<Pair> {
             p.element_mid,
             TEXT,
         ),
-        // A check mark, a radio's dot, an on switch's knob.
+        // A check mark, a radio's dot, an on switch's knob, a checked segment's label on its pill.
         pair("on_accent on accent", p.on_accent, p.accent, TEXT),
         // An accent button's label, hovered and pressed.
         pair(
@@ -98,6 +98,7 @@ fn pairs(p: &Palette) -> Vec<Pair> {
             p.element_mid,
             GRAPHIC,
         ),
+        // The segment pill on its track.
         pair("accent on element_mid", p.accent, p.element_mid, GRAPHIC),
         pair("window_bg to surround", p.window_bg, p.surround, RUNG),
         pair("surround to element_mid", p.surround, p.element_mid, RUNG),
