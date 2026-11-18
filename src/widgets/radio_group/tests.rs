@@ -587,3 +587,72 @@ fn an_option_shows_its_icon_before_its_label() {
         }
     }
 }
+
+/// `show_with` paints an app's own glyph where an icon would sit, handed the label's resolved
+/// style: a checked segment's glyph gets the ink the pill lights, `on_accent`, and an unchecked
+/// pip's the resting ink, each a line tall.
+#[test]
+fn show_with_paints_a_glyph_in_the_labels_ink() {
+    for (look, checked) in [
+        (RadioLook::Segment(None), true),
+        (RadioLook::Pip(None), false),
+    ] {
+        let mut h = Harness::mono(UVec2::new(600, 200));
+        let mut cur = if checked {
+            Some(Pick::A)
+        } else {
+            Some(Pick::B)
+        };
+        let mut handed = None;
+        for _ in 0..2 {
+            h.frame(|ui| {
+                RadioGroup::new(&mut cur)
+                    .id(group())
+                    .axis(Axis::X)
+                    .look(look)
+                    .show(ui, |ui, options| {
+                        options
+                            .option(Some(Pick::A))
+                            .label("Auto")
+                            .show_with(ui, |_, text| handed = Some(*text));
+                        options.option(Some(Pick::B)).label("B").show(ui);
+                    });
+            });
+        }
+        let text = handed.expect("the glyph painted");
+        let glyph = h.rect(option(0).with("icon")).expect("glyph arranged");
+        assert_eq!(
+            (glyph.size.w, glyph.size.h),
+            (text.line_height(), text.line_height())
+        );
+        let theme = h.ui().theme();
+        let ink = match look {
+            RadioLook::Segment(_) => theme.segmented.segment.selected.normal.text.color,
+            RadioLook::Pip(_) => theme.radio.unchecked.normal.text.color,
+        };
+        assert_eq!(Some(text.color), ink.or(Some(theme.text.color)), "{look:?}");
+    }
+}
+
+/// An option paints one glyph, so an icon beside `show_with` is refused.
+#[test]
+fn an_option_refuses_an_icon_and_a_painted_glyph() {
+    let mut h = Harness::mono(UVec2::new(200, 100));
+    let icons = h
+        .ui()
+        .load_icons(IconTable::from_svgs([("mark", ONE_COLOR)]).expect("the svg parses"));
+    let mark = icons.by_name("mark").expect("registered");
+    let mut value = Some(Pick::A);
+    panic_probe::assert_panics_with("a radio option paints one glyph", || {
+        h.frame(|ui| {
+            RadioGroup::new(&mut value)
+                .id(group())
+                .show(ui, |ui, options| {
+                    options
+                        .option(Some(Pick::A))
+                        .icon(mark)
+                        .show_with(ui, |_, _| {});
+                });
+        });
+    });
+}

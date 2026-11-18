@@ -3,6 +3,7 @@
 use crate::animation::animation_request::AnimationRequest;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::identity::icon_handle::IconHandle;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;
 use crate::primitives::math::lerp::Lerp;
@@ -50,7 +51,7 @@ impl<'a> Switch<'a> {
 
     /// Record the row and report whether this frame flipped the bound `bool` (`committed == changed`).
     pub fn show(self, ui: &mut Ui) -> ValueResponse {
-        self.row.show(ui, Knob(self.value), None)
+        self.row.show(ui, Knob(self.value), None::<IconHandle>)
     }
 }
 

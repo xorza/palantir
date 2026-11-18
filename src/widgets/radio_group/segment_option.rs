@@ -1,9 +1,8 @@
-//! [`SegmentOption`]: one option of a segmented group, an icon and a label centered on a click
+//! [`SegmentOption`]: one option of a segmented group, a glyph and a label centered on a click
 //! target, lit as the pill covers it.
 
 use crate::animation::animation_request::AnimationRequest;
 use crate::animation::animation_slot::AnimationSlot;
-use crate::primitives::identity::icon_handle::IconHandle;
 use crate::primitives::input::sense::Sense;
 use crate::primitives::layout::align::VAlign;
 use crate::primitives::layout::axis::Axis;
@@ -22,7 +21,7 @@ use crate::widget_core::activation::Activation;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::value_response::ValueResponse;
 use crate::widget_core::widget::Widget;
-use crate::widgets::label_icon::LabelIcon;
+use crate::widgets::label_glyph::Glyph;
 use crate::widgets::radio_group::Pick;
 use crate::widgets::text::Text;
 use crate::widgets::toggle_row::{Settled, ToggleFace};
@@ -32,54 +31,57 @@ use std::rc::Rc;
 const REST_INK: AnimationSlot = AnimationSlot::new("rest_ink");
 
 /// One option of a segmented group: its cell of the track's grid, an equal share along its axis,
-/// and a focusable click target over its icon and label, centered. It wears [`SegmentedTheme::segment`] over the
-/// pill, `selected` while checked, and its label's ink is its resting ink blended toward its
-/// checked ink by the share of it the pill covers, `1 − |pill − index|` clamped to `[0, 1]`.
+/// and a focusable click target over its glyph and label, centered. It wears
+/// [`SegmentedTheme::segment`] over the pill, `selected` while checked, and its label's ink is its
+/// resting ink blended toward its checked ink by the share of it the pill covers,
+/// `1 − |pill − index|` clamped to `[0, 1]`.
 #[derive(Debug)]
 pub(super) struct SegmentOption<'o> {
     pub(super) widget: Widget,
-    /// The text after the icon; empty records no text child.
+    /// The text after the glyph; empty records no text child.
     pub(super) label: TextInput<'o>,
-    pub(super) icon: Option<IconHandle>,
     slot: &'o SegmentedTheme,
-    /// Where the pill is along the track, in segments from the first; `None` while it draws none.
-    pill_at: Option<f32>,
-    /// The axis the track runs along, which its grid's cells are counted on.
-    axis: Axis,
+    place: SegmentPlace,
+}
+
+/// Where a segment sits on its track: the track's axis, which its grid's cells are counted on,
+/// the segment's index along it, and where the pill is, in segments from the first, `None` while
+/// it draws none.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct SegmentPlace {
+    pub(super) axis: Axis,
+    pub(super) idx: u32,
+    pub(super) pill_at: Option<f32>,
 }
 
 impl<'o> SegmentOption<'o> {
-    /// An option of the track along `axis` in `slot`, the pill at `pill_at`.
+    /// An option at `place` on a track in `slot`.
     #[track_caller]
-    pub(super) fn new(slot: &'o SegmentedTheme, pill_at: Option<f32>, axis: Axis) -> Self {
+    pub(super) fn new(slot: &'o SegmentedTheme, place: SegmentPlace) -> Self {
         let mut widget = Widget::hstack().sense(Sense::CLICK).focusable(true);
         widget
             .configure()
-            .default_size(axis.compose_sizing(Sizing::FILL, Sizing::FILL));
+            .default_size(place.axis.compose_sizing(Sizing::FILL, Sizing::FILL));
         Self {
             widget,
             label: TextInput::default(),
-            icon: None,
             slot,
-            pill_at,
-            axis,
+            place,
         }
     }
 
-    /// Records the option, index `idx` in its track, settling `pick` on a click or Space.
+    /// Records the option with `glyph` before its label, settling `pick` on a click or Space.
     pub(super) fn show<T: PartialEq>(
         self,
         ui: &mut Ui,
-        idx: u32,
         pick: Pick<'_, T>,
+        glyph: impl Glyph,
     ) -> ValueResponse {
         let Self {
             mut widget,
             label,
-            icon,
             slot,
-            pill_at,
-            axis,
+            place: SegmentPlace { axis, idx, pill_at },
         } = self;
         let response = widget.activation_response(ui, Activation::Toggle);
         let id = response.id;
@@ -108,13 +110,7 @@ impl<'o> SegmentOption<'o> {
             .default_justify(Justify::Center)
             .default_child_align(VAlign::Center);
         widget.record(ui, Some(&look.chrome), |ui| {
-            if let Some(icon) = icon {
-                LabelIcon {
-                    id: id.with("icon"),
-                    icon,
-                }
-                .show(ui, &look.text);
-            }
+            glyph.record(ui, id.with("icon"), &look.text);
             if !label.is_empty() {
                 Text::new(label)
                     .id(id.with("label"))

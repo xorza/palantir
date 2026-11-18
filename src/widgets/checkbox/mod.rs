@@ -1,5 +1,6 @@
 //! The box-and-label boolean toggle and its pair of click responses.
 
+use crate::primitives::identity::icon_handle::IconHandle;
 use crate::primitives::math::domain;
 use crate::primitives::paint::line_style::{LineCap, LineJoin};
 use crate::primitives::paint::stroke::Stroke;
@@ -47,7 +48,7 @@ impl<'a> Checkbox<'a> {
 
     /// Record the row and report whether this frame flipped the bool. A flip commits at once (`committed == changed`).
     pub fn show(self, ui: &mut Ui) -> ValueResponse {
-        self.row.show(ui, Check(self.value), None)
+        self.row.show(ui, Check(self.value), None::<IconHandle>)
     }
 }
 

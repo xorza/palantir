@@ -1,7 +1,6 @@
 //! The shared `HStack [box, label]` behind the toggle widgets.
 
 use crate::primitives::geometry::corners::Corners;
-use crate::primitives::identity::icon_handle::IconHandle;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::sense::Sense;
 use crate::primitives::layout::align::VAlign;
@@ -17,7 +16,7 @@ use crate::widget_core::activation::Activation;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::value_response::ValueResponse;
 use crate::widget_core::widget::Widget;
-use crate::widgets::label_icon::LabelIcon;
+use crate::widgets::label_glyph::Glyph;
 use crate::widgets::text::Text;
 use std::rc::Rc;
 
@@ -97,14 +96,14 @@ impl ToggleRow<'_> {
         }
     }
 
-    /// Records the row for `face`, with `icon` between the box and the label, as a radio option
+    /// Records the row for `face`, with `glyph` between the box and the label, as a radio option
     /// shows one; the checkbox and the switch show none, so the row does not carry it. A click
     /// or Space activates it, and a move commits at once (`committed == changed`).
     pub(crate) fn show<F: ToggleFace>(
         self,
         ui: &mut Ui,
         face: F,
-        icon: Option<IconHandle>,
+        glyph: impl Glyph,
     ) -> ValueResponse {
         let Self {
             mut widget,
@@ -142,13 +141,7 @@ impl ToggleRow<'_> {
                         },
                     );
                 });
-            if let Some(icon) = icon {
-                LabelIcon {
-                    id: id.with("icon"),
-                    icon,
-                }
-                .show(ui, &look.text);
-            }
+            glyph.record(ui, id.with("icon"), &look.text);
             if !label.is_empty() {
                 Text::new(label)
                     .id(id.with("label"))

@@ -18,13 +18,15 @@ use crate::scene::node::node_mode::NodeMode;
 use crate::shape::Shape;
 use crate::theme::Theme;
 use crate::theme::segmented::SegmentedTheme;
+use crate::theme::text_style::TextStyle;
 use crate::theme::toggle::ToggleTheme;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::value_response::ValueResponse;
 use crate::widget_core::widget::Widget;
-use crate::widgets::radio_group::segment_option::SegmentOption;
+use crate::widgets::label_glyph::{Glyph, Painted};
+use crate::widgets::radio_group::segment_option::{SegmentOption, SegmentPlace};
 use crate::widgets::radio_group::segment_track::SegmentTrack;
 use crate::widgets::toggle_row::{Settled, ToggleBox, ToggleFace, ToggleRow};
 use std::rc::Rc;
@@ -307,18 +309,24 @@ impl<'g, T: PartialEq> RadioOptions<'g, T> {
             OptionLook::Pip(slot) => {
                 let mut row = ToggleRow::new();
                 row.style = Some(slot);
-                OptionWidget::Pip(row, None)
+                OptionWidget::Pip(row)
             }
             OptionLook::Segment {
                 slot,
                 pill_at,
                 axis,
-            } => OptionWidget::Segment(SegmentOption::new(slot, pill_at, axis)),
+            } => {
+                let idx =
+                    u32::try_from(self.disabled.len()).expect("a group holds under 2^32 options");
+                let place = SegmentPlace { axis, idx, pill_at };
+                OptionWidget::Segment(SegmentOption::new(slot, place))
+            }
         };
         RadioOption {
             options: self,
             value,
             widget,
+            icon: None,
         }
     }
 }
@@ -331,13 +339,14 @@ pub struct RadioOption<'o, 'g, T> {
     options: &'o mut RadioOptions<'g, T>,
     value: T,
     widget: OptionWidget<'o>,
+    /// The icon [`Self::show`] paints before the label.
+    icon: Option<IconHandle>,
 }
 
 /// An option's widget in its group's look.
 #[derive(Debug)]
 enum OptionWidget<'o> {
-    /// The row, and the icon it shows between its box and its label.
-    Pip(ToggleRow<'o>, Option<IconHandle>),
+    Pip(ToggleRow<'o>),
     Segment(SegmentOption<'o>),
 }
 
@@ -345,9 +354,9 @@ impl<'o, T: PartialEq> RadioOption<'o, '_, T> {
     /// Label text.
     pub fn label(mut self, label: impl Into<TextInput<'o>>) -> Self {
         self.widget = match self.widget {
-            OptionWidget::Pip(mut row, icon) => {
+            OptionWidget::Pip(mut row) => {
                 row.label = label.into();
-                OptionWidget::Pip(row, icon)
+                OptionWidget::Pip(row)
             }
             OptionWidget::Segment(mut segment) => {
                 segment.label = label.into();
@@ -357,23 +366,44 @@ impl<'o, T: PartialEq> RadioOption<'o, '_, T> {
         self
     }
 
-    /// An icon before the label, tinted in the label's ink and a text line tall: the pip's
-    /// between its box and its label, the segment's centered with its label.
+    /// An icon of the registry before the label, tinted in the label's ink: sugar for
+    /// [`Self::show_with`] painting it.
     pub const fn icon(mut self, icon: IconHandle) -> Self {
-        match &mut self.widget {
-            OptionWidget::Pip(_, shown) => *shown = Some(icon),
-            OptionWidget::Segment(segment) => segment.icon = Some(icon),
-        }
+        self.icon = Some(icon);
         self
     }
 
-    /// Records the option. An option latches: `response.clicked()` is true on the checked one but
-    /// `changed` is not.
+    /// Records the option, with its [icon](Self::icon) before the label. An option latches:
+    /// `response.clicked()` is true on the checked one but `changed` is not.
     ///
     /// # Panics
     ///
     /// When the caller set the option's id, which its group sets.
-    pub fn show(mut self, ui: &mut Ui) -> ValueResponse {
+    pub fn show(self, ui: &mut Ui) -> ValueResponse {
+        let icon = self.icon;
+        self.record(ui, icon)
+    }
+
+    /// Records the option, as [`Self::show`] does, with a glyph `paint` draws before the label:
+    /// in the glyph's own space, a square of the label's line height from the origin, handed the
+    /// style the label resolved, so the glyph takes the label's ink in each state and as the pill
+    /// covers it, as [`Button::show_with`](crate::Button::show_with) hands its body the style. For
+    /// an app that draws its icons with shapes rather than registering them.
+    ///
+    /// # Panics
+    ///
+    /// When the caller set the option's id, which its group sets, or an [icon](Self::icon), as
+    /// an option paints one glyph.
+    pub fn show_with(self, ui: &mut Ui, paint: impl FnOnce(&mut Ui, &TextStyle)) -> ValueResponse {
+        assert!(
+            self.icon.is_none(),
+            "a radio option paints one glyph: its icon or `show_with`'s"
+        );
+        self.record(ui, Painted(paint))
+    }
+
+    /// Records the option with `glyph` before its label.
+    fn record(mut self, ui: &mut Ui, glyph: impl Glyph) -> ValueResponse {
         let node = self.configure();
         let auto_id = node.has_auto_id();
         let disabled = node.widget.authored().disabled();
@@ -382,6 +412,7 @@ impl<'o, T: PartialEq> RadioOption<'o, '_, T> {
             options,
             value,
             widget,
+            icon: _,
         } = self;
         let idx = u32::try_from(options.disabled.len()).expect("a group holds under 2^32 options");
         options.disabled.push(disabled);
@@ -394,13 +425,13 @@ impl<'o, T: PartialEq> RadioOption<'o, '_, T> {
         let checked = pick.shows_checked();
         let tab_stop = (checked && !disabled) || options.entry == Some(idx);
         let shown = match widget {
-            OptionWidget::Pip(mut row, icon) => {
+            OptionWidget::Pip(mut row) => {
                 row.widget.configure().id(id).tab_stop(tab_stop);
-                row.show(ui, pick, icon)
+                row.show(ui, pick, glyph)
             }
             OptionWidget::Segment(mut segment) => {
                 segment.widget.configure().id(id).tab_stop(tab_stop);
-                segment.show(ui, idx, pick)
+                segment.show(ui, pick, glyph)
             }
         };
         if checked || shown.changed {
@@ -415,7 +446,7 @@ impl<T> Configure for RadioOption<'_, '_, T> {
     #[inline]
     fn configure(&mut self) -> Configurator<'_> {
         match &mut self.widget {
-            OptionWidget::Pip(row, _) => row.widget.configure(),
+            OptionWidget::Pip(row) => row.widget.configure(),
             OptionWidget::Segment(segment) => segment.widget.configure(),
         }
     }

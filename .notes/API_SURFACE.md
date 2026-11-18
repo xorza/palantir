@@ -2211,6 +2211,7 @@ RadioOption
             pub fn label(self, label: impl Into<TextInput<'o>>) -> Self
             pub const fn icon(self, icon: IconHandle) -> Self
             pub fn show(self, ui: &mut Ui) -> ValueResponse
+            pub fn show_with(self, ui: &mut Ui, paint: impl FnOnce(&mut Ui, &TextStyle)) -> ValueResponse
         impl<'o, 'g, T: Debug> Debug for RadioOption<'o, 'g, T>
 
 RadioOptions
