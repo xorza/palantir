@@ -27,9 +27,11 @@ pub struct InspectedWidget {
     pub disabled: bool,
     /// The ancestors' clips hide all of it, so no pointer reaches it.
     pub clipped: bool,
-    /// The text its subtree records, in record order and joined by a space, clipped or not. The
-    /// text of a nested widget that is listed itself is that widget's, so a button's label is the
-    /// button's alone.
+    /// The text its subtree paints, in record order and joined by a space, clipped or not: a
+    /// hidden or collapsed descendant's text is left out, as CSS's `visibility: hidden` leaves an
+    /// element out of the accessibility tree and `innerText` leaves out its text. The text of a
+    /// nested widget that is listed itself is that widget's, so a button's label is the button's
+    /// alone.
     pub text: String,
 }
 
@@ -75,17 +77,19 @@ impl InspectedWidget {
     }
 }
 
-/// The text shapes under node `root`, leaving out the subtrees of the listed widgets inside it.
+/// The text shapes under node `root`, leaving out the subtrees of the listed widgets inside it and
+/// of the descendants that do not paint. `root` paints: a hit row is visible.
 fn own_text(tree: &Tree, store: &RecordStore, root: usize, listed: &WidgetIdSet) -> String {
     let ids = tree.records.widget_id();
     let spans = tree.records.shape_span();
+    let layouts = tree.records.layout();
     let end = tree.subtree_end_of(root);
-    // The shape spans of the nearest listed descendants, ascending: pre-order puts a node's span
+    // The shape spans of the nearest skipped descendants, ascending: pre-order puts a node's span
     // after its earlier siblings' and inside its parent's.
     let mut skipped = Vec::new();
     let mut node = root + 1;
     while node < end {
-        if listed.contains(&ids[node]) {
+        if listed.contains(&ids[node]) || !layouts[node].meta.visibility().is_visible() {
             skipped.push(spans[node].range());
             node = tree.subtree_end_of(node);
         } else {
@@ -115,6 +119,7 @@ mod tests {
     use crate::primitives::identity::widget_id::WidgetId;
     use crate::primitives::input::sense::Sense;
     use crate::primitives::layout::sizing::Sizing;
+    use crate::primitives::layout::visibility::Visibility;
     use crate::ui::Ui;
     use crate::ui::inspected_widget::InspectedWidget;
     use crate::widget_core::configure::Configure;
@@ -125,11 +130,12 @@ mod tests {
     use crate::widgets::text_edit::TextEdit;
     use glam::UVec2;
 
-    /// A button labelled "Save", a disabled button "Off", a clickable row holding the text "Open"
-    /// and a nested button "Inner", a text field holding "draft", and a button scrolled out of a
-    /// 40-unit-tall scroll area. Each is listed once with the rect the pointer hits; the row keeps
-    /// "Open" and leaves "Inner" to the inner button; only "Off" is disabled; the scrolled-out
-    /// button is clipped.
+    /// A button labelled "Save", a disabled button "Off", a clickable row holding the text "Open",
+    /// a nested button "Inner", a hidden text, a hidden panel of text and a collapsed text, a text
+    /// field holding "draft", and a button scrolled out of a 40-unit-tall scroll area. Each is
+    /// listed once with the rect the pointer hits; the row keeps "Open", leaves "Inner" to the
+    /// inner button and reads none of the text that does not paint; only "Off" is disabled; the
+    /// scrolled-out button is clipped and keeps its text.
     #[test]
     fn interactive_widgets_are_listed_with_their_own_text() {
         let save = WidgetId::from_hash("inspect.save");
@@ -146,6 +152,16 @@ mod tests {
                 Panel::hstack().id(row).sense(Sense::CLICK).show(ui, |ui| {
                     Text::new("Open").show(ui);
                     Button::new().id(inner).label("Inner").show(ui);
+                    Text::new("Unpainted").hidden().show(ui);
+                    Panel::hstack()
+                        .id_salt("inspect.hidden_panel")
+                        .hidden()
+                        .show(ui, |ui| {
+                            Text::new("Under hidden").show(ui);
+                        });
+                    Text::new("Collapsed")
+                        .visibility(Visibility::Collapsed)
+                        .show(ui);
                 });
                 TextEdit::new(&mut draft).id(edit).show(ui);
                 Scroll::vertical()
