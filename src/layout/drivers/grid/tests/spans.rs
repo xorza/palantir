@@ -1,10 +1,12 @@
 //! A cell covering several tracks, and the internal gaps it measures against.
 
 use crate::internals::layout_rig::{GridTracks, LayoutRig, NodeRecorder, TextRun};
+use crate::layout::intrinsic::len_req::LenReq;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::grid_cell::GridCell;
 use crate::primitives::layout::layout_mode::LayoutMode;
+use crate::primitives::layout::sizing::SizeSpec;
 use crate::primitives::layout::track::Track;
 use crate::scene::plane::Plane;
 use crate::text::wrap::TextWrap;
@@ -409,6 +411,110 @@ fn a_span_over_a_fill_column_grows_only_its_fill_columns() {
         let grid = rig.rect("grid");
         let starts = [0, 1, 2].map(|col| rig.rect(&format!("cell{col}")).min.x - grid.min.x);
         assert_eq!(starts, case.starts, "{}", case.what);
+    }
+}
+
+/// A spanning cell holds a Fixed track it crosses at what the track gives way to, its `min`, and
+/// grows the rest by what that leaves short: in a 200 line, `fixed(300) ≥ 100` beside a Hug or a
+/// Fill track under a 250 span lands at 100 and `250 − 100 = 150`, 50 over, on columns and on rows
+/// alike. A plain `fixed(300)` holds the span alone, so the other track stays at 0. Any track
+/// starts at its `min`, as CSS Grid starts a base size (§12.4): a Hug track `≥ 100` beside a bare
+/// one leaves `150` short, so each takes 75, to 175 and 75. A Hug grid of
+/// the yielding pair reads `100 + 150 = 250` at its least and `300 + 0` at its most; of the plain
+/// one, 300 at both.
+#[test]
+fn a_span_starts_each_track_it_crosses_at_its_min() {
+    let yielding = Track::fixed(300.0).with_min(100.0);
+    let two = NonZeroU16::new(2).unwrap();
+    for (what, tracks, widths) in [
+        (
+            "yielding beside hug",
+            [yielding, Track::HUG],
+            [100.0, 150.0],
+        ),
+        (
+            "yielding beside fill",
+            [yielding, Track::FILL],
+            [100.0, 150.0],
+        ),
+        (
+            "exact beside hug",
+            [Track::fixed(300.0), Track::HUG],
+            [300.0, 0.0],
+        ),
+        (
+            "hug with a min beside hug",
+            [Track::HUG.with_min(100.0), Track::HUG],
+            [175.0, 75.0],
+        ),
+    ] {
+        for axis in [Axis::X, Axis::Y] {
+            let cross = [Track::FILL; 2];
+            let (grid_tracks, span, size, cells) = match axis {
+                Axis::X => (
+                    GridTracks {
+                        rows: &cross,
+                        cols: &tracks,
+                    },
+                    GridCell::at(0, 0).with_span(NonZeroU16::MIN, two),
+                    (250.0, 10.0),
+                    [(1, 0), (1, 1)],
+                ),
+                Axis::Y => (
+                    GridTracks {
+                        rows: &tracks,
+                        cols: &cross,
+                    },
+                    GridCell::at(0, 0).with_span(two, NonZeroU16::MIN),
+                    (10.0, 250.0),
+                    [(0, 1), (1, 1)],
+                ),
+            };
+            let mut rig = LayoutRig::new();
+            rig.run(Size::new(200.0, 200.0), |rec| {
+                let grid = Widget::grid().size(SizeSpec::FILL);
+                rec.grid("grid", grid, grid_tracks, |rec| {
+                    block(rec, "span", span, size);
+                    for (i, cell) in cells.into_iter().enumerate() {
+                        let leaf = Widget::leaf().grid_cell(cell).size(SizeSpec::FILL);
+                        rec.leaf(&format!("cell{i}"), leaf);
+                    }
+                });
+            });
+            let got = [0, 1].map(|i| axis.main(rig.rect(&format!("cell{i}")).size));
+            assert_eq!(got, widths, "{what} along {axis:?}");
+        }
+    }
+
+    for (cols, least, most) in [
+        ([yielding, Track::HUG], 250.0, 300.0),
+        ([Track::fixed(300.0), Track::HUG], 300.0, 300.0),
+    ] {
+        let mut rig = LayoutRig::new();
+        rig.run(Size::new(1000.0, 100.0), |rec| {
+            let tracks = GridTracks {
+                rows: &[Track::FILL],
+                cols: &cols,
+            };
+            rec.grid("grid", Widget::grid().size(SizeSpec::HUG), tracks, |rec| {
+                block(
+                    rec,
+                    "span",
+                    GridCell::at(0, 0).with_span(NonZeroU16::MIN, two),
+                    (250.0, 10.0),
+                );
+            });
+        });
+        assert_eq!(
+            rig.intrinsic("grid", Axis::X, LenReq::MinContent),
+            least,
+            "{cols:?}"
+        );
+        assert_eq!(
+            rig.intrinsic("grid", Axis::X, LenReq::MaxContent),
+            most,
+            "{cols:?}"
+        );
     }
 }
 

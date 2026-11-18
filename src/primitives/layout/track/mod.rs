@@ -114,6 +114,14 @@ impl Track {
             .map(|value| value.clamp(self.min, self.max))
     }
 
+    /// What the track holds at its most before any cell: a fixed track's size, another's `min`.
+    /// At its least it holds its `min`, toward which a fixed one that [yields](Self::yields)
+    /// gives way. A grid seeds both content ranges from them, at measure and at intrinsic.
+    #[inline]
+    pub(crate) fn bare_max(self) -> f32 {
+        self.fixed_size().unwrap_or(self.min)
+    }
+
     /// Whether this is a fixed track that gives way toward its `min`: one whose `min` sits below
     /// its size.
     #[inline]

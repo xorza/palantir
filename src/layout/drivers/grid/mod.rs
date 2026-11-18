@@ -162,15 +162,11 @@ impl LayoutDriver for Grid {
         let slot_count = (usize::from(wants_min) + usize::from(wants_max)) * track_count;
         pass.grid_track_aggregator().push_n(slot_count, 0.0);
         for (i, t) in tracks.iter().enumerate() {
-            // A track at its least is its `min`, a Fixed one's that yields included; at its most a
-            // Fixed track is its size.
-            let min = t.min();
             if wants_min {
-                pass.grid_track_aggregator().since(base)[min_base + i] = min;
+                pass.grid_track_aggregator().since(base)[min_base + i] = t.min();
             }
             if wants_max {
-                pass.grid_track_aggregator().since(base)[max_base + i] =
-                    t.fixed_size().unwrap_or(min);
+                pass.grid_track_aggregator().since(base)[max_base + i] = t.bare_max();
             }
         }
 

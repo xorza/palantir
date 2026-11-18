@@ -366,6 +366,26 @@ fn resolve_axis_marks_fixed_and_hug_resolved_but_leaves_fill_unresolved() {
     );
 }
 
+/// A span holds each track it crosses at the extent its caller gives, a Fixed track's included:
+/// over `fixed(300) ≥ 100` and a Fill track, a 400 span grows the Fill by `400 − 200 = 200` where
+/// the Fixed track was solved to 200, and by `400 − 300 = 100` where it holds its size.
+#[test]
+fn a_span_holds_a_fixed_track_at_the_extent_given() {
+    let tracks = [Track::fixed(300.0).with_min(100.0), Track::FILL];
+    let mut tree = Tree::default();
+    let def = tree.push_grid_def(&[Track::HUG], &tracks);
+    let axis = GridAxis {
+        id: GridAxisId { def, axis: Axis::X },
+        tracks: &tracks,
+        gap: 0.0,
+    };
+    for (fixed, fill) in [(200.0, 200.0), (300.0, 100.0)] {
+        let mut extents = [fixed, 0.0];
+        axis.distribute_span(Span::new(0, 2), 400.0, &mut extents);
+        assert_eq!(extents, [fixed, fill]);
+    }
+}
+
 /// Each Hug row resolves to its own cells' max desired height, independent of other rows.
 #[test]
 fn grid_multi_row_hug_heights_resolve_independently() {

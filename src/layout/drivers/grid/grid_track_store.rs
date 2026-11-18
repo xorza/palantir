@@ -188,6 +188,18 @@ impl GridTrackStore {
         }
     }
 
+    /// Start each track's content range of `id` at what it holds with no cell, its `min` and its
+    /// [`Track::bare_max`], as grid intrinsic starts its own: cells raise them, and a spanning cell
+    /// grows the tracks it crosses by what they leave short ([`GridAxis::distribute_span`]), as
+    /// CSS Grid starts each base size at the track's minimum (§12.4).
+    pub(super) fn seed_ranges(&mut self, id: GridAxisId, tracks: &[Track]) {
+        let ranges = self.ranges_mut(id);
+        for ((t, min), max) in tracks.iter().zip(ranges.min).zip(ranges.max) {
+            *min = t.min();
+            *max = t.bare_max();
+        }
+    }
+
     /// The resolved size of each track of `id`.
     pub(super) fn sizes(&self, id: GridAxisId) -> &[f32] {
         &self.sizes_pool[self.range(id)]

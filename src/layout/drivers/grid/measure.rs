@@ -29,6 +29,10 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner_avail: Size) -> C
         }
         return ContentMeasure::ZERO;
     }
+    for grid_axis in [cols, rows] {
+        pass.grid_tracks_mut()
+            .seed_ranges(grid_axis.id, grid_axis.tracks);
+    }
 
     // Seed the per-track store from column intrinsics, without measuring children, so cells get a
     // committed width before they shape (else wrap text in Hug cols shapes at INF and never
@@ -172,7 +176,7 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner_avail: Size) -> C
     // shapes its cells at the Fill widths it commits, and a parent that hugs it must hold them,
     // as a stack reports what its Fill children measured to. Fill still claims the leftover at
     // arrange. `AxisSlot::resolve` floors this at the Grid intrinsic. The floor sums each track
-    // at its least: a Fixed track's size, a Hug track's content floor.
+    // at its least: a Fixed track's `min`, a Hug track's content floor.
     let tracks = &pass.grid_tracks_mut();
     let col_gaps = cols.gap.gaps_between(col_count);
     let row_gaps = rows.gap.gaps_between(row_count);

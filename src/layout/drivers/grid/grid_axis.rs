@@ -111,24 +111,17 @@ impl GridAxis<'_> {
     /// weights, and holds every other track at its extent (step 4); one that crosses none grows its
     /// Hug tracks evenly (step 3). A track that reaches its `max` stops there, as the track solve
     /// holds it, and what it could not take splits again over the rest; what no track can take
-    /// overflows. A Fixed track's extent is its size; `extents` holds the rest. Fill weights split
-    /// as WPF star ratios, so a weight under 1 takes its ratio of the whole shortfall, where CSS
-    /// splits only that fraction of it.
+    /// overflows. `extents` holds every crossed track's, a Fixed track's included, as the caller
+    /// asks: its `min` for a span's least, where one that yields gives way, its size for a span's
+    /// most, its resolved size once the line is solved. Fill weights split as WPF star ratios, so a
+    /// weight under 1 takes its ratio of the whole shortfall, where CSS splits only that fraction
+    /// of it.
     pub(super) fn distribute_span(self, span: Span, need: f32, extents: &mut [f32]) {
         let Self { tracks, gap, .. } = self;
         let range = span.range();
         let crossed = &tracks[range.clone()];
         let extents = &mut extents[range];
-        let held: f32 = crossed
-            .iter()
-            .zip(extents.iter())
-            .map(|(t, &extent)| {
-                t.sizing()
-                    .fixed_value()
-                    .map_or(extent, |v| v.clamp(t.min(), t.max()))
-            })
-            .sum::<f32>()
-            + gap.gaps_between(crossed.len());
+        let held = extents.iter().sum::<f32>() + gap.gaps_between(crossed.len());
         let flexible = any_fill(crossed);
         // The share a track grows by: its weight among the Fill tracks of a span that crosses one,
         // else 1 for each Hug track; 0 for a track that does not grow.
