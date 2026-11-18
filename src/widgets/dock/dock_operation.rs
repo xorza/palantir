@@ -5,9 +5,10 @@ use serde::{Deserialize, Serialize};
 use crate::widgets::dock::dock_path::DockPath;
 use crate::widgets::dock::split_side::SplitSide;
 use crate::widgets::dock::tab_group::TabGroupId;
+use crate::widgets::splitter::split_size::SplitSize;
 
 /// Where a moved tab lands — the payload of [`DockOperation::MoveTab`].
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub enum DockDrop {
     /// Join `group`'s strip at `idx` (clamped to its length).
@@ -18,12 +19,18 @@ pub enum DockDrop {
         idx: usize,
     },
     /// Split `group`'s pane; the tab becomes a fresh single-tab group on
-    /// the given side.
+    /// the given side, the split shared as `size`. A split is sized where it is made, as
+    /// egui_dock's `split_right` takes its fraction
+    /// (<https://docs.rs/egui_dock/latest/egui_dock/>), so no caller has to address a split it
+    /// cannot name; a tab dragged onto a pane's edge splits at [`SplitSize::HALF`].
     Split {
         /// Target group.
         group: TabGroupId,
         /// Which half of it the new group takes.
         side: SplitSide,
+        /// How the split shares the pane: a ratio, coerced into the split clamp, or one half's
+        /// pixels.
+        size: SplitSize,
     },
 }
 
@@ -53,12 +60,13 @@ pub enum DockOperation<T> {
         /// Destination.
         to: DockDrop,
     },
-    /// Set the ratio of the split at `split` (its packed root path); emitted per drag frame, coalescing per split.
-    SetRatio {
+    /// Set the size of the split at `split` (its packed root path); emitted per drag frame, coalescing per split.
+    SetSize {
         /// The split.
         split: DockPath,
-        /// Fraction the leading half takes, coerced into the split clamp; non-finite centers it.
-        ratio: f32,
+        /// A ratio, coerced into the split clamp and centered when not finite, or one half's
+        /// pixels, ignored unless a finite length.
+        size: SplitSize,
     },
     /// Move focus onto `group`, because a press landed inside its pane.
     FocusGroup {

@@ -33,6 +33,7 @@ use crate::widgets::menu::Menu;
 use crate::widgets::menu::menu_item::MenuItem;
 use crate::widgets::panel::Panel;
 use crate::widgets::splitter::split_half::SplitHalf;
+use crate::widgets::splitter::split_size::SplitSize;
 use crate::widgets::tabs::tab_key::TabKey;
 use crate::widgets::tabs::tab_strip::{TabOverflow, TabStrip};
 use ron::ser;
@@ -90,7 +91,11 @@ fn group_of(d: &DockState<Tab>, id: TabGroupId) -> &TabGroup<Tab> {
 fn split_off(d: &mut DockState<Tab>, tab: Tab, group: TabGroupId, side: SplitSide) {
     d.apply(DockOperation::MoveTab {
         tab,
-        to: DockDrop::Split { group, side },
+        to: DockDrop::Split {
+            group,
+            side,
+            size: SplitSize::HALF,
+        },
     });
 }
 
@@ -212,7 +217,7 @@ fn split_move_and_collapse_roundtrip() {
     d.validate().unwrap();
     let root = root_split(&d);
     assert_eq!(root.split.axis, Axis::X);
-    assert_eq!(root.split.ratio(), 0.5);
+    assert_eq!(root.split.size(), SplitSize::HALF);
     let DockNode::Group(first) = root.first else {
         panic!("primary stays first for a Right split");
     };
@@ -466,57 +471,116 @@ fn dock_path_packs_distinct_addresses() {
     assert_eq!(DockPath::default(), DockPath::ROOT);
 }
 
+/// A size lands on the split at its path: a ratio clamped, centered when not finite; pixels as
+/// they are, and none that are not a finite length. A path landing on a group or walking past a
+/// leaf changes nothing.
 #[test]
-fn set_ratio_clamps_and_survives_stale_paths() {
+fn set_size_admits_a_split_size_and_survives_stale_paths() {
     let mut d = seeded();
     let primary = d.primary().id;
     split_off(&mut d, viewer(1), primary, SplitSide::Right);
+    let set = |d: &mut DockState<Tab>, split: DockPath, size: SplitSize| {
+        d.apply(DockOperation::SetSize { split, size });
+    };
 
-    d.apply(DockOperation::SetRatio {
-        split: DockPath::ROOT,
-        ratio: 0.7,
-    });
-    assert_eq!(root_split(&d).split.ratio(), 0.7);
-
-    d.apply(DockOperation::SetRatio {
-        split: DockPath::ROOT,
-        ratio: 0.01,
-    });
+    set(&mut d, DockPath::ROOT, SplitSize::Ratio(0.7));
+    assert_eq!(root_split(&d).split.size(), SplitSize::Ratio(0.7));
+    set(&mut d, DockPath::ROOT, SplitSize::Ratio(0.01));
     assert_eq!(
-        root_split(&d).split.ratio,
-        RATIO_MIN,
+        root_split(&d).split.size(),
+        SplitSize::Ratio(RATIO_MIN),
         "the ratio clamps to the floor"
     );
-
     // A non-finite ratio centers the split rather than landing NaN.
     for ratio in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
-        d.apply(DockOperation::SetRatio {
-            split: DockPath::ROOT,
-            ratio,
-        });
-        assert_eq!(root_split(&d).split.ratio(), 0.5, "{ratio}");
+        set(&mut d, DockPath::ROOT, SplitSize::Ratio(ratio));
+        assert_eq!(root_split(&d).split.size(), SplitSize::HALF, "{ratio}");
         d.validate().unwrap();
     }
-    d.apply(DockOperation::SetRatio {
-        split: DockPath::ROOT,
-        ratio: 0.01,
-    });
 
-    // Paths landing on a group or walking past a leaf are ignored.
-    d.apply(DockOperation::SetRatio {
-        split: DockPath::ROOT.first(),
-        ratio: 0.5,
-    });
-    d.apply(DockOperation::SetRatio {
-        split: DockPath::ROOT.first().second(),
-        ratio: 0.5,
-    });
+    let sidebar = SplitSize::Fixed {
+        half: SplitHalf::Second,
+        px: 450.0,
+    };
+    set(&mut d, DockPath::ROOT, sidebar);
+    assert_eq!(root_split(&d).split.size(), sidebar, "pixels have no clamp");
+    for px in [f32::NAN, f32::INFINITY, -1.0] {
+        set(
+            &mut d,
+            DockPath::ROOT,
+            SplitSize::Fixed {
+                half: SplitHalf::First,
+                px,
+            },
+        );
+        assert_eq!(root_split(&d).split.size(), sidebar, "{px} is no length");
+    }
+
+    set(&mut d, DockPath::ROOT.first(), SplitSize::HALF);
+    set(&mut d, DockPath::ROOT.first().second(), SplitSize::HALF);
     d.validate().unwrap();
     assert_eq!(
-        root_split(&d).split.ratio,
-        RATIO_MIN,
+        root_split(&d).split.size(),
+        sidebar,
         "stale paths change nothing"
     );
+}
+
+/// A split made fixed keeps its pane's size where it is made, below the root as at it, and a size
+/// a split cannot hold opens it at half: a sidebar split off a pane that is itself one side of a
+/// split holds `Fixed { Second, 450 }` at the path `ROOT.first()`.
+#[test]
+fn a_split_is_sized_where_it_is_made_at_any_depth() {
+    let mut d = seeded();
+    let primary = d.primary().id;
+    split_off(&mut d, viewer(1), primary, SplitSide::Right);
+    let sidebar = SplitSize::Fixed {
+        half: SplitHalf::Second,
+        px: 450.0,
+    };
+    d.apply(DockOperation::MoveTab {
+        tab: Tab::Prefs,
+        to: DockDrop::Split {
+            group: primary,
+            side: SplitSide::Right,
+            size: sidebar,
+        },
+    });
+    d.validate().unwrap();
+    let DockNode::Split(inner) = d.node(NodeIdx(1)) else {
+        panic!("the root's first child is the new split");
+    };
+    assert_eq!(inner.size(), sidebar);
+    assert_eq!(
+        root_split(&d).split.size(),
+        SplitSize::HALF,
+        "the root kept its half"
+    );
+
+    let refused = SplitSize::Fixed {
+        half: SplitHalf::First,
+        px: f32::NAN,
+    };
+    d.apply(DockOperation::MoveTab {
+        tab: viewer(1),
+        to: DockDrop::Split {
+            group: primary,
+            side: SplitSide::Bottom,
+            size: refused,
+        },
+    });
+    d.validate().unwrap();
+    let held: Vec<SplitSize> = d
+        .layout()
+        .nodes
+        .iter()
+        .filter_map(|node| match node {
+            DockNode::Split(split) => Some(split.size()),
+            DockNode::Group(_) => None,
+        })
+        .collect();
+    assert!(held.contains(&SplitSize::HALF), "{held:?}");
+    assert!(!held.contains(&refused), "{held:?}");
 }
 
 #[test]
@@ -621,12 +685,26 @@ fn nested_splits_stay_canonical() {
     );
 }
 
+/// A layout round-trips through RON, a ratio split and a fixed one each as written.
 #[test]
 fn serde_roundtrips_through_ron() {
     let mut d = seeded();
     let primary = d.primary().id;
     split_off(&mut d, viewer(1), primary, SplitSide::Bottom);
+    d.apply(DockOperation::MoveTab {
+        tab: Tab::Prefs,
+        to: DockDrop::Split {
+            group: primary,
+            side: SplitSide::Right,
+            size: SplitSize::Fixed {
+                half: SplitHalf::Second,
+                px: 450.0,
+            },
+        },
+    });
     let text = ser::to_string(d.layout()).expect("serialize");
+    assert!(text.contains("size:Ratio(0.5)"), "{text}");
+    assert!(text.contains("size:Fixed(half:Second,px:450.0)"), "{text}");
     let layout: DockLayout<Tab> = ron::from_str(&text).expect("deserialize");
     assert_eq!(DockState::load(layout, Tab::Main), Ok(d));
 }
@@ -646,7 +724,7 @@ fn loading_rejects_each_corruption() {
         d.layout().clone()
     };
 
-    let cases: [(&str, Corrupt, &str); 11] = [
+    let cases: [(&str, Corrupt, &str); 12] = [
         (
             "duplicate group id",
             |layout| {
@@ -680,9 +758,22 @@ fn loading_rejects_each_corruption() {
                 let DockNode::Split(s) = &mut layout.nodes[0] else {
                     panic!("the root is a split");
                 };
-                s.ratio = 0.95;
+                s.size = SplitSize::Ratio(0.95);
             },
-            "split ratio",
+            "split size",
+        ),
+        (
+            "pixels not a length",
+            |layout| {
+                let DockNode::Split(s) = &mut layout.nodes[0] else {
+                    panic!("the root is a split");
+                };
+                s.size = SplitSize::Fixed {
+                    half: SplitHalf::First,
+                    px: -1.0,
+                };
+            },
+            "split size",
         ),
         (
             // The next split would mint an id a group already holds.
@@ -827,6 +918,7 @@ fn a_drop_classifies_into_strip_slots_join_and_wedges() {
         drop: DockDrop::Split {
             group,
             side: SplitSide::Left,
+            size: SplitSize::HALF,
         },
         wash: Rect::new(0.0, 30.0, 200.0, 270.0),
     };
@@ -848,7 +940,8 @@ fn a_drop_classifies_into_strip_slots_join_and_wedges() {
         col_only.drop(),
         DockDrop::Split {
             group,
-            side: SplitSide::Top
+            side: SplitSide::Top,
+            size: SplitSize::HALF,
         },
         "the nearest *offered* edge wins when Left is refused"
     );
@@ -979,7 +1072,7 @@ fn an_over_dragged_divider_keeps_its_width_through_the_release() {
         widths.iter().all(|w| *w == widths[0]),
         "no frame moves the divider: {widths:?}",
     );
-    assert_eq!(root_split(&d).split.ratio(), RATIO_MIN);
+    assert_eq!(root_split(&d).split.size(), SplitSize::Ratio(RATIO_MIN));
 }
 
 /// A tab carried over a strip marks its slot with the strip's caret and washes nothing; over
@@ -1472,4 +1565,40 @@ fn the_dock_restyles_its_strips_and_tab_menus() {
     let [styled_strip, styled_menu] = measure(true);
     assert_eq!(styled_strip - plain_strip, 2.0 * 5.0);
     assert_eq!(styled_menu - plain_menu, 2.0 * 9.0);
+}
+
+/// A pane split off fixed keeps its width as the dock grows, below the root as at it: `Prefs` split
+/// off the right of the primary pane, itself the left half of the root, at `Fixed { Second, 120 }`,
+/// is 120 px wide in a 600 px dock and in a 1000 px one; the primary pane beside it takes the
+/// change: the root halves what its 1 px rule leaves, and the inner split's rule and the 120 go
+/// out of that, (600 − 1) / 2 − 1 − 120 = 178.5 and (1000 − 1) / 2 − 1 − 120 = 378.5.
+#[test]
+fn a_fixed_pane_keeps_its_width_as_the_dock_grows() {
+    let mut d = seeded();
+    let primary = d.primary().id;
+    split_off(&mut d, viewer(1), primary, SplitSide::Right);
+    d.apply(DockOperation::MoveTab {
+        tab: Tab::Prefs,
+        to: DockDrop::Split {
+            group: primary,
+            side: SplitSide::Right,
+            size: SplitSize::Fixed {
+                half: SplitHalf::Second,
+                px: 120.0,
+            },
+        },
+    });
+    let prefs = d.find_tab(Tab::Prefs).unwrap().group;
+    let mut h = Harness::mono(SURFACE);
+    let mut tabs = Labels;
+    for (width, widths) in [(600, [178.5, 120.0]), (1000, [378.5, 120.0])] {
+        h.resize(UVec2::new(width, SURFACE.y));
+        for _ in 0..2 {
+            h.frame(|ui| {
+                DockView::new(dock(), &mut d).show(ui, &mut tabs);
+            });
+        }
+        let pane = |group: TabGroupId| h.layout_rect(group.pane_id(dock())).unwrap().size.w;
+        assert_eq!([pane(primary), pane(prefs)], widths, "{width}");
+    }
 }

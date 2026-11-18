@@ -10,7 +10,8 @@
 //! - canonical pre-order, fully reachable from slot 0;
 //! - some group holds the pinned tab;
 //! - no group is empty, no tab appears twice, group ids are unique, each `active`
-//!   is in range, `focused` names a live group, every ratio is inside the clamp;
+//!   is in range, `focused` names a live group, every ratio is inside the clamp and every fixed
+//!   split's pixels a finite length;
 //! - the group-id counter can still mint an id no group holds.
 
 use crate::primitives::math::domain;
@@ -23,6 +24,7 @@ use crate::widgets::dock::error::DockError;
 use crate::widgets::dock::split_side::SplitSide;
 use crate::widgets::dock::tab_group::{TabGroup, TabGroupId};
 use crate::widgets::splitter::split_half::SplitHalf;
+use crate::widgets::splitter::split_size::SplitSize;
 use crate::widgets::tabs::reindex;
 use std::mem;
 
@@ -202,7 +204,7 @@ impl<T: DockTab> DockState<T> {
             DockOperation::OpenTab { tab } => self.open_tab(tab),
             DockOperation::CloseTab { tab } => self.close_tab(tab),
             DockOperation::MoveTab { tab, to } => self.move_tab(tab, to),
-            DockOperation::SetRatio { split, ratio } => self.set_ratio(split, ratio),
+            DockOperation::SetSize { split, size } => self.set_size(split, size),
             DockOperation::FocusGroup { group } => self.focus(group),
         }
     }
@@ -289,7 +291,7 @@ impl<T: DockTab> DockState<T> {
                 g.active = idx;
                 self.layout.focused = group;
             }
-            DockDrop::Split { group, side } => {
+            DockDrop::Split { group, side, size } => {
                 let new_group = TabGroup {
                     id: TabGroupId(self.layout.next_group),
                     tabs: vec![tab],
@@ -297,15 +299,15 @@ impl<T: DockTab> DockState<T> {
                 };
                 self.layout.next_group += 1;
                 self.layout.focused = new_group.id;
-                self.split_group(group, side, new_group);
+                self.split_group(group, side, new_group, size);
             }
         }
         self.normalize();
     }
 
-    /// Set the ratio of the split at `path`, clamped, centered when not finite. A path
-    /// that no longer lands on a split is ignored.
-    fn set_ratio(&mut self, path: DockPath, ratio: f32) {
+    /// Set the size of the split at `path`, as [`Self::admitted`] takes it. A path that no longer
+    /// lands on a split is ignored.
+    fn set_size(&mut self, path: DockPath, size: SplitSize) {
         // A sentinel-less byte is a corrupt address; ignore it like a stale path.
         if path.is_corrupt() {
             return;
@@ -317,8 +319,21 @@ impl<T: DockTab> DockState<T> {
             };
             idx = s.child(half);
         }
-        if let DockNode::Split(s) = &mut self.layout.nodes[idx.usize()] {
-            s.ratio = domain::fraction_or(ratio, 0.5).clamp(RATIO_MIN, RATIO_MAX);
+        if let DockNode::Split(s) = &mut self.layout.nodes[idx.usize()]
+            && let Some(size) = Self::admitted(size)
+        {
+            s.size = size;
+        }
+    }
+
+    /// `size` as a split takes it: a ratio clamped, centered when not finite; pixels as they
+    /// are, and `None` for pixels that are not a finite length, which no split can hold.
+    fn admitted(size: SplitSize) -> Option<SplitSize> {
+        match size {
+            SplitSize::Ratio(ratio) => Some(SplitSize::Ratio(
+                domain::fraction_or(ratio, 0.5).clamp(RATIO_MIN, RATIO_MAX),
+            )),
+            SplitSize::Fixed { px, .. } => domain::is_length(px).then_some(size),
         }
     }
 
@@ -379,9 +394,16 @@ impl<T: DockTab> DockState<T> {
         }
     }
 
-    /// Replace the `target` group's node with a split of it and `new_group` on `side`.
-    /// Children are parked at the vector's end; the caller's `normalize` re-packs.
-    fn split_group(&mut self, target: TabGroupId, side: SplitSide, new_group: TabGroup<T>) {
+    /// Replace the `target` group's node with a split of it and `new_group` on `side`, shared as
+    /// `size`, or at half for a `size` [`Self::admitted`] refuses. Children are parked at the
+    /// vector's end; the caller's `normalize` re-packs.
+    fn split_group(
+        &mut self,
+        target: TabGroupId,
+        side: SplitSide,
+        new_group: TabGroup<T>,
+        size: SplitSize,
+    ) {
         let Some(slot) = self
             .layout
             .nodes
@@ -400,7 +422,7 @@ impl<T: DockTab> DockState<T> {
             &mut self.layout.nodes[slot],
             DockNode::Split(DockSplit {
                 axis: side.axis(),
-                ratio: 0.5,
+                size: Self::admitted(size).unwrap_or(SplitSize::HALF),
                 first,
                 second,
             }),
@@ -536,8 +558,12 @@ impl<T: DockTab> DockState<T> {
             if depth >= DockPath::CAPACITY {
                 return Err(DockError::SplitNesting);
             }
-            if !(RATIO_MIN..=RATIO_MAX).contains(&s.ratio) {
-                return Err(DockError::SplitRatio { ratio: s.ratio });
+            let held = match s.size {
+                SplitSize::Ratio(ratio) => (RATIO_MIN..=RATIO_MAX).contains(&ratio),
+                SplitSize::Fixed { px, .. } => domain::is_length(px),
+            };
+            if !held {
+                return Err(DockError::SplitSize { size: s.size });
             }
             self.check_canonical(s.first, depth + 1, expect)?;
             self.check_canonical(s.second, depth + 1, expect)?;

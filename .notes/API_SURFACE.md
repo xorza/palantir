@@ -557,16 +557,16 @@ Display
         pub fn logical_rect(&self) -> Rect
 
 DockDrop
-    enum DockDrop: Clone, Copy, Debug, Deserialize<'de>, Eq, PartialEq, Serialize
+    enum DockDrop: Clone, Copy, Debug, Deserialize<'de>, PartialEq, Serialize
         Join { group: TabGroupId, idx: usize }
-        Split { group: TabGroupId, side: SplitSide }
+        Split { group: TabGroupId, side: SplitSide, size: SplitSize }
 
 DockError
     enum DockError<T>
         NonCanonical
         NodeOutOfRange { idx: u32 }
         SplitNesting
-        SplitRatio { ratio: f32 }
+        SplitSize { size: SplitSize }
         UnreachableSlots
         MissingPinnedTab
         DuplicateGroup { group: TabGroupId }
@@ -596,7 +596,7 @@ DockOperation
         OpenTab { tab: T }
         CloseTab { tab: T }
         MoveTab { tab: T, to: DockDrop }
-        SetRatio { split: DockPath, ratio: f32 }
+        SetSize { split: DockPath, size: SplitSize }
         FocusGroup { group: TabGroupId }
         impl<'de, T> Deserialize<'de> where T: Deserialize<'de>
         impl<T: Clone> Clone for DockOperation<T>
@@ -2644,7 +2644,7 @@ SpinnerTheme
         pub const fn from_parts(p: &Palette, m: &Metrics) -> Self
 
 SplitHalf
-    enum SplitHalf: Clone, Copy, Debug, Eq, PartialEq
+    enum SplitHalf: Clone, Copy, Debug, Deserialize<'de>, Eq, PartialEq, Serialize
         First
         Second
 
@@ -2657,11 +2657,17 @@ SplitSide
         pub const fn axis(self) -> Axis
         pub const fn half(self) -> SplitHalf
 
+SplitSize
+    enum SplitSize: Clone, Copy, Debug, Deserialize<'de>, PartialEq, Serialize
+        Ratio(f32)
+        Fixed { half: SplitHalf, px: f32 }
+        pub const HALF: Self
+
 Splitter
     struct Splitter<'a>: Configure, ConfigureDefaults (blanket), Debug
-        pub fn row(ratio: &'a mut f32) -> Self
-        pub fn col(ratio: &'a mut f32) -> Self
-        pub fn along(axis: Axis, ratio: &'a mut f32) -> Self
+        pub fn row(size: &'a mut SplitSize) -> Self
+        pub fn col(size: &'a mut SplitSize) -> Self
+        pub fn along(axis: Axis, size: &'a mut SplitSize) -> Self
         pub const fn min_pane(self, px: f32) -> Self
         pub const fn min_ratio(self, ratio: f32) -> Self
         pub fn style(self, s: impl Into<Option<&'a SplitterTheme>>) -> Self

@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::primitives::layout::axis::Axis;
 use crate::widgets::dock::tab_group::TabGroup;
 use crate::widgets::splitter::split_half::SplitHalf;
+use crate::widgets::splitter::split_size::SplitSize;
 
 /// Index of a node in [`DockState`](crate::DockState)'s flat tree; valid only between structural changes, unlike [`TabGroupId`](crate::TabGroupId). A stale one names another node, or none, where `DockState::node` panics.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -33,13 +34,13 @@ pub(crate) enum DockNode<T> {
     Group(TabGroup<T>),
 }
 
-/// A division of one rect between two child nodes along `axis`: `first` leads, left along
-/// [`Axis::X`] and top along [`Axis::Y`].
+/// A division of one rect between two child nodes along `axis`, as `size` shares it: `first`
+/// leads, left along [`Axis::X`] and top along [`Axis::Y`].
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct DockSplit {
     pub(super) axis: Axis,
-    pub(super) ratio: f32,
+    pub(super) size: SplitSize,
     pub(super) first: NodeIdx,
     pub(super) second: NodeIdx,
 }
@@ -50,9 +51,10 @@ impl DockSplit {
         self.axis
     }
 
-    /// The first child's share of the free space, inside the split clamp.
-    pub(crate) const fn ratio(self) -> f32 {
-        self.ratio
+    /// How the two children share the split: a ratio inside the split clamp, or one child's
+    /// pixels.
+    pub(crate) const fn size(self) -> SplitSize {
+        self.size
     }
 
     /// The child on `half`.

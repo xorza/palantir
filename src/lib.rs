@@ -508,6 +508,7 @@ pub use widgets::slider::Slider;
 pub use widgets::spinner::Spinner;
 pub use widgets::splitter::Splitter;
 pub use widgets::splitter::split_half::SplitHalf;
+pub use widgets::splitter::split_size::SplitSize;
 pub use widgets::switch::Switch;
 pub use widgets::tabs::tab_chip::TabChip;
 pub use widgets::tabs::tab_item::TabItem;

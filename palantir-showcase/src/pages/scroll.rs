@@ -8,8 +8,9 @@ use crate::scaffold::tokens::M;
 use palantir::glam::Vec2;
 use palantir::{
     Border, Button, Chrome, Configure, Corners, DragValue, Panel, Scroll, SizeSpec, Sizing,
-    SplitHalf, Splitter, Text, Ui, WidgetId, fmt,
+    SplitHalf, SplitSize, Splitter, Text, Ui, WidgetId, fmt,
 };
+use std::fmt::{self as std_fmt, Display, Formatter};
 
 /// Items in the vertical list and the horizontal strip, enough to overflow either pane.
 const ITEMS: u32 = 40;
@@ -18,8 +19,8 @@ const SIDE: u32 = 24;
 
 #[derive(Debug)]
 struct State {
-    h: f32,
-    v: f32,
+    h: SplitSize,
+    v: SplitSize,
     clicked: Option<Cell>,
     /// The list item "Reveal" brings into view.
     reveal: i64,
@@ -28,8 +29,8 @@ struct State {
 impl Default for State {
     fn default() -> Self {
         Self {
-            h: 0.45,
-            v: 0.5,
+            h: SplitSize::Ratio(0.45),
+            v: SplitSize::HALF,
             clicked: None,
             reveal: 20,
         }
@@ -134,8 +135,8 @@ fn split_panes(ui: &mut Ui, k: Kit, s: &mut State) {
     }
 
     scaffold::row(ui, |ui| {
-        let ratios = fmt!(ui, "row {:.2}  column {:.2}", s.h, s.v);
-        scaffold::readout(ui, k, "split ratios", ratios);
+        let sizes = fmt!(ui, "row {}  column {}", Shown(s.h), Shown(s.v));
+        scaffold::readout(ui, k, "split sizes", sizes);
         let click = match s.clicked {
             Some(Cell { row, col }) => fmt!(ui, "row {row}, column {col}"),
             None => ui.intern("— click a button to check hit-testing through the zoom"),
@@ -247,5 +248,18 @@ mod tests {
         h.click("Reveal");
         h.frame(&mut record);
         assert_eq!(offset(&mut h), 0.0);
+    }
+}
+
+/// A split size as the readout writes it: a ratio to two places, a fixed pane in pixels.
+#[derive(Clone, Copy, Debug)]
+struct Shown(SplitSize);
+
+impl Display for Shown {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std_fmt::Result {
+        match self.0 {
+            SplitSize::Ratio(ratio) => write!(f, "{ratio:.2}"),
+            SplitSize::Fixed { px, .. } => write!(f, "{px:.0} px"),
+        }
     }
 }

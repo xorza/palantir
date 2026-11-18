@@ -1,7 +1,8 @@
 //! Two panes divided by a draggable rule: the widget, its per-pane bodies, and the
-//! split ratio it keeps between frames.
+//! split size it keeps between frames.
 
 pub(crate) mod split_half;
+pub(crate) mod split_size;
 
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::key_class::KeyFilter;
@@ -22,14 +23,16 @@ use crate::widget_core::value_response::ValueResponse;
 use crate::widget_core::widget::Widget;
 use crate::widgets::axis_keys::{AxisEnd, AxisKeys, KeyPair};
 use crate::widgets::splitter::split_half::SplitHalf;
+use crate::widgets::splitter::split_size::SplitSize;
 use crate::window::cursor_icon::CursorIcon;
 
 /// Two panes split by a draggable divider: [`Splitter::row`] side by side,
-/// [`Splitter::col`] stacked, [`Splitter::along`] either. The caller owns the split as
-/// `ratio`, the first pane's share of the free space, `0..1`. While dragging, the
-/// pointer target feeds layout at once and the content-constrained share is written
-/// back on the next record. Double-clicking the divider recenters to `0.5`. Visuals
-/// come from [`crate::SplitterTheme`] (slot `splitter`).
+/// [`Splitter::col`] stacked, [`Splitter::along`] either. The caller owns the split as a
+/// [`SplitSize`]: a ratio, the first pane's share of the free space, or one pane's pixels. A
+/// drag keeps its shape. While dragging, the pointer target feeds layout at once and the
+/// content-constrained size is written back on the next record. Double-clicking the divider
+/// recenters it, a ratio to `0.5` and a fixed pane to half the split. Visuals come from
+/// [`crate::SplitterTheme`] (slot `splitter`).
 ///
 /// One Grid owns the pane tracks and the visible `rule_thickness` seam; the wide
 /// grab target is a late-recorded overlay in the rule's cell, so layout places it
@@ -41,7 +44,7 @@ use crate::window::cursor_icon::CursorIcon;
 #[must_use = "a widget records nothing until `show`"]
 pub struct Splitter<'a> {
     widget: Widget,
-    ratio: &'a mut f32,
+    size: &'a mut SplitSize,
     axis: Axis,
     min_pane: f32,
     min_ratio: f32,
@@ -50,8 +53,8 @@ pub struct Splitter<'a> {
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 struct SplitterState {
-    sync_ratio_next_record: bool,
-    /// A double-click reset the ratio; the binding takes its arranged result on the
+    sync_size_next_record: bool,
+    /// A double-click reset the size; the binding takes its arranged result on the
     /// next record, which commits it.
     commit_on_sync: bool,
     /// The seam's center along the axis, in the splitter's px, when the live drag latched: the
@@ -61,27 +64,25 @@ struct SplitterState {
 }
 
 impl<'a> Splitter<'a> {
-    /// Side-by-side panes with a vertical divider bar; `ratio` is the left pane's
-    /// share.
+    /// Side-by-side panes with a vertical divider bar, split as `size`.
     #[track_caller]
-    pub fn row(ratio: &'a mut f32) -> Self {
-        Self::along(Axis::X, ratio)
+    pub fn row(size: &'a mut SplitSize) -> Self {
+        Self::along(Axis::X, size)
     }
 
-    /// Stacked panes with a horizontal divider bar; `ratio` is the top pane's
-    /// share.
+    /// Stacked panes with a horizontal divider bar, split as `size`.
     #[track_caller]
-    pub fn col(ratio: &'a mut f32) -> Self {
-        Self::along(Axis::Y, ratio)
+    pub fn col(size: &'a mut SplitSize) -> Self {
+        Self::along(Axis::Y, size)
     }
 
-    /// Panes laid along `axis`, with the divider bar across it; `ratio` is the first pane's
-    /// share. [`Axis::X`] is [`Self::row`].
+    /// Panes laid along `axis`, with the divider bar across it, split as `size`. [`Axis::X`] is
+    /// [`Self::row`].
     #[track_caller]
-    pub fn along(axis: Axis, ratio: &'a mut f32) -> Self {
+    pub fn along(axis: Axis, size: &'a mut SplitSize) -> Self {
         Self {
             widget: Widget::grid(),
-            ratio,
+            size,
             axis,
             min_pane: 0.0,
             min_ratio: 0.0,
@@ -89,8 +90,9 @@ impl<'a> Splitter<'a> {
         }
     }
 
-    /// Floor either pane's split-axis extent at `px`, a *length*, while dragging.
-    /// Default `0.0`.
+    /// Floor either pane's split-axis extent at `px`, a *length*, while dragging, and under a
+    /// fixed [`SplitSize`] at every size: the other pane keeps it, and the fixed pane gives way
+    /// toward it. Default `0.0`.
     ///
     /// # Panics
     ///
@@ -123,12 +125,12 @@ impl<'a> Splitter<'a> {
     }
 
     /// Record both panes and the divider between them; `body` runs once per
-    /// [`SplitHalf`]. The divider drags the bound `ratio`; as for
-    /// [`Slider`](crate::Slider), `changed` is set on every frame the ratio moves
+    /// [`SplitHalf`]. The divider drags the bound size; as for
+    /// [`Slider`](crate::Slider), `changed` is set on every frame the size moves
     /// and `committed` on the frame a drag releases or a double-click reset lands.
     ///
     /// **The binding trails the drawn divider by one frame while it moves**: layout
-    /// follows the pointer at once, but the ratio written back is the share the
+    /// follows the pointer at once, but the size written back is the one the
     /// panes were arranged at, which only layout knows, so a content floor is never
     /// overridden.
     pub fn show(mut self, ui: &mut Ui, mut body: impl FnMut(&mut Ui, SplitHalf)) -> ValueResponse {
@@ -138,7 +140,7 @@ impl<'a> Splitter<'a> {
             .default_clip(ClipMode::Rect);
         let response = self.widget.response(ui);
         let id = response.id;
-        let input = *self.ratio;
+        let input = *self.size;
 
         let theme = self.style.unwrap_or(&ui.theme().splitter);
         let grab_thickness = domain::length_at_least(theme.grab_thickness, 1.0);
@@ -167,19 +169,21 @@ impl<'a> Splitter<'a> {
         };
 
         let state = ui.state::<SplitterState>(id).copied().unwrap_or_default();
-        let sync_pending = state.sync_ratio_next_record;
-        let synced_ratio = if sync_pending {
-            panes.arranged_ratio(ui)
+        let sync_pending = state.sync_size_next_record;
+        let synced_size = if sync_pending {
+            panes.arranged_size(ui, input)
         } else {
             None
         };
-        let ratio = synced_ratio.unwrap_or_else(|| sanitize_ratio(*self.ratio));
-        let mut layout_ratio = ratio;
+        let size = synced_size.unwrap_or_else(|| input.sanitized());
+        let mut layout_size = size;
         let mut resizing = false;
         let mut reset = false;
         let mut drag_from = None;
-        // The seam's center along the axis for a splitter `extent` px long.
-        let center = |extent: f32| ratio * (extent - rule_thickness) + rule_thickness * 0.5;
+        let min_pane = self.min_pane;
+        // The seam's center along the axis for a splitter `extent` px long, where `size` draws it.
+        let center =
+            |extent: f32| size.first_of(extent - rule_thickness, min_pane) + rule_thickness * 0.5;
         // The axis as last frame arranged it, which both the drag and the keys map through.
         let seam = response.layout_rect.map(|rect| Seam {
             extent: axis.main(rect.size),
@@ -193,11 +197,18 @@ impl<'a> Splitter<'a> {
             {
                 let from = state.drag_from.unwrap_or_else(|| center(seam.extent));
                 drag_from = Some(from);
-                layout_ratio = seam.ratio_at(from + axis.main_v(travel));
+                layout_size = seam.size_at(size, from + axis.main_v(travel));
                 resizing = true;
             }
             if divider.double_clicked() {
-                layout_ratio = 0.5;
+                layout_size = match (size, seam) {
+                    (SplitSize::Fixed { half, .. }, Some(seam)) => SplitSize::Fixed {
+                        half,
+                        px: seam.span() * 0.5,
+                    },
+                    (SplitSize::Fixed { .. }, None) => size,
+                    (SplitSize::Ratio(_), _) => SplitSize::HALF,
+                };
                 resizing = true;
                 reset = true;
             }
@@ -220,22 +231,22 @@ impl<'a> Splitter<'a> {
                     None => (travel.steps != 0).then_some(at + travel.steps as f32 * KEY_STEP),
                 };
                 if let Some(pos) = target {
-                    layout_ratio = seam.ratio_at(pos);
+                    layout_size = seam.size_at(size, pos);
                     resizing = true;
                     reset = true;
                 }
             }
         }
-        *self.ratio = ratio;
-        let changed = !domain::is_approx_zero(ratio - input);
-        let synced = synced_ratio.is_some();
+        *self.size = size;
+        let changed = size.differs(input);
+        let synced = synced_size.is_some();
         let committed =
             !response.disabled && (divider.left.drag.stopped() || (state.commit_on_sync && synced));
 
         // Written only on a change against `state` (an absent row reads as the
         // default), so a splitter that never resizes mints no row.
         let next = SplitterState {
-            sync_ratio_next_record: resizing || (sync_pending && !synced),
+            sync_size_next_record: resizing || (sync_pending && !synced),
             commit_on_sync: reset || (state.commit_on_sync && !synced),
             drag_from,
         };
@@ -258,11 +269,8 @@ impl<'a> Splitter<'a> {
         let bar_chrome = bar_fill.map_or_default(Chrome::new);
         let rule_chrome = Chrome::new(rule_color);
 
-        let main_tracks = [
-            Track::fill(layout_ratio),
-            Track::fixed(rule_thickness),
-            Track::fill(1.0 - layout_ratio),
-        ];
+        let [first_track, second_track] = layout_size.tracks(min_pane);
+        let main_tracks = [first_track, Track::fixed(rule_thickness), second_track];
         let cross_tracks = [Track::FILL];
         let [rows, cols] = axis.rows_cols(&main_tracks[..], &cross_tracks[..]);
         self.widget.grid_tracks(ui, rows, cols);
@@ -326,22 +334,15 @@ impl Panes {
             .record(ui, None, body);
     }
 
-    /// Recover the first pane's effective share after layout applied both panes'
-    /// content floors.
-    fn arranged_ratio(self, ui: &Ui) -> Option<f32> {
+    /// The size, of `shape`'s shape, the panes were arranged at once layout applied both
+    /// panes' content floors.
+    fn arranged_size(self, ui: &Ui, shape: SplitSize) -> Option<SplitSize> {
         let first = ui.response_for(self.first).layout_rect?;
         let second = ui.response_for(self.second).layout_rect?;
         let first_extent = self.axis.main(first.size);
-        let second_extent = self.axis.main(second.size);
-        let span = first_extent + second_extent;
-        (!domain::is_invisible(span)).then(|| sanitize_ratio(first_extent / span))
+        let span = first_extent + self.axis.main(second.size);
+        (!domain::is_invisible(span)).then(|| shape.with_first(first_extent, span))
     }
-}
-
-/// A caller-supplied ratio made safe as a `Fill` weight; unlike a progress bar, an
-/// invalid one opens centered.
-const fn sanitize_ratio(r: f32) -> f32 {
-    domain::fraction_or(r, 0.5)
 }
 
 const KEY_STEP: f32 = 10.0;
@@ -372,6 +373,18 @@ struct Seam {
 }
 
 impl Seam {
+    /// The space past the rule.
+    fn span(self) -> f32 {
+        self.extent - self.reserved
+    }
+
+    /// `shape`'s shape with the seam at the container-local `pos`, through [`Self::ratio_at`]'s
+    /// floors.
+    fn size_at(self, shape: SplitSize, pos: f32) -> SplitSize {
+        let span = self.span();
+        shape.with_first(self.ratio_at(pos) * span, span)
+    }
+
     /// Map a container-local coordinate `pos` to the first pane's share of the free
     /// space (`extent − reserved`); the seam center follows `pos` and the larger of
     /// `min_pane` and `min_ratio` floors both panes, collapsing to a centered clamp when

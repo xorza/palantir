@@ -6,7 +6,7 @@ use crate::scaffold::tokens::M;
 use palantir::{
     Block, Button, Chrome, ColorPicker, Configure, Corners, DockDrop, DockOperation, DockState,
     DockTabMenu, DockTabs, DockView, InternedStr, MenuItem, Panel, RgbaF32, Size, SizeSpec, Sizing,
-    SplitSide, TabChip, Text, Ui, WidgetId, fmt,
+    SplitHalf, SplitSide, SplitSize, TabChip, Text, Ui, WidgetId, fmt,
 };
 
 /// The showcase's tab key: a small `Copy` value.
@@ -70,11 +70,16 @@ impl Default for State {
         for tab in OPENABLE {
             dock.apply(DockOperation::OpenTab { tab });
         }
+        // The console keeps its height as the window grows, as an editor's panel does.
         dock.apply(DockOperation::MoveTab {
             tab: Tab::Console,
             to: DockDrop::Split {
                 group: primary,
                 side: SplitSide::Bottom,
+                size: SplitSize::Fixed {
+                    half: SplitHalf::Second,
+                    px: 180.0,
+                },
             },
         });
         dock.apply(DockOperation::ActivateTab { tab: Tab::Canvas });
@@ -169,6 +174,7 @@ impl DockTabs for Panes<'_> {
                 to: DockDrop::Split {
                     group: menu.group,
                     side,
+                    size: SplitSize::HALF,
                 },
             });
         }
@@ -240,7 +246,14 @@ fn describe(ui: &mut Ui, operation: Option<DockOperation<Tab>>) -> InternedStr {
         Some(DockOperation::OpenTab { tab }) => fmt!(ui, "opened {}", tab.label()),
         Some(DockOperation::CloseTab { tab }) => fmt!(ui, "closed {}", tab.label()),
         Some(DockOperation::MoveTab { tab, .. }) => fmt!(ui, "moved {}", tab.label()),
-        Some(DockOperation::SetRatio { ratio, .. }) => fmt!(ui, "resized a split to {ratio:.2}"),
+        Some(DockOperation::SetSize {
+            size: SplitSize::Ratio(ratio),
+            ..
+        }) => fmt!(ui, "resized a split to {ratio:.2}"),
+        Some(DockOperation::SetSize {
+            size: SplitSize::Fixed { px, .. },
+            ..
+        }) => fmt!(ui, "resized a pane to {px:.0} px"),
         Some(_) => ui.intern("focused a pane"),
     }
 }

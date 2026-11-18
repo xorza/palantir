@@ -6,6 +6,13 @@ use crate::primitives::math::float_hash::{self, FloatHash};
 use std::hash;
 
 /// One row or column definition for a `Grid`: a `Sizing` with `[min, max]` clamps.
+///
+/// A [`Self::fixed`] track asks for its size, and its `min` starts at that size, so it stays
+/// exact. Lowered with [`Self::with_min`], the `min` is how far it gives way when its line is
+/// short of room for the other tracks' floors, as a [`Self::HUG`] track gives way toward its
+/// content floor: a sidebar of a set width shrinks only when the window cannot also hold the
+/// pane beside it at its least, as CSS's `flex: 0 1 <width>` beside a `min-width`
+/// (<https://developer.mozilla.org/en-US/docs/Web/CSS/flex-shrink>).
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[must_use]
 pub struct Track {
@@ -21,11 +28,15 @@ impl Track {
         min_content.max(self.min).min(self.max)
     }
 
-    /// A track with the given sizing.
+    /// A track with the given sizing: unclamped, or for a fixed size pinned at it from below.
     pub const fn new(sizing: Sizing) -> Self {
+        let min = match sizing.fixed_value() {
+            Some(value) => value,
+            None => 0.0,
+        };
         Self {
             sizing,
-            min: 0.0,
+            min,
             max: f32::INFINITY,
         }
     }
@@ -85,7 +96,7 @@ impl Track {
         self.sizing
     }
 
-    /// The lower size clamp, a *length*; `0` unless set.
+    /// The lower size clamp, a *length*: unless set, `0`, or a fixed track's size.
     pub const fn min(self) -> f32 {
         self.min
     }
@@ -93,6 +104,21 @@ impl Track {
     /// The upper size clamp, an *extent* no smaller than [`Self::min`]; `+inf` unless set.
     pub const fn max(self) -> f32 {
         self.max
+    }
+
+    /// A fixed track's size, its value within its clamps, and `None` for another sizing.
+    #[inline]
+    pub(crate) fn fixed_size(self) -> Option<f32> {
+        self.sizing
+            .fixed_value()
+            .map(|value| value.clamp(self.min, self.max))
+    }
+
+    /// Whether this is a fixed track that gives way toward its `min`: one whose `min` sits below
+    /// its size.
+    #[inline]
+    pub(crate) fn yields(self) -> bool {
+        self.fixed_size().is_some_and(|size| self.min < size)
     }
 
     /// One `u64` for the two clamps, as [`FloatHash`] does for [`glam::Vec2`].

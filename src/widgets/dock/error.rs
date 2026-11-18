@@ -1,6 +1,7 @@
 //! What deserializing a [`DockState`](crate::DockState) rejects: a tree breaking an invariant its module doc lists.
 
 use crate::widgets::dock::tab_group::TabGroupId;
+use crate::widgets::splitter::split_size::SplitSize;
 use std::error;
 use std::fmt;
 
@@ -16,10 +17,11 @@ pub enum DockError<T> {
     },
     /// A root-to-leaf chain nests deeper than the cap allows.
     SplitNesting,
-    /// A split ratio sits outside the clamp.
-    SplitRatio {
-        /// The offending ratio.
-        ratio: f32,
+    /// A split's size is out of bounds: a ratio outside the clamp, or pixels that are not a
+    /// finite length.
+    SplitSize {
+        /// The offending size.
+        size: SplitSize,
     },
     /// The vector holds slots the root cannot reach.
     UnreachableSlots,
@@ -63,7 +65,7 @@ impl<T: fmt::Debug> fmt::Display for DockError<T> {
             Self::NonCanonical => write!(f, "dock nodes are not in canonical pre-order"),
             Self::NodeOutOfRange { idx } => write!(f, "dock node index {idx} out of range"),
             Self::SplitNesting => write!(f, "split nesting exceeds the cap"),
-            Self::SplitRatio { ratio } => write!(f, "split ratio {ratio} out of bounds"),
+            Self::SplitSize { size } => write!(f, "split size {size:?} out of bounds"),
             Self::UnreachableSlots => write!(f, "dock tree has slots unreachable from the root"),
             Self::MissingPinnedTab => write!(f, "no group holds the pinned tab"),
             Self::DuplicateGroup { group } => write!(f, "dock group {group:?} appears twice"),

@@ -21,6 +21,7 @@ use crate::widgets::menu::Menu;
 use crate::widgets::modal::Modal;
 use crate::widgets::panel::Panel;
 use crate::widgets::scroll::Scroll;
+use crate::widgets::splitter::split_size::SplitSize;
 use glam::{UVec2, Vec2};
 
 const SURFACE: UVec2 = UVec2::new(400, 300);
@@ -188,7 +189,7 @@ fn widget_setters_check_their_kinds() {
         drop(DragValue::new(&mut value).range(f64::NAN..=1.0));
     });
 
-    let mut ratio = 0.5_f32;
+    let mut ratio = SplitSize::HALF;
     let _ = Splitter::row(&mut ratio)
         .min_pane(0.0)
         .min_ratio(0.0)
@@ -199,13 +200,13 @@ fn widget_setters_check_their_kinds() {
         (0.6, "a ratio floor must be at most 0.5"),
     ] {
         panic_probe::assert_panics_with(rule, || {
-            let mut ratio = 0.5_f32;
+            let mut ratio = SplitSize::HALF;
             drop(Splitter::row(&mut ratio).min_ratio(bad));
         });
     }
     let length: [fn(); 4] = [
         || {
-            let mut ratio = 0.5_f32;
+            let mut ratio = SplitSize::HALF;
             drop(Splitter::row(&mut ratio).min_pane(-1.0));
         },
         || {
@@ -323,7 +324,7 @@ fn coercing_inputs_at_their_worst_paint_no_nan() {
 
     const OPTIONS: [&str; 2] = ["a", "b"];
     let mut h = Harness::mono(UVec2::new(800, 1200));
-    let mut ratio = f32::NAN;
+    let mut ratio = SplitSize::Ratio(f32::NAN);
     let gone = "gone";
     let (mut stale, mut empty, mut page, mut no_page) = (gone, gone, 9_usize, 0_usize);
     let mut slid = f64::NAN;
@@ -509,7 +510,7 @@ fn a_scoped_widget_takes_its_keys_under_an_enclosing_scope() {
     });
     assert!(opened, "ColorButton");
 
-    let mut ratio = 0.5;
+    let mut ratio = SplitSize::HALF;
     press(id.with("divider"), Key::End, |ui| {
         under_root(ui, |ui| {
             Splitter::row(&mut ratio)
@@ -520,7 +521,7 @@ fn a_scoped_widget_takes_its_keys_under_an_enclosing_scope() {
     });
     // End sends the seam past the last free pixel, which clamps to the whole span; the arranged
     // ratio read back next frame is `first / (first + 0)`.
-    assert_eq!(ratio, 1.0, "Splitter");
+    assert_eq!(ratio, SplitSize::Ratio(1.0), "Splitter");
 
     let mut value = 50.0;
     press(id, Key::ArrowRight, |ui| {

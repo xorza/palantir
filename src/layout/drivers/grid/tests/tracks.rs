@@ -405,3 +405,83 @@ fn rigid_first_col(first: Track, surface_w: f32) -> LayoutRig {
         ],
     )
 }
+
+/// A Fixed track with a `min` below its size keeps its size while the line holds it and the Fill
+/// track's floor, and gives way toward its `min` past that, in the same pass; one with no `min`
+/// stays exact and the line overflows. Columns `fixed(300) ≥ 100`, `fill ≥ 200`:
+/// - 800 wide: 300 and the 500 left.
+/// - 400 wide: the Fill floor takes 200, the fixed track the 200 left.
+/// - 250 wide: the fixed track at its 100, the Fill at its 200, 50 over.
+/// - 400 wide with a plain `fixed(300)`: 300, then the Fill at its 200 from 300, 100 over.
+///
+/// Along rows, which measure resolves after the cells, the same widths land the same heights.
+#[test]
+fn a_fixed_track_with_a_floor_gives_way_toward_it() {
+    let yielding = [
+        Track::fixed(300.0).with_min(100.0),
+        Track::FILL.with_min(200.0),
+    ];
+    let exact = [Track::fixed(300.0), Track::FILL.with_min(200.0)];
+    let cells: &[Cell] = &[("a", (0, 0), HUG), ("b", (0, 1), HUG)];
+    for (cols, width, a, b) in [
+        (&yielding, 800.0, (0.0, 300.0), (300.0, 500.0)),
+        (&yielding, 400.0, (0.0, 200.0), (200.0, 200.0)),
+        (&yielding, 250.0, (0.0, 100.0), (100.0, 200.0)),
+        (&exact, 400.0, (0.0, 300.0), (300.0, 200.0)),
+    ] {
+        let tracks = GridTracks {
+            rows: &[Track::FILL],
+            cols,
+        };
+        let rig = fill_grid(Size::new(width, 50.0), tracks, cells);
+        assert_eq!(
+            rig.rect("a"),
+            Rect::new(a.0, 0.0, a.1, 50.0),
+            "{width}: {cols:?}"
+        );
+        assert_eq!(
+            rig.rect("b"),
+            Rect::new(b.0, 0.0, b.1, 50.0),
+            "{width}: {cols:?}"
+        );
+    }
+
+    let cells: &[Cell] = &[("a", (0, 0), HUG), ("b", (1, 0), HUG)];
+    for (height, a, b) in [
+        (800.0, 300.0, 500.0),
+        (400.0, 200.0, 200.0),
+        (250.0, 100.0, 200.0),
+    ] {
+        let tracks = GridTracks {
+            rows: &yielding,
+            cols: &[Track::FILL],
+        };
+        let rig = fill_grid(Size::new(50.0, height), tracks, cells);
+        assert_eq!(rig.rect("a"), Rect::new(0.0, 0.0, 50.0, a), "{height}");
+        assert_eq!(rig.rect("b"), Rect::new(0.0, a, 50.0, b), "{height}");
+    }
+}
+
+/// A grid holding a yielding Fixed track asks its `min` at min-content and its size at
+/// max-content: `fixed(300) ≥ 100` beside `fixed(40)` reads 100 + 40 = 140 at its least and
+/// 300 + 40 = 340 at its most. A Fixed track's `min` starts at its size, so a plain one reads its
+/// size at both.
+#[test]
+fn a_yielding_fixed_track_reads_its_min_at_min_content() {
+    assert_eq!(Track::fixed(300.0).min(), 300.0);
+    assert!(!Track::fixed(300.0).yields());
+    assert!(Track::fixed(300.0).with_min(100.0).yields());
+    let mut rig = LayoutRig::new();
+    rig.run(Size::new(1000.0, 100.0), |rec| {
+        let tracks = GridTracks {
+            rows: &[Track::FILL],
+            cols: &[Track::fixed(300.0).with_min(100.0), Track::fixed(40.0)],
+        };
+        rec.grid("grid", Widget::grid().size(SizeSpec::HUG), tracks, |rec| {
+            rec.leaf("a", Widget::leaf().grid_cell((0, 0)));
+            rec.leaf("b", Widget::leaf().grid_cell((0, 1)));
+        });
+    });
+    assert_eq!(rig.intrinsic("grid", Axis::X, LenReq::MinContent), 140.0);
+    assert_eq!(rig.intrinsic("grid", Axis::X, LenReq::MaxContent), 340.0);
+}

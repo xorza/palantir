@@ -4,6 +4,7 @@
 //! Each numeric literal in the serialized default theme is replaced in turn with hostile values, and a document that still loads is rendered.
 
 use crate::theme::color_scheme::ColorScheme;
+use crate::widgets::splitter::split_size::SplitSize;
 
 use crate::host::harness::Harness;
 use crate::internals::dock_fixture::DockFixture;
@@ -117,7 +118,7 @@ struct Forms {
     pick: u8,
     quality: &'static str,
     value: f64,
-    split: f32,
+    split: SplitSize,
 }
 
 impl Default for Forms {
@@ -129,7 +130,7 @@ impl Default for Forms {
             pick: 1,
             quality: QUALITIES[1],
             value: 0.5,
-            split: 0.5,
+            split: SplitSize::HALF,
         }
     }
 }

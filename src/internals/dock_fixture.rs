@@ -15,6 +15,7 @@ use crate::widgets::dock::dock_tabs::DockTabs;
 use crate::widgets::dock::dock_view::DockView;
 use crate::widgets::dock::split_side::SplitSide;
 use crate::widgets::panel::Panel;
+use crate::widgets::splitter::split_size::SplitSize;
 use crate::widgets::tabs::tab_chip::TabChip;
 use crate::widgets::text::Text;
 
@@ -59,6 +60,7 @@ impl Default for DockFixture {
             to: DockDrop::Split {
                 group: primary,
                 side: SplitSide::Right,
+                size: SplitSize::HALF,
             },
         });
         let right = dock.focused();
@@ -67,6 +69,7 @@ impl Default for DockFixture {
             to: DockDrop::Split {
                 group: right,
                 side: SplitSide::Bottom,
+                size: SplitSize::HALF,
             },
         });
         dock.apply(DockOperation::ActivateTab { tab: Tab::Canvas });

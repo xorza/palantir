@@ -262,17 +262,21 @@ impl GridTrackStore {
 
     /// Phase 1 of [`Self::resolve_axis`], also run standalone by grid measure before the
     /// per-cell loop so `known_span_size` reads Fixed rows as resolved while Hug and Fill are
-    /// unknown. Returns the extent the Fixed tracks consumed.
+    /// unknown. Returns the extent the Fixed tracks consumed. A Fixed track that
+    /// [yields](Track::yields) is no part of it: it shares the line with the Hug tracks, so its
+    /// size is unknown here as theirs is.
     pub(super) fn resolve_fixed(&mut self, id: GridAxisId, tracks: &[Track]) -> f32 {
         let r = self.range(id);
         let sizes = &mut self.sizes_pool[r.clone()];
         let resolved = &mut self.resolved_pool[r];
         let mut consumed = 0.0;
         for (i, t) in tracks.iter().enumerate() {
-            if let Some(value) = t.sizing().fixed_value() {
-                sizes[i] = value.clamp(t.min(), t.max());
+            if let Some(size) = t.fixed_size()
+                && !t.yields()
+            {
+                sizes[i] = size;
                 resolved[i] = true;
-                consumed += sizes[i];
+                consumed += size;
             }
         }
         consumed
@@ -283,10 +287,11 @@ impl GridTrackStore {
     ///
     /// Three phases, and a fourth [`Self::commit_fill`] adds:
     /// 1. **Fixed:** clamp `Sizing::fixed(v)` to `[Track.min, Track.max]` and consume from
-    ///    available.
+    ///    available; a track that [yields](Track::yields) waits for phase 2.
     /// 2. **Hug:** solve each track's content range, min-content floor and preferred size both
     ///    capped by `Track.max`, against what Fixed and the Fill tracks' floors leave (as CSS
-    ///    Grid, so a Hug sibling never squeezes a Fill column below its content):
+    ///    Grid, so a Hug sibling never squeezes a Fill column below its content). A yielding
+    ///    Fixed track takes part as a Hug track whose floor is its `min` and whose want its size:
     ///    - `sum_hug_max <= remaining`: each Hug at max.
     ///    - `sum_hug_min >= remaining`: each Hug at min, grid overflows.
     ///    - else each starts at min, slack split in proportion to `(max - min)`.
@@ -323,6 +328,8 @@ impl GridTrackStore {
                 let lo = t.content_floor(min[i]);
                 let hi = max[i].max(lo).min(t.max());
                 hugs.push(HugItem::new(i, lo, hi));
+            } else if let Some(size) = t.fixed_size().filter(|_| t.yields()) {
+                hugs.push(HugItem::new(i, t.min(), size));
             } else if let Some(weight) = t.sizing().fill_weight() {
                 flexible.push(FillItem::new(
                     i,

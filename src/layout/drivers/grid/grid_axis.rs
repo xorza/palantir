@@ -86,7 +86,8 @@ impl GridAxis<'_> {
                 } else if t.sizing().is_hug() {
                     t.content_floor(min)
                 } else {
-                    size
+                    // A Fixed track at its least: its `min`, below its size when it yields.
+                    t.min().min(size)
                 }
             })
             .sum()

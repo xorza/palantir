@@ -140,7 +140,8 @@ impl LayoutDriver for Grid {
 
     /// Intrinsic size of a Grid: span-1 cells' per-track contributions, then each spanning cell's shortfall
     /// spread over the tracks it grows ([`GridAxis::distribute_span`]), spans crossing no Fill track first, summed across tracks plus gaps, as in
-    /// `measure`; `Fixed` clamps to `[min, max]`, `Hug` and `Fill` share a content floor.
+    /// `measure`; `Fixed` clamps to `[min, max]` and at min-content gives way to its `min`, `Hug`
+    /// and `Fill` share a content floor.
     fn intrinsic(self, pass: &mut IntrinsicPass<'_>, query: IntrinsicQuery) -> IntrinsicRange {
         let tree = pass.tree();
         let def = tree.grid_defs[usize::from(self.def)];
@@ -161,16 +162,15 @@ impl LayoutDriver for Grid {
         let slot_count = (usize::from(wants_min) + usize::from(wants_max)) * track_count;
         pass.grid_track_aggregator().push_n(slot_count, 0.0);
         for (i, t) in tracks.iter().enumerate() {
+            // A track at its least is its `min`, a Fixed one's that yields included; at its most a
+            // Fixed track is its size.
             let min = t.min();
-            let initial = t
-                .sizing()
-                .fixed_value()
-                .map_or(min, |value| value.clamp(min, t.max()));
             if wants_min {
-                pass.grid_track_aggregator().since(base)[min_base + i] = initial;
+                pass.grid_track_aggregator().since(base)[min_base + i] = min;
             }
             if wants_max {
-                pass.grid_track_aggregator().since(base)[max_base + i] = initial;
+                pass.grid_track_aggregator().since(base)[max_base + i] =
+                    t.fixed_size().unwrap_or(min);
             }
         }
 

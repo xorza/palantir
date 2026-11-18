@@ -3,8 +3,8 @@ use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::layout::track::Track;
 use crate::primitives::math::domain;
 
-/// A track starts unclamped, `0..=+inf`, with the sizing it was built from; the clamps read back
-/// as set in either order.
+/// A track of a sizing that is not fixed starts unclamped, `0..=+inf`, with the sizing it was
+/// built from; the clamps read back as set in either order.
 #[test]
 fn bounds_accept_valid_ranges_in_either_order() {
     const MIN_THEN_MAX: Track = Track::FILL.with_min(10.0).with_max(20.0);

@@ -17,7 +17,8 @@ use crate::widget_core::value_response::ValueResponse;
 use crate::widgets::block::Block;
 use crate::widgets::panel::Panel;
 use crate::widgets::splitter::split_half::SplitHalf;
-use crate::widgets::splitter::{Seam, Splitter, sanitize_ratio};
+use crate::widgets::splitter::split_size::SplitSize;
+use crate::widgets::splitter::{Seam, Splitter};
 use crate::window::cursor_icon::CursorIcon;
 use glam::{UVec2, Vec2};
 
@@ -30,7 +31,7 @@ fn split_id() -> WidgetId {
 /// One frame: a 401×100 row splitter at the origin; the 1 px rule leaves a 400 span, seam center at ratio · 400 + 0.5, grab bar 6 px.
 ///
 /// One response per record pass: action input records twice, signals fire on pass A.
-fn frame_with(h: &mut Harness, ratio: &mut f32) -> Passes<ValueResponse> {
+fn frame_with(h: &mut Harness, ratio: &mut SplitSize) -> Passes<ValueResponse> {
     h.frame_passes(|ui| {
         Splitter::row(ratio)
             .id(split_id())
@@ -43,7 +44,7 @@ fn frame_with(h: &mut Harness, ratio: &mut f32) -> Passes<ValueResponse> {
 #[test]
 fn divider_drag_maps_pointer_to_ratio_without_relayout() {
     let mut h = Harness::mono(SURFACE);
-    let mut ratio = 0.5;
+    let mut ratio = SplitSize::HALF;
     frame_with(&mut h, &mut ratio);
     frame_with(&mut h, &mut ratio);
 
@@ -52,8 +53,9 @@ fn divider_drag_maps_pointer_to_ratio_without_relayout() {
     h.drag_to(Vec2::new(300.5, 50.0));
     let moved = frame_with(&mut h, &mut ratio);
     assert_eq!(
-        ratio, 0.75,
-        "pointer 300.5 over span 400 → 0.75, got {ratio}"
+        ratio,
+        SplitSize::Ratio(0.75),
+        "pointer 300.5 over span 400 → 0.75, got {ratio:?}"
     );
     // Pass A lays panes out at the pointer; the binding takes the arranged ratio on pass B.
     moved.a().assert_signals(false, false, "pass A");
@@ -67,8 +69,9 @@ fn divider_drag_maps_pointer_to_ratio_without_relayout() {
     let held = frame_with(&mut h, &mut ratio);
     assert_eq!(held.len(), 1);
     assert_eq!(
-        ratio, 0.75,
-        "model holds the prior arranged ratio for one record, got {ratio}"
+        ratio,
+        SplitSize::Ratio(0.75),
+        "model holds the prior arranged ratio for one record, got {ratio:?}"
     );
     held.a()
         .assert_signals(false, false, "the binding did not move this frame");
@@ -84,8 +87,9 @@ fn divider_drag_maps_pointer_to_ratio_without_relayout() {
     let caught_up = frame_with(&mut h, &mut ratio);
     assert_eq!(caught_up.len(), 1);
     assert_eq!(
-        ratio, 0.875,
-        "the next record writes back the arranged 350/400 ratio, got {ratio}"
+        ratio,
+        SplitSize::Ratio(0.875),
+        "the next record writes back the arranged 350/400 ratio, got {ratio:?}"
     );
     caught_up.a().assert_signals(true, false, "caught up");
 
@@ -93,7 +97,11 @@ fn divider_drag_maps_pointer_to_ratio_without_relayout() {
     h.release(PointerButton::Left);
     h.hover(Vec2::new(100.0, 50.0));
     let released = frame_with(&mut h, &mut ratio);
-    assert_eq!(ratio, 0.875, "ratio holds after release, got {ratio}");
+    assert_eq!(
+        ratio,
+        SplitSize::Ratio(0.875),
+        "ratio holds after release, got {ratio:?}"
+    );
     released
         .a()
         .assert_signals(false, true, "the release commits the held ratio");
@@ -110,7 +118,11 @@ fn divider_drag_maps_pointer_to_ratio_without_relayout() {
     h.double_click(seam);
     let reset = frame_with(&mut h, &mut ratio);
     assert_eq!(reset.len(), 2, "premise: a double-click records twice");
-    assert_eq!(ratio, 0.5, "the reset writes the center, got {ratio}");
+    assert_eq!(
+        ratio,
+        SplitSize::Ratio(0.5),
+        "the reset writes the center, got {ratio:?}"
+    );
     reset.a().assert_signals(false, false, "the reset's pass A");
     reset
         .b()
@@ -127,21 +139,21 @@ fn divider_drag_maps_pointer_to_ratio_without_relayout() {
 #[test]
 fn a_divider_drag_keeps_the_grab_offset() {
     let mut h = Harness::mono(SURFACE);
-    let mut ratio = 0.5;
+    let mut ratio = SplitSize::HALF;
     frame_with(&mut h, &mut ratio);
     frame_with(&mut h, &mut ratio);
     h.press(Vec2::new(202.5, 50.0), PointerButton::Left);
     h.drag_to(Vec2::new(302.5, 50.0));
     frame_with(&mut h, &mut ratio);
-    assert_eq!(ratio, 0.75);
+    assert_eq!(ratio, SplitSize::Ratio(0.75));
 }
 
 #[test]
 fn divider_drag_is_scale_invariant() {
     for scale in [0.5, 1.0, 2.0] {
         let mut h = Harness::mono(UVec2::new(1_000, 400));
-        let mut ratio = 0.5;
-        let frame = |h: &mut Harness, ratio: &mut f32| {
+        let mut ratio = SplitSize::HALF;
+        let frame = |h: &mut Harness, ratio: &mut SplitSize| {
             h.frame(|ui| {
                 Panel::zstack()
                     .id(WidgetId::from_hash("scaled-split-parent"))
@@ -168,8 +180,9 @@ fn divider_drag_is_scale_invariant() {
         frame(&mut h, &mut ratio);
 
         assert_eq!(
-            ratio, 0.75,
-            "logical pointer 300.5 over span 400 at {scale}× produced {ratio}"
+            ratio,
+            SplitSize::Ratio(0.75),
+            "logical pointer 300.5 over span 400 at {scale}× produced {ratio:?}"
         );
 
         h.hover(target(380.0));
@@ -183,8 +196,9 @@ fn divider_drag_is_scale_invariant() {
         h.hover(target(381.0));
         frame(&mut h, &mut ratio);
         assert_eq!(
-            ratio, 0.875,
-            "minimum-pane ratio at {scale}× produced {ratio}"
+            ratio,
+            SplitSize::Ratio(0.875),
+            "minimum-pane ratio at {scale}× produced {ratio:?}"
         );
     }
 }
@@ -198,8 +212,8 @@ fn divider_and_pane_stop_together_when_content_is_rigid() {
         (false, SplitHalf::Second, 0.55),
     ] {
         let mut h = Harness::mono(SURFACE);
-        let mut ratio = 0.5;
-        let frame = |h: &mut Harness, ratio: &mut f32| {
+        let mut ratio = SplitSize::HALF;
+        let frame = |h: &mut Harness, ratio: &mut SplitSize| {
             h.frame_recorded(|ui| {
                 let splitter = if row {
                     Splitter::row(ratio)
@@ -265,7 +279,8 @@ fn divider_and_pane_stop_together_when_content_is_rigid() {
         );
 
         assert_eq!(
-            ratio, 0.525,
+            ratio,
+            SplitSize::Ratio(0.525),
             "model keeps the prior arranged ratio for one record"
         );
         let shrinking = h.node_for_widget_id(split_id().with(match rigid_half {
@@ -324,7 +339,8 @@ fn divider_and_pane_stop_together_when_content_is_rigid() {
         });
         assert_eq!(frame(&mut h, &mut ratio), FrameProcessing::SingleLayout);
         assert_eq!(
-            ratio, expected_ratio,
+            ratio,
+            SplitSize::Ratio(expected_ratio),
             "{rigid_half:?} next record writes back its content floor"
         );
     }
@@ -333,7 +349,7 @@ fn divider_and_pane_stop_together_when_content_is_rigid() {
 #[test]
 fn divider_requests_the_resize_cursor() {
     let mut h = Harness::mono(SURFACE);
-    let mut ratio = 0.5;
+    let mut ratio = SplitSize::HALF;
     frame_with(&mut h, &mut ratio);
     frame_with(&mut h, &mut ratio);
     assert_eq!(
@@ -373,8 +389,8 @@ fn divider_requests_the_resize_cursor() {
 
     // A vertical splitter's divider asks for the other axis.
     let mut h = Harness::mono(SURFACE);
-    let mut ratio = 0.5;
-    let frame = |h: &mut Harness, ratio: &mut f32| {
+    let mut ratio = SplitSize::HALF;
+    let frame = |h: &mut Harness, ratio: &mut SplitSize| {
         h.frame(|ui| {
             Splitter::col(ratio)
                 .id(split_id())
@@ -395,8 +411,8 @@ fn divider_requests_the_resize_cursor() {
 
     for (grab_thickness, rule_thickness) in [(3.0, 9.0), (6.0, 0.0)] {
         let mut h = Harness::mono(SURFACE);
-        let mut ratio = 0.5;
-        let frame = |h: &mut Harness, ratio: &mut f32| {
+        let mut ratio = SplitSize::HALF;
+        let frame = |h: &mut Harness, ratio: &mut SplitSize| {
             h.frame(|ui| {
                 let style = SplitterTheme {
                     grab_thickness,
@@ -431,7 +447,7 @@ fn divider_requests_the_resize_cursor() {
 /// release commits nothing.
 #[test]
 fn a_splitter_disabled_mid_drag_lets_go() {
-    let frame = |h: &mut Harness, ratio: &mut f32, disabled: bool| {
+    let frame = |h: &mut Harness, ratio: &mut SplitSize, disabled: bool| {
         h.frame_passes(|ui| {
             Splitter::row(ratio)
                 .id(split_id())
@@ -446,20 +462,24 @@ fn a_splitter_disabled_mid_drag_lets_go() {
         h.ui().tree(Layer::Main).chrome(node).is_some()
     };
     let mut h = Harness::mono(SURFACE);
-    let mut ratio = 0.5;
+    let mut ratio = SplitSize::HALF;
     frame(&mut h, &mut ratio, false);
     frame(&mut h, &mut ratio, false);
     h.press(Vec2::new(200.5, 50.0), PointerButton::Left);
     h.drag_to(Vec2::new(300.5, 50.0));
     frame(&mut h, &mut ratio, false);
-    assert_eq!(ratio, 0.75);
+    assert_eq!(ratio, SplitSize::Ratio(0.75));
     assert!(fill(&h), "premise: the live drag paints the divider");
 
     h.drag_to(Vec2::new(350.5, 50.0));
     let disabled = frame(&mut h, &mut ratio, true);
     assert!(!fill(&h), "a disabled divider paints no drag fill");
     assert_eq!(h.ui().window_requests().levels.cursor, CursorIcon::Default);
-    assert_eq!(ratio, 0.75, "the pointer no longer steers");
+    assert_eq!(
+        ratio,
+        SplitSize::Ratio(0.75),
+        "the pointer no longer steers"
+    );
     assert_eq!(
         h.layout_rect(split_id().with("first")).unwrap().size.w,
         300.0
@@ -477,7 +497,7 @@ fn a_splitter_disabled_mid_drag_lets_go() {
         0,
         "no commit: {released:?}"
     );
-    assert_eq!(ratio, 0.75);
+    assert_eq!(ratio, SplitSize::Ratio(0.75));
 }
 
 #[test]
@@ -514,13 +534,23 @@ fn ratio_at_maps_center_edges_and_floors() {
     }
 }
 
+/// A ratio sanitizes to a share, centered when not finite; pixels to a length, zero when not one.
 #[test]
-fn sanitize_ratio_clamps_and_pins_non_finite() {
-    assert_eq!(sanitize_ratio(0.3), 0.3);
-    assert_eq!(sanitize_ratio(-0.2), 0.0);
-    assert_eq!(sanitize_ratio(1.5), 1.0);
-    assert_eq!(sanitize_ratio(f32::NAN), 0.5);
-    assert_eq!(sanitize_ratio(f32::INFINITY), 0.5);
+fn a_split_size_sanitizes_its_number() {
+    let ratio = |r| SplitSize::Ratio(r).sanitized();
+    assert_eq!(ratio(0.3), SplitSize::Ratio(0.3));
+    assert_eq!(ratio(-0.2), SplitSize::Ratio(0.0));
+    assert_eq!(ratio(1.5), SplitSize::Ratio(1.0));
+    assert_eq!(ratio(f32::NAN), SplitSize::HALF);
+    assert_eq!(ratio(f32::INFINITY), SplitSize::HALF);
+    let fixed = |px| SplitSize::Fixed {
+        half: SplitHalf::Second,
+        px,
+    };
+    assert_eq!(fixed(120.0).sanitized(), fixed(120.0));
+    for px in [f32::NAN, f32::INFINITY, -3.0] {
+        assert_eq!(fixed(px).sanitized(), fixed(0.0), "{px}");
+    }
 }
 
 /// A ratio at an end collapses one pane whole, on the axis the splitter lays them along: a
@@ -530,7 +560,7 @@ fn sanitize_ratio_clamps_and_pins_non_finite() {
 fn endpoint_ratios_collapse_exactly_one_pane() {
     for (ratio, expected) in [(0.0, [0.0, 400.0]), (1.0, [400.0, 0.0])] {
         let mut h = Harness::mono(SURFACE);
-        let mut ratio = ratio;
+        let mut ratio = SplitSize::Ratio(ratio);
         h.frame(|ui| {
             Splitter::row(&mut ratio)
                 .id(split_id())
@@ -543,7 +573,7 @@ fn endpoint_ratios_collapse_exactly_one_pane() {
         assert_eq!(
             [rects[first.idx()].size.w, rects[second.idx()].size.w],
             expected,
-            "ratio {ratio}",
+            "ratio {ratio:?}",
         );
     }
 
@@ -552,7 +582,7 @@ fn endpoint_ratios_collapse_exactly_one_pane() {
         (Axis::Y, Vec2::new(401.0, 400.0), Vec2::new(401.0, 0.0)),
     ] {
         let mut h = Harness::mono(UVec2::new(500, 500));
-        let mut ratio = 1.0;
+        let mut ratio = SplitSize::Ratio(1.0);
         h.frame(|ui| {
             Splitter::along(axis, &mut ratio)
                 .id(split_id())
@@ -573,10 +603,9 @@ fn endpoint_ratios_collapse_exactly_one_pane() {
 fn a_focused_divider_moves_by_the_keys_within_the_floors() {
     use crate::primitives::input::keyboard::key::Key;
     use crate::primitives::input::keyboard::modifiers::Modifiers;
-    use crate::primitives::math::domain;
 
     let mut h = Harness::mono(SURFACE);
-    let mut ratio = 0.5;
+    let mut ratio = SplitSize::HALF;
     frame_with(&mut h, &mut ratio);
     frame_with(&mut h, &mut ratio);
     h.ui_mut().set_focus(split_id().with("divider"));
@@ -594,8 +623,8 @@ fn a_focused_divider_moves_by_the_keys_within_the_floors() {
         let first = frame_with(&mut h, &mut ratio);
         let second = frame_with(&mut h, &mut ratio);
         assert!(
-            domain::is_approx_zero(ratio - want),
-            "{key:?}: {ratio} != {want}"
+            !ratio.differs(SplitSize::Ratio(want)),
+            "{key:?}: {ratio:?} != {want}"
         );
         let commits = [&first, &second]
             .iter()
@@ -610,8 +639,100 @@ fn a_focused_divider_moves_by_the_keys_within_the_floors() {
 /// under the caller's choice, so `authored()` reads only what the caller set.
 #[test]
 fn a_new_splitter_has_no_authored_size_or_clip() {
-    let mut ratio = 0.5;
+    let mut ratio = SplitSize::HALF;
     let splitter = Splitter::row(&mut ratio);
     assert_eq!(splitter.widget.authored().size(), None);
     assert_eq!(splitter.widget.authored().clip(), None);
+}
+
+/// A row splitter `width` px wide, 100 tall, its panes floored at 50, split as `size`; the
+/// two panes' arranged widths.
+fn fixed_frame(h: &mut Harness, size: &mut SplitSize, width: f32) -> [f32; 2] {
+    h.frame(|ui| {
+        Splitter::row(size)
+            .id(split_id())
+            .size((Sizing::fixed(width), Sizing::fixed(100.0)))
+            .min_pane(50.0)
+            .show(ui, |_, _| {});
+    });
+    ["first", "second"].map(|pane| h.layout_rect(split_id().with(pane)).unwrap().size.w)
+}
+
+/// A fixed pane keeps its pixels as the splitter grows, the other pane taking the change; it gives
+/// way toward the floor only when the splitter cannot also hold the other pane at it, and keeps
+/// its pixels for when it grows back. `Fixed { Second, 150 }`, panes floored at 50, a 1 px rule:
+/// - 401 wide, 400 past the rule: 250 and 150.
+/// - 601 wide: 450 and 150.
+/// - 181 wide, 180 past the rule: the first pane at its 50, the second the 130 left.
+/// - 81 wide: both at 50, 20 over.
+/// - 401 again: 250 and 150, the binding never moved.
+#[test]
+fn a_fixed_pane_keeps_its_pixels_and_gives_way_only_to_the_floor() {
+    let mut h = Harness::mono(SURFACE);
+    let sidebar = SplitSize::Fixed {
+        half: SplitHalf::Second,
+        px: 150.0,
+    };
+    let mut size = sidebar;
+    for (width, panes) in [
+        (401.0, [250.0, 150.0]),
+        (601.0, [450.0, 150.0]),
+        (181.0, [50.0, 130.0]),
+        (81.0, [50.0, 50.0]),
+        (401.0, [250.0, 150.0]),
+    ] {
+        fixed_frame(&mut h, &mut size, width);
+        assert_eq!(fixed_frame(&mut h, &mut size, width), panes, "{width}");
+        assert_eq!(size, sidebar, "{width}: a resize writes nothing back");
+    }
+    let mut first = SplitSize::Fixed {
+        half: SplitHalf::First,
+        px: 150.0,
+    };
+    fixed_frame(&mut h, &mut first, 601.0);
+    assert_eq!(
+        fixed_frame(&mut h, &mut first, 601.0),
+        [150.0, 450.0],
+        "the first half keeps it too"
+    );
+}
+
+/// A drag keeps a fixed split fixed: the seam of `Fixed { Second, 150 }` in a 401 px splitter sits
+/// at 250.5; dragged 100 px left to 150.5, the second pane reads 400 − 150 = 250 and the binding
+/// takes `Fixed { Second, 250 }` on the next record, committed on the release. A double-click sets
+/// it to half the 400 px span.
+#[test]
+fn a_drag_and_a_reset_keep_a_fixed_split_fixed() {
+    let mut h = Harness::mono(SURFACE);
+    let mut size = SplitSize::Fixed {
+        half: SplitHalf::Second,
+        px: 150.0,
+    };
+    fixed_frame(&mut h, &mut size, 401.0);
+    fixed_frame(&mut h, &mut size, 401.0);
+    h.press(Vec2::new(250.5, 50.0), PointerButton::Left);
+    h.drag_to(Vec2::new(150.5, 50.0));
+    assert_eq!(fixed_frame(&mut h, &mut size, 401.0), [150.0, 250.0]);
+    h.release(PointerButton::Left);
+    fixed_frame(&mut h, &mut size, 401.0);
+    assert_eq!(
+        size,
+        SplitSize::Fixed {
+            half: SplitHalf::Second,
+            px: 250.0,
+        }
+    );
+
+    h.hover(Vec2::new(10.0, 50.0));
+    fixed_frame(&mut h, &mut size, 401.0);
+    h.double_click(Vec2::new(150.5, 50.0));
+    fixed_frame(&mut h, &mut size, 401.0);
+    fixed_frame(&mut h, &mut size, 401.0);
+    assert_eq!(
+        size,
+        SplitSize::Fixed {
+            half: SplitHalf::Second,
+            px: 200.0,
+        }
+    );
 }

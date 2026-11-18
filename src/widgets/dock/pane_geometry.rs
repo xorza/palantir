@@ -7,6 +7,7 @@ use crate::widgets::dock::allowed_splits::AllowedSplits;
 use crate::widgets::dock::dock_operation::DockDrop;
 use crate::widgets::dock::split_side::SplitSide;
 use crate::widgets::dock::tab_group::TabGroupId;
+use crate::widgets::splitter::split_size::SplitSize;
 
 /// One pane's last-frame geometry for drop classification; a struct because `pane` and `strip` are both
 /// `Rect`, so transposed arguments would type-check. Panes hold still during a tab drag.
@@ -102,7 +103,11 @@ impl PaneGeometry {
             .min_by(|a, b| a.1.total_cmp(&b.1));
         match nearest {
             Some((side, _)) => DropTarget::Region {
-                drop: DockDrop::Split { group, side },
+                drop: DockDrop::Split {
+                    group,
+                    side,
+                    size: SplitSize::HALF,
+                },
                 wash: half_rect(content, side),
             },
             None => join,

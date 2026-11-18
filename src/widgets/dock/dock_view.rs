@@ -29,6 +29,7 @@ use crate::widgets::menu::Menu;
 use crate::widgets::panel::Panel;
 use crate::widgets::splitter::Splitter;
 use crate::widgets::splitter::split_half::SplitHalf;
+use crate::widgets::splitter::split_size::SplitSize;
 use crate::widgets::tabs::tab_carry::TabCarry;
 use crate::widgets::tabs::tab_item::{TabItem, TabItemBuf};
 use crate::widgets::tabs::tab_key::TabKey;
@@ -507,12 +508,17 @@ impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
             DockNode::Group(group) => self.group(ui, group),
             DockNode::Split(split) => {
                 let split = *split;
-                let mut live = split.ratio();
-                // The split clamp floors the drag too, so a release keeps what the drag drew.
+                let mut live = split.size();
+                // A ratio's clamp floors the drag too, so a release keeps what the drag drew; a
+                // fixed split's pixels have no clamp but the panes' floor.
+                let min_ratio = match live {
+                    SplitSize::Ratio(_) => RATIO_MIN,
+                    SplitSize::Fixed { .. } => 0.0,
+                };
                 let hit = Splitter::along(split.axis(), &mut live)
                     .id(path.splitter_id(self.dock))
                     .min_pane(self.min_pane)
-                    .min_ratio(RATIO_MIN)
+                    .min_ratio(min_ratio)
                     .show(ui, |ui, half| {
                         let child_path = match half {
                             SplitHalf::First => path.first(),
@@ -521,9 +527,9 @@ impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
                         self.node(ui, split.child(half), child_path);
                     });
                 if hit.changed {
-                    self.operations.push(DockOperation::SetRatio {
+                    self.operations.push(DockOperation::SetSize {
                         split: path,
-                        ratio: live,
+                        size: live,
                     });
                 }
             }
