@@ -3,6 +3,7 @@
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::input::interaction::response::Response;
+use crate::primitives::math::domain;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::theme::look::WidgetLook;
@@ -15,10 +16,11 @@ use crate::theme::palette::Palette;
 use crate::theme::selection::Selection;
 use crate::theme::text_style::TextStyle;
 use crate::theme::text_style_overrides::TextStyleOverrides;
+use glam::Vec2;
 
 /// Four-state row looks for [`crate::MenuItem`] (`active` = pressed), one pack for a row that is
-/// not the pick and one for the row that is, as the current choice of a combo list. `active`
-/// defaults to `hovered`: a click closes the menu.
+/// not the pick and one for the row that is, as the current choice of a combo list, and the
+/// check mark's gutter. `active` defaults to `hovered`: a click closes the menu.
 #[derive(
     Clone,
     Debug,
@@ -42,6 +44,20 @@ pub struct MenuItemTheme {
     /// Minimum gutter between the label and its shortcut hint (the row is `SpaceBetween`).
     #[serde(deserialize_with = "crate::primitives::file::length")]
     pub gap: f32,
+    /// Side of the square gutter every row keeps left of its label for the check mark a
+    /// [checked](crate::MenuItem::checked) or [picked](crate::MenuItem::selected) row shows.
+    #[serde(deserialize_with = "crate::primitives::file::length")]
+    pub check_size: f32,
+    /// Stroke width of the check mark, which paints in the row's text ink.
+    #[serde(deserialize_with = "crate::primitives::file::length")]
+    pub check_width: f32,
+    /// The check mark's three points as fractions of [`Self::check_size`], so the tick keeps its
+    /// proportions at any size.
+    #[serde(deserialize_with = "crate::primitives::file::offset_points3")]
+    pub check_points: [Vec2; 3],
+    /// Gap between the check gutter and the label.
+    #[serde(deserialize_with = "crate::primitives::file::length")]
+    pub check_gap: f32,
     /// Spacing and transition spec; `margin` is `ZERO` since [`MenuTheme::gap`](crate::MenuTheme::gap) spaces rows.
     pub defaults: SlotDefaults,
 }
@@ -49,7 +65,8 @@ pub struct MenuItemTheme {
 impl MenuItemTheme {
     /// Rows transparent at rest, one surface step brighter on hover, under the metrics'
     /// `transition` as a button is. The pick reads in the accent ink in every live state, as
-    /// the selection wash does, and keeps the row's fills.
+    /// the selection wash does, and keeps the row's fills. The check gutter is the body text's
+    /// size, the em a `✓` glyph of the label's would take.
     pub fn from_parts(p: &Palette, m: &Metrics) -> Self {
         // Hover is one surface step brighter (`element_mid`), as `ButtonTheme::subtle`; `active` keeps it
         // since a click closes the menu. The chip radius stays under the panel's so it nests in the corner.
@@ -81,6 +98,14 @@ impl MenuItemTheme {
             selected,
             shortcut: TextStyleOverrides::NONE.with_color(p.text_muted),
             gap: m.space.xl,
+            check_size: m.text.body,
+            check_width: m.stroke.line,
+            check_points: [
+                Vec2::new(2.5 / 14.0, 7.5 / 14.0),
+                Vec2::new(5.5 / 14.0, 10.5 / 14.0),
+                Vec2::new(11.5 / 14.0, 3.5 / 14.0),
+            ],
+            check_gap: m.space.sm,
             defaults: SlotDefaults {
                 padding: m.row_padding(),
                 margin: Spacing::ZERO,
@@ -88,6 +113,19 @@ impl MenuItemTheme {
                 press: None,
             },
         }
+    }
+
+    /// [`Self::check_size`] as the gutter takes it: a pixel at least, so a gutter too small to
+    /// see still holds a tick inside it.
+    pub(crate) const fn check_side(&self) -> f32 {
+        domain::length_at_least(self.check_size, 1.0)
+    }
+
+    /// [`Self::check_points`] scaled to the [gutter's side](Self::check_side), in gutter-local
+    /// pixels.
+    pub(crate) fn check_polyline(&self) -> [Vec2; 3] {
+        let side = self.check_side();
+        self.check_points.map(|p| p * side)
     }
 
     /// The ink a resting live row's shortcut hint paints over `ambient`, the dimmest a menu

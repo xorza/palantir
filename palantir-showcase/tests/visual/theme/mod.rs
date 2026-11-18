@@ -500,6 +500,14 @@ fn theme(scheme: &FixtureScheme) -> Theme {
                 },
                 shortcut: TextStyleOverrides::NONE.with_color(p.text_muted),
                 gap: 24.0,
+                check_size: 14.0,
+                check_width: 2.0,
+                check_points: [
+                    Vec2::new(2.5 / 14.0, 7.5 / 14.0),
+                    Vec2::new(5.5 / 14.0, 10.5 / 14.0),
+                    Vec2::new(11.5 / 14.0, 3.5 / 14.0),
+                ],
+                check_gap: 8.0,
                 defaults: SlotDefaults {
                     padding: Spacing::xy(12.0, 8.0),
                     margin: Spacing::all(0.0),

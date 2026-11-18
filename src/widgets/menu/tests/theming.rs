@@ -466,3 +466,123 @@ fn the_picked_row_wears_the_selected_look() {
     assert_eq!(label_color(&h, rows[0]), RgbaF32::hex(0x00ff00).to_f16());
     assert_eq!(label_color(&h, rows[1]), RgbaF32::hex(0xff00ff).to_f16());
 }
+
+/// Every row keeps the check gutter left of its label, so labels align whichever rows tick; a
+/// checked row ticks it in its label's ink at the theme's points scaled by `check_size`, a picked
+/// row ticks it in the picked ink, a plain one paints nothing there. `check_size` and `check_gap`
+/// each move the label by their own delta, and `check_width` is the tick's stroke.
+#[test]
+fn checked_and_picked_rows_tick_the_gutter_every_row_keeps() {
+    use crate::shape::geometry::stroke_geometry::StrokeGeometry;
+
+    let rows = [
+        WidgetId::from_hash("off"),
+        WidgetId::from_hash("on"),
+        WidgetId::from_hash("picked"),
+    ];
+    let menu = |ui: &mut Ui| {
+        Menu::for_id(trigger_id()).show(ui, |ui| {
+            for (id, (checked, picked)) in
+                rows.into_iter()
+                    .zip([(false, false), (true, false), (false, true)])
+            {
+                MenuItem::new("Row")
+                    .id(id)
+                    .checked(checked)
+                    .selected(picked)
+                    .show(ui);
+            }
+        });
+    };
+    let ink = RgbaF32::hex(0x00ff00);
+    let picked_ink = RgbaF32::hex(0xff00ff);
+    let mut h = Harness::mono(SURFACE);
+    let item = &mut h.ui_mut().theme_mut().menu.item;
+    item.unselected.normal.text = item.unselected.normal.text.with_color(ink);
+    item.selected.normal.text = item.selected.normal.text.with_color(picked_ink);
+    assert_eq!(item.check_size, 14.0, "the stock gutter is Body 14");
+    Menu::open_at(h.ui_mut(), trigger_id(), Vec2::new(20.0, 20.0));
+    h.frame(menu);
+    h.frame(menu);
+
+    let ticks = |h: &Harness, row: WidgetId, ink: RgbaF32| -> Vec<Vec<Vec2>> {
+        let width = h.ui().theme().menu.item.check_width;
+        let node = h
+            .ui()
+            .forest()
+            .node_for_widget_id(Layer::Menu, row.with("check"));
+        let store = h.ui().record_store();
+        h.ui()
+            .tree(Layer::Menu)
+            .shapes_of(node)
+            .map(|shape| match shape {
+                ShapeRecord::Stroke {
+                    geometry: StrokeGeometry::Polyline(polyline),
+                    stroke,
+                } => {
+                    assert_eq!(stroke.color, ink.to_f16(), "the tick takes the label's ink");
+                    assert_eq!(stroke.width, width);
+                    store.polyline_points[polyline.points.range()].to_vec()
+                }
+                other => panic!("the gutter holds the tick alone, not {other:?}"),
+            })
+            .collect()
+    };
+    // Label inset from its row: the row's left padding, the gutter, then the gap after it.
+    let label_inset = |h: &Harness, row: WidgetId| {
+        let label = h.rect(row.with("label")).expect("label arranged");
+        label.min.x - h.rect(row).expect("row arranged").min.x
+    };
+    let item = h.ui().theme().menu.item.clone();
+    let inset = item.defaults.padding.left() + 14.0 + item.check_gap;
+
+    assert_eq!(
+        ticks(&h, rows[0], ink),
+        Vec::<Vec<Vec2>>::new(),
+        "a plain row paints no tick"
+    );
+    // Stock points in 14ths of the side, at 14 px: (2.5, 7.5), (5.5, 10.5), (11.5, 3.5).
+    let stock_tick = vec![vec![
+        Vec2::new(2.5, 7.5),
+        Vec2::new(5.5, 10.5),
+        Vec2::new(11.5, 3.5),
+    ]];
+    assert_eq!(ticks(&h, rows[1], ink), stock_tick, "checked");
+    assert_eq!(ticks(&h, rows[2], picked_ink), stock_tick, "picked");
+    for row in rows {
+        assert_eq!(label_inset(&h, row), inset, "row {row:?} keeps the gutter");
+        let gutter = h.rect(row.with("check")).expect("gutter arranged");
+        assert_eq!(gutter.size, Size::new(14.0, 14.0));
+        let label = h.rect(row.with("label")).expect("label arranged");
+        assert_eq!(
+            gutter.center().y,
+            label.center().y,
+            "the tick centers on the label"
+        );
+    }
+
+    // Twice the side: twice each point, and the label moves by the 14 px the gutter grew.
+    h.ui_mut().theme_mut().menu.item.check_size = 28.0;
+    h.frame(menu);
+    assert_eq!(
+        ticks(&h, rows[1], ink)[0],
+        vec![
+            Vec2::new(5.0, 15.0),
+            Vec2::new(11.0, 21.0),
+            Vec2::new(23.0, 7.0)
+        ],
+    );
+    assert_eq!(label_inset(&h, rows[0]), inset + 14.0);
+
+    // The gap moves the label alone, the tick staying where it was.
+    h.ui_mut().theme_mut().menu.item.check_gap += 5.0;
+    h.frame(menu);
+    assert_eq!(label_inset(&h, rows[0]), inset + 14.0 + 5.0);
+    assert_eq!(ticks(&h, rows[1], ink)[0][0], Vec2::new(5.0, 15.0));
+
+    // `ticks` holds the stroke to the theme's width: 2 px stock, then 3 px.
+    assert_eq!(item.check_width, 2.0);
+    h.ui_mut().theme_mut().menu.item.check_width = 3.0;
+    h.frame(menu);
+    assert_eq!(ticks(&h, rows[1], ink).len(), 1);
+}

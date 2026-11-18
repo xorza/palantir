@@ -1662,6 +1662,7 @@ MenuItem
         pub fn new(label: impl Into<TextInput<'a>>) -> Self
         pub fn style(self, s: impl Into<Option<&'a MenuItemTheme>>) -> Self
         pub const fn selected(self, selected: bool) -> Self
+        pub const fn checked(self, checked: bool) -> Self
         pub const fn shortcut(self, shortcut: Shortcut) -> Self
         pub const fn shortcut_hint(self, shortcut: Shortcut) -> Self
         pub fn show(self, ui: &mut Ui) -> Response
@@ -1672,6 +1673,10 @@ MenuItemTheme
         pub selected: StatefulLook
         pub shortcut: TextStyleOverrides
         pub gap: f32
+        pub check_size: f32
+        pub check_width: f32
+        pub check_points: [Vec2; 3]
+        pub check_gap: f32
         pub defaults: SlotDefaults
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
 
