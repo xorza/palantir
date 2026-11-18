@@ -203,11 +203,13 @@ fn a_frame_publishes_after_the_next_frame_resolved_it() {
 /// On the frame path the queue's callbacks run inside a submit alone, so a slot is busy from its
 /// frame's write to the publish [`LAG_FRAMES`] frames later. Each frame here runs the callbacks of
 /// the work before it just ahead of its own submit, as that submit would, and every frame of a
-/// long run still finds a slot; the first publishes on frame [`LAG_FRAMES`]. Skipped on an adapter
-/// without timestamps.
+/// long run still finds a slot; the first publishes on frame [`LAG_FRAMES`]. On a device of its
+/// own, as another test's poll or submit on a shared one runs these callbacks too, and one that
+/// lands a frame's work-done before the next frame's resolve publishes a frame early. Skipped on
+/// an adapter without timestamps.
 #[test]
 fn every_frame_is_measured_when_callbacks_land_only_in_a_submit() {
-    let test_gpu = test_gpu::headless_test_gpu();
+    let test_gpu = test_gpu::isolated_headless_test_gpu();
     let features = (test_gpu.device.features() & DeviceRequirements::GPU_STATS_FEATURES)
         .difference(wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES);
     if !features.contains(wgpu::Features::TIMESTAMP_QUERY) {

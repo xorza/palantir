@@ -560,80 +560,162 @@ fn a_drop_shadow_quad_holds_its_edge_ramp_and_its_tail() {
 /// (inset; left corners' end at `−193 + 4 + 64.5 = −124.5`). Those get no
 /// table, so `fs_shadow_tables` draws them with two corners it cuts nothing at.
 fn cutout_grid(ui: &mut Ui) {
-    const BLURS: [f32; 4] = [0.5, 2.0, 6.0, 16.0];
-    const RADII: [f32; 4] = [0.0, 4.0, 12.0, 30.0];
-    const CELL: f32 = 200.0;
     fixtures::canvas(ui, |ui| {
-        for (row, inset) in [false, true].into_iter().enumerate() {
-            for (y, blur) in BLURS.into_iter().enumerate() {
-                for (x, radius) in RADII.into_iter().enumerate() {
-                    let at = Vec2::new(x as f32, (row * BLURS.len() + y) as f32) * CELL;
-                    ui.add_shape(
-                        Shape::rect()
-                            .at(Rect::new(at.x + 70.0, at.y + 70.0, 60.0, 60.0))
-                            .corners(radius),
-                        Shadow {
-                            color: INK,
-                            offset: Vec2::new(3.0, 5.0),
-                            blur,
-                            spread: if inset { 4.0 } else { 2.0 },
-                            kind: if inset {
-                                ShadowKind::Inset
-                            } else {
-                                ShadowKind::Drop
-                            },
-                        },
-                    );
-                }
-            }
-        }
-        for (inset, source, corners) in [
-            (
-                false,
-                Rect::new(600.0, 1680.0, 300.0, 60.0),
-                Corners::new(24.0, 10.0, 10.0, 24.0),
-            ),
-            (
-                true,
-                Rect::new(-200.0, 1640.0, 300.0, 160.0),
-                Corners::new(8.0, 30.0, 30.0, 8.0),
-            ),
-        ] {
+        for case in cutout_cases() {
             ui.add_shape(
-                Shape::rect().at(source).corners(corners),
-                Shadow {
-                    color: INK,
-                    offset: Vec2::new(3.0, 5.0),
-                    blur: 16.0,
-                    spread: if inset { 4.0 } else { 2.0 },
-                    kind: if inset {
-                        ShadowKind::Inset
-                    } else {
-                        ShadowKind::Drop
-                    },
-                },
+                Shape::rect().at(case.source).corners(case.corners),
+                case.shadow,
             );
         }
     });
 }
 
-/// Baked cutout tables match the shaded cutout to one 8-bit level per
-/// channel (tables err under 6e-4 coverage between texels and their 8-bit
-/// store half a step at them, the shaded form 0.0011). Some
-/// pixel does round apart, proving the tables are in use. Likewise for the
-/// two shadows past the viewport's edge.
+/// One shadow of [`cutout_grid`] and the rounded box it falls from.
+#[derive(Clone, Copy, Debug)]
+struct CutoutCase {
+    source: Rect,
+    corners: Corners,
+    shadow: Shadow,
+}
+
+/// The shadows [`cutout_grid`] draws.
+fn cutout_cases() -> Vec<CutoutCase> {
+    const BLURS: [f32; 4] = [0.5, 2.0, 6.0, 16.0];
+    const RADII: [f32; 4] = [0.0, 4.0, 12.0, 30.0];
+    const CELL: f32 = 200.0;
+    let shadow = |inset: bool, blur: f32| Shadow {
+        color: INK,
+        offset: Vec2::new(3.0, 5.0),
+        blur,
+        spread: if inset { 4.0 } else { 2.0 },
+        kind: if inset {
+            ShadowKind::Inset
+        } else {
+            ShadowKind::Drop
+        },
+    };
+    let mut cases = Vec::new();
+    for (row, inset) in [false, true].into_iter().enumerate() {
+        for (y, blur) in BLURS.into_iter().enumerate() {
+            for (x, radius) in RADII.into_iter().enumerate() {
+                let at = Vec2::new(x as f32, (row * BLURS.len() + y) as f32) * CELL;
+                cases.push(CutoutCase {
+                    source: Rect::new(at.x + 70.0, at.y + 70.0, 60.0, 60.0),
+                    corners: Corners::all(radius),
+                    shadow: shadow(inset, blur),
+                });
+            }
+        }
+    }
+    cases.push(CutoutCase {
+        source: Rect::new(600.0, 1680.0, 300.0, 60.0),
+        corners: Corners::new(24.0, 10.0, 10.0, 24.0),
+        shadow: shadow(false, 16.0),
+    });
+    cases.push(CutoutCase {
+        source: Rect::new(-200.0, 1640.0, 300.0, 160.0),
+        corners: Corners::new(8.0, 30.0, 30.0, 8.0),
+        shadow: shadow(true, 16.0),
+    });
+    cases
+}
+
+impl CutoutCase {
+    /// How many of the shadow's corner cutouts may reach `p`, at most. A cutout is nonzero within
+    /// `reach` of its corner's `ρ`×`ρ` square (`corner_cutout`), `reach` being
+    /// `ShadowGeometry::REACH_SIGMAS` (4) σ and the pixel box's half width (0.5). The spread moves
+    /// the box's edges out (drop) or in (inset) and its radii with them, so the box grown by
+    /// `|spread|` and each radius by `|spread|` hold every square either way.
+    fn corners_reaching(&self, p: Vec2) -> u32 {
+        let spread = self.shadow.spread.abs();
+        let reach = 4.0 * self.shadow.blur + 0.5;
+        let min = self.source.min + self.shadow.offset - Vec2::splat(spread);
+        let max = self.source.max() + self.shadow.offset + Vec2::splat(spread);
+        let [tl, tr, br, bl] = self.corners.to_array();
+        // Each corner and the way into the box from it, `(tl, tr, br, bl)`.
+        let corners = [
+            (tl, min, Vec2::new(1.0, 1.0)),
+            (tr, Vec2::new(max.x, min.y), Vec2::new(-1.0, 1.0)),
+            (br, max, Vec2::new(-1.0, -1.0)),
+            (bl, Vec2::new(min.x, max.y), Vec2::new(1.0, -1.0)),
+        ];
+        let reaching = corners.into_iter().filter(|&(radius, corner, inward)| {
+            if radius <= 0.0 {
+                return false;
+            }
+            let far = corner + inward * (radius + spread);
+            let lo = corner.min(far) - Vec2::splat(reach);
+            let hi = corner.max(far) + Vec2::splat(reach);
+            p.cmpge(lo).all() && p.cmple(hi).all()
+        });
+        reaching.count() as u32
+    }
+}
+
+/// What one corner's cutout may differ by between a table and the shaded form, in coverage: the
+/// table's bilinear error (6e-4, `CUTOUT_TEXELS_PER_SIGMA`), its bake's nodes (3e-4,
+/// `CUTOUT_BAKE_NODES`), its texels' 8-bit store (0.6 of a step, D3D's float-to-UNORM rule, as
+/// `cutout_tables`' tests hold it), and the shaded form's nodes (0.0011, `CUTOUT_NODES`).
+const CUTOUT_ERROR: f32 = 6e-4 + 3e-4 + 0.6 / 255.0 + 1.1e-3;
+
+/// The linear light an sRGB byte stood for before its store, which moves a value by up to 0.6
+/// of a step (D3D's float-to-UNORM rule).
+fn stored_span(byte: u8) -> [f32; 2] {
+    let decode = |level: f32| RgbaF32::srgb(level.clamp(0.0, 255.0) / 255.0, 0.0, 0.0).r;
+    [decode(f32::from(byte) - 0.6), decode(f32::from(byte) + 0.6)]
+}
+
+/// Baked cutout tables match the shaded cutout within the cutouts' error budget: each corner
+/// cutout reaching a pixel may move its coverage by [`CUTOUT_ERROR`], and the errors add where
+/// several reach it, as at σ = 16, whose 64.5 px reach puts every pixel of a 60 px box in all
+/// four corners' regions. Over white, [`INK`] turns a coverage error into `0.85` times it in
+/// linear light, which the two bytes must hold between the spans they stand for, so a pixel no
+/// cutout reaches holds to one level. Some pixel does round apart, proving the tables are in use.
+/// Likewise for the two shadows past the viewport's edge.
 #[test]
 fn baked_cutout_tables_match_the_shaded_cutout() {
+    let cases = cutout_cases();
+    let reaching = |p: Vec2| -> u32 { cases.iter().map(|case| case.corners_reaching(p)).sum() };
+    // Inset, σ = 16, radius 30: its box grown by the spread spans (669, 1471)–(733, 1535), each
+    // corner's square 34 px and its reach 64.5, so the far corner's region starts at
+    // `733 − 34 − 64.5 = 634.5`, left of the pixel at 684.5.
+    assert_eq!(reaching(Vec2::new(684.5, 1478.5)), 4);
+    // Drop, σ = 0.5, radius 4: its box spans (271, 73)–(335, 137), each square 6 px and its
+    // reach 2.5, so the top-left region spans x and y up to 279.5 and 81.5.
+    assert_eq!(reaching(Vec2::new(279.5, 81.5)), 1);
+    assert_eq!(reaching(Vec2::new(279.6, 81.5)), 0);
+    assert_eq!(reaching(Vec2::new(300.5, 105.5)), 0);
+    // A square box has no cutout anywhere.
+    assert_eq!(reaching(Vec2::new(73.5, 76.5)), 0);
+
     let size = UVec2::new(800, 1840);
     let mut baked = VisualRig::new(size);
     let mut shaded = VisualRig::new(size);
     shaded.host.disable_cutout_tables();
     let [baked, shaded] = [&mut baked, &mut shaded]
         .map(|harness| harness.size(size).clear(CLEAR).frame(cutout_grid).image);
-    let (most, differing) = channel_deltas(&baked, &shaded).fold((0, 0), |(most, differing), d| {
-        (most.max(d), differing + usize::from(d != 0))
-    });
-    assert!(most <= 1, "a channel moved {most} levels");
+    let mut differing = 0;
+    let mut beyond = Vec::new();
+    for (idx, (got, want)) in baked.as_srgba8().iter().zip(shaded.as_srgba8()).enumerate() {
+        differing += usize::from(got != want);
+        // Two bytes a level apart stand for spans that touch; only a wider move asks the budget.
+        if got.abs_diff(*want) <= 1 {
+            continue;
+        }
+        let texel = idx / 4;
+        let at = UVec2::new(texel as u32 % size.x, texel as u32 / size.x);
+        let [got_lo, got_hi] = stored_span(*got);
+        let [want_lo, want_hi] = stored_span(*want);
+        let gap = (got_lo - want_hi).max(want_lo - got_hi);
+        let corners = reaching(at.as_vec2() + Vec2::splat(0.5));
+        if idx % 4 == 3 || gap > 0.85 * CUTOUT_ERROR * corners as f32 {
+            beyond.push(format!(
+                "{at} channel {}: {got} against {want}, {corners} corners",
+                idx % 4
+            ));
+        }
+    }
+    assert!(beyond.is_empty(), "past the budget: {beyond:?}");
     assert!(differing > 0, "no pixel read a table");
 }
 
