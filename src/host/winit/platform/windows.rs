@@ -206,10 +206,10 @@ impl PowerSaverWatch {
             .name("palantir-power-saver".to_owned())
             .spawn(move || {
                 if let Err(error) = follow_settings(&held, &on_change) {
-                    tracing::debug!(%error, "the saver mode is not followed");
+                    log::debug!("the saver mode is not followed: {error}");
                 }
             })
-            .inspect_err(|error| tracing::warn!(%error, "no thread follows the saver mode"))
+            .inspect_err(|error| log::warn!("no thread follows the saver mode: {error}"))
             .ok();
         Self { window, thread }
     }
@@ -248,7 +248,7 @@ fn follow_settings(
                 DEVICE_NOTIFY_WINDOW_HANDLE,
             )
         }
-        .inspect_err(|error| tracing::debug!(?setting, %error, "a saver setting is not followed"))
+        .inspect_err(|error| log::debug!("the saver setting {setting:?} is not followed: {error}"))
         .ok()
     });
     let mut statuses = SaverStatuses::default();
@@ -258,7 +258,7 @@ fn follow_settings(
         match unsafe { GetMessageW(&raw mut message, None, 0, 0) }.0 {
             0 => break,
             -1 => {
-                tracing::debug!(error = %Error::from_thread(), "the saver window's loop failed");
+                log::debug!("the saver window's loop failed: {}", Error::from_thread());
                 break;
             }
             _ => {}
@@ -417,7 +417,7 @@ impl MemoryPressureWatch {
         let (low, stop) = match handles {
             Ok(handles) => handles,
             Err(error) => {
-                tracing::debug!(%error, "memory pressure is not followed");
+                log::debug!("memory pressure is not followed: {error}");
                 return Self {
                     stop: None,
                     thread: None,
@@ -448,7 +448,7 @@ impl MemoryPressureWatch {
                     }
                 }
             })
-            .inspect_err(|error| tracing::warn!(%error, "no thread follows memory pressure"))
+            .inspect_err(|error| log::warn!("no thread follows memory pressure: {error}"))
             .ok();
         Self {
             stop: Some(stop),

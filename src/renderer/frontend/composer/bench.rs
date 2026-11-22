@@ -59,7 +59,6 @@ use crate::text::shaped_ref::ShapedTextRef;
 use criterion::{Criterion, Throughput};
 use glam::{UVec2, Vec2};
 use std::hint::black_box;
-use strum::{IntoStaticStr, VariantArray};
 
 /// A typical frame's draw count and a heavy one; per-draw cost is flat, so two
 /// points show the slope.
@@ -112,9 +111,8 @@ impl ComposeBench {
     }
 }
 
-/// `IntoStaticStr` supplies the criterion id (the snake_case variant name), which can't drift from the variant.
-#[derive(Clone, Copy, Debug, IntoStaticStr, VariantArray)]
-#[strum(serialize_all = "snake_case")]
+/// The higher-kind lane's arms; [`Self::name`] is the criterion id.
+#[derive(Clone, Copy, Debug)]
 enum HigherKindCase {
     SameTierMesh,
     SameTierImage,
@@ -127,6 +125,26 @@ enum HigherKindCase {
 }
 
 impl HigherKindCase {
+    const ALL: [Self; 6] = [
+        Self::SameTierMesh,
+        Self::SameTierImage,
+        Self::MixedOverlap,
+        Self::MixedNonOverlap,
+        Self::TextBetweenMeshClear,
+        Self::TextBetweenMeshOver,
+    ];
+
+    const fn name(self) -> &'static str {
+        match self {
+            Self::SameTierMesh => "same_tier_mesh",
+            Self::SameTierImage => "same_tier_image",
+            Self::MixedOverlap => "mixed_overlap",
+            Self::MixedNonOverlap => "mixed_non_overlap",
+            Self::TextBetweenMeshClear => "text_between_mesh_clear",
+            Self::TextBetweenMeshOver => "text_between_mesh_over",
+        }
+    }
+
     /// Columns of the label grid the two text arms lay out.
     const TEXT_COLS: u32 = 16;
 
@@ -232,8 +250,7 @@ impl HigherKindCase {
 }
 
 /// The quad lane's shapes: what it costs to order, clip, prune and list a run of quads.
-#[derive(Clone, Copy, Debug, IntoStaticStr, VariantArray)]
-#[strum(serialize_all = "snake_case")]
+#[derive(Clone, Copy, Debug)]
 enum QuadCase {
     /// A grid of quads apart: one group, nothing to close.
     Plain,
@@ -250,6 +267,26 @@ enum QuadCase {
 }
 
 impl QuadCase {
+    const ALL: [Self; 6] = [
+        Self::Plain,
+        Self::Clipped,
+        Self::RoundedClip,
+        Self::Pruned,
+        Self::Backdrops,
+        Self::Polyline,
+    ];
+
+    const fn name(self) -> &'static str {
+        match self {
+            Self::Plain => "plain",
+            Self::Clipped => "clipped",
+            Self::RoundedClip => "rounded_clip",
+            Self::Pruned => "pruned",
+            Self::Backdrops => "backdrops",
+            Self::Polyline => "polyline",
+        }
+    }
+
     /// Columns of the grid the quads lay out in, a cell each.
     const COLS: u32 = 64;
     const CELL: f32 = 16.0;
@@ -341,8 +378,7 @@ impl QuadCase {
 
 /// The clip scene's arms (`rounded_clip::bench`) over recorded paint: per cell a quad, a text run
 /// and an image under the cell's clips.
-#[derive(Clone, Copy, Debug, IntoStaticStr, VariantArray)]
-#[strum(serialize_all = "snake_case")]
+#[derive(Clone, Copy, Debug)]
 enum ClipCase {
     /// A rect clip a cell, the control.
     Rect,
@@ -355,6 +391,17 @@ enum ClipCase {
 }
 
 impl ClipCase {
+    const ALL: [Self; 4] = [Self::Rect, Self::Inside, Self::Edge, Self::Nested];
+
+    const fn name(self) -> &'static str {
+        match self {
+            Self::Rect => "rect",
+            Self::Inside => "inside",
+            Self::Edge => "edge",
+            Self::Nested => "nested",
+        }
+    }
+
     const COLS: u32 = 64;
     const CELL: f32 = 32.0;
     const RADIUS: f32 = 6.0;
@@ -542,8 +589,8 @@ pub(crate) fn atomic(c: &mut Criterion) {
             },
         );
     }
-    for &case in HigherKindCase::VARIANTS {
-        let label: &'static str = case.into();
+    for case in HigherKindCase::ALL {
+        let label = case.name();
         for draw_count in DRAW_COUNTS {
             group.throughput(Throughput::Elements(draw_count as u64));
             let id = Backend::Cpu.case(&format!("higher_kind_overlap/{label}/{draw_count}"));
@@ -560,8 +607,8 @@ pub(crate) fn atomic(c: &mut Criterion) {
             });
         }
     }
-    for &case in QuadCase::VARIANTS {
-        let label: &'static str = case.into();
+    for case in QuadCase::ALL {
+        let label = case.name();
         for count in DRAW_COUNTS {
             group.throughput(Throughput::Elements(count as u64));
             group.bench_function(Backend::Cpu.case(&format!("quads/{label}/{count}")), |b| {
@@ -582,8 +629,8 @@ pub(crate) fn atomic(c: &mut Criterion) {
             });
         }
     }
-    for &case in ClipCase::VARIANTS {
-        let label: &'static str = case.into();
+    for case in ClipCase::ALL {
+        let label = case.name();
         for count in DRAW_COUNTS {
             group.throughput(Throughput::Elements(count as u64));
             group.bench_function(Backend::Cpu.case(&format!("clips/{label}/{count}")), |b| {

@@ -15,6 +15,7 @@ use zbus::proxy::{Builder, CacheProperties};
 use zbus::zvariant::OwnedValue;
 use zbus::{Connection, Proxy};
 
+use crate::common::executor;
 use crate::host::winit::input::wheel_steps::WheelSteps;
 use crate::host::winit::platform::stop::Stop;
 use crate::primitives::reduction::Reduction;
@@ -135,12 +136,12 @@ impl PortalThread {
                 let connection = Connection::session().await?;
                 follow(&connection).await
             };
-            if let Some(Err(error)) = pollster::block_on(held.until(work)) {
-                tracing::debug!(%error, "a portal is not followed");
+            if let Some(Err(error)) = executor::block_on(held.until(work)) {
+                log::debug!("a portal is not followed: {error}");
             }
         });
         if let Err(error) = spawned {
-            tracing::warn!(%error, name, "no thread follows a portal");
+            log::warn!("no thread follows the portal {name}: {error}");
         }
         Self { stop }
     }
@@ -205,7 +206,7 @@ async fn follow_power_profile(
         };
         match power {
             Ok(power) => on_change(power),
-            Err(error) => tracing::debug!(%error, "a power-saver change is not read"),
+            Err(error) => log::debug!("a power-saver change is not read: {error}"),
         }
     }
     Ok(())

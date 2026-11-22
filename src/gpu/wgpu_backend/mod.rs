@@ -486,15 +486,15 @@ impl WgpuBackend {
         } else {
             Clipping::Off
         };
-        tracing::trace!(
-            quads = buffer.quads.len(),
-            texts = buffer.texts.len(),
-            runs = buffer.runs.len(),
-            viewport = ?buffer.display.physical,
-            scissors = ?repaint_scissors,
-            ?route,
-            rounded_clips = buffer.rounded_clips.len(),
-            "wgpu_backend.submit"
+        log::trace!(
+            "wgpu_backend.submit quads={} texts={} runs={} viewport={:?} scissors={:?} \
+             route={route:?} rounded_clips={}",
+            buffer.quads.len(),
+            buffer.texts.len(),
+            buffer.runs.len(),
+            buffer.display.physical,
+            repaint_scissors,
+            buffer.rounded_clips.len(),
         );
 
         let format = target.format();
@@ -1057,7 +1057,7 @@ impl WgpuBackend {
             RepaintScissors::Full => self.render_runs(&mut ctx, schedule(None)),
             RepaintScissors::Partial(rects) => {
                 for r in rects {
-                    tracing::trace!(scissor = ?r, "wgpu_backend.submit.pass.partial_rect");
+                    log::trace!("wgpu_backend.submit.pass.partial_rect scissor={r:?}");
                     self.render_runs(&mut ctx, schedule(Some(r)));
                 }
             }

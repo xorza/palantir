@@ -3,9 +3,9 @@
 use std::cell::{Cell, Ref, RefCell};
 use std::fmt;
 
-use fixedbitset::FixedBitSet;
 use rustc_hash::FxHashMap;
 
+use crate::common::bit_set::BitSet;
 use crate::effect::effect_module::EffectModule;
 use crate::effect::effect_source::{EffectSource, ReducedEffect};
 use crate::effect::error::EffectError;
@@ -46,7 +46,7 @@ struct Effects {
     loaded: Vec<LoadedEffect>,
     /// The effects a load or a theme wanted built before a frame draws them, at each id: what a
     /// new device builds again.
-    wanted: FixedBitSet,
+    wanted: BitSet,
     /// What changed since a store last read: each id once, so each list holds at most the
     /// effects loaded.
     changed: EffectChanges,

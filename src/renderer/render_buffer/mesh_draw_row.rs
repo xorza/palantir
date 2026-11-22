@@ -24,7 +24,6 @@ pub(crate) struct MeshDrawRow {
 /// Per-mesh GPU state in a `step_mode: Instance` buffer:
 /// `physical = x_axis · pos.x + y_axis · pos.y + translate`, a linear map that fits, turns and
 /// scales at once, and `out_color = vertex.color * tint`.
-#[padding_struct::padding_struct]
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct MeshInstance {

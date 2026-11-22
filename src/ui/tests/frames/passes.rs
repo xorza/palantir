@@ -2,9 +2,9 @@
 
 use crate::theme::color_scheme::ColorScheme;
 
-use crate::common::sync::MutexExt;
 use crate::common::time::MAX_ANIMATION_DT;
 use crate::host::harness::Harness;
+use crate::internals::log_capture::captured;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::input_event::InputEvent;
@@ -24,10 +24,7 @@ use crate::widgets::{block::Block, button::Button, panel::Panel};
 use crate::window::window_token::WindowToken;
 use glam::{UVec2, Vec2};
 use std::cell::{Cell, RefCell};
-use std::io;
-use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tracing::subscriber;
 
 /// A pass opens with no settling pass asked, so an ask counts only in the pass that made it: the
 /// warmup's is withdrawn, pass A's adds pass B, and a first frame runs at most those three.
@@ -287,21 +284,6 @@ fn a_click_reads_in_the_first_pass_and_the_second_has_no_edge() {
     assert_eq!(report.processing, FrameProcessing::SingleLayout);
 }
 
-/// What a test's subscriber writes.
-#[derive(Clone, Debug, Default)]
-struct LoopLog(Arc<Mutex<Vec<u8>>>);
-
-impl io::Write for LoopLog {
-    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
-        self.0.lock_unpoisoned().extend_from_slice(bytes);
-        Ok(bytes.len())
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        Ok(())
-    }
-}
-
 /// A relayout asked in the last pass takes the next frame, so the ask is not lost. A frame that
 /// asks only in pass A owes none. Asking in the last pass of [`MAX_CARRIED_RELAYOUTS`] frames in a
 /// row is still allowed, and a frame that asks nothing starts the count again. One frame past it
@@ -341,20 +323,17 @@ fn a_relayout_in_the_last_pass_takes_the_next_frame_and_a_loop_is_an_error() {
     for frame in 1..=MAX_CARRIED_RELAYOUTS {
         assert!(h.step(asking).repaint_requested, "again, frame {frame}");
     }
-    let log = LoopLog::default();
-    let subscriber = tracing_subscriber::fmt()
-        .with_writer({
-            let log = log.clone();
-            move || log.clone()
-        })
-        .finish();
-    subscriber::with_default(subscriber, || {
+    let ((), logged) = captured(|| {
         assert!(!h.step(asking).repaint_requested, "the loop stops");
         assert!(!h.step(asking).repaint_requested, "and stays stopped");
     });
-    let logged = String::from_utf8(log.0.lock_unpoisoned().clone()).unwrap();
-    assert_eq!(logged.matches("ERROR").count(), 1, "one error: {logged}");
-    assert!(logged.contains("a relayout loop"), "{logged}");
+    let errors: Vec<&str> = logged
+        .iter()
+        .filter(|record| record.level == log::Level::Error)
+        .map(|record| record.message.as_str())
+        .collect();
+    assert_eq!(errors.len(), 1, "one error: {logged:?}");
+    assert!(errors[0].starts_with("a relayout loop"), "{logged:?}");
     assert!(!h.step(|_| {}).repaint_requested);
     assert!(h.step(asking).repaint_requested, "the count starts again");
 }

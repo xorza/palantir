@@ -82,7 +82,7 @@ impl FamilyKeys {
         } else {
             if !table.full {
                 table.full = true;
-                tracing::error!(
+                log::error!(
                     "a shaper keyed {} font families, all a key names; {family:?} and every new \
                      family after it shape as the bundled sans",
                     table.families.len(),

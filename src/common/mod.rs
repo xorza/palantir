@@ -4,11 +4,13 @@
 //! `display`, and every validation kind, the font length's included, lives in
 //! `primitives::math::domain`, so no rule reaches up into `text`.
 
+pub(crate) mod bit_set;
 pub(crate) mod block_arena;
 pub(crate) mod clock_sweep;
 pub(crate) mod content_hash;
 pub(crate) mod counters;
 pub(crate) mod error_chain;
+pub(crate) mod executor;
 pub(crate) mod expiry_wheel;
 pub(crate) mod expiry_window;
 #[macro_use]

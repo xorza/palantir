@@ -1,5 +1,7 @@
 //! What [`Tree::compute_rollups`](crate::scene::tree::Tree) read on the previous pass, so an identical pass keeps them.
 
+#[cfg(debug_assertions)]
+use crate::common::bit_set::BitSet;
 use crate::common::content_hash::ContentHash;
 use crate::primitives::layout::grid_def::GridDef;
 use crate::primitives::layout::track::Track;
@@ -11,8 +13,6 @@ use crate::scene::tree::resolved_scrollbars_def::ResolvedScrollbarsDef;
 #[cfg(debug_assertions)]
 use crate::scene::tree::subtree_rollups::SubtreeRollups;
 use crate::shape::paint::chrome_row::ChromeRow;
-#[cfg(debug_assertions)]
-use fixedbitset::FixedBitSet;
 use std::mem;
 
 /// The last pass's recorded columns, swapped out of the tree at `Tree::pre_record` (not cleared) so the buffers
@@ -128,7 +128,7 @@ fn all_alike<T>(now: &[T], last: &[T], alike: impl Fn(&T, &T) -> bool) -> bool {
 #[derive(Debug, Default)]
 pub(super) struct RollupCheck {
     pub(super) rollups: SubtreeRollups,
-    pub(super) container_text: FixedBitSet,
+    pub(super) container_text: BitSet,
 }
 
 #[cfg(test)]

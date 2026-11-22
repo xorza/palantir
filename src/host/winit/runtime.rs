@@ -280,7 +280,7 @@ impl<T: App + 'static> WinitRuntime<T> {
         }
         let failure = match self.attach_new_device() {
             Ok(()) if !self.core.device.gpu().is_lost() => {
-                tracing::info!("graphics device lost: a new one is attached");
+                log::info!("graphics device lost: a new one is attached");
                 self.recovery.succeeded();
                 self.follow_all();
                 return Ok(());
@@ -291,7 +291,7 @@ impl<T: App + 'static> WinitRuntime<T> {
         if self.recovery.exhausted(now) {
             return Err(failure);
         }
-        tracing::warn!(%failure, "no new graphics device holds yet");
+        log::warn!("no new graphics device holds yet: {failure}");
         self.recovery.failed(now);
         Ok(())
     }
@@ -346,7 +346,7 @@ impl<T: App + 'static> WinitRuntime<T> {
                 WindowCommand::Close(token) => self.close_window(token),
                 WindowCommand::Open { token, config } => {
                     if let Err(error) = self.spawn_window(event_loop, token, &config) {
-                        tracing::error!(?token, %error, "open_window failed");
+                        log::error!("open_window {token:?} failed: {error}");
                     }
                 }
             }
@@ -387,7 +387,7 @@ impl<T: App + 'static> WinitRuntime<T> {
         config: &WindowConfig,
     ) -> Result<(), WinitHostError> {
         if self.windows.slot_of_token(token).is_some() {
-            tracing::warn!(?token, "open_window: token already in use, ignoring");
+            log::warn!("open_window: token {token:?} already in use, ignoring");
             return Ok(());
         }
         let decorations = self.core.cpu.resources.settings().resolve().scheme;
@@ -439,6 +439,9 @@ impl<T: App + 'static> WinitRuntime<T> {
 /// again after a pause.
 fn renew_surface(surfaces: &SurfaceManager, win: &mut Window) {
     if let Err(error) = surfaces.renew(&win.window, &mut win.surface) {
-        tracing::error!(token = ?win.frames.token(), %error, "window surface not made again");
+        log::error!(
+            "window {:?}'s surface not made again: {error}",
+            win.frames.token(),
+        );
     }
 }

@@ -222,9 +222,9 @@ impl FrameRuntime {
         }
         self.relayouts_carried = self.relayouts_carried.saturating_add(1);
         if self.relayouts_carried == MAX_CARRIED_RELAYOUTS + 1 {
-            tracing::error!(
-                frames = self.relayouts_carried,
-                "a relayout loop: Ui::request_relayout in the last pass of each of these frames"
+            log::error!(
+                "a relayout loop: Ui::request_relayout in the last pass of each of {} frames",
+                self.relayouts_carried,
             );
         }
         self.relayouts_carried <= MAX_CARRIED_RELAYOUTS
@@ -305,11 +305,10 @@ impl FrameRuntime {
         let force_full =
             first_frame || display_changed || input.damage_base == DamageBase::Discarded;
         if force_full {
-            tracing::debug!(
-                display_changed,
-                damage_base = ?input.damage_base,
-                first_frame,
-                "damage.invalidate_prev"
+            log::debug!(
+                "damage.invalidate_prev display_changed={display_changed} damage_base={:?} \
+                 first_frame={first_frame}",
+                input.damage_base,
             );
         }
 

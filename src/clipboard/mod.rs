@@ -318,7 +318,7 @@ impl ClipboardState {
             };
             if !self.refusal_logged {
                 self.refusal_logged = true;
-                tracing::warn!("the system clipboard refused a copy; it stays in this process");
+                log::warn!("the system clipboard refused a copy; it stays in this process");
             }
         }
         self.mirror_cur = true;

@@ -258,14 +258,14 @@ impl<K: Copy + Eq + Hash + Debug> RasterPass<K> {
             return Filed::Found(Found::Nothing);
         };
         let Some(metadata) = PackedMetadata::new(image.size, image.bearing) else {
-            tracing::warn!(
-                ?key,
-                width = image.size.x,
-                height = image.size.y,
-                left = image.bearing.x,
-                top = image.bearing.y,
-                label = self.stem,
-                "skipping raster outside packed atlas metadata range",
+            log::warn!(
+                "{}: skipping raster {key:?} of {}x{} at ({}, {}), outside packed atlas \
+                 metadata range",
+                self.stem,
+                image.size.x,
+                image.size.y,
+                image.bearing.x,
+                image.bearing.y,
             );
             self.atlas.insert_unplaced(key, frame);
             return Filed::Found(Found::Nothing);
@@ -285,13 +285,11 @@ impl<K: Copy + Eq + Hash + Debug> RasterPass<K> {
             }
             Err(AtlasError::Oversized { size, edge }) => {
                 self.atlas.counters.oversized.bump();
-                tracing::warn!(
-                    ?key,
-                    width = size.x,
-                    height = size.y,
-                    edge,
-                    label = self.stem,
-                    "skipping raster past the atlas page edge",
+                log::warn!(
+                    "{}: skipping raster {key:?} of {}x{}, past the atlas page edge of {edge}",
+                    self.stem,
+                    size.x,
+                    size.y,
                 );
                 self.atlas.insert_unplaced(key, frame);
                 Filed::Found(Found::Nothing)
@@ -310,13 +308,14 @@ impl<K: Copy + Eq + Hash + Debug> RasterPass<K> {
         if !self.starvation.note() {
             return;
         }
-        tracing::warn!(
-            label = self.stem,
-            mask_bytes = pool.list(AtlasFormat::R8).bytes(),
-            color_bytes = pool.list(AtlasFormat::Rgba8).bytes(),
-            live_rasters = self.atlas.cached_len(),
-            "atlas is full and cannot grow further; affected batches drop \
-             rasters and re-encode every frame until pressure clears",
+        log::warn!(
+            "{}: atlas is full and cannot grow further ({} mask bytes, {} color bytes, {} live \
+             rasters); affected batches drop rasters and re-encode every frame until pressure \
+             clears",
+            self.stem,
+            pool.list(AtlasFormat::R8).bytes(),
+            pool.list(AtlasFormat::Rgba8).bytes(),
+            self.atlas.cached_len(),
         );
     }
 

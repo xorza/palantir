@@ -63,7 +63,7 @@ impl SystemScale {
     #[cfg(feature = "winit")]
     pub(crate) fn from_platform(reported: f64) -> Self {
         Self::new(reported as f32).unwrap_or_else(|| {
-            tracing::warn!(reported, "display.system_scale_rejected");
+            log::warn!("display.system_scale_rejected reported={reported}");
             Self::ONE
         })
     }

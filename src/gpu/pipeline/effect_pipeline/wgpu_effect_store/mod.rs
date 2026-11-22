@@ -1,7 +1,6 @@
 //! The pipelines of the effects a host loaded, built where a use becomes known.
 
-use fixedbitset::FixedBitSet;
-
+use crate::common::bit_set::BitSet;
 use crate::effect::effect_module::EffectModule;
 use crate::effect::effect_registry::{ChangesSince, EffectChange, EffectRegistry};
 use crate::gpu::device::gpu::Gpu;
@@ -52,7 +51,7 @@ pub(crate) struct WgpuEffectStore {
     /// dropped at a reload.
     shaders: Vec<Option<wgpu::ShaderModule>>,
     /// The forms some use wanted, at each key's [`EffectKey::slot`]: built for every format.
-    wanted: FixedBitSet,
+    wanted: BitSet,
     /// The wanted forms the next [`Self::prepare`] builds: a new want, a want reloaded with a new
     /// module, or every want when the clipped half is first asked for.
     pending: Vec<EffectKey>,
@@ -80,7 +79,7 @@ impl WgpuEffectStore {
             formats: Vec::new(),
             kinds: Vec::new(),
             shaders: Vec::new(),
-            wanted: FixedBitSet::new(),
+            wanted: BitSet::new(),
             pending: Vec::new(),
             clipped: false,
             since: ChangesSince::Start,

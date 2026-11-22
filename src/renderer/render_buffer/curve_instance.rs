@@ -24,7 +24,6 @@ pub(crate) const SEGMENTS_PER_INSTANCE: u32 = 16;
 ///   get exact negations so strips partition their overlap with no double blend.
 /// - `CurveKind::JOIN_*`: `p0` = joint, `p1 = -d_a`, `p2 = d_b` (unit
 ///   directions); one billboard quad filling the wedge.
-#[padding_struct::padding_struct]
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct CurveInstance {

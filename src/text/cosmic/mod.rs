@@ -329,9 +329,9 @@ impl CosmicMeasure {
         let family = self.families.family(key);
         let present = family_present(self.font_system.db(), family.name());
         if !present {
-            tracing::warn!(
-                family = family.name(),
-                "no face answers to this font family; it resolves to {}",
+            log::warn!(
+                "no face answers to the font family {}; it resolves to {}",
+                family.name(),
                 FontFamily::SANS.name(),
             );
         }

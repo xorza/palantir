@@ -22,13 +22,13 @@ impl DeviceHealth {
         let health = Self::default();
         let lost = Arc::clone(&health.0);
         device.set_device_lost_callback(move |reason, message| {
-            tracing::error!(?reason, %message, "graphics device lost");
+            log::error!("graphics device lost ({reason:?}): {message}");
             lost.store(true, Ordering::Relaxed);
         });
         let lost = Arc::clone(&health.0);
         device.on_uncaptured_error(Arc::new(move |error: wgpu::Error| {
             assert!(lost.load(Ordering::Relaxed), "wgpu error: {error}");
-            tracing::debug!(%error, "dropped: the device is lost");
+            log::debug!("dropped, as the device is lost: {error}");
         }));
         health
     }

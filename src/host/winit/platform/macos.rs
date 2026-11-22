@@ -79,7 +79,7 @@ impl PowerSaverWatch {
                 }
                 joining.report();
             })
-            .inspect_err(|error| tracing::warn!(%error, "no thread follows Low Power Mode"))
+            .inspect_err(|error| log::warn!("no thread follows Low Power Mode: {error}"))
             .ok();
         Self { observer, joining }
     }

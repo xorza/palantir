@@ -1,10 +1,10 @@
 //! The one place Palantir asks a driver for a device.
 
+use crate::common::executor;
 use crate::gpu::device::device_requirements::DeviceRequirements;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::power_preference::PowerPreference;
 use crate::gpu::error::GpuRequestError;
-use pollster::FutureExt;
 
 /// An adapter and the device opened on it, meeting [`DeviceRequirements`].
 ///
@@ -108,9 +108,7 @@ impl GpuRequest<'_> {
         &self,
         instance: &wgpu::Instance,
     ) -> Result<Vec<(wgpu::Adapter, DeviceRequirements)>, GpuRequestError> {
-        let mut adapters = instance
-            .enumerate_adapters(wgpu::Backends::all())
-            .block_on();
+        let mut adapters = executor::block_on(instance.enumerate_adapters(wgpu::Backends::all()));
         if let Some(surface) = self.compatible_surface {
             adapters.retain(|adapter| adapter.is_surface_supported(surface));
         }
@@ -118,16 +116,14 @@ impl GpuRequest<'_> {
         adapters.sort_by_key(|adapter| self.power_preference.rank(adapter.get_info().device_type));
         if adapters.is_empty() {
             // wgpu's error names what it searched; an adapter it finds after all is a candidate.
-            adapters.push(
-                instance
-                    .request_adapter(&wgpu::RequestAdapterOptions {
-                        power_preference: self.power_preference.into(),
-                        compatible_surface: self.compatible_surface,
-                        force_fallback_adapter: false,
-                        apply_limit_buckets: false,
-                    })
-                    .block_on()?,
-            );
+            adapters.push(executor::block_on(instance.request_adapter(
+                &wgpu::RequestAdapterOptions {
+                    power_preference: self.power_preference.into(),
+                    compatible_surface: self.compatible_surface,
+                    force_fallback_adapter: false,
+                    apply_limit_buckets: false,
+                },
+            ))?);
         }
         let mut refusal = None;
         let candidates: Vec<_> = adapters
@@ -178,8 +174,8 @@ impl GpuRequest<'_> {
         adapter: wgpu::Adapter,
         requirements: DeviceRequirements,
     ) -> Result<RequestedGpu, GpuRequestError> {
-        let (device, queue) = adapter
-            .request_device(&wgpu::DeviceDescriptor {
+        let (device, queue) =
+            executor::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
                 label: Some(self.label),
                 required_features: requirements.features,
                 required_limits: requirements.limits,
@@ -188,21 +184,20 @@ impl GpuRequest<'_> {
                 // frame: the shape `Performance` is for.
                 memory_hints: wgpu::MemoryHints::Performance,
                 trace: wgpu::Trace::Off,
-            })
-            .block_on()?;
+            }))?;
 
         // Which GPU won the `power_preference` sort decides a session's frame
         // times (a hybrid laptop's wrong pick means cross-adapter copies), and
         // nothing else reports it.
         let info = adapter.get_info();
-        tracing::info!(
-            name = %info.name,
-            backend = ?info.backend,
-            device_type = ?info.device_type,
-            driver = %info.driver,
-            driver_info = %info.driver_info,
-            requested = ?self.power_preference,
-            "selected gpu adapter"
+        log::info!(
+            "selected gpu adapter {} ({:?}, {:?}, driver {} {}) for {:?}",
+            info.name,
+            info.backend,
+            info.device_type,
+            info.driver,
+            info.driver_info,
+            self.power_preference,
         );
         Ok(RequestedGpu {
             adapter,

@@ -20,6 +20,7 @@ pub(crate) mod subtree_end;
 pub(crate) mod subtree_rollups;
 pub(crate) mod tree_fingerprint;
 
+use crate::common::bit_set::BitSet;
 use crate::common::content_hash::ContentHash;
 use crate::common::hash::Hasher;
 use crate::common::non_max::NonMaxU32;
@@ -59,7 +60,6 @@ use crate::shape::paint::lowered_border::LoweredBorder;
 use crate::shape::record::ShapeRecord;
 use crate::shape::record_store::RecordStore;
 use crate::shape::shapes::Shapes;
-use fixedbitset::FixedBitSet;
 use std::hash::{Hash, Hasher as _};
 
 /// The lane the cascade's static hash gives a node's [`Visibility`], above its flag word.
@@ -99,7 +99,7 @@ pub(crate) struct Tree {
     pub(crate) fingerprint: TreeFingerprint,
     /// Non-leaf owners of direct text shapes that paint. Layout shapes their text
     /// after arrange. Visibility is folded in at build time.
-    pub(crate) container_text: FixedBitSet,
+    pub(crate) container_text: BitSet,
     last_inputs: RollupInputs,
     #[cfg(debug_assertions)]
     rollup_check: RollupCheck,

@@ -345,7 +345,6 @@ impl PaintSink for ComposeSession<'_> {
                 y_axis,
                 tint: p.tint,
                 clip,
-                ..bytemuck::Zeroable::zeroed()
             },
         });
     }
@@ -502,7 +501,6 @@ impl PaintSink for ComposeSession<'_> {
                 scale,
                 params: p.paint.params.start,
                 backdrop_idx,
-                ..bytemuck::Zeroable::zeroed()
             },
         });
     }
@@ -629,7 +627,6 @@ impl ComposeSession<'_> {
                 flags: p.paint.flags,
                 decal_min: Vec2::new(from(lo.x), from(lo.y)),
                 decal_max: Vec2::new(to(hi.x, size.x), to(hi.y, size.y)),
-                ..bytemuck::Zeroable::zeroed()
             },
         });
     }

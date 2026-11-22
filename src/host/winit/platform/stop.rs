@@ -57,6 +57,7 @@ mod tests {
     use std::task::Poll;
     use std::thread;
 
+    use crate::common::executor;
     use crate::host::winit::platform::stop::Stop;
 
     /// Work that finishes gives its output; a stop raised first never polls the work; a stop
@@ -65,7 +66,7 @@ mod tests {
     #[test]
     fn a_raised_stop_ends_and_drops_the_work() {
         assert_eq!(
-            pollster::block_on(Stop::default().until(async { 7 })),
+            executor::block_on(Stop::default().until(async { 7 })),
             Some(7)
         );
 
@@ -76,7 +77,7 @@ mod tests {
             polled = true;
             Poll::<()>::Pending
         });
-        assert_eq!(pollster::block_on(early.until(work)), None);
+        assert_eq!(executor::block_on(early.until(work)), None);
         assert!(!polled, "a stop raised first polls nothing");
 
         let stop = Arc::new(Stop::default());
@@ -97,7 +98,7 @@ mod tests {
                 drop(held);
             }
         };
-        assert_eq!(pollster::block_on(stop.until(work)), None);
+        assert_eq!(executor::block_on(stop.until(work)), None);
         raiser.join().unwrap();
         assert_eq!(Arc::strong_count(&held), 1, "the work is dropped");
     }

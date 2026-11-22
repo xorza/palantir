@@ -168,17 +168,18 @@ impl Forest {
         }
     }
 
-    /// Outlined from [`Self::open_node`]: the `tracing::error!` expansion would enlarge its stack frame.
+    /// Outlined from [`Self::open_node`]: the `log::error!` expansion would enlarge its stack frame.
     #[cold]
     #[inline(never)]
     fn report_explicit_collision(&mut self, collision: CollisionRecord) {
         let CollisionRecord { first, second } = collision;
-        tracing::error!(
-            first_plane = ?first.plane,
-            first_node = ?first.node,
-            second_plane = ?second.plane,
-            second_node = ?second.node,
-            "explicit WidgetId collision — disambiguated; per-widget state will not survive between the colliding call sites",
+        log::error!(
+            "explicit WidgetId collision between {:?} node {:?} and {:?} node {:?} — \
+             disambiguated; per-widget state will not survive between the colliding call sites",
+            first.plane,
+            first.node,
+            second.plane,
+            second.node,
         );
         self.collisions.push(collision);
     }

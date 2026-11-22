@@ -410,12 +410,11 @@ impl Backdrops {
                         // No frame finds room: the backdrop shows its clear until it captures
                         // again for a change.
                         Err(AtlasError::Oversized { size, edge }) => {
-                            tracing::warn!(
-                                width = size.x,
-                                height = size.y,
-                                edge,
-                                "a backdrop's result passes the device's texture edge; it shows \
-                                 its clear",
+                            log::warn!(
+                                "a backdrop's result of {}x{} passes the device's texture edge \
+                                 of {edge}; it shows its clear",
+                                size.x,
+                                size.y,
                             );
                             self.file(at, Kept::Clear(held_clear));
                             self.push_slot(row, Shown::Clear(held_clear));

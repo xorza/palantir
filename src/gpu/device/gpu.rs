@@ -217,7 +217,7 @@ impl Gpu {
                 return GpuWait::DeviceLost;
             }
             if Instant::now() >= deadline {
-                tracing::warn!("a map callback did not land in {timeout:?}");
+                log::warn!("a map callback did not land in {timeout:?}");
                 return GpuWait::TimedOut;
             }
             thread::yield_now();
@@ -248,7 +248,7 @@ impl Gpu {
             return GpuWait::DeviceLost;
         }
         if let Err(error) = waited {
-            tracing::warn!(%error, "the device did not finish its work in {timeout:?}");
+            log::warn!("the device did not finish its work in {timeout:?}: {error}");
             return GpuWait::TimedOut;
         }
         GpuWait::Done

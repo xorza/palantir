@@ -429,7 +429,7 @@ impl Window {
         let decision = self.schedule.after(outcome, &recorded.report());
         if decision.rebuild {
             if let AcquireOutcome::Suboptimal(_) = outcome {
-                tracing::warn!("surface acquire: suboptimal");
+                log::warn!("surface acquire: suboptimal");
             }
             self.surface.mark_stale();
         }
@@ -457,23 +457,23 @@ impl Window {
                 AcquireOutcome::Suboptimal(self.surface.size())
             }
             Acquired::Outdated => {
-                tracing::warn!("surface acquire: outdated");
+                log::warn!("surface acquire: outdated");
                 AcquireOutcome::Outdated
             }
             Acquired::Lost => {
-                tracing::warn!("surface acquire: lost");
+                log::warn!("surface acquire: lost");
                 AcquireOutcome::Lost
             }
             Acquired::Timeout => {
-                tracing::warn!("surface acquire: timeout");
+                log::warn!("surface acquire: timeout");
                 AcquireOutcome::Timeout
             }
             Acquired::Validation => {
-                tracing::warn!("surface acquire: validation");
+                log::warn!("surface acquire: validation");
                 AcquireOutcome::Validation
             }
             Acquired::Unconfigured => {
-                tracing::warn!("surface acquire: no swapchain built");
+                log::warn!("surface acquire: no swapchain built");
                 AcquireOutcome::Validation
             }
             Acquired::Occluded => AcquireOutcome::Occluded,

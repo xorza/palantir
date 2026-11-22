@@ -43,25 +43,21 @@ arboard = { workspace = true, optional = true }
 bytemuck = { workspace = true }
 cosmic-text = { workspace = true }
 criterion = { workspace = true, optional = true }
-fixedbitset = { workspace = true }
 foldhash = { workspace = true }
 glam = { workspace = true }
 half = { workspace = true }
 hashbrown = { workspace = true }
 image = { workspace = true, optional = true }
 libm = { workspace = true }
+log = { workspace = true }
 mundy = { workspace = true, optional = true }
 naga = { workspace = true }
-padding-struct = { workspace = true }
 palantir-derive = { workspace = true }
-pollster = { workspace = true }
 resvg = { workspace = true }
 rustc-hash = { workspace = true }
 serde = { workspace = true }
-strum = { workspace = true, optional = true }
 swash = { workspace = true }
 tinyvec = { workspace = true }
-tracing = { workspace = true }
 tracy-client = { workspace = true, optional = true }
 unicode-linebreak = { workspace = true }
 unicode-segmentation = { workspace = true }
@@ -72,7 +68,6 @@ winit = { workspace = true, optional = true }
 palantir = { workspace = true, features = ["internals"] }
 ron = { workspace = true }
 static_assertions = { workspace = true }
-tracing-subscriber = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
 windows = { workspace = true, optional = true }
@@ -88,7 +83,7 @@ zbus = { workspace = true, optional = true }
 [features]
 default = ["winit"]
 gpu-debug-markers = []
-internals = ["dep:criterion", "dep:strum"]
+internals = ["dep:criterion"]
 # Reading and writing an `Image` as a PNG, and `golden`, which compares images through it.
 png = ["dep:image"]
 profile-with-tracy = ["dep:tracy-client"]
@@ -144,19 +139,17 @@ members = ["palantir-derive", "palantir-showcase"]
 backtrace = { version = "0.3", default-features = false, features = ["std"] }
 bytemuck = { version = "1.25", default-features = false, features = ["derive"] }
 criterion = { version = "0.8", default-features = false }
-fixedbitset = { version = "0.5", default-features = false }
 foldhash = { version = "0.2", default-features = false, features = ["std"] }
 half = { version = "2.7", default-features = false, features = ["std", "bytemuck"] }
 hashbrown = { version = "0.17", default-features = false }
 image = { version = "0.25", default-features = false, features = ["png"] }
 libm = { version = "0.2", default-features = false, features = ["arch"] }
+log = { version = "0.4", default-features = false }
 naga = { version = "30.0", default-features = false, features = ["wgsl-in"] }
 objc2 = { version = "0.6.5", default-features = false, features = ["std"] }
-padding-struct = { version = "0.2", default-features = false }
 palantir = { path = ".", default-features = false }
 palantir-derive = { path = "palantir-derive", version = "=1.0.0", default-features = false }
 palantir-showcase = { path = "palantir-showcase" }
-pollster = { version = "1.0", default-features = false }
 proc-macro2 = { version = "1.0", default-features = false, features = ["proc-macro"] }
 quote = { version = "1.0", default-features = false, features = ["proc-macro"] }
 resvg = { version = "0.50", default-features = false }
@@ -164,10 +157,8 @@ ron = { version = "0.12", default-features = false }
 rustc-hash = { version = "2.1", default-features = false, features = ["std"] }
 serde = { version = "1.0", default-features = false, features = ["alloc", "derive"] }
 static_assertions = { version = "1.1", default-features = false }
-strum = { version = "0.28", default-features = false, features = ["derive"] }
 swash = { version = "0.2", default-features = false, features = ["std", "scale", "render"] }
 tinyvec = { version = "1.13", default-features = false, features = ["serde"] }
-tracing = { version = "0.1", default-features = false, features = ["std"] }
 tracy-client = { version = "0.19", default-features = false, features = ["enable"] }
 unicode-linebreak = { version = "0.1", default-features = false }
 unicode-segmentation = { version = "1.13", default-features = false }
