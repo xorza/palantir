@@ -550,12 +550,7 @@ impl Ui {
     }
 
     /// Ask the host for another frame after this one. Cleared at the top of every `frame`.
-    pub fn request_repaint(&mut self) {
-        log::trace!(
-            target: "palantir.repaint",
-            "request_repaint render_frame={}",
-            self.frame_runtime.render_frame_idx,
-        );
+    pub const fn request_repaint(&mut self) {
         self.frame_runtime.request_repaint();
     }
 
@@ -611,11 +606,6 @@ impl Ui {
 
     /// Schedule a one-shot wake at `now + after`. Duplicate deadlines collapse.
     pub fn request_repaint_after(&mut self, after: Duration) {
-        log::trace!(
-            target: "palantir.repaint",
-            "request_repaint_after after={after:?} render_frame={}",
-            self.frame_runtime.render_frame_idx,
-        );
         let deadline = self.frame_runtime.stamp().time.saturating_add(after);
         self.frame_runtime.schedule_wake(
             deadline,

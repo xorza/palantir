@@ -428,9 +428,6 @@ impl Window {
         };
         let decision = self.schedule.after(outcome, &recorded.report());
         if decision.rebuild {
-            if let AcquireOutcome::Suboptimal(_) = outcome {
-                log::warn!("surface acquire: suboptimal");
-            }
             self.surface.mark_stale();
         }
         match decision.wake {
@@ -456,10 +453,7 @@ impl Window {
                 self.submit_and_present(device, frame, built);
                 AcquireOutcome::Suboptimal(self.surface.size())
             }
-            Acquired::Outdated => {
-                log::warn!("surface acquire: outdated");
-                AcquireOutcome::Outdated
-            }
+            Acquired::Outdated => AcquireOutcome::Outdated,
             Acquired::Lost => {
                 log::warn!("surface acquire: lost");
                 AcquireOutcome::Lost

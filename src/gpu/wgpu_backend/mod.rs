@@ -486,17 +486,6 @@ impl WgpuBackend {
         } else {
             Clipping::Off
         };
-        log::trace!(
-            "wgpu_backend.submit quads={} texts={} runs={} viewport={:?} scissors={:?} \
-             route={route:?} rounded_clips={}",
-            buffer.quads.len(),
-            buffer.texts.len(),
-            buffer.runs.len(),
-            buffer.display.physical,
-            repaint_scissors,
-            buffer.rounded_clips.len(),
-        );
-
         let format = target.format();
         // One encoder: the belt's copies must land before the passes that read them.
         let mut encoder = self
@@ -1057,7 +1046,6 @@ impl WgpuBackend {
             RepaintScissors::Full => self.render_runs(&mut ctx, schedule(None)),
             RepaintScissors::Partial(rects) => {
                 for r in rects {
-                    log::trace!("wgpu_backend.submit.pass.partial_rect scissor={r:?}");
                     self.render_runs(&mut ctx, schedule(Some(r)));
                 }
             }

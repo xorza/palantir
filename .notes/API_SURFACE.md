@@ -3246,7 +3246,7 @@ Ui
         pub const fn cursor(&self) -> CursorIcon
         pub const fn set_vsync(&mut self, vsync: Vsync)
         pub const fn vsync(&self) -> Vsync
-        pub fn request_repaint(&mut self)
+        pub const fn request_repaint(&mut self)
         pub fn request_screenshot(&mut self, region: Option<Rect>) -> Result<ScreenshotId, ScreenshotRefusal>
         pub fn screenshot_taken(&self, id: ScreenshotId) -> Option<&Screenshot>
         pub fn request_repaint_after(&mut self, after: Duration)

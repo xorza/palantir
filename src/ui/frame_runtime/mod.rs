@@ -304,14 +304,6 @@ impl FrameRuntime {
             .is_some_and(|prev| !prev.display.raster_eq(&input.display));
         let force_full =
             first_frame || display_changed || input.damage_base == DamageBase::Discarded;
-        if force_full {
-            log::debug!(
-                "damage.invalidate_prev display_changed={display_changed} damage_base={:?} \
-                 first_frame={first_frame}",
-                input.damage_base,
-            );
-        }
-
         // The policy names a cut on `InputSignal`'s ordered scale; the gate is
         // the comparison.
         let input_forces_record = input.input_signal >= input.input_policy.record_threshold();

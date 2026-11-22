@@ -524,7 +524,6 @@ impl PlaneCtx<'_, '_> {
             } => {
                 let shaped = shaped.expect("a text record always draws its run from the cursor");
                 let Some(key) = shaped.key else {
-                    log::trace!("encoder: dropping text that shaped no buffer: {shape:?}");
                     return;
                 };
                 // `local_origin: None`: the bbox is placed in the owner's padded inner rect via
