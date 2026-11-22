@@ -156,12 +156,14 @@ resvg = { version = "0.50", default-features = false }
 ron = { version = "0.12", default-features = false }
 rustc-hash = { version = "2.1", default-features = false, features = ["std"] }
 serde = { version = "1.0", default-features = false, features = ["alloc", "derive"] }
+# The version cosmic-text 0.19 reads fonts with, so one skrifa, read-fonts and font-types build.
 skrifa = { version = "0.40", default-features = false, features = ["std"] }
 static_assertions = { version = "1.1", default-features = false }
 tinyvec = { version = "1.13", default-features = false, features = ["serde"] }
 tracy-client = { version = "0.19", default-features = false, features = ["enable"] }
 unicode-linebreak = { version = "0.1", default-features = false }
 unicode-segmentation = { version = "1.13", default-features = false }
+# The version mundy 0.2 follows the portal with, so one D-Bus stack builds.
 zbus = { version = "5.19", default-features = false, features = ["async-io", "blocking-api"] }
 
 [workspace.dependencies.arboard]
