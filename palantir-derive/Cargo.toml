@@ -1,19 +1,16 @@
 [package]
 name = "palantir-derive"
 version = "1.0.0"
-edition = "2024"
 authors = ["xxorza <xxorza@gmail.com>"]
-description = "Derive macros for palantir's traits"
-repository = "https://github.com/xorza/palantir"
-documentation = "https://docs.rs/palantir-derive"
-readme = "README.md"
-keywords = ["palantir", "gui", "derive", "macro"]
 categories = ["gui", "rust-patterns"]
-license = "MIT OR Apache-2.0"
+documentation = "https://docs.rs/palantir-derive"
+edition = "2024"
 exclude = ["AGENTS.md", "CLAUDE.md"]
-
-[lints]
-workspace = true
+keywords = ["palantir", "gui", "derive", "macro"]
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/xorza/palantir"
+description = "Derive macros for palantir's traits"
 
 [lib]
 proc-macro = true
@@ -22,3 +19,6 @@ proc-macro = true
 proc-macro2 = { workspace = true }
 quote = { workspace = true }
 syn = { workspace = true }
+
+[lints]
+workspace = true

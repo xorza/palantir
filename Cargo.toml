@@ -1,16 +1,10 @@
 [package]
 name = "palantir"
 version = "1.0.0"
-edition = "2024"
 authors = ["xxorza <xxorza@gmail.com>"]
-description = "An immediate-mode GUI library with WPF-style two-pass layout and a wgpu renderer"
-repository = "https://github.com/xorza/palantir"
-documentation = "https://docs.rs/palantir"
-readme = "README.md"
-keywords = ["gui", "ui", "immediate-mode", "wgpu", "graphics"]
 categories = ["gui", "graphics", "rendering::engine"]
-# The bundled fonts in `assets/fonts` are OFL.
-license = "(MIT OR Apache-2.0) AND OFL-1.1"
+documentation = "https://docs.rs/palantir"
+edition = "2024"
 exclude = [
     ".cargo/",
     ".github/",
@@ -24,187 +18,62 @@ exclude = [
     "assets/logo/",
     "docs/",
 ]
+keywords = ["gui", "ui", "immediate-mode", "wgpu", "graphics"]
+# The bundled fonts in `assets/fonts` are OFL.
+license = "(MIT OR Apache-2.0) AND OFL-1.1"
+readme = "README.md"
+repository = "https://github.com/xorza/palantir"
+description = "An immediate-mode GUI library with WPF-style two-pass layout and a wgpu renderer"
 
-
-# The public features beside the default: `golden`'s module is public API. `internals` is the
-# tests', `gpu-debug-markers` changes no surface, and `profile-with-tracy` opens a socket.
+# The public features beside the default: `png`'s items and its `golden` module are public API.
+# `internals` is the tests', `gpu-debug-markers` changes no surface, and `profile-with-tracy` opens
+# a socket.
 [package.metadata.docs.rs]
-features = ["golden"]
+features = ["png"]
 
-# The driver serves `cargo drive surface` alone, which writes `.notes/API_SURFACE.md` for CI to
-# compare with the tree; the gate is plain cargo (AGENTS.md "Verification").
-[workspace.metadata.drive]
-version = "0.2.7"
+[lib]
+bench = false
 
-[workspace]
-members = ["palantir-derive", "palantir-showcase"]
-
-[workspace.dependencies]
-palantir = { path = ".", default-features = false }
-palantir-derive = { path = "palantir-derive", version = "=1.0.0", default-features = false }
-palantir-showcase = { path = "palantir-showcase" }
-arboard = { version = "3.7", default-features = false, features = [
-    "image-data",
-    "wayland-data-control",
-] }
-backtrace = { version = "0.3", default-features = false, features = ["std"] }
-bytemuck = { version = "1.25", default-features = false, features = ["derive"] }
-cosmic-text = { version = "0.19", default-features = false, features = [
-    "std",
-    "swash",
-    "fontconfig",
-] }
-criterion = { version = "0.8", default-features = false }
-fixedbitset = { version = "0.5", default-features = false }
-libm = { version = "0.2", default-features = false, features = ["arch"] }
-foldhash = { version = "0.2", default-features = false, features = ["std"] }
-glam = { version = "0.34", default-features = false, features = [
-    "std",
-    "i16",
-    "i32",
-    "u16",
-    "u32",
-    "bytemuck",
-    "serde",
-] }
-half = { version = "2.7", default-features = false, features = [
-    "std",
-    "bytemuck",
-] }
-hashbrown = { version = "0.17", default-features = false }
-image = { version = "0.25", default-features = false, features = ["png"] }
-mundy = { version = "0.2", default-features = false, features = [
-    "async-io",
-    "callback",
-    "color-scheme",
-    "double-click-interval",
-    "reduced-motion",
-    "reduced-transparency",
-] }
-naga = { version = "30.0", default-features = false, features = ["wgsl-in"] }
-objc2 = { version = "0.6.5", default-features = false, features = ["std"] }
-objc2-foundation = { version = "0.3.2", default-features = false, features = [
-    "std",
-    "NSNotification",
-    "NSObject",
-    "NSProcessInfo",
-    "NSString",
-] }
-padding-struct = { version = "0.2", default-features = false }
-pollster = { version = "1.0", default-features = false }
-proc-macro2 = { version = "1.0", default-features = false, features = [
-    "proc-macro",
-] }
-quote = { version = "1.0", default-features = false, features = ["proc-macro"] }
-resvg = { version = "0.50", default-features = false }
-ron = { version = "0.12", default-features = false }
-rustc-hash = { version = "2.1", default-features = false, features = ["std"] }
-serde = { version = "1.0", default-features = false, features = [
-    "alloc",
-    "derive",
-] }
-# soa-rs 1.0.1 with `push` inlined and its growth cold, as `Vec::push` is: out of line, the quad and
-# image pushes built each row on the stack and copied it in (composer quads 4 to 8 % and images
-# 25 % on an Apple GPU laptop). Back to the crates.io release once
-# https://github.com/tim-harding/soa-rs/pull/51 ships.
-soa-rs = { git = "https://github.com/xorza/soa-rs", rev = "14ee818f237d79713002d93cf6405a59ea841639", default-features = false }
-static_assertions = { version = "1.1", default-features = false }
-strum = { version = "0.28", default-features = false, features = ["derive"] }
-swash = { version = "0.2", default-features = false, features = [
-    "std",
-    "scale",
-    "render",
-] }
-syn = { version = "3.0", default-features = false, features = [
-    "derive",
-    "parsing",
-    "printing",
-    "proc-macro",
-] }
-tinyvec = { version = "1.13", default-features = false, features = ["serde"] }
-tracing = { version = "0.1", default-features = false, features = ["std"] }
-tracing-subscriber = { version = "0.3", default-features = false, features = [
-    "std",
-    "fmt",
-    "env-filter",
-    "tracing-log",
-] }
-tracy-client = { version = "0.19", default-features = false, features = [
-    "enable",
-] }
-unicode-linebreak = { version = "0.1", default-features = false }
-unicode-segmentation = { version = "1.13", default-features = false }
-wgpu = { version = "30.0", default-features = false, features = [
-    "std",
-    "parking_lot",
-    "wgsl",
-    "vulkan",
-    "metal",
-    "gles",
-] }
-windows = { version = "0.62", default-features = false, features = [
-    "Win32_Foundation",
-    "Win32_Graphics_Gdi",
-    "Win32_Security",
-    "Win32_System_LibraryLoader",
-    "Win32_System_Memory",
-    "Win32_System_Power",
-    "Win32_System_SystemServices",
-    "Win32_System_Threading",
-    "Win32_UI_WindowsAndMessaging",
-] }
-winit = { version = "0.30", default-features = false, features = [
-    "rwh_06",
-    "x11",
-    "wayland",
-    "wayland-dlopen",
-    "wayland-csd-adwaita",
-] }
-zbus = { version = "5.19", default-features = false, features = [
-    "async-io",
-    "blocking-api",
-] }
-
-[lints]
-workspace = true
-
+[[example]]
+name = "counter"
+required-features = ["winit"]
 
 [dependencies]
-palantir-derive = { workspace = true }
 arboard = { workspace = true, optional = true }
 bytemuck = { workspace = true }
 cosmic-text = { workspace = true }
+criterion = { workspace = true, optional = true }
 fixedbitset = { workspace = true }
 foldhash = { workspace = true }
 glam = { workspace = true }
-libm = { workspace = true }
-naga = { workspace = true }
-resvg = { workspace = true }
-image = { workspace = true, optional = true }
 half = { workspace = true }
 hashbrown = { workspace = true }
-rustc-hash = { workspace = true }
-tracing = { workspace = true }
-pollster = { workspace = true }
-wgpu = { workspace = true }
-winit = { workspace = true, optional = true }
+image = { workspace = true, optional = true }
+libm = { workspace = true }
+mundy = { workspace = true, optional = true }
+naga = { workspace = true }
 padding-struct = { workspace = true }
+palantir-derive = { workspace = true }
+pollster = { workspace = true }
+resvg = { workspace = true }
+rustc-hash = { workspace = true }
+serde = { workspace = true }
 soa-rs = { workspace = true }
 strum = { workspace = true, optional = true }
 swash = { workspace = true }
-serde = { workspace = true }
 tinyvec = { workspace = true }
+tracing = { workspace = true }
+tracy-client = { workspace = true, optional = true }
 unicode-linebreak = { workspace = true }
 unicode-segmentation = { workspace = true }
-criterion = { workspace = true, optional = true }
-tracy-client = { workspace = true, optional = true }
-mundy = { workspace = true, optional = true }
+wgpu = { workspace = true }
+winit = { workspace = true, optional = true }
 
 [dev-dependencies]
 palantir = { workspace = true, features = ["internals"] }
-tracing-subscriber = { workspace = true }
-static_assertions = { workspace = true }
 ron = { workspace = true }
+static_assertions = { workspace = true }
+tracing-subscriber = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
 windows = { workspace = true, optional = true }
@@ -219,11 +88,11 @@ zbus = { workspace = true, optional = true }
 
 [features]
 default = ["winit"]
-internals = ["dep:criterion", "dep:strum"]
-# Reading and writing an `Image` as a PNG, which the goldens and a screenshot runner need.
-png = ["dep:image"]
-golden = ["png"]
 gpu-debug-markers = []
+internals = ["dep:criterion", "dep:strum"]
+# Reading and writing an `Image` as a PNG, and `golden`, which compares images through it.
+png = ["dep:image"]
+profile-with-tracy = ["dep:tracy-client"]
 system-clipboard = ["dep:arboard"]
 winit = [
     "dep:winit",
@@ -234,28 +103,29 @@ winit = [
     "dep:objc2-foundation",
     "dep:zbus",
 ]
-profile-with-tracy = ["dep:tracy-client"]
 
+[lints]
+workspace = true
 
 # 1, not the usual 0: the owner's choice, kept on the 2026-10 review.
 [profile.dev]
-opt-level = 1
 debug = "line-tables-only"
 lto = "off"
+opt-level = 1
 
 [profile.dev.package."*"]
-opt-level = 3
 debug = false
+opt-level = 3
 
 # `objc2` debug assertions allocate on every Metal message send.
 [profile.dev.package.objc2]
 debug-assertions = false
 
 [profile.release]
-lto = "thin"
 codegen-units = 1
-panic = "abort"
 debug = "full"
+lto = "thin"
+panic = "abort"
 split-debuginfo = "off"
 
 [profile.bench]
@@ -263,25 +133,130 @@ debug = "line-tables-only"
 strip = "none"
 
 [profile.release-dev]
-inherits = "release"
 codegen-units = 16
-incremental = true
 debug = "line-tables-only"
+incremental = true
+inherits = "release"
 
-[[example]]
-name = "counter"
-required-features = ["winit"]
+[workspace]
+members = ["palantir-derive", "palantir-showcase"]
 
-[lib]
-bench = false
+[workspace.dependencies]
+backtrace = { version = "0.3", default-features = false, features = ["std"] }
+bytemuck = { version = "1.25", default-features = false, features = ["derive"] }
+criterion = { version = "0.8", default-features = false }
+fixedbitset = { version = "0.5", default-features = false }
+foldhash = { version = "0.2", default-features = false, features = ["std"] }
+half = { version = "2.7", default-features = false, features = ["std", "bytemuck"] }
+hashbrown = { version = "0.17", default-features = false }
+image = { version = "0.25", default-features = false, features = ["png"] }
+libm = { version = "0.2", default-features = false, features = ["arch"] }
+naga = { version = "30.0", default-features = false, features = ["wgsl-in"] }
+objc2 = { version = "0.6.5", default-features = false, features = ["std"] }
+padding-struct = { version = "0.2", default-features = false }
+palantir = { path = ".", default-features = false }
+palantir-derive = { path = "palantir-derive", version = "=1.0.0", default-features = false }
+palantir-showcase = { path = "palantir-showcase" }
+pollster = { version = "1.0", default-features = false }
+proc-macro2 = { version = "1.0", default-features = false, features = ["proc-macro"] }
+quote = { version = "1.0", default-features = false, features = ["proc-macro"] }
+resvg = { version = "0.50", default-features = false }
+ron = { version = "0.12", default-features = false }
+rustc-hash = { version = "2.1", default-features = false, features = ["std"] }
+serde = { version = "1.0", default-features = false, features = ["alloc", "derive"] }
+static_assertions = { version = "1.1", default-features = false }
+strum = { version = "0.28", default-features = false, features = ["derive"] }
+swash = { version = "0.2", default-features = false, features = ["std", "scale", "render"] }
+tinyvec = { version = "1.13", default-features = false, features = ["serde"] }
+tracing = { version = "0.1", default-features = false, features = ["std"] }
+tracy-client = { version = "0.19", default-features = false, features = ["enable"] }
+unicode-linebreak = { version = "0.1", default-features = false }
+unicode-segmentation = { version = "1.13", default-features = false }
+zbus = { version = "5.19", default-features = false, features = ["async-io", "blocking-api"] }
+
+[workspace.dependencies.arboard]
+default-features = false
+features = ["image-data", "wayland-data-control"]
+version = "3.7"
+
+[workspace.dependencies.cosmic-text]
+default-features = false
+features = ["std", "swash", "fontconfig"]
+version = "0.19"
+
+[workspace.dependencies.glam]
+default-features = false
+features = ["std", "i16", "i32", "u16", "u32", "bytemuck", "serde"]
+version = "0.34"
+
+[workspace.dependencies.mundy]
+default-features = false
+features = [
+    "async-io",
+    "callback",
+    "color-scheme",
+    "double-click-interval",
+    "reduced-motion",
+    "reduced-transparency",
+]
+version = "0.2"
+
+[workspace.dependencies.objc2-foundation]
+default-features = false
+features = ["std", "NSNotification", "NSObject", "NSProcessInfo", "NSString"]
+version = "0.3.2"
+
+# soa-rs 1.0.1 with `push` inlined and its growth cold, as `Vec::push` is: out of line, the quad and
+# image pushes built each row on the stack and copied it in (composer quads 4 to 8 % and images
+# 25 % on an Apple GPU laptop). Back to the crates.io release once
+# https://github.com/tim-harding/soa-rs/pull/51 ships.
+[workspace.dependencies.soa-rs]
+default-features = false
+git = "https://github.com/xorza/soa-rs"
+rev = "14ee818f237d79713002d93cf6405a59ea841639"
+
+[workspace.dependencies.syn]
+default-features = false
+features = ["derive", "parsing", "printing", "proc-macro"]
+version = "3.0"
+
+[workspace.dependencies.tracing-subscriber]
+default-features = false
+features = ["std", "fmt", "env-filter", "tracing-log"]
+version = "0.3"
+
+[workspace.dependencies.wgpu]
+default-features = false
+features = ["std", "parking_lot", "wgsl", "vulkan", "metal", "gles"]
+version = "30.0"
+
+[workspace.dependencies.windows]
+default-features = false
+features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_Security",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Memory",
+    "Win32_System_Power",
+    "Win32_System_SystemServices",
+    "Win32_System_Threading",
+    "Win32_UI_WindowsAndMessaging",
+]
+version = "0.62"
+
+[workspace.dependencies.winit]
+default-features = false
+features = ["rwh_06", "x11", "wayland", "wayland-dlopen", "wayland-csd-adwaita"]
+version = "0.30"
 
 [workspace.lints.rust]
-rust_2018_idioms = { level = "warn", priority = -1 }
 meta_variable_misuse = "warn"
 missing_debug_implementations = "warn"
 non_ascii_idents = "warn"
 redundant_imports = "warn"
 redundant_lifetimes = "warn"
+rust_2018_idioms = { level = "warn", priority = -1 }
 trivial_casts = "warn"
 trivial_numeric_casts = "warn"
 unit_bindings = "warn"
@@ -293,32 +268,15 @@ unused_macro_rules = "warn"
 unused_qualifications = "warn"
 
 [workspace.lints.clippy]
-pedantic = { level = "warn", priority = -1 }
-missing_errors_doc = "allow"
-missing_panics_doc = "allow"
-must_use_candidate = "allow"
-assert_is_empty = "allow"
-cast_precision_loss = "allow"
-cast_possible_truncation = "allow"
-similar_names = "allow"
-many_single_char_names = "allow"
-too_many_lines = "allow"
-inline_always = "allow"
-float_cmp = "allow"
-cast_possible_wrap = "allow"
-doc_markdown = "allow"
-unreadable_literal = "allow"
-struct_excessive_bools = "allow"
-wildcard_imports = "allow"
-unchecked_time_subtraction = "allow"
-struct_field_names = "allow"
-match_same_arms = "allow"
-unused_self = "allow"
 absolute_paths = "warn"
 allow_attributes = "warn"
 allow_attributes_without_reason = "warn"
 as_underscore = "warn"
+assert_is_empty = "allow"
 branches_sharing_code = "warn"
+cast_possible_truncation = "allow"
+cast_possible_wrap = "allow"
+cast_precision_loss = "allow"
 clear_with_drain = "warn"
 clone_on_ref_ptr = "warn"
 collection_is_never_read = "warn"
@@ -326,25 +284,33 @@ dbg_macro = "warn"
 debug_assert_with_mut_call = "warn"
 deref_by_slicing = "warn"
 derive_partial_eq_without_eq = "warn"
+doc_markdown = "allow"
 empty_enum_variants_with_brackets = "warn"
 empty_structs_with_brackets = "warn"
 equatable_if_let = "warn"
 exit = "warn"
 filetype_is_file = "warn"
+float_cmp = "allow"
 fn_to_numeric_cast_any = "warn"
 get_unwrap = "warn"
 if_then_some_else_none = "warn"
 imprecise_flops = "warn"
 infinite_loop = "warn"
+inline_always = "allow"
 iter_over_hash_type = "warn"
 iter_with_drain = "warn"
 large_include_file = "warn"
 literal_string_with_formatting_args = "warn"
 lossy_float_literal = "warn"
+many_single_char_names = "allow"
+match_same_arms = "allow"
 mem_forget = "warn"
 missing_const_for_fn = "warn"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
 mixed_read_write_in_expression = "warn"
 module_name_repetitions = "warn"
+must_use_candidate = "allow"
 mutex_atomic = "warn"
 needless_collect = "warn"
 needless_pass_by_ref_mut = "warn"
@@ -353,6 +319,7 @@ negative_feature_names = "warn"
 non_zero_suggestions = "warn"
 or_fun_call = "warn"
 pathbuf_init_then_push = "warn"
+pedantic = { level = "warn", priority = -1 }
 precedence_bits = "warn"
 print_stderr = "warn"
 print_stdout = "warn"
@@ -364,22 +331,35 @@ redundant_type_annotations = "warn"
 rest_pat_in_fully_bound_structs = "warn"
 return_and_then = "warn"
 self_named_module_files = "warn"
+similar_names = "allow"
 string_lit_chars_any = "warn"
+struct_excessive_bools = "allow"
+struct_field_names = "allow"
 todo = "warn"
+too_many_lines = "allow"
 trait_duplication_in_bounds = "warn"
 try_err = "warn"
 type_repetition_in_bounds = "warn"
+unchecked_time_subtraction = "allow"
 unimplemented = "warn"
 unnecessary_safety_comment = "warn"
 unnecessary_safety_doc = "warn"
 unnecessary_self_imports = "warn"
+unreadable_literal = "allow"
+unused_self = "allow"
 use_self = "warn"
 useless_let_if_seq = "warn"
 verbose_file_reads = "warn"
 wildcard_dependencies = "warn"
+wildcard_imports = "allow"
 
 [workspace.lints.rustdoc]
 broken_intra_doc_links = "warn"
 private_intra_doc_links = "warn"
 redundant_explicit_links = "warn"
 unescaped_backticks = "warn"
+
+# The driver serves `cargo drive surface` alone, which writes `.notes/API_SURFACE.md` for CI to
+# compare with the tree; the gate is plain cargo (AGENTS.md "Verification").
+[workspace.metadata.drive]
+version = "0.2.7"

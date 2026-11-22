@@ -1282,8 +1282,8 @@ Image
         pub fn magnified(&self, factor: NonZeroU32) -> Self
         pub fn as_srgba8(&self) -> &[u8]
         pub fn texels_mut(&mut self) -> &mut [SrgbaU8]
-        pub fn from_png(bytes: &[u8]) -> Result<Self>  [features: golden or png]
-        pub fn write_png(&self, out: impl Write) -> Result<()>  [features: golden or png]
+        pub fn from_png(bytes: &[u8]) -> Result<Self>  [features: png]
+        pub fn write_png(&self, out: impl Write) -> Result<()>  [features: png]
         pub fn fill_with(&mut self, texel: impl FnMut(UVec2) -> SrgbaU8)
         pub fn row_mut(&mut self, row: u32) -> &mut [SrgbaU8]
         pub fn repeat_row(&mut self, row: u32)
@@ -3504,10 +3504,10 @@ fmt
 glam
     pub use glam as glam
 
-golden  [features: golden]
+golden  [features: png]
     mod
 
-golden::DiffReport  [features: golden]
+golden::DiffReport  [features: png]
     struct DiffReport: Debug
         pub max_channel_delta: u8
         pub differing_pixels: u32
@@ -3515,7 +3515,7 @@ golden::DiffReport  [features: golden]
         pub tolerance: Tolerance
         pub const fn passes(&self) -> bool
 
-golden::Goldens  [features: golden]
+golden::Goldens  [features: png]
     struct Goldens: Clone, Debug
         pub fn new(root: impl Into<PathBuf>) -> Self
         pub fn with_adapter(self, adapter: impl Into<String>) -> Self
@@ -3524,7 +3524,7 @@ golden::Goldens  [features: golden]
         pub fn assert_matches(&self, name: &str, actual: &Image)
         pub fn assert_same(&self, name: &str, actual: &Image, expected: &Image)
 
-golden::Tolerance  [features: golden]
+golden::Tolerance  [features: png]
     struct Tolerance: Clone, Copy, Debug, Default, Eq, PartialEq
         pub max_delta: u8
         pub max_pixels: u32

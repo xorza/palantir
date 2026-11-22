@@ -136,7 +136,7 @@ pub(crate) mod widgets;
 pub(crate) mod window;
 
 /// Golden-image regression testing for suites that draw through Palantir.
-#[cfg(feature = "golden")]
+#[cfg(feature = "png")]
 pub mod golden;
 
 pub use diagnostics::gpu_pass_stats::{BatchKind, GpuPassStats, PipelineStats};

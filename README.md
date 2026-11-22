@@ -17,9 +17,6 @@
 I wanted a cross-platform GUI library — simple yet powerful, WPF-style layout
 declaration, good-looking and fast. I made it.
 
-> **Beta.** Feature-rich and usable, but pre-1.0: the public API can still
-> change between releases.
-
 ## Highlights
 
 - **Immediate-mode authoring** — builder-style widgets that read like prose.
@@ -248,7 +245,7 @@ assert_eq!(clicks, 1);
 
 ### Golden images
 
-For pixels as well as behavior, the `golden` feature adds golden-image
+For pixels as well as behavior, the `png` feature adds golden-image
 regression tests. `OffscreenHost` renders a frame into a `wgpu::Texture`,
 and the comparison reports exactly which pixels moved.
 

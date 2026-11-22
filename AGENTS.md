@@ -211,6 +211,14 @@ another copy of the crates.
 - **Every test needs a GPU adapter**; a headless machine a software Vulkan driver (lavapipe).
 - **A slow first Metal call can be the build folder**, which Metal lists: `cargo clean`.
 - **`--all-features` is clippy's alone**, as `profile-with-tracy` opens a socket in tests.
+- **A manifest follows the Rust style guide's
+  [Cargo.toml conventions](https://doc.rust-lang.org/nightly/style-guide/cargo.html)**: keys
+  version-sorted in each section, `[package]`'s `name` and `version` first and `description` last,
+  no blank line inside a section, and an array or inline table on its key's line when it fits in
+  100 columns, else an array one item a line and a table a section of its own. Sections run in the
+  [Cargo reference](https://doc.rust-lang.org/cargo/reference/manifest.html)'s order, `[workspace]`
+  leading a virtual manifest as `[package]` leads the rest. Refused: dependencies grouped by blank
+  lines or by origin, an order no tool holds and each edit drifts from.
 
 ## Non-shipping code
 
@@ -219,7 +227,7 @@ another copy of the crates.
 - **A reach-in to private items** sits at the end of its file, gated `#[cfg(test)]` or
   `#[cfg(feature = "internals")]` by its callers, never `any(…)`.
 - **`crate::internals`** holds the shared fixtures, **`bench.rs`** sits beside the code it
-  measures, and **`crate::golden`** compares images under `feature = "golden"`. The test and
+  measures, and **`crate::golden`** compares images under `feature = "png"`. The test and
   bench GPUs sit in `gpu`, which `clippy.toml` keeps the wgpu types in; a process holds one test
   GPU instance (`gpu::test_gpu`).
 - **Items code outside the crate calls are `pub`**; the rest are `pub(crate)`.

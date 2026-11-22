@@ -1,40 +1,24 @@
 [package]
 name = "palantir-showcase"
 version = "1.0.0"
-edition = "2024"
 authors = ["xxorza <xxorza@gmail.com>"]
-description = "A tour of palantir's widgets, written against its public API, and the scene its benches and integration tests run"
-repository = "https://github.com/xorza/palantir"
+edition = "2024"
 license = "(MIT OR Apache-2.0) AND OFL-1.1"
 publish = false
-
-[lints]
-workspace = true
+repository = "https://github.com/xorza/palantir"
+description = """
+A tour of palantir's widgets, written against its public API, and the scene its
+benches and integration tests run
+"""
 
 [lib]
 bench = false
 
 [[bin]]
+bench = false
 name = "palantir-showcase"
 path = "src/main.rs"
-bench = false
 test = false
-
-[dependencies]
-palantir = { workspace = true, features = ["winit", "golden"] }
-bytemuck = { workspace = true }
-image = { workspace = true }
-tracing-subscriber = { workspace = true }
-
-[dev-dependencies]
-palantir = { workspace = true, features = ["internals"] }
-palantir-showcase = { workspace = true, features = ["internals"] }
-backtrace = { workspace = true }
-half = { workspace = true }
-
-[features]
-internals = ["palantir/internals"]
-profile-with-tracy = ["palantir/profile-with-tracy"]
 
 [[test]]
 name = "visual"
@@ -45,6 +29,25 @@ name = "alloc"
 path = "tests/alloc/main.rs"
 
 [[bench]]
-name = "palantir"
 harness = false
+name = "palantir"
 required-features = ["internals"]
+
+[dependencies]
+bytemuck = { workspace = true }
+image = { workspace = true }
+palantir = { workspace = true, features = ["winit", "png"] }
+tracing-subscriber = { workspace = true }
+
+[dev-dependencies]
+backtrace = { workspace = true }
+half = { workspace = true }
+palantir = { workspace = true, features = ["internals"] }
+palantir-showcase = { workspace = true, features = ["internals"] }
+
+[features]
+internals = ["palantir/internals"]
+profile-with-tracy = ["palantir/profile-with-tracy"]
+
+[lints]
+workspace = true

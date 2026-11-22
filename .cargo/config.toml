@@ -12,7 +12,7 @@ gate-lint = "clippy --workspace --all-targets --all-features --keep-going --conf
 gate-lint-nowinit = "clippy --workspace --exclude palantir-showcase --all-targets --no-default-features --keep-going --config build.warnings=\"deny\" -- -D warnings"
 gate-ship = "clippy --workspace --release --keep-going --config build.warnings=\"deny\" -- -D warnings"
 gate-ship-nowinit = "clippy --workspace --exclude palantir-showcase --release --no-default-features --keep-going --config build.warnings=\"deny\" -- -D warnings"
-gate-test = "test --workspace --lib --test alloc --example reel --no-fail-fast --features golden,gpu-debug-markers"
+gate-test = "test --workspace --lib --test alloc --example reel --no-fail-fast --features png,gpu-debug-markers"
 gate-test-nowinit = "test --workspace --exclude palantir-showcase --lib --no-default-features --no-fail-fast"
 # `-D warnings` through a `cfg(all())` entry, as an env `RUSTDOCFLAGS` would replace the one Darkroom's
 # config holds for x86-64-v3. A build directory of its own, as cargo locks one for each command: the
@@ -21,8 +21,8 @@ gate-test-nowinit = "test --workspace --exclude palantir-showcase --lib --no-def
 # `--config` beats an env `CARGO_BUILD_BUILD_DIR`. Cost: its dependencies' metadata built again
 # there.
 gate-doc = 'doc --workspace --no-deps --document-private-items --all-features --keep-going --config target."cfg(all())".rustdocflags=["-D","warnings"] --config build.build-dir="{workspace-root}/target/build-doc"'
-gate-doctest = "test --workspace --doc --no-fail-fast --features golden,gpu-debug-markers"
-visual = "test --workspace --features golden,gpu-debug-markers --test visual"
+gate-doctest = "test --workspace --doc --no-fail-fast --features png,gpu-debug-markers"
+visual = "test --workspace --features png,gpu-debug-markers --test visual"
 shot = "run -p palantir-showcase -- --shot"
 reel = "run -p palantir-showcase --example reel --profile release-dev --"
 # One bench target: the criterion cases, or the study its first argument names, as
