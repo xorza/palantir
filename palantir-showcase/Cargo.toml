@@ -1,6 +1,6 @@
 [package]
 name = "palantir-showcase"
-version = "0.8.3"
+version = "1.0.0"
 edition = "2024"
 authors = ["xxorza <xxorza@gmail.com>"]
 description = "A tour of palantir's widgets, written against its public API, and the scene its benches and integration tests run"

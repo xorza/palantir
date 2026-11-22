@@ -2121,7 +2121,7 @@ dependencies = [
 
 [[package]]
 name = "palantir"
-version = "0.8.3"
+version = "1.0.0"
 dependencies = [
  "arboard",
  "bytemuck",
@@ -2164,7 +2164,7 @@ dependencies = [
 
 [[package]]
 name = "palantir-derive"
-version = "0.8.3"
+version = "1.0.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2173,7 +2173,7 @@ dependencies = [
 
 [[package]]
 name = "palantir-showcase"
-version = "0.8.3"
+version = "1.0.0"
 dependencies = [
  "backtrace",
  "bytemuck",

@@ -1,6 +1,6 @@
 [package]
 name = "palantir"
-version = "0.8.3"
+version = "1.0.0"
 edition = "2024"
 authors = ["xxorza <xxorza@gmail.com>"]
 description = "An immediate-mode GUI library with WPF-style two-pass layout and a wgpu renderer"
@@ -41,7 +41,7 @@ members = ["palantir-derive", "palantir-showcase"]
 
 [workspace.dependencies]
 palantir = { path = ".", default-features = false }
-palantir-derive = { path = "palantir-derive", version = "=0.8.3", default-features = false }
+palantir-derive = { path = "palantir-derive", version = "=1.0.0", default-features = false }
 palantir-showcase = { path = "palantir-showcase" }
 arboard = { version = "3.7", default-features = false, features = [
     "image-data",
