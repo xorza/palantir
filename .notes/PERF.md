@@ -476,6 +476,14 @@ an older number here reads as a share, not a time.
     first two lacked: indexing two columns at one row checks its bound once, as soa-rs's one
     length gave.
 
+- **palantir's own glyph rasterizer over skrifa against swash** (2026-11-22, an Apple laptop
+  unpinned, three interleaved rounds of each build, the median of each case's medians):
+  `text_atlas/gpu/cache_churn/prepare`, the case that rasterizes glyphs every frame, −9.7 %
+  (−8 to −11 % across the rounds), its frame −3.2 %, `mixed_stable_churn/frame` −2.8 %; the
+  steady and zoom cases, text shaping and the CPU frames within ±1.3 %. The bench binary is
+  600 KiB smaller. Its masks move text edges by 2.3 of 255 on average where they differ, the
+  total brightness of a text golden within 0.01 %.
+
 - **The clip folded away where no draw names one** (2026-11-10, an Apple laptop, ABBA): with one
   pipeline for both, the clip's code cost a frame with no rounded clip 16 to 23 % of its main pass,
   and an early return on no chain 7 %, as the clip's registers stayed; a coverage that returns 1 at

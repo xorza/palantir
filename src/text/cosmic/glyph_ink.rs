@@ -2,15 +2,17 @@
 
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::math::libm_ext::Libm;
+use crate::text::cosmic::FAKE_ITALIC_SKEW_DEGREES;
 use crate::text::cosmic::geometry::ShapedGeometry;
+use crate::text::cosmic::glyph_face::{ColorLayer, GlyphFace};
+use crate::text::cosmic::glyph_outline::GlyphOutline;
 use crate::text::cosmic::stem_darkening::StemDarkening;
-use crate::text::cosmic::{FAKE_ITALIC_SKEW_DEGREES, Hinting, ScalerSpec};
 use cosmic_text::{Buffer, CacheKeyFlags, FontSystem, LayoutGlyph, fontdb};
 use glam::Vec2;
 use rustc_hash::FxHashMap;
+use skrifa::GlyphId;
+use skrifa::instance::Size;
 use std::fmt;
-use swash::scale::ScaleContext;
-use swash::scale::outline::Outline;
 
 /// Ink bounds of every glyph a run has shaped, read once per glyph and face. Ink can reach past the measured
 /// advance block (italic overhang, negative bearing); [`Self::ink`] answers by how much. Stored in ems from
@@ -23,9 +25,10 @@ use swash::scale::outline::Outline;
 #[derive(Default)]
 pub(super) struct GlyphInk {
     bounds: FxHashMap<GlyphInkKey, EmBox>,
-    /// Swash's per-face scratch, apart from the rasterizer's so shaping can read ink while holding the measurer.
-    ctx: ScaleContext,
-    outline: Outline,
+    /// The outline and color layers a glyph reads through, apart from the rasterizer's so shaping
+    /// can read ink while holding the measurer.
+    outline: GlyphOutline,
+    layers: Vec<ColorLayer>,
 }
 
 impl fmt::Debug for GlyphInk {
@@ -121,42 +124,50 @@ impl GlyphInk {
     /// its plain outline grown as the raster darkens it and, for a face with bitmap strikes, the
     /// face's box. Skewed as it skews a synthetic italic, from y-up font units.
     fn read_em_box(&mut self, font_system: &mut FontSystem, key: GlyphInkKey) -> EmBox {
-        let Some(font) = font_system.get_font(key.font_id, fontdb::Weight(key.weight)) else {
+        let weight = fontdb::Weight(key.weight);
+        let Some(font) = font_system.get_font(key.font_id, weight) else {
             return EmBox::default();
         };
-        let units_per_em = font.as_swash().metrics(&[]).units_per_em;
+        let Some(face) = font_system
+            .db()
+            .face(key.font_id)
+            .and_then(|info| GlyphFace::new(font.data(), info.index, weight))
+        else {
+            return EmBox::default();
+        };
+        let units_per_em = face.units_per_em();
         if units_per_em == 0 {
             return EmBox::default();
         }
         let units_per_em = f32::from(units_per_em);
-        let mut scaler = ScalerSpec {
-            size: 0.0,
-            hinting: Hinting::Off,
-            weight: fontdb::Weight(key.weight),
-        }
-        .scaler(&mut self.ctx, &font);
+        let glyph = GlyphId::from(key.glyph_id);
         let mut lo = Vec2::INFINITY;
         let mut hi = Vec2::NEG_INFINITY;
-        let mut take = |min: Vec2, max: Vec2| {
-            lo = lo.min(min);
-            hi = hi.max(max);
+        let mut take = |outline: &GlyphOutline| {
+            if let Some(b) = outline.bounds() {
+                lo = lo.min(b.min);
+                hi = hi.max(b.max);
+            }
         };
-        if scaler.scale_color_outline_into(key.glyph_id, &mut self.outline) {
-            let b = self.outline.bounds();
-            take(Vec2::new(b.min.x, b.min.y), Vec2::new(b.max.x, b.max.y));
+        if face.color_layers_into(glyph, &mut self.layers) {
+            for layer in &self.layers {
+                if face.outline_into(layer.glyph, Size::unscaled(), &mut self.outline) {
+                    take(&self.outline);
+                }
+            }
         } else {
-            let outlined = scaler.scale_outline_into(key.glyph_id, &mut self.outline);
+            let outlined = face.outline_into(glyph, Size::unscaled(), &mut self.outline);
             if outlined {
                 StemDarkening::bound(units_per_em).dilate(&mut self.outline);
-                let b = self.outline.bounds();
-                take(Vec2::new(b.min.x, b.min.y), Vec2::new(b.max.x, b.max.y));
+                take(&self.outline);
             }
             // A bitmap strike draws in place of the outline where it holds the glyph, and only the
             // face's box bounds it, so the box joins the darkened outline the raster falls back to.
-            if (scaler.has_color_bitmaps() || !outlined)
+            if (face.has_color_bitmaps() || !outlined)
                 && let Some(b) = font.metrics().bounds
             {
-                take(Vec2::new(b.x_min, b.y_min), Vec2::new(b.x_max, b.y_max));
+                lo = lo.min(Vec2::new(b.x_min, b.y_min));
+                hi = hi.max(Vec2::new(b.x_max, b.y_max));
             }
         }
         if lo.x > hi.x {
@@ -177,7 +188,37 @@ impl GlyphInk {
 #[cfg(test)]
 mod tests {
     use crate::text::cosmic::glyph_ink::{EmBox, GlyphInk, GlyphInkKey, MAX_INKED_GLYPHS};
-    use cosmic_text::fontdb;
+    use crate::text::cosmic::tests::two_layer_color_font;
+    use cosmic_text::{FontSystem, fontdb};
+    use glam::Vec2;
+    use std::sync::Arc;
+
+    /// A color glyph's ink is its layers' union, undarkened: the em square, `0..1` across and
+    /// `−1..0` down in ems. A plain glyph's is its outline grown by the darkening's bound, 12.1
+    /// and 15.125 units of the 1000-unit em: the left half `−0.0121..0.5121` across and
+    /// `−1.015125..0.015125` down.
+    #[test]
+    fn a_color_glyph_inks_its_layers_and_a_plain_one_its_darkened_outline() {
+        let mut font_system =
+            FontSystem::new_with_locale_and_db(String::from("en-US"), fontdb::Database::new());
+        let id = font_system
+            .db_mut()
+            .load_font_source(fontdb::Source::Binary(Arc::new(two_layer_color_font())))[0];
+        let mut ink = GlyphInk::default();
+        let key = |glyph_id| GlyphInkKey {
+            font_id: id,
+            glyph_id,
+            weight: 400,
+            fake_italic: false,
+        };
+        let near = |a: Vec2, b: Vec2| (a - b).abs().max_element() < 1e-5;
+        let color = ink.read_em_box(&mut font_system, key(0));
+        assert!(near(color.min, Vec2::new(0.0, -1.0)), "{color:?}");
+        assert!(near(color.max, Vec2::new(1.0, 0.0)), "{color:?}");
+        let plain = ink.read_em_box(&mut font_system, key(1));
+        assert!(near(plain.min, Vec2::new(-0.0121, -1.015_125)), "{plain:?}");
+        assert!(near(plain.max, Vec2::new(0.5121, 0.015_125)), "{plain:?}");
+    }
 
     /// The table holds [`MAX_INKED_GLYPHS`] glyphs; the next starts it over, holding that glyph
     /// alone.

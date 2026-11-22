@@ -4,15 +4,12 @@
 pub(crate) mod error;
 pub(crate) mod image_filter;
 pub(crate) mod image_placement;
+pub(crate) mod png_rgba;
 
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::primitives::paint::image::error::ImageDataError;
 use glam::UVec2;
-#[cfg(feature = "png")]
-use image::ImageEncoder as _;
-#[cfg(feature = "png")]
-use image::codecs::png::PngEncoder;
 #[cfg(feature = "png")]
 use std::io;
 use std::num::NonZeroU32;
@@ -120,14 +117,12 @@ impl Image {
     /// The decoder's error, or the image's when it has no texel, as an [`io::Error`].
     #[cfg(feature = "png")]
     pub fn from_png(bytes: &[u8]) -> io::Result<Self> {
-        let decoded = image::load_from_memory_with_format(bytes, image::ImageFormat::Png)
-            .map_err(|error| match error {
-                image::ImageError::IoError(error) => error,
-                error => io::Error::other(error),
-            })?
-            .into_rgba8();
-        let size = UVec2::new(decoded.width(), decoded.height());
-        Self::from_srgba8(size, decoded.into_raw()).map_err(io::Error::other)
+        let mut pixels = Vec::new();
+        let size = png_rgba::decode(bytes, &mut pixels).map_err(|error| match error {
+            png::DecodingError::IoError(error) => error,
+            error => io::Error::other(error),
+        })?;
+        Self::from_srgba8(size, pixels).map_err(io::Error::other)
     }
 
     /// Write this image to `out` as an 8-bit RGBA PNG, its bytes as they are.
@@ -137,17 +132,10 @@ impl Image {
     /// The encoder's or the writer's error, as an [`io::Error`].
     #[cfg(feature = "png")]
     pub fn write_png(&self, mut out: impl io::Write) -> io::Result<()> {
-        PngEncoder::new(&mut out)
-            .write_image(
-                &self.pixels,
-                self.size.x,
-                self.size.y,
-                image::ExtendedColorType::Rgba8,
-            )
-            .map_err(|error| match error {
-                image::ImageError::IoError(error) => error,
-                error => io::Error::other(error),
-            })?;
+        png_rgba::encode(&self.pixels, self.size, &mut out).map_err(|error| match error {
+            png::EncodingError::IoError(error) => error,
+            error => io::Error::other(error),
+        })?;
         out.flush()
     }
 

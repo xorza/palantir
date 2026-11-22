@@ -1,7 +1,5 @@
 //! The user-scale range of one `fvar` variation axis, as a font file declares it.
 
-use swash::Variation;
-
 /// The bounds and default of one variation axis. A loaded font is untrusted data, so the
 /// order `min ≤ default ≤ max` the axis record owes is checked here, not assumed.
 #[derive(Clone, Copy, Debug)]
@@ -12,6 +10,10 @@ pub(super) struct AxisRange {
 }
 
 impl AxisRange {
+    pub(super) const fn new(min: f32, default: f32, max: f32) -> Self {
+        Self { min, default, max }
+    }
+
     /// `value` clamped into the axis, or `None` for an axis out of order: the face stays at its
     /// default instance on that axis, as FreeType pins an invalid axis to its default.
     pub(super) const fn coordinate(self, value: f32) -> Option<f32> {
@@ -28,22 +30,12 @@ impl AxisRange {
     }
 }
 
-impl From<Variation<'_>> for AxisRange {
-    fn from(axis: Variation<'_>) -> Self {
-        Self {
-            min: axis.min_value(),
-            default: axis.default_value(),
-            max: axis.max_value(),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::text::cosmic::axis_range::AxisRange;
 
     const fn range(min: f32, default: f32, max: f32) -> AxisRange {
-        AxisRange { min, default, max }
+        AxisRange::new(min, default, max)
     }
 
     /// In order, a weight inside the axis passes through and one outside lands on the nearer

@@ -3,9 +3,9 @@
 use crate::primitives::paint::content_type::ContentType;
 use glam::{IVec2, UVec2};
 
-/// One rasterized image, borrowed from the rasterizer's kept scratch (swash for glyphs, resvg for
-/// icons), so re-rasterizing allocates nothing after frame one; the atlas copies the bytes before
-/// the next raster overwrites them.
+/// One rasterized image, borrowed from its rasterizer's kept scratch (palantir's own for glyphs,
+/// resvg for icons), so re-rasterizing allocates nothing after frame one; the atlas copies the
+/// bytes before the next raster overwrites them.
 #[derive(Clone, Copy, Debug)]
 pub struct RasterImage<'a> {
     /// Whether [`Self::data`] is one byte per pixel or four.

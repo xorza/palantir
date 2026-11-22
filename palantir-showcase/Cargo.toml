@@ -35,7 +35,6 @@ required-features = ["internals"]
 
 [dependencies]
 bytemuck = { workspace = true }
-image = { workspace = true }
 palantir = { workspace = true, features = ["winit", "png"] }
 tracing-subscriber = { workspace = true }
 

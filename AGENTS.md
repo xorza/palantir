@@ -62,9 +62,10 @@ A subsystem's decisions sit in an `AGENTS.md` beside it; read it before changing
 ## Dependencies
 
 - **A crate stays for what palantir should not write**: the GPU, windows, text shaping, SVG, the
-  clipboard and the system's settings. A small utility is written here, as `common::executor`,
-  `common::bit_set` and the `Soa` derive are, where a crate costs more of the tree than its code
-  saves. Refused: a git dependency, which `cargo publish` refuses.
+  clipboard and the system's settings. What palantir needs a small part of is written here, as
+  `common::executor`, `common::bit_set`, the `Soa` derive and the glyph rasterizer over skrifa's
+  outlines are, where a crate costs more of the tree than its code saves. Refused: a git
+  dependency, which `cargo publish` refuses.
 - **Logs go through `log`**, the facade wgpu and winit already log through, so an app's logger,
   or `tracing` through its `log` bridge, gets palantir's records beside theirs. Refused: `tracing`
   itself, three crates more for events alone, as palantir opens no span.

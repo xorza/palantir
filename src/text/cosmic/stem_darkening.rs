@@ -1,10 +1,9 @@
 //! [`StemDarkening`]: how far a glyph's outline grows before it is rasterized.
 
+use crate::text::cosmic::glyph_outline::{GlyphOutline, OutlineMut, Verb};
 use glam::Vec2;
 use std::iter;
 use std::ops::Range;
-use swash::scale::outline::Outline;
-use swash::zeno::{Point, Verb};
 
 /// The dilation of a glyph's outline on each side, in the outline's own units, as macOS dilates
 /// text: more at small sizes, capped, and none past a size.
@@ -60,21 +59,17 @@ impl StemDarkening {
     /// Refused: swash's `Outline::embolden`, a port of the same function that reads a layer's
     /// orientation from all its points as one polygon. FreeType sums each contour's area; the two
     /// overlapping clockwise contours of Inter's `f` read counterclockwise as one polygon, and
-    /// swash thins that glyph where it should grow it.
-    pub(super) fn dilate(self, outline: &mut Outline) {
+    /// swash thinned that glyph where it should grow it.
+    pub(super) fn dilate(self, outline: &mut GlyphOutline) {
         if self.amount == Vec2::ZERO {
             return;
         }
-        for idx in 0..outline.len() {
-            let mut layer = outline.get_mut(idx).expect("a layer below the count");
-            let verbs = layer.verbs();
-            let points = layer.points_mut();
-            let Some(orientation) = Orientation::of(points, verbs) else {
-                continue;
-            };
-            for contour in contours(verbs) {
-                dilate_contour(&mut points[contour], orientation, self.amount);
-            }
+        let OutlineMut { verbs, points } = outline.contours_mut();
+        let Some(orientation) = Orientation::of(points, verbs) else {
+            return;
+        };
+        for contour in contours(verbs) {
+            dilate_contour(&mut points[contour], orientation, self.amount);
         }
     }
 }
@@ -93,7 +88,7 @@ impl Orientation {
     /// The sign of the sum of each contour's area, `None` when it is zero. The terms are
     /// FreeType's, twice the area with counterclockwise positive, summed in `f64`, as a glyph in
     /// font units sums to millions.
-    fn of(points: &[Point], verbs: &[Verb]) -> Option<Self> {
+    fn of(points: &[Vec2], verbs: &[Verb]) -> Option<Self> {
         let area: f64 = contours(verbs)
             .map(|contour| {
                 let contour = &points[contour];
@@ -159,10 +154,9 @@ fn contours(verbs: &[Verb]) -> impl Iterator<Item = Range<usize>> + '_ {
 /// A turn sharper than about 160 degrees does not move. Counter `j` walks the points; `i` follows
 /// it as points move, and the anchor `k` marks the first point moved, so the walk ends within two
 /// passes of the contour.
-fn dilate_contour(points: &mut [Point], orientation: Orientation, strength: Vec2) {
+fn dilate_contour(points: &mut [Vec2], orientation: Orientation, strength: Vec2) {
     let last = points.len() - 1;
     let next = |idx: usize| if idx < last { idx + 1 } else { 0 };
-    let at = |point: Point| Vec2::new(point.x, point.y);
     let mut dir_in = Vec2::ZERO;
     let mut len_in = 0.0;
     let mut anchor = Vec2::ZERO;
@@ -174,7 +168,7 @@ fn dilate_contour(points: &mut [Point], orientation: Orientation, strength: Vec2
         let (dir_out, len_out) = if k == Some(j) {
             (anchor, len_anchor)
         } else {
-            let out = at(points[j]) - at(points[i]);
+            let out = points[j] - points[i];
             let len = out.length();
             if len == 0.0 {
                 j = next(j);
@@ -198,8 +192,7 @@ fn dilate_contour(points: &mut [Point], orientation: Orientation, strength: Vec2
                 strength,
             });
             while i != j {
-                points[i].x += shift.x;
-                points[i].y += shift.y;
+                points[i] += shift;
                 i = next(i);
             }
         }
@@ -258,14 +251,12 @@ fn bisector_shift(edges: Edges) -> Vec2 {
 
 #[cfg(test)]
 mod tests {
+    use crate::text::cosmic::glyph_outline::{GlyphOutline, Verb};
     use crate::text::cosmic::stem_darkening::{StemDarkening, contours};
-    use crate::text::cosmic::tests::mono;
-    use crate::text::cosmic::{Hinting, ScalerSpec};
+    use crate::text::cosmic::tests::{mono, mono_face};
     use cosmic_text::Weight;
     use glam::Vec2;
-    use swash::scale::ScaleContext;
-    use swash::scale::outline::Outline;
-    use swash::zeno::Verb;
+    use skrifa::instance::Size;
 
     /// Each contour's points, from its `MoveTo` to its `Close`, the next `MoveTo` or the end: a
     /// line pair closed (points 0 to 2), a curve left open by a `MoveTo` (3 to 5), and a cubic
@@ -284,18 +275,11 @@ mod tests {
     /// The box of JetBrains Mono's `I`, read in its 1000-unit em, then dilated by `amount`.
     fn i_bounds(amount: Vec2) -> [f32; 4] {
         let font = mono();
-        let mut ctx = ScaleContext::new();
-        let mut scaler = ScalerSpec {
-            size: 0.0,
-            hinting: Hinting::Off,
-            weight: Weight::NORMAL,
-        }
-        .scaler(&mut ctx, &font);
-        let mut outline = Outline::new();
-        let glyph = font.as_swash().charmap().map('I');
-        assert!(scaler.scale_outline_into(glyph, &mut outline));
+        let face = mono_face(&font, Weight::NORMAL);
+        let mut outline = GlyphOutline::default();
+        assert!(face.outline_into(face.glyph_of('I'), Size::unscaled(), &mut outline));
         StemDarkening { amount }.dilate(&mut outline);
-        let b = outline.bounds();
+        let b = outline.bounds().expect("`I` has points");
         [b.min.x, b.min.y, b.max.x, b.max.y]
     }
 
@@ -307,7 +291,7 @@ mod tests {
     fn a_straight_outline_grows_by_the_amount_on_each_side() {
         let [x0, y0, x1, y1] = i_bounds(Vec2::ZERO);
         let grown = i_bounds(Vec2::new(20.0, 30.0));
-        // Swash normalizes each edge's direction, one rounding off an exact unit vector.
+        // Each edge's direction is normalized, one rounding off an exact unit vector.
         let near = |a: f32, b: f32| (a - b).abs() < 1e-3;
         for (side, want) in [x0 - 20.0, y0 - 30.0, x1 + 20.0, y1 + 30.0]
             .into_iter()

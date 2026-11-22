@@ -47,16 +47,16 @@ foldhash = { workspace = true }
 glam = { workspace = true }
 half = { workspace = true }
 hashbrown = { workspace = true }
-image = { workspace = true, optional = true }
 libm = { workspace = true }
 log = { workspace = true }
 mundy = { workspace = true, optional = true }
 naga = { workspace = true }
 palantir-derive = { workspace = true }
+png = { workspace = true }
 resvg = { workspace = true }
 rustc-hash = { workspace = true }
 serde = { workspace = true }
-swash = { workspace = true }
+skrifa = { workspace = true }
 tinyvec = { workspace = true }
 tracy-client = { workspace = true, optional = true }
 unicode-linebreak = { workspace = true }
@@ -85,7 +85,7 @@ default = ["winit"]
 gpu-debug-markers = []
 internals = ["dep:criterion"]
 # Reading and writing an `Image` as a PNG, and `golden`, which compares images through it.
-png = ["dep:image"]
+png = []
 profile-with-tracy = ["dep:tracy-client"]
 system-clipboard = ["dep:arboard"]
 winit = [
@@ -142,7 +142,6 @@ criterion = { version = "0.8", default-features = false }
 foldhash = { version = "0.2", default-features = false, features = ["std"] }
 half = { version = "2.7", default-features = false, features = ["std", "bytemuck"] }
 hashbrown = { version = "0.17", default-features = false }
-image = { version = "0.25", default-features = false, features = ["png"] }
 libm = { version = "0.2", default-features = false, features = ["arch"] }
 log = { version = "0.4", default-features = false }
 naga = { version = "30.0", default-features = false, features = ["wgsl-in"] }
@@ -150,14 +149,15 @@ objc2 = { version = "0.6.5", default-features = false, features = ["std"] }
 palantir = { path = ".", default-features = false }
 palantir-derive = { path = "palantir-derive", version = "=1.0.0", default-features = false }
 palantir-showcase = { path = "palantir-showcase" }
+png = { version = "0.18", default-features = false }
 proc-macro2 = { version = "1.0", default-features = false, features = ["proc-macro"] }
 quote = { version = "1.0", default-features = false, features = ["proc-macro"] }
 resvg = { version = "0.50", default-features = false }
 ron = { version = "0.12", default-features = false }
 rustc-hash = { version = "2.1", default-features = false, features = ["std"] }
 serde = { version = "1.0", default-features = false, features = ["alloc", "derive"] }
+skrifa = { version = "0.40", default-features = false, features = ["std"] }
 static_assertions = { version = "1.1", default-features = false }
-swash = { version = "0.2", default-features = false, features = ["std", "scale", "render"] }
 tinyvec = { version = "1.13", default-features = false, features = ["serde"] }
 tracy-client = { version = "0.19", default-features = false, features = ["enable"] }
 unicode-linebreak = { version = "0.1", default-features = false }
@@ -171,7 +171,7 @@ version = "3.7"
 
 [workspace.dependencies.cosmic-text]
 default-features = false
-features = ["std", "swash", "fontconfig"]
+features = ["std", "fontconfig"]
 version = "0.19"
 
 [workspace.dependencies.glam]

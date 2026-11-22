@@ -5,16 +5,16 @@
 //! [`CosmicMeasure::extract_glyphs`] / [`CosmicMeasure::rasterize_glyph`] return
 //! palantir-native placements and bitmaps.
 
+use crate::primitives::math::libm_ext::Libm as _;
 use crate::primitives::math::num::F32Px;
-use crate::primitives::paint::content_type::ContentType;
 use crate::primitives::paint::raster_image::RasterImage;
-use crate::text::cosmic::axis_range::AxisRange;
 use crate::text::cosmic::cache_entry::{CachedExtent, ShapedBuffer};
 use crate::text::cosmic::cluster_glyph::ClusterGlyph;
 use crate::text::cosmic::ellipsis_memo::EllipsisMemo;
 use crate::text::cosmic::geometry::{SegmentScratch, ShapedGeometry, first_line_right};
+use crate::text::cosmic::glyph_face::GlyphFace;
 use crate::text::cosmic::glyph_ink::GlyphInk;
-use crate::text::cosmic::outline_raster::{OutlineGlyph, OutlineRaster};
+use crate::text::cosmic::glyph_raster::{GlyphRaster, GlyphRequest};
 use crate::text::cosmic::shaped_buffer_cache::{Recycled, ShapedBufferCache, ShapedRun};
 use crate::text::cosmic::stem_darkening::StemDarkening;
 use crate::text::cosmic::text_cut::{CutSuffix, TextCut};
@@ -32,25 +32,27 @@ use crate::text::request::TextShapeRequest;
 use crate::text::root::TextRoot;
 use crate::text::wrap::{LineFit, WrapFloor};
 use cosmic_text::{
-    Align as CosmicAlign, Attrs, Buffer, CacheKey, CacheKeyFlags, Family, Font, FontSystem,
-    Metrics, Scroll, Shaping, Style, Weight, fontdb,
+    Align as CosmicAlign, Attrs, Buffer, CacheKey, CacheKeyFlags, Family, FontSystem, Metrics,
+    Scroll, Shaping, Style, Weight, fontdb,
 };
-use glam::{IVec2, UVec2};
+use glam::{IVec2, Vec2};
+use skrifa::GlyphId;
 use std::fmt;
 use std::sync::Arc;
-use swash::scale::image::{Content, Image as SwashImage};
-use swash::scale::{Render, ScaleContext, Scaler, Source, StrikeWith};
-use swash::zeno::{Angle, Format, Transform, Vector};
 use tinyvec::ArrayVec;
 
 mod axis_range;
+mod bitmap_raster;
 pub(super) mod cache_entry;
 pub(super) mod cluster_glyph;
 pub(super) mod counters;
+mod coverage_raster;
 pub(super) mod ellipsis_memo;
 pub(super) mod geometry;
+mod glyph_face;
 pub(super) mod glyph_ink;
-mod outline_raster;
+mod glyph_outline;
+mod glyph_raster;
 pub(super) mod shape_store;
 pub(super) mod shaped_buffer_cache;
 mod stem_darkening;
@@ -131,70 +133,17 @@ const fn cosmic_align(align: LineAlign) -> Option<CosmicAlign> {
     }
 }
 
-/// The color sources [`CosmicMeasure::rasterize_glyph`] tries, in cosmic-text's order, before the
-/// plain outline, which [`OutlineRaster`] draws. An emoji face must hit one of them or it renders
-/// as a coverage mask. A color glyph is not darkened: its layers are artwork, not stems.
-const COLOR_SOURCES: [Source; 2] = [
-    Source::ColorOutline(0),
-    Source::ColorBitmap(StrikeWith::BestFit),
-];
-
-/// The OpenType weight axis, for variable faces: the one axis set. Every other axis, Inter's
-/// `opsz` among them, stays at the face's default, as cosmic-text 0.19 instances a face for
-/// shaping and advances on `wght` alone (`font/mod.rs`); a raster at another optical size would
-/// draw glyphs the shaper did not measure. Refused: a fork of cosmic-text for `opsz`.
-const WGHT_AXIS: swash::Tag = u32::from_be_bytes(*b"wght");
-
 /// The angle a synthetic italic leans by, rasterized and measured alike; cosmic's own.
 const FAKE_ITALIC_SKEW_DEGREES: f32 = 14.0;
 
-/// How a glyph's scaler is instanced: what [`Self::scaler`] reads beyond the face.
-#[derive(Clone, Copy, Debug)]
-struct ScalerSpec {
-    /// Pixels per em; zero reads outlines in font units.
-    size: f32,
-    hinting: Hinting,
-    /// The weight a variable face's [`WGHT_AXIS`] is set to.
-    weight: Weight,
-}
-
-/// Whether a scaler applies the face's TrueType hinting.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Hinting {
-    On,
-    Off,
-}
-
-impl ScalerSpec {
-    /// The scaler a glyph of `font` is read through, instanced on [`WGHT_AXIS`] for
-    /// variable faces. Sets `normalized_coords` on every glyph, even with no weight to
-    /// apply: the retained context keeps the last glyph's coordinates otherwise, and
-    /// `variations` keeps stale entries, so a bold glyph bleeds into the next regular one.
-    fn scaler<'a>(self, ctx: &'a mut ScaleContext, font: &'a Font) -> Scaler<'a> {
-        let face = font.as_swash();
-        let weight = face
-            .variations()
-            .find_by_tag(WGHT_AXIS)
-            .and_then(|axis| AxisRange::from(axis).coordinate(f32::from(self.weight.0)));
-        ctx.builder(face)
-            .size(self.size)
-            .hint(self.hinting == Hinting::On)
-            .normalized_coords(
-                face.variations()
-                    .normalized_coords(weight.map(|weight| (WGHT_AXIS, weight))),
-            )
-            .build()
-    }
-}
-
 /// The fractional pen offset `key` was binned at. A pixel font rounds its bins away: sub-pixel
 /// offsets would resample pixel-grid artwork.
-const fn subpixel_offset(key: CacheKey) -> Vector {
+const fn subpixel_offset(key: CacheKey) -> Vec2 {
     let (x, y) = (key.x_bin.as_float(), key.y_bin.as_float());
     if key.flags.contains(CacheKeyFlags::PIXEL_FONT) {
-        Vector::new(x.round(), y.round())
+        Vec2::new(x.round(), y.round())
     } else {
-        Vector::new(x, y)
+        Vec2::new(x, y)
     }
 }
 
@@ -208,11 +157,8 @@ pub(super) struct CosmicMeasure {
     /// [`Self::has_key`]). The shaping face derives from it via [`shaping_family`] so they
     /// cannot disagree.
     resolved: Vec<FamilyResolution>,
-    /// Swash's scaler caches, retained across glyphs.
-    scale_ctx: ScaleContext,
-    /// The image every glyph rasterizes into, reused to avoid per-glyph allocation.
-    glyph_image: SwashImage,
-    outline_raster: OutlineRaster,
+    /// The scratch every glyph rasterizes through and the last glyph's pixels.
+    glyph_raster: GlyphRaster,
     /// Which buffers are resident and for how long; also owns the shared frame clock.
     cache: ShapedBufferCache,
     /// Trailing advance of "…" for the last few faces asked about. Fixed slots, not a
@@ -242,9 +188,7 @@ impl CosmicMeasure {
             font_system,
             families: FamilyKeys::default(),
             resolved: Vec::new(),
-            scale_ctx: ScaleContext::new(),
-            glyph_image: SwashImage::new(),
-            outline_raster: OutlineRaster::default(),
+            glyph_raster: GlyphRaster::default(),
             cache: ShapedBufferCache::default(),
             ellipsis: ArrayVec::new(),
             truncate_scratch: String::new(),
@@ -562,27 +506,21 @@ impl CosmicMeasure {
         culled
     }
 
-    /// Rasterize one glyph via swash, uncached here; the renderer's atlas is the
-    /// cache. `None` when swash cannot produce an image. The pixels stay in
-    /// [`Self::glyph_image`]; copy before the next call.
+    /// Rasterize one glyph, uncached here; the renderer's atlas is the cache. `None` when its
+    /// face draws nothing for it. The pixels stay in [`Self::glyph_raster`]; copy before the
+    /// next call. Unhinted, as every run shapes with `DISABLE_HINTING` (`attrs_named`).
     pub(super) fn rasterize_glyph(&mut self, key: GlyphRasterKey) -> Option<RasterImage<'_>> {
         let cache_key = key.0;
+        debug_assert!(
+            cache_key.flags.contains(CacheKeyFlags::DISABLE_HINTING),
+            "every run shapes through `attrs_named`, which turns hinting off"
+        );
         let font = self
             .font_system
             .get_font(cache_key.font_id, cache_key.font_weight)?;
-        let hinting = if cache_key.flags.contains(CacheKeyFlags::DISABLE_HINTING) {
-            Hinting::Off
-        } else {
-            Hinting::On
-        };
+        let index = self.font_system.db().face(cache_key.font_id)?.index;
+        let face = GlyphFace::new(font.data(), index, cache_key.font_weight)?;
         let ppem = f32::from_bits(cache_key.font_size_bits);
-        let mut scaler = ScalerSpec {
-            size: ppem,
-            hinting,
-            weight: cache_key.font_weight,
-        }
-        .scaler(&mut self.scale_ctx, &font);
-        let offset = subpixel_offset(cache_key);
         // A pixel font's artwork sits on the pixel grid, which a dilation would blur.
         let darkening = if cache_key.flags.contains(CacheKeyFlags::PIXEL_FONT) {
             StemDarkening::NONE
@@ -592,43 +530,17 @@ impl CosmicMeasure {
         let skew = cache_key
             .flags
             .contains(CacheKeyFlags::FAKE_ITALIC)
-            .then(|| {
-                Transform::skew(
-                    Angle::from_degrees(FAKE_ITALIC_SKEW_DEGREES),
-                    Angle::from_degrees(0.0),
-                )
-            });
-        // Cleared, not overwritten: `render_into` zero-fills only what a resize added, so a smaller
-        // glyph would read the last one's coverage.
-        self.glyph_image.clear();
-        let rendered = Render::new(&COLOR_SOURCES)
-            .format(Format::Alpha)
-            .offset(offset)
-            .transform(skew)
-            .render_into(&mut scaler, cache_key.glyph_id, &mut self.glyph_image)
-            || self.outline_raster.render(
-                &mut scaler,
-                OutlineGlyph {
-                    id: cache_key.glyph_id,
-                    darkening,
-                    skew,
-                    offset,
-                },
-                &mut self.glyph_image,
-            );
-        if !rendered {
-            return None;
-        }
-        let placement = self.glyph_image.placement;
-        Some(RasterImage {
-            content: match self.glyph_image.content {
-                Content::Color => ContentType::Color,
-                Content::Mask | Content::SubpixelMask => ContentType::Mask,
+            .then(|| FAKE_ITALIC_SKEW_DEGREES.to_radians().libm_tan());
+        self.glyph_raster.render(
+            &face,
+            GlyphRequest {
+                glyph: GlyphId::from(cache_key.glyph_id),
+                ppem,
+                darkening,
+                skew,
+                offset: subpixel_offset(cache_key),
             },
-            size: UVec2::new(placement.width, placement.height),
-            bearing: IVec2::new(placement.left, placement.top),
-            data: &self.glyph_image.data,
-        })
+        )
     }
 
     /// Shape `text` as a single line truncated to fit `w`. The cached unbounded shape
@@ -809,7 +721,7 @@ impl CosmicMeasure {
     }
 }
 
-// Manual: swash's `ScaleContext` and `Image` aren't `Debug`.
+// Manual: cosmic's `FontSystem` isn't `Debug`, and the caches print as their sizes.
 impl fmt::Debug for CosmicMeasure {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("CosmicMeasure")

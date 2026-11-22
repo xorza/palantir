@@ -1,4 +1,4 @@
-//! Palantir-native vocabulary for the shaper's render side, so cosmic and swash types never
+//! Palantir-native vocabulary for the shaper's render side, so cosmic and skrifa types never
 //! cross out of `src/text/`.
 
 use crate::primitives::geometry::urect::URect;

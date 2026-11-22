@@ -38,14 +38,15 @@ mod slides;
 mod timeline;
 
 use std::env;
-use std::io::{self, Write};
+use std::fs::File;
+use std::io::{self, BufWriter, Write};
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitCode, Stdio};
 use std::time::Duration;
 
 use palantir::glam::{UVec2, Vec2};
-use palantir::{ErrorChain, Harness, HarnessDepth, RequestedGpu, Scroll, SystemScale};
+use palantir::{ErrorChain, Harness, HarnessDepth, Image, RequestedGpu, Scroll, SystemScale};
 
 use crate::deck::{Deck, SLIDE, SLIDES};
 use crate::downscale::{Linear, Shrink};
@@ -324,7 +325,10 @@ impl Sink {
                 if n.is_multiple_of(*every) {
                     let path = dir.join(format!("{n:05}.png"));
                     let size = Render::PREVIEW.size();
-                    image::save_buffer(&path, pixels, size.x, size.y, image::ColorType::Rgba8)
+                    let image = Image::from_srgba8(size, pixels.to_vec())
+                        .map_err(|e| format!("{}: {e}", path.display()))?;
+                    File::create(&path)
+                        .and_then(|file| image.write_png(BufWriter::new(file)))
                         .map_err(|e| format!("{}: {e}", path.display()))?;
                 }
                 Ok(())

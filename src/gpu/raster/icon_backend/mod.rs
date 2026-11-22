@@ -1,4 +1,4 @@
-//! Icon render pass: a [`RasterPass`] filled from resvg instead of swash.
+//! Icon render pass: a [`RasterPass`] filled from resvg instead of the glyph rasterizer.
 //!
 //! The atlas-to-draw machinery lives on `RasterPass`, shared with text. Here:
 //! the loaded sets and the SVG rasterizer.
