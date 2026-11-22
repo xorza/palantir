@@ -32,13 +32,12 @@ use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::fill_kind::FillKind;
 use crate::primitives::wgsl;
 use crate::renderer::render_buffer::fill_form::{FillBrush, FillForm};
-use crate::renderer::render_buffer::quad_draw_row::{QuadDrawRow, QuadInstance};
+use crate::renderer::render_buffer::quad_draw_row::{QuadDrawRows, QuadInstance};
 use crate::renderer::render_buffer::shadow_instance::{ShadowInstance, ShadowKind};
 use crate::renderer::render_buffer::shape_form::ShapeForm;
 use crate::renderer::render_buffer::template_cover::TemplateCover;
 use crate::shape::paint::lowered_shadow::ShadowGeometry;
 use glam::Vec2;
-use soa_rs::Soa;
 use std::mem::offset_of;
 use std::ops::Range;
 
@@ -396,7 +395,7 @@ impl QuadPipeline {
     pub(crate) fn upload(
         &mut self,
         ctx: &mut GpuCtx<'_>,
-        quads: &Soa<QuadDrawRow>,
+        quads: &QuadDrawRows,
         cutouts: &CutoutPlan,
         extras: QuadExtras<'_>,
     ) {

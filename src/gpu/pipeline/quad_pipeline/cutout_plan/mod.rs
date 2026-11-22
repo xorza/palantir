@@ -18,13 +18,12 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::paint::antialias::AA_HALF_WIDTH;
-use crate::renderer::render_buffer::quad_draw_row::{QuadDrawRow, QuadKey};
+use crate::renderer::render_buffer::quad_draw_row::{QuadDrawRows, QuadKey};
 use crate::renderer::render_buffer::shadow_instance::{ShadowInstance, ShadowKind};
 use crate::renderer::repaint_scissors::RepaintScissors;
 use crate::shape::paint::lowered_shadow::ShadowGeometry;
 use bytemuck::{Pod, Zeroable};
 use glam::{U16Vec2, UVec2, Vec2};
-use soa_rs::Soa;
 use std::cmp::Reverse;
 use std::mem;
 
@@ -169,7 +168,7 @@ pub(crate) enum CutoutMode {
 /// physical-pixel `viewport`.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct CutoutFrame<'a> {
-    pub(crate) quads: &'a Soa<QuadDrawRow>,
+    pub(crate) quads: &'a QuadDrawRows,
     pub(crate) repaint: &'a RepaintScissors,
     pub(crate) viewport: UVec2,
 }
@@ -587,7 +586,7 @@ impl CutoutPlan {
 }
 
 /// Each quad of `quads` as the shadow it holds, in stream order; `None` for a fill.
-fn shadows(quads: &Soa<QuadDrawRow>) -> impl Iterator<Item = Option<ShadowInstance>> + '_ {
+fn shadows(quads: &QuadDrawRows) -> impl Iterator<Item = Option<ShadowInstance>> + '_ {
     quads
         .key()
         .iter()

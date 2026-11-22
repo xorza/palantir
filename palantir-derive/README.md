@@ -35,7 +35,8 @@ field by field, with each field's name, offset and WGSL type, which `Ui::load_ef
 against the effect's WGSL parameter struct.
 
 `#[derive(ThemeWalk)]` is palantir's own: a theme part's walks over its text and press slots,
-which visit every field through the field type's own walk.
+which visit every field through the field type's own walk. So is `#[derive(Soa)]`: a row type's
+columns, one buffer a field under one row count.
 
 ## License
 

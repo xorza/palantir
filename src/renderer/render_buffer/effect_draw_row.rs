@@ -1,24 +1,19 @@
 //! Effect draw records.
 
-#![expect(
-    clippy::expl_impl_clone_on_copy,
-    reason = "`soa_rs`'s `Soars` derive writes `Clone` by hand for the `Copy` rows it generates"
-)]
-
 use crate::common::span::Span;
 use crate::effect::contract;
 use crate::primitives::identity::effect_id::EffectId;
 use crate::renderer::render_buffer::shape_form::ShapeForm;
 use crate::renderer::render_buffer::shape_header::ShapeHeader;
 use crate::renderer::render_buffer::template_cover::TemplateCover;
-use soa_rs::Soars;
+use palantir_derive::Soa;
 
 /// One effect draw row. SoA storage lets the backend upload `rows.instance()` in one write;
 /// `key` picks the pipeline, and `images` its images in the record store's image column; the
 /// instance's flags tell a material's box, which the effect's one stage draws through palantir's
 /// material path.
-#[derive(Soars, Clone, Copy, Debug, PartialEq)]
-#[soa_derive(Debug)]
+#[derive(Soa, Clone, Copy, Debug, PartialEq)]
+#[soa(EffectDrawRows)]
 pub(crate) struct EffectDrawRow {
     /// The pipeline the instance draws through, set once by the composer.
     pub(crate) key: EffectKey,

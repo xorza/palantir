@@ -58,7 +58,6 @@ pollster = { workspace = true }
 resvg = { workspace = true }
 rustc-hash = { workspace = true }
 serde = { workspace = true }
-soa-rs = { workspace = true }
 strum = { workspace = true, optional = true }
 swash = { workspace = true }
 tinyvec = { workspace = true }
@@ -205,15 +204,6 @@ version = "0.2"
 default-features = false
 features = ["std", "NSNotification", "NSObject", "NSProcessInfo", "NSString"]
 version = "0.3.2"
-
-# soa-rs 1.0.1 with `push` inlined and its growth cold, as `Vec::push` is: out of line, the quad and
-# image pushes built each row on the stack and copied it in (composer quads 4 to 8 % and images
-# 25 % on an Apple GPU laptop). Back to the crates.io release once
-# https://github.com/tim-harding/soa-rs/pull/51 ships.
-[workspace.dependencies.soa-rs]
-default-features = false
-git = "https://github.com/xorza/soa-rs"
-rev = "14ee818f237d79713002d93cf6405a59ea841639"
 
 [workspace.dependencies.syn]
 default-features = false

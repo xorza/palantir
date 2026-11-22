@@ -43,7 +43,7 @@ use crate::scene::tree::backdrop_entry::BackdropEntry;
 use crate::scene::tree::extras_idx::ExtrasIdx;
 use crate::scene::tree::iter::{Child, ChildIter, TreeItem, TreeItems};
 use crate::scene::tree::node_id::NodeId;
-use crate::scene::tree::node_record::NodeRecord;
+use crate::scene::tree::node_record::{NodeRecord, NodeRecords};
 use crate::scene::tree::paint_animations::PaintAnimations;
 use crate::scene::tree::recording_scratch::{OpenFrame, RecordingScratch};
 use crate::scene::tree::resolved_scrollbars_def::ResolvedScrollbarsDef;
@@ -60,7 +60,6 @@ use crate::shape::record::ShapeRecord;
 use crate::shape::record_store::RecordStore;
 use crate::shape::shapes::Shapes;
 use fixedbitset::FixedBitSet;
-use soa_rs::Soa;
 use std::hash::{Hash, Hasher as _};
 
 /// The lane the cascade's static hash gives a node's [`Visibility`], above its flag word.
@@ -71,7 +70,7 @@ const VISIBILITY_BITS: u32 = 2;
 /// reverse iteration is topmost-first.
 #[derive(Debug, Default)]
 pub(crate) struct Tree {
-    pub(crate) records: Soa<NodeRecord>,
+    pub(crate) records: NodeRecords,
 
     pub(crate) bounds_table: Vec<BoundsExtras>,
     pub(crate) panel_table: Vec<PanelExtras>,
@@ -135,12 +134,12 @@ impl Tree {
     /// [`Self::has_children`], [`Self::parent_of`] and [`Self::subtree_has_grid`] take
     /// flat indices, not [`NodeId`]s, since callers walk the pre-order array.
     #[inline]
-    pub(crate) fn subtree_end_of(&self, i: usize) -> usize {
+    pub(crate) const fn subtree_end_of(&self, i: usize) -> usize {
         self.records.subtree_end()[i].end() as usize
     }
 
     #[inline]
-    pub(crate) fn has_children(&self, i: usize) -> bool {
+    pub(crate) const fn has_children(&self, i: usize) -> bool {
         self.records.subtree_end()[i].has_children(i)
     }
 
@@ -151,7 +150,7 @@ impl Tree {
     }
 
     #[inline]
-    pub(crate) fn subtree_has_grid(&self, i: usize) -> bool {
+    pub(crate) const fn subtree_has_grid(&self, i: usize) -> bool {
         self.records.subtree_end()[i].has_grid()
     }
 
@@ -575,7 +574,7 @@ impl Tree {
 
         let i = closing.idx();
         let shapes_len = self.shapes.records.len() as u32;
-        let shapes = &mut self.records.shape_span_mut()[i];
+        let shapes = &mut self.records.columns_mut().shape_span[i];
         shapes.len = shapes_len - shapes.start;
 
         // The paint-row stream is counted at record time (`OpenFrame::paint_rows`) and
@@ -595,12 +594,12 @@ impl Tree {
 
         if let Some(parent) = scratch.open_frames.last().map(|f| f.node) {
             let pi = parent.idx();
-            self.records.subtree_end_mut()[pi].merge_child(child_end);
+            self.records.columns_mut().subtree_end[pi].merge_child(child_end);
         }
     }
 
     /// Children of `parent` in declaration order, with collapse state.
-    pub(crate) fn children(&self, parent: NodeId) -> ChildIter<'_> {
+    pub(crate) const fn children(&self, parent: NodeId) -> ChildIter<'_> {
         ChildIter::new(&self.records, parent)
     }
 

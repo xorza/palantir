@@ -1,22 +1,17 @@
 //! Composited image draw records.
 
-#![expect(
-    clippy::expl_impl_clone_on_copy,
-    reason = "`soa_rs`'s `Soars` derive writes `Clone` by hand for the `Copy` rows it generates"
-)]
-
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::render_buffer::image_flags::ImageFlags;
 use crate::renderer::render_buffer::shape_form::ShapeForm;
 use crate::renderer::render_buffer::shape_header::ShapeHeader;
 use glam::Vec2;
-use soa_rs::Soars;
+use palantir_derive::Soa;
 
 /// One image draw row. SoA storage lets the backend upload `rows.instance()`
 /// in one `write_buffer`; `id` is the registration id behind an `ImageHandle`.
-#[derive(Soars, Clone, Copy, Debug, PartialEq)]
-#[soa_derive(Debug)]
+#[derive(Soa, Clone, Copy, Debug, PartialEq)]
+#[soa(ImageDrawRows)]
 pub(crate) struct ImageDrawRow {
     pub(crate) id: TextureId,
     /// The geometry the draw takes, which picks its pipeline.

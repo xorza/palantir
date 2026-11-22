@@ -1,10 +1,5 @@
 //! Per-`NodeId` record stored in `Tree`'s SoA arena.
 
-#![expect(
-    clippy::expl_impl_clone_on_copy,
-    reason = "`soa_rs`'s `Soars` derive writes `Clone` by hand for the `Copy` rows it generates"
-)]
-
 use crate::common::span::Span;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::scene::node::layout_core::LayoutCore;
@@ -12,12 +7,12 @@ use crate::scene::node::node_flags::NodeFlags;
 use crate::scene::tree::extras_idx::ExtrasIdx;
 use crate::scene::tree::node_id::NodeId;
 use crate::scene::tree::subtree_end::SubtreeEnd;
-use soa_rs::Soars;
+use palantir_derive::Soa;
 
-/// Per-NodeId record, one push per `open_node` finalized by `close_node`; stored as `Soa<NodeRecord>` so passes
+/// Per-NodeId record, one push per `open_node` finalized by `close_node`; stored as `NodeRecords` so passes
 /// reading one or two fields don't pull the rest into cache.
-#[derive(Soars, Clone, Copy, Debug)]
-#[soa_derive(Debug)]
+#[derive(Soa, Clone, Copy, Debug)]
+#[soa(NodeRecords)]
 pub(crate) struct NodeRecord {
     pub widget_id: WidgetId,
     /// Span into `Tree.shapes` covering every shape recorded in this node's open→close window, descendants included;
@@ -32,7 +27,7 @@ pub(crate) struct NodeRecord {
     pub layout: LayoutCore,
     /// Packed paint/input flags (4 B), read by cascade, encoder, hit-test and input routing.
     pub attrs: NodeFlags,
-    /// Optional indices into the sparse `bounds_table` / `panel_table` / `chrome_table`; a field, so `Soa`
+    /// Optional indices into the sparse `bounds_table` / `panel_table` / `chrome_table`; a field, so `NodeRecords`
     /// guarantees one row per node.
     pub extras: ExtrasIdx,
 }

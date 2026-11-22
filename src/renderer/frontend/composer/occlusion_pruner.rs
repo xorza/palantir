@@ -75,7 +75,7 @@ impl OcclusionPruner {
         let mut cursor = 0;
         let occluders = self.opaque_in_group.len();
         let end = out.quads.len();
-        let rows = out.quads.slices_mut();
+        let rows = out.quads.columns_mut();
         let (keys, scissors, quads) = (rows.key, rows.scissor, rows.instance);
         // Survivors move down to `write`, in order.
         let mut write = start;

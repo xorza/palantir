@@ -9,6 +9,7 @@ mod animatable;
 mod effect_params;
 mod lerp;
 mod options;
+mod soa;
 mod theme_walk;
 
 use proc_macro::TokenStream;
@@ -80,6 +81,25 @@ pub fn derive_animatable(input: TokenStream) -> TokenStream {
 pub fn derive_theme_walk(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     theme_walk::expand(&input)
+        .unwrap_or_else(syn::Error::into_compile_error)
+        .into()
+}
+
+/// `#[derive(Soa)]`, palantir's own, on a struct of `Copy` fields, named and with no generics:
+/// `#[soa(Name)]` names its columns type, one buffer a field under one row count and one capacity,
+/// with `Vec`'s row methods, a slice accessor a column, and `columns_mut`, every column borrowed
+/// mutably at once as a `NameMut`, the one way to write rows in place. A pass that reads one column
+/// streams it alone, as a struct of arrays does; a push checks one capacity and stores one length,
+/// and every column's slice is as long, so indexing two columns at one row checks its bound once.
+///
+/// Hidden: palantir's crate-private row types are its only callers. Refused: `soa-rs`, a git pin
+/// that blocks publishing; a `Vec` a column, each with its own length, whose push checks every
+/// column's capacity and whose slices the optimizer cannot tell are as long.
+#[doc(hidden)]
+#[proc_macro_derive(Soa, attributes(soa))]
+pub fn derive_soa(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    soa::expand(&input)
         .unwrap_or_else(syn::Error::into_compile_error)
         .into()
 }

@@ -12,13 +12,14 @@ use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::packed::half_simd::F16x4;
 use crate::renderer::render_buffer::fill_form::FillForm;
-use crate::renderer::render_buffer::quad_draw_row::{QuadDrawRow, QuadInstance, QuadKey};
+use crate::renderer::render_buffer::quad_draw_row::{
+    QuadDrawRow, QuadDrawRows, QuadInstance, QuadKey,
+};
 use crate::renderer::render_buffer::shadow_instance::{ShadowInstance, ShadowKind};
 use crate::renderer::render_buffer::shape_header::ShapeHeader;
 use crate::renderer::repaint_scissors::RepaintScissors;
 use bytemuck::{Pod, Zeroable};
 use glam::{U16Vec2, UVec2, Vec2};
-use soa_rs::Soa;
 
 /// A drop shadow over a `size` quad, every corner `radius`, blurred by `sigma`, no spread.
 fn drop_shadow(size: Size, radius: f32, sigma: f32) -> ShadowInstance {
@@ -42,7 +43,7 @@ fn inset_shadow(size: Size, radius: f32, sigma: f32) -> ShadowInstance {
 }
 
 /// The quad stream of `shadows`, in order.
-fn stream(shadows: &[ShadowInstance]) -> Soa<QuadDrawRow> {
+fn stream(shadows: &[ShadowInstance]) -> QuadDrawRows {
     shadows
         .iter()
         .map(|&shadow| QuadDrawRow {
@@ -103,7 +104,7 @@ impl Planner {
 
     fn build_rows(
         &mut self,
-        quads: &Soa<QuadDrawRow>,
+        quads: &QuadDrawRows,
         repaint: &RepaintScissors,
         viewport: UVec2,
     ) -> Census {
@@ -138,12 +139,12 @@ fn plan_in(quads: &[ShadowInstance], viewport: UVec2) -> Planner {
 }
 
 /// The rows `quads` planned as a full repaint of a `viewport`, with baking on.
-fn plan_rows(quads: &Soa<QuadDrawRow>, viewport: UVec2) -> Planner {
+fn plan_rows(quads: &QuadDrawRows, viewport: UVec2) -> Planner {
     plan_rows_over(quads, viewport, AtlasPool::of_edge(DEVICE_EDGE))
 }
 
 /// [`plan_rows`] over `pool`.
-fn plan_rows_over(quads: &Soa<QuadDrawRow>, viewport: UVec2, pool: AtlasPool) -> Planner {
+fn plan_rows_over(quads: &QuadDrawRows, viewport: UVec2, pool: AtlasPool) -> Planner {
     let mut plan = Planner {
         plan: CutoutPlan::new(),
         placements: CutoutPlacements::default(),

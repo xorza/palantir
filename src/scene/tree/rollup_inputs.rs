@@ -6,14 +6,13 @@ use crate::primitives::layout::track::Track;
 use crate::scene::node::bounds_extras::BoundsExtras;
 use crate::scene::node::panel_extras::PanelExtras;
 use crate::scene::tree::Tree;
-use crate::scene::tree::node_record::NodeRecord;
+use crate::scene::tree::node_record::NodeRecords;
 use crate::scene::tree::resolved_scrollbars_def::ResolvedScrollbarsDef;
 #[cfg(debug_assertions)]
 use crate::scene::tree::subtree_rollups::SubtreeRollups;
 use crate::shape::paint::chrome_row::ChromeRow;
 #[cfg(debug_assertions)]
 use fixedbitset::FixedBitSet;
-use soa_rs::Soa;
 use std::mem;
 
 /// The last pass's recorded columns, swapped out of the tree at `Tree::pre_record` (not cleared) so the buffers
@@ -21,7 +20,7 @@ use std::mem;
 /// by hash, the rest field by field), so equal inputs give equal rollups.
 #[derive(Debug, Default)]
 pub(super) struct RollupInputs {
-    records: Soa<NodeRecord>,
+    records: NodeRecords,
     bounds_table: Vec<BoundsExtras>,
     panel_table: Vec<PanelExtras>,
     chrome_table: Vec<ChromeRow>,
@@ -39,7 +38,7 @@ pub(super) struct RollupInputs {
 /// last pass's.
 #[derive(Debug)]
 pub(super) struct RecordedColumns<'a> {
-    pub(super) records: &'a mut Soa<NodeRecord>,
+    pub(super) records: &'a mut NodeRecords,
     pub(super) bounds_table: &'a mut Vec<BoundsExtras>,
     pub(super) panel_table: &'a mut Vec<PanelExtras>,
     pub(super) chrome_table: &'a mut Vec<ChromeRow>,

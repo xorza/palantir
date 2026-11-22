@@ -1,12 +1,10 @@
 //! Traversal iterators over a [`Tree`](crate::scene::tree::Tree): [`ChildIter`]/[`Child`] (direct children) and [`TreeItems`]/[`TreeItem`] (a node's shapes interleaved with its children in record order), the single source of the shape-cursor logic for encoder, cascade and hash walks.
 
-use soa_rs::Soa;
-
 use crate::common::span::Span;
 use crate::primitives::layout::visibility::Visibility;
 use crate::scene::node::layout_core::LayoutCore;
 use crate::scene::tree::node_id::NodeId;
-use crate::scene::tree::node_record::NodeRecord;
+use crate::scene::tree::node_record::NodeRecords;
 use crate::scene::tree::subtree_end::SubtreeEnd;
 use crate::shape::record::ShapeRecord;
 
@@ -19,7 +17,7 @@ pub(crate) struct ChildIter<'a> {
 }
 
 impl<'a> ChildIter<'a> {
-    pub(crate) fn new(records: &'a Soa<NodeRecord>, parent: NodeId) -> Self {
+    pub(crate) const fn new(records: &'a NodeRecords, parent: NodeId) -> Self {
         let ends = records.subtree_end();
         Self {
             layouts: records.layout(),
@@ -79,8 +77,8 @@ pub(crate) struct TreeItems<'a> {
 }
 
 impl<'a> TreeItems<'a> {
-    pub(crate) fn new(
-        records: &'a Soa<NodeRecord>,
+    pub(crate) const fn new(
+        records: &'a NodeRecords,
         shapes: &'a [ShapeRecord],
         node: NodeId,
     ) -> Self {

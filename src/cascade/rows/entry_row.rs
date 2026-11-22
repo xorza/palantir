@@ -9,8 +9,8 @@ use crate::primitives::geometry::translate_scale::TranslateScale;
 /// Array-of-structs on purpose: every consumer is a single-index gather
 /// ([`crate::Ui::response_for`] reads all three
 /// fields once per widget per frame), so interleaving them puts a lookup on
-/// one cache line, where `soa_rs` columns used three. The opposite call from
-/// `Tree.records: Soa<NodeRecord>`, whose columns the measure/arrange passes
+/// one cache line, where columns used three. The opposite call from
+/// `Tree.records: NodeRecords`, whose columns the measure/arrange passes
 /// walk. Hit testing reads [`HitRow`](crate::cascade::rows::hit_row::HitRow), not this table.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct EntryRow {

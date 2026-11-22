@@ -455,13 +455,26 @@ an older number here reads as a share, not a time.
     +4 to +9 %, as the stream turned into a `Soa` whose `push` soa-rs 1.0.1 leaves out of line, so
     a row went through the stack. A fork with `push` inlined and its growth cold, as `Vec::push`,
     gives the Apple laptop's quads −4 to −8 % and images −25 %, the intel's −1 % and −4 %
-    (the workspace `Cargo.toml`, until tim-harding/soa-rs#51 ships);
+    (since replaced by palantir's own `#[derive(Soa)]`, below);
   - the one stroke payload (`061887796`): `curves/alone` +28 % on the intel and +9 % on the Apple
     laptop. A curve's basis and its `StrokeBbox` reached `CubicBezier::bbox` and
     `StrokeBbox::urect` out of line, written field by field and read back in wider loads, which
     store-to-load forwarding refuses: half the bbox's samples sat on its first load. Inlined, the
     two run against master −38 % on the intel and −52 % on the Apple laptop, below the step's
     parent; the frame cases within ±0.6 %.
+
+- **palantir's own `#[derive(Soa)]` against the soa-rs fork** (2026-11-22, an Apple laptop
+  unpinned, three interleaved rounds of each build, the median of each case's medians, every CPU
+  case of composer quads, image and mesh, record, encode, layout, cascade and the frame):
+  - a `Vec` a column, each with its own length: same-tier images +2 to +3 %, meshes +4 %,
+    `quads/clipped/4096` +2 to +5 %, `layout/forced_miss` +3 to +4 %, the frames within ±1 %;
+  - the same with one capacity every column holds, checked once a push: half that gap left,
+    images +1.5 to +1.9 %, `quads/clipped/4096` +3.8 %, `layout/forced_miss` +2.2 %;
+  - one row count and one capacity over every buffer, kept: the quads −0.6 to −2.5 %, record
+    −1.1 %, the frames −1.0 to −1.7 %, the rest within ±1.2 %. `frame/cpu/resizing` read +2.6 %
+    once and −0.5 % over five rounds. Every column's slice built from the one count is what the
+    first two lacked: indexing two columns at one row checks its bound once, as soa-rs's one
+    length gave.
 
 - **The clip folded away where no draw names one** (2026-11-10, an Apple laptop, ABBA): with one
   pipeline for both, the clip's code cost a frame with no rounded clip 16 to 23 % of its main pass,

@@ -431,9 +431,13 @@ impl Ordering<'_> {
     pub(super) fn flush(&mut self, cause: GroupClose) {
         let order = &mut *self.order;
         order.occlusion.prune(self.out, order.cursors.quads);
-        let mut group = self.out.quads.idx_mut(order.cursors.quads as usize..);
-        let rows = group.slices_mut();
-        order.runs.join(rows.key, rows.scissor, rows.instance);
+        let group = order.cursors.quads as usize..;
+        let rows = self.out.quads.columns_mut();
+        order.runs.join(
+            &mut rows.key[group.clone()],
+            &mut rows.scissor[group.clone()],
+            &mut rows.instance[group],
+        );
         let q_end = self.out.quads.len() as u32;
         let t_end = self.out.texts.len() as u32;
         let higher_end = PaintTier::ALL.map(|tier| self.out.draws_len(tier));

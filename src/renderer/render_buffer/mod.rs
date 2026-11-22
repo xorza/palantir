@@ -8,16 +8,15 @@ use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::render_buffer::backdrop_row::{BackdropRow, BackdropSource};
 use crate::renderer::render_buffer::curve_instance::CurveInstance;
 use crate::renderer::render_buffer::draw_run::DrawRun;
-use crate::renderer::render_buffer::effect_draw_row::EffectDrawRow;
+use crate::renderer::render_buffer::effect_draw_row::EffectDrawRows;
 use crate::renderer::render_buffer::icon_draw_row::IconDrawRow;
-use crate::renderer::render_buffer::image_draw_row::ImageDrawRow;
-use crate::renderer::render_buffer::mesh_draw_row::MeshDrawRow;
+use crate::renderer::render_buffer::image_draw_row::ImageDrawRows;
+use crate::renderer::render_buffer::mesh_draw_row::MeshDrawRows;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
-use crate::renderer::render_buffer::quad_draw_row::QuadDrawRow;
+use crate::renderer::render_buffer::quad_draw_row::QuadDrawRows;
 use crate::renderer::render_buffer::render_target_draw::{FrameViews, RenderTargetDraw};
 use crate::renderer::render_buffer::rounded_clip::RoundedClip;
 use crate::renderer::render_buffer::text_draw_row::TextDrawRow;
-use soa_rs::Soa;
 use std::time::Duration;
 
 pub(crate) mod backdrop_row;
@@ -48,21 +47,21 @@ pub(crate) mod text_draw_row;
 #[derive(Debug)]
 pub(crate) struct RenderBuffer {
     /// The quad stream, SoA: each instance beside its pipeline's key.
-    pub(crate) quads: Soa<QuadDrawRow>,
+    pub(crate) quads: QuadDrawRows,
     pub(crate) texts: Vec<TextDrawRow>,
     /// Scene-wide mesh rows, SoA. Vertex/index bytes live in [`RecordStore::mesh_vertices`](crate::shape::record_store::RecordStore::mesh_vertices) and `mesh_idxs`; each row's `draw` carries spans into them and `instance` the Pod GPU state uploaded verbatim.
-    pub(crate) meshes: Soa<MeshDrawRow>,
+    pub(crate) meshes: MeshDrawRows,
     /// The frame's draws in the order they paint, each a span of one lane's rows under one
     /// scissor; a backdrop's barrier is an index into it.
     pub(crate) runs: Vec<DrawRun>,
     /// Scene-wide image rows, SoA, mirroring [`Self::meshes`]; one quad draw per row. A `GpuView` is just an image row, its off-screen target listed in [`Self::frame_targets`].
-    pub(crate) images: Soa<ImageDrawRow>,
+    pub(crate) images: ImageDrawRows,
     /// `GpuView` off-screen targets of this frame, one per composited view row, filled by the composer from each image draw's `ClosedImage::view`. The backend repaints one only when its stamp changed.
     pub(crate) frame_targets: Vec<RenderTargetDraw>,
     pub(crate) icons: Vec<IconDrawRow>,
     /// Effect rows, SoA, one rounded-rect draw per row; each instance's parameters are words of
     /// [`RecordStore::effect_params`](crate::shape::record_store::RecordStore::effect_params).
-    pub(crate) effects: Soa<EffectDrawRow>,
+    pub(crate) effects: EffectDrawRows,
     /// Native GPU stroke instances: a `[t0, t1]` sub-range of a cubic/arc, a polyline segment, or a join billboard. One indexed instanced draw per batch.
     pub(crate) curves: Vec<CurveInstance>,
     /// Flat pool of rounded-clip chains (outer→inner), uploaded as it is; each draw's
@@ -88,14 +87,14 @@ pub(crate) struct RenderBuffer {
 impl RenderBuffer {
     pub(crate) fn new() -> Self {
         Self {
-            quads: Soa::default(),
+            quads: QuadDrawRows::default(),
             texts: Vec::new(),
-            meshes: Soa::default(),
+            meshes: MeshDrawRows::default(),
             runs: Vec::new(),
-            images: Soa::default(),
+            images: ImageDrawRows::default(),
             frame_targets: Vec::new(),
             icons: Vec::new(),
-            effects: Soa::default(),
+            effects: EffectDrawRows::default(),
             curves: Vec::new(),
             rounded_clips: Vec::new(),
             clips_drawn: false,
@@ -123,7 +122,7 @@ impl RenderBuffer {
         self.time = stamp.time;
     }
 
-    pub(crate) fn draws_len(&self, tier: PaintTier) -> u32 {
+    pub(crate) const fn draws_len(&self, tier: PaintTier) -> u32 {
         let len = match tier {
             PaintTier::Mesh => self.meshes.len(),
             PaintTier::Image => self.images.len(),

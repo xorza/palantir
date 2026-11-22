@@ -1,11 +1,6 @@
 //! The quad stream's rows: each instance beside the key of the pipeline it draws through, and the
 //! instance the composer hands, through `RenderBuffer`, to the backend's `QuadPipeline`.
 
-#![expect(
-    clippy::expl_impl_clone_on_copy,
-    reason = "`soa_rs`'s `Soars` derive writes `Clone` by hand for the `Copy` rows it generates"
-)]
-
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::packed::fill_axis::FillAxis;
@@ -16,12 +11,12 @@ use crate::renderer::render_buffer::fill_form::FillForm;
 use crate::renderer::render_buffer::shape_form::ShapeForm;
 use crate::renderer::render_buffer::shape_header::ShapeHeader;
 use bytemuck::{Pod, Zeroable};
-use soa_rs::Soars;
+use palantir_derive::Soa;
 
 /// One quad of the stream. SoA storage lets the backend upload `rows.instance()` in one
 /// `write_buffer`, and read `rows.key()` for each instance's pipeline.
-#[derive(Soars, Clone, Copy, Debug)]
-#[soa_derive(Debug)]
+#[derive(Soa, Clone, Copy, Debug)]
+#[soa(QuadDrawRows)]
 pub(crate) struct QuadDrawRow {
     /// The pipeline the instance draws through, set once by the composer.
     pub(crate) key: QuadKey,
